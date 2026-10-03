@@ -326,7 +326,7 @@ fn areanav_archive(listed: &Listed, towns: &archives::TownFacilities) -> Vec<u8>
     garc_of(vec![rows])
 }
 
-type Files = IndexMap<String, Vec<u8>>;
+pub(crate) type Files = IndexMap<String, Vec<u8>>;
 
 /// `{**files, name: data}`: a name already there keeps its place.
 fn with(mut files: Files, name: &str, data: Vec<u8>) -> Files {
@@ -335,7 +335,7 @@ fn with(mut files: Files, name: &str, data: Vec<u8>) -> Files {
 }
 
 /// The archives `GameText.load` reads, for a ROM of three towns.
-fn oras_files(text: Option<Vec<u8>>) -> Files {
+pub(crate) fn oras_files(text: Option<Vec<u8>>) -> Files {
     let mut files = Files::new();
     files.insert(
         "a/0/7/3".to_string(),

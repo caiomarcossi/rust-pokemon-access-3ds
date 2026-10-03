@@ -1,1 +1,816 @@
+//! The runtime: wait for the game, find what to read, poll it, and say what changed.
+//!
+//! This is the schedule: when to measure the heaps, sweep them and poll the readers. What to look
+//! for, what the readers are and how the heaps are read is the game's, handed over as a session by
+//! its engine's package (`games.catalog.start`); finding objects is `discovery`'s.
 
+use std::any::Any;
+use std::cell::{Cell, RefCell};
+use std::collections::HashSet;
+use std::panic::{self, AssertUnwindSafe, Location};
+use std::path::PathBuf;
+use std::rc::Rc;
+
+use indexmap::IndexMap;
+
+use crate::core::config::{Navigation, Ui};
+use crate::core::discovery::{CODE_SPAN, Discovery};
+use crate::core::heaps::Block;
+use crate::core::keys::Hotkeys;
+use crate::core::memory::{self, Memory};
+use crate::core::rpc::{Process, Rpc};
+use crate::core::rtti::demangle;
+use crate::core::snapshot::{self, PAGE};
+use crate::core::speech::{Category, Speech};
+use crate::games::catalog;
+use crate::games::common::navigate::{Bindings, DEFAULT_BINDINGS, bound_keys};
+use crate::games::common::session::{Session, Setup};
+use crate::py::{Error, Kind, Log, Result, time};
+use crate::tape;
+
+#[derive(Clone)]
+pub struct Settings {
+    /// Seconds between polls: the game's frame rate by default, as ADR-0004 has always said. The
+    /// runtime shipped at 30 Hz and managed 20.6 polls a second (spike 59), because sweeps held it
+    /// up; a dialogue poll itself takes under a millisecond. `poll_rate = 30` for a slower machine.
+    pub tick: f64,
+    /// Pages a sweep reads before polling again. A heap sweep read whole held polling up for about
+    /// 300 ms every couple of seconds (spike 59); 512 pages is about 13 ms.
+    pub sweep_chunk: i64,
+    /// Seconds between looks at the game's heaps for the blocks they have allocated since the last,
+    /// which are swept at once for the objects the readers want (`heaps`, spike 110). Every object a
+    /// sweep of the whole heap found over movies 4 and 5 was in one of them first, a second or two
+    /// sooner than a sweep every 2 s would have found it.
+    pub heap_tick: f64,
+    /// Seconds after another app starts — the field, the Bag, the Pokédex, a battle — to sweep the
+    /// whole heap, whatever the schedule says: a net for what the app builds into memory taken
+    /// before, as the field finds its zone data through a holder no new block holds (movie4,
+    /// 2026-09-26). One read a poll says when one starts (`Gen6Profile.poll_app`, spike 99), and
+    /// the profile whether it wants the sweep: ORAS's field coming back does not (spike 134).
+    pub app_sweep: f64,
+    /// Seconds after a block appears to sweep it again. A pool is taken whole and built into after:
+    /// swept only as it appeared, the move models, the talk windows and the camera waited for the
+    /// whole sweep, and the field said nothing for 18 s after the game was continued (movie4,
+    /// 2026-09-26).
+    pub sweep_again: Vec<f64>,
+    /// Seconds between sweeps of the whole heap: the net under the heaps' own watch, and the moment
+    /// readers forget what has gone. A whole sweep is made at once whenever a reader is waiting for
+    /// one. Until spike 110 the whole heap was swept every 8 s and around what had been found every
+    /// 2 s, and after every dialogue page; then every 24 and 6 s, and when a screen changed.
+    pub whole_rescan: f64,
+    /// Seconds between polls of screen text. Each reads every TextBox a sweep found and every pane
+    /// above it, several times the reads of a dialogue poll, and screens change at the player's
+    /// pace.
+    pub screen_tick: f64,
+    /// Seconds between attempts to reach an emulator that is not running a game yet.
+    pub wait: f64,
+    /// How menus, lists and screens are said (`config.toml`'s `[pa3ds.ui]`). Pauses are off unless
+    /// asked for, since a screen reader reads "Torchic, ♂, L, 5" more clumsily than "Torchic ♂ L 5"
+    /// (the user, 2026-09-14).
+    pub ui: Ui,
+    /// How the map's list and the way to a thing are said (`[pa3ds.navigation]`).
+    pub navigation: Navigation,
+    /// Which of a game's name tables to read for the people it never names (`pa3ds.core.names`).
+    pub language: String,
+    /// Where the player's own names live, and where a rename is written: beside pa3ds itself from
+    /// the command line (ADR-0032). None keeps them for the run only, which is what a replay wants —
+    /// a replay must say the same thing on any machine, and a name given on this one would change
+    /// it.
+    pub names_home: Option<PathBuf>,
+    /// Navigation mode -> key -> action, answered while the emulator's window is in front, or
+    /// None for no hook at all, as a replay in the rig wants.
+    pub keys: Option<Bindings>,
+    /// The player's ROM, for the game's own words RAM only numbers: a place's name, the
+    /// rival's. None finds it among the ROMs Azahar has opened, by the running game's title id.
+    pub rom: Option<PathBuf>,
+    /// Where a snapshot of a reader's failure is written (`Faults`). None is `capture_dir()` on
+    /// C:, where raw captures live, because the pages a reader was reading can hold save data
+    /// (ADR-0029).
+    pub captures: Option<PathBuf>,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Settings {
+            tick: 1.0 / 60.0,
+            sweep_chunk: 512,
+            heap_tick: 0.1,
+            app_sweep: 1.5,
+            sweep_again: vec![0.5, 2.0],
+            whole_rescan: 30.0,
+            screen_tick: 0.2,
+            wait: 1.0,
+            ui: Ui::default(),
+            navigation: Navigation::default(),
+            language: "en".to_string(),
+            names_home: None,
+            keys: None,
+            rom: None,
+            captures: None,
+        }
+    }
+}
+
+/// Attach as soon as the emulator is running a game, so pa3ds can be started before it.
+///
+/// Azahar's RPC server answers only once a game is running. Started after the game instead,
+/// pa3ds means switching windows during the opening, and its first line is gone by then.
+pub fn wait_for_game(
+    rpc: &dyn Rpc,
+    speech: &Speech,
+    until: &dyn Fn() -> bool,
+    log: &Log,
+    settings: &Settings,
+) -> Result<Option<Process>> {
+    let mut told = false;
+    while !until() {
+        match rpc.attach() {
+            Ok(process) => return Ok(Some(process)),
+            Err(error) if error.is(Kind::RpcError) => {
+                if !told {
+                    log("waiting for the game");
+                    speech.say("Waiting for the game", Category::System);
+                    told = true;
+                }
+                time::sleep(settings.wait);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(None)
+}
+
+/// When a task is next due: every `period` seconds, or sooner when asked.
+pub struct Every {
+    period: f64,
+    next: Cell<f64>,
+}
+
+impl Every {
+    pub fn new(period: f64) -> Self {
+        Every { period, next: Cell::new(0.0) }
+    }
+
+    /// Whether the task is due now. If it is, the next time is set from now.
+    pub fn due(&self, now: f64) -> bool {
+        if now < self.next.get() {
+            return false;
+        }
+        self.next.set(now + self.period);
+        true
+    }
+
+    /// Be due by `at` at the latest.
+    pub fn soon(&self, at: f64) {
+        // `min(self._next, at)`: the first unless the second is less.
+        if at < self.next.get() {
+            self.next.set(at);
+        }
+    }
+
+    /// Be due a whole period from now, as though the task had just run.
+    pub fn wait(&self, now: f64) {
+        self.next.set(now + self.period);
+    }
+
+    /// Be due at once.
+    pub fn reset(&self) {
+        self.next.set(0.0);
+    }
+}
+
+/// Seconds a read takes the emulator to answer past which it is busy: 0.01 to 0.05 ms normally,
+/// 2 to 20 ms while it loads an area.
+pub const SLOW_REPLY: f64 = 0.001;
+/// The longest the work that can wait is put off for, so an emulator slow all the time is read
+/// as it was before.
+pub const PATIENCE: f64 = 1.5;
+
+/// Whether to put off the work that can wait, because the emulator is answering slowly.
+///
+/// While an area loads every read takes it 2 to 20 ms, pipelined or not, and whichever poll ran
+/// then held the loop up: the heaps' look, the field's listing, the screen poll's reads fetched
+/// ahead, 0.4 to 1.2 s each as Route 1 loaded, with asynchronous reads as with deterministic
+/// ones (sun_10.ctm, 2026-09-27). Afterwards the same reads take a hundredth of a millisecond.
+/// Dialogue is polled all the same.
+pub struct Busy {
+    rpc: Rc<dyn Rpc>,
+    since: Cell<Option<f64>>,
+}
+
+impl Busy {
+    pub fn new(rpc: Rc<dyn Rpc>) -> Self {
+        Busy { rpc, since: Cell::new(None) }
+    }
+
+    pub fn now(&self, now: f64) -> bool {
+        if self.rpc.reply_seconds() < SLOW_REPLY {
+            self.since.set(None);
+            return false;
+        }
+        let since = match self.since.get() {
+            Some(since) => since,
+            None => {
+                self.since.set(Some(now));
+                now
+            }
+        };
+        now - since < PATIENCE
+    }
+}
+
+/// A reader's failure as the runtime catches it: what was raised and where, as one line (the key
+/// that makes one bug one fault), and what the log shows of it.
+pub struct Failure {
+    pub fault: String,
+    pub detail: String,
+}
+
+impl Failure {
+    /// A raised exception: Python's `_fault` keys it by the traceback's last frame, which is where
+    /// `py::Error` records it was raised.
+    pub fn of_error(error: &Error) -> Self {
+        Failure {
+            fault: error.fault(),
+            detail: format!("{}: {}\n  raised at {}:{}", error.kind.name(), error.message,
+                            error.location.file(), error.location.line()),
+        }
+    }
+
+    /// A panic: a Rust reader's way of failing where Python's would have raised, as indexing past
+    /// a list's end does.
+    fn of_panic(payload: &(dyn Any + Send)) -> Self {
+        let message = payload
+            .downcast_ref::<&str>()
+            .map(|text| text.to_string())
+            .or_else(|| payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "a panic".to_string());
+        let (file, line) = PANICKED_AT.with(|at| at.borrow().clone()).unwrap_or_default();
+        let name = file.rsplit(['/', '\\']).next().unwrap_or("").to_string();
+        Failure {
+            fault: format!("panic at {name}:{line}"),
+            detail: format!("panic: {message}\n  raised at {file}:{line}"),
+        }
+    }
+}
+
+thread_local! {
+    /// Where the last panic on this thread came from, for the fault it becomes.
+    static PANICKED_AT: RefCell<Option<(String, u32)>> = const { RefCell::new(None) };
+}
+
+/// Remember where each panic comes from, for `Failure::of_panic`, and say nothing of the ones the
+/// runtime catches: a reader's failure is the log's to show (ADR-0019), and a tape's stop is not a
+/// failure at all. Any other panic is shown as Rust shows it.
+fn hook_panics() {
+    let shown = panic::take_hook();
+    panic::set_hook(Box::new(move |info| {
+        let at: Option<&Location<'_>> = info.location();
+        PANICKED_AT.with(|cell| {
+            *cell.borrow_mut() = at.map(|at| (at.file().to_string(), at.line()));
+        });
+        if CATCHING.with(Cell::get) || tape::is_stop(info.payload()) {
+            return;
+        }
+        shown(info);
+    }));
+}
+
+thread_local! {
+    /// Whether the runtime is inside a poll, where a panic is a reader's failure and caught.
+    static CATCHING: Cell<bool> = const { Cell::new(false) };
+}
+
+/// What a reader raising does: log it with a snapshot, and say so once (ADR-0019).
+///
+/// A player mid-battle cannot act on a traceback, but they can act on knowing this screen is
+/// broken — silence that might be a crash is worse than two words. The traceback and the snapshot
+/// are for the agent.
+///
+/// One bug is one fault, keyed by what was raised and the line that raised it, so a reader failing
+/// every poll says nothing after the first time. A fault that goes away and comes back later is
+/// said again: the same line failing on a screen the player has walked to since is news, and the
+/// only "screen" the runtime can tell apart cheaply is one separated by a quiet spell.
+pub struct Faults {
+    speech: Rc<Speech>,
+    log: Log,
+    capture: Option<Box<dyn Fn() -> Result<Option<PathBuf>>>>,
+    quiet: f64,
+    left: Cell<i64>,
+    /// Fault -> when it was last raised.
+    seen: RefCell<IndexMap<String, f64>>,
+}
+
+impl Faults {
+    /// Seconds a fault must stay away before it is worth saying again.
+    pub const QUIET: f64 = 60.0;
+    /// Snapshots one run writes. Enough to see the first faults, few enough that a run left going
+    /// overnight on a broken screen cannot fill the disk.
+    pub const CAPTURES: i64 = 10;
+
+    pub fn new(
+        speech: Rc<Speech>,
+        log: Log,
+        capture: Option<Box<dyn Fn() -> Result<Option<PathBuf>>>>,
+        quiet: f64,
+        captures: i64,
+    ) -> Self {
+        Faults {
+            speech,
+            log,
+            capture,
+            quiet,
+            left: Cell::new(captures),
+            seen: RefCell::new(IndexMap::new()),
+        }
+    }
+
+    /// Take a reader's failure. Returns the fault, or None if it was already being said.
+    pub fn caught(&self, failure: &Failure, now: f64) -> Option<String> {
+        let last = self.seen.borrow_mut().insert(failure.fault.clone(), now);
+        if let Some(last) = last
+            && now - last < self.quiet
+        {
+            return None;
+        }
+        (self.log)(&format!("a reader failed, carrying on:\n{}", failure.detail));
+        self.snapshot();
+        self.speech.say("Reader error", Category::System);
+        Some(failure.fault.clone())
+    }
+
+    /// Capture what the readers were reading, for a test to replay the failure through.
+    fn snapshot(&self) {
+        let Some(capture) = &self.capture else { return };
+        if self.left.get() <= 0 {
+            (self.log)("no snapshot: this run has written all it will");
+            return;
+        }
+        self.left.set(self.left.get() - 1);
+        // The emulator may be the reason the reader failed at all.
+        let taken = panic::catch_unwind(AssertUnwindSafe(capture));
+        match taken {
+            Ok(Ok(Some(written))) => {
+                (self.log)(&format!("snapshot of the failure: {}", written.display()))
+            }
+            Ok(Ok(None)) => {
+                (self.log)("no snapshot of the failure: nothing had been read yet")
+            }
+            Ok(Err(failed)) => (self.log)(&format!("no snapshot of the failure: {failed:?}")),
+            Err(payload) if tape::is_stop(&*payload) => panic::resume_unwind(payload),
+            Err(payload) => (self.log)(&format!(
+                "no snapshot of the failure: {}",
+                Failure::of_panic(&*payload).detail
+            )),
+        }
+    }
+}
+
+/// Announce what the game shows until `until()` is true, from one game to the next: a game the
+/// emulator loses — closed, or another emulator started in its place — is waited for again.
+pub fn run(
+    rpc: Rc<dyn Rpc>,
+    speech: Rc<Speech>,
+    settings: Settings,
+    until: &dyn Fn() -> bool,
+    log: Log,
+) -> Result<()> {
+    run_with(rpc, speech, settings, until, log, &catalog::start)
+}
+
+/// How a game is started: `catalog::start`, or a test's own, where the Python's tests patched a
+/// reader the catalog's profile builds.
+pub type Start<'a> =
+    &'a dyn Fn(catalog::Running, Rc<dyn Rpc>, Rc<Speech>, (i64, i64), Setup, &[u8]) -> Result<Session>;
+
+/// `run`, with the game started by `start`.
+pub fn run_with(
+    rpc: Rc<dyn Rpc>,
+    speech: Rc<Speech>,
+    settings: Settings,
+    until: &dyn Fn() -> bool,
+    log: Log,
+    start: Start<'_>,
+) -> Result<()> {
+    hook_panics();
+    loop {
+        let Some(process) = wait_for_game(&*rpc, &speech, until, &log, &settings)? else {
+            return Ok(());
+        };
+        if !session(rpc.clone(), speech.clone(), &settings, until, &log, process, start)? {
+            return Ok(());
+        }
+        log("the game the emulator was running has gone; waiting for a game again");
+    }
+}
+
+/// What one poll's failure is, the way Python's `except` clauses tell them apart.
+enum Outcome {
+    Done,
+    Raised(Error),
+    Panicked(Failure),
+}
+
+/// Run one poll's work, catching what Python's `except Exception` caught: an error returned, an
+/// error a callback that cannot return one raised as a panic, or a reader's panic. A tape stopping
+/// goes on unwinding, as Python's `BaseException` did.
+fn attempt(work: impl FnOnce() -> Result<()>) -> Outcome {
+    let was = CATCHING.with(|catching| catching.replace(true));
+    let outcome = panic::catch_unwind(AssertUnwindSafe(work));
+    CATCHING.with(|catching| catching.set(was));
+    match outcome {
+        Ok(Ok(())) => Outcome::Done,
+        Ok(Err(error)) => Outcome::Raised(error),
+        Err(payload) if tape::is_stop(&*payload) => panic::resume_unwind(payload),
+        Err(payload) => match payload.downcast::<Error>() {
+            Ok(error) => Outcome::Raised(*error),
+            Err(payload) => Outcome::Panicked(Failure::of_panic(&*payload)),
+        },
+    }
+}
+
+/// Raise from inside a callback that cannot return an error, for `attempt` to catch as Python
+/// caught the exception the callback raised.
+fn raise(result: Result<()>) {
+    if let Err(error) = result {
+        panic::panic_any(error);
+    }
+}
+
+/// Read one game until `until()` is true. Returns whether the game went away, for `run` to
+/// wait for the next one.
+fn session(
+    rpc: Rc<dyn Rpc>,
+    speech: Rc<Speech>,
+    settings: &Settings,
+    until: &dyn Fn() -> bool,
+    log: &Log,
+    process: Process,
+    start: Start<'_>,
+) -> Result<bool> {
+    let began = time::monotonic();
+    let code_spans = snapshot::regions(
+        &*rpc,
+        CODE_SPAN,
+        snapshot::PROBE_STEP,
+        snapshot::DEFAULT_GAP,
+        None,
+        None,
+    )?;
+    let Some(&code) = code_spans.first() else {
+        log("the game's code is not readable");
+        return Ok(false);
+    };
+    let image = snapshot::sweep(
+        &*rpc,
+        &[code],
+        true,
+        snapshot::CHUNK_PAGES,
+        snapshot::CHUNK_PAUSE,
+        None,
+    )?
+    .read(code.0, code.1 - code.0)?;
+    // The title says which game is running, and its engine's package puts it together.
+    let game = catalog::for_title(process.title_id);
+    let session = start(
+        game,
+        rpc.clone(),
+        speech.clone(),
+        code,
+        Setup {
+            keys: settings.keys.clone().unwrap_or_else(|| DEFAULT_BINDINGS.clone()),
+            ui: settings.ui.clone(),
+            navigation: settings.navigation.clone(),
+            language: settings.language.clone(),
+            names_home: settings.names_home.clone(),
+            rom: settings.rom.clone(),
+            sweep_chunk: settings.sweep_chunk,
+            ..Setup::new(process.clone(), log.clone())
+        },
+        &image,
+    )?;
+    let profile = session.profile.clone();
+    let heaps = session.heaps.clone();
+    let heap_walk = session.walk.clone();
+    let sweeping = Rc::new(Every::new(settings.whole_rescan));
+    let looking = Every::new(settings.heap_tick);
+    // Every object the last whole sweep found, and every one found in a new block since: what the
+    // next whole sweep finds beyond them, the heaps' watch missed.
+    let mut swept: HashSet<i64> = HashSet::new();
+    // (when, block) for the blocks owed another sweep, soonest first.
+    let mut again: Vec<(f64, Block)> = Vec::new();
+    let screen = Rc::new(Every::new(settings.screen_tick));
+    let busy = Rc::new(Busy::new(rpc.clone()));
+    let hotkeys: Rc<RefCell<Option<Hotkeys>>> = Rc::new(RefCell::new(None));
+
+    let poll_dialogue: Rc<dyn Fn() -> Result<()>> = {
+        let profile = profile.clone();
+        Rc::new(move || profile.poll_dialogue().map(|_| ()))
+    };
+    let answer_keys: Rc<dyn Fn() -> Result<()>> = {
+        let (profile, hotkeys) = (profile.clone(), hotkeys.clone());
+        Rc::new(move || {
+            let pressed = hotkeys.borrow().as_ref().map(Hotkeys::pressed);
+            if let Some(pressed) = pressed {
+                for key in pressed {
+                    profile.press(&key)?;
+                }
+                // A rename dialog answers on its own thread, so its answer is picked up here
+                // rather than waited for: the game kept running while it was open.
+                profile.poll_renames()?;
+            }
+            Ok(())
+        })
+    };
+    let poll_screen: Rc<dyn Fn() -> Result<()>> = {
+        let (profile, busy, screen, sweeping) =
+            (profile.clone(), busy.clone(), screen.clone(), sweeping.clone());
+        Rc::new(move || {
+            let now = time::monotonic();
+            if !busy.now(now) && screen.due(now) {
+                profile.poll_screen()?;
+                profile.poll_field()?;
+                if profile.sweep_wanted()? {
+                    sweeping.reset();
+                }
+            }
+            Ok(())
+        })
+    };
+    let between: Rc<dyn Fn()> = {
+        let (poll_dialogue, answer_keys, poll_screen) =
+            (poll_dialogue.clone(), answer_keys.clone(), poll_screen.clone());
+        let walking = heap_walk.is_some();
+        Rc::new(move || {
+            raise(poll_dialogue());
+            // Sun's sweep is a walk of its heaps, half a second on Route 1, and the navigation
+            // keys, the menus' cursors and the field waited it out every 2 s (sun_4.ctm,
+            // 2026-09-26). It reads nothing a poll reads by until it has finished, so a poll
+            // halfway through reads what the last walk found, as it would just before this one.
+            if walking {
+                raise(answer_keys());
+                raise(poll_screen());
+            }
+        })
+    };
+
+    // Sweeps read a chunk at a time and poll dialogue between chunks: read in one go, the heap
+    // sweep held polling up for about 300 ms every couple of seconds (spike 59). In ORAS and X,
+    // only dialogue. Screen text read halfway through a sweep sees what the last sweep found, and
+    // the options screen's confirmation cursor was read as "FAST ON Yes", the rows behind it,
+    // because the sweep that would find its list, whose labels keep a cursor over them quiet, had
+    // not finished (menus.ctm replay, 2026-09-16).
+    let classes: Vec<&str> = session.classes.iter().map(String::as_str).collect();
+    let mut discovery = Discovery::with(
+        rpc.clone(),
+        &image,
+        code.0,
+        &classes,
+        between.clone(),
+        settings.sweep_chunk,
+        heap_walk.clone(),
+    )?;
+    let required: Vec<&str> = session.required.iter().map(String::as_str).collect();
+    if discovery.missing(&required).len() == required.len() {
+        log("no message window classes in this executable");
+        return Ok(false);
+    }
+    log(&format!(
+        "reading {} as {}: code {:#010x}-{:#010x}, ready in {:.1} s",
+        process.name,
+        game.name(),
+        code.0,
+        code.1,
+        time::monotonic() - began
+    ));
+    speech.say("pa3ds ready", Category::System);
+
+    // The pages the readers had been reading, saved where raw captures live (ADR-0029).
+    let capture_failure: Box<dyn Fn() -> Result<Option<PathBuf>>> = {
+        let (pages, rpc, captures) = (session.pages.clone(), rpc.clone(), settings.captures.clone());
+        Box::new(move || {
+            let recent = pages.as_ref().map(|pages| pages.recent()).unwrap_or_default();
+            if recent.is_empty() {
+                return Ok(None);
+            }
+            let spans: Vec<(i64, i64)> = recent.iter().map(|&base| (base, base + PAGE)).collect();
+            let taken = snapshot::sweep(
+                &*rpc,
+                &spans,
+                false,
+                snapshot::CHUNK_PAGES,
+                snapshot::CHUNK_PAUSE,
+                None,
+            )?;
+            Ok(Some(taken.save("reader-error", captures.as_deref())?))
+        })
+    };
+
+    *hotkeys.borrow_mut() = start_hotkeys(settings, log);
+    let faults = Faults::new(
+        speech.clone(),
+        log.clone(),
+        Some(capture_failure),
+        Faults::QUIET,
+        Faults::CAPTURES,
+    );
+    let mut last_error = String::new();
+    // Whether the emulator has stopped answering. Nothing is read again until it says the game is
+    // still the one selected: a new emulator on the same port has none selected, and a read with
+    // none selected crashed it (2026-09-25, a session left running while the rig started another).
+    // `rpc.unsure` catches the stalls a reader swallowed: the game restarting itself replaces the
+    // RPC server just as a new emulator does (movie13, 2026-09-29).
+    let mut silent = false;
+    // Python's `finally`: the keyboard hook is let go however the session ends.
+    struct Unhook(Rc<RefCell<Option<Hotkeys>>>);
+    impl Drop for Unhook {
+        fn drop(&mut self) {
+            if let Some(hotkeys) = self.0.borrow().as_ref() {
+                hotkeys.stop();
+            }
+        }
+    }
+    let _unhook = Unhook(hotkeys.clone());
+
+    while !until() {
+        let started = time::monotonic();
+        if silent || rpc.unsure() {
+            match still_there(&*rpc)? {
+                Some(false) => return Ok(true),
+                None => {
+                    silent = true;
+                    time::sleep(settings.wait);
+                    continue;
+                }
+                Some(true) => {}
+            }
+            if silent {
+                log("the emulator is answering again");
+            }
+            silent = false;
+        }
+        let outcome = attempt(|| {
+            answer_keys()?;
+            let app_started = profile.poll_app()?;
+            if app_started && profile.app_sweep_wanted() {
+                sweeping.soon(started + settings.app_sweep);
+            }
+            let whole = sweeping.due(started);
+            // A class in a DLL has no vtable until the game loads it, and an app brings the
+            // code it runs: the map blocks' is in the field's, and in Sun each app's classes
+            // are in a module of its own, as the language choice's are.
+            if app_started || whole || discovery.unsettled {
+                let learned = discovery.learn(CODE_SPAN)?;
+                if !learned.is_empty() {
+                    log(&format!(
+                        "classes loaded since the executable was read: {}",
+                        learned.join(", ")
+                    ));
+                }
+            }
+            if whole {
+                discovery.measure_heap()?;
+                let found = discovery.sweep()?;
+                if !swept.is_empty() {
+                    let missed: Vec<&String> = found
+                        .heap
+                        .iter()
+                        .filter(|(at, _)| !swept.contains(at))
+                        .map(|(_, name)| name)
+                        .collect();
+                    if !missed.is_empty() {
+                        log(&format!(
+                            "sweep: found as the heaps did not, {}",
+                            most_common(&missed)
+                                .iter()
+                                .map(|(name, count)| format!("{count} {}", demangle(name)))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ));
+                    }
+                }
+                swept = found.heap.keys().copied().collect();
+                profile.track(&found)?;
+                (session.adopt)(&found)?;
+            }
+            if !busy.now(started) && looking.due(started) {
+                let mut blocks = memory::phase(&*session.watched, "heaps", || {
+                    // Sun's looks read a header at a time, thousands as an area loads; ORAS's
+                    // read cached pages, and polling inside their phase would share it.
+                    heaps.borrow_mut().poll(if heap_walk.is_some() {
+                        Some(between.clone())
+                    } else {
+                        None
+                    })
+                })?;
+                (session.allocated)(&blocks);
+                for block in &blocks {
+                    for &delay in &settings.sweep_again {
+                        again.push((started + delay, block.clone()));
+                    }
+                }
+                crate::py::sort_by_lt(&mut again, |a, b| a.0 < b.0);
+                let due = again
+                    .iter()
+                    .position(|(when, _block)| *when > started)
+                    .unwrap_or(again.len());
+                blocks.extend(again.drain(..due).map(|(_when, block)| block));
+                let spans: Vec<(i64, i64)> =
+                    blocks.into_iter().filter_map(|block| (session.to_sweep)(block)).collect();
+                if !spans.is_empty() {
+                    let found = discovery.sweep_spans(&spans)?;
+                    swept.extend(found.heap.keys().copied());
+                    profile.track(&found)?;
+                }
+            }
+            poll_dialogue()?;
+            profile.poll_guidance()?;
+            profile.poll_pointers()?;
+            if profile.poll_menus(&mut discovery)? {
+                screen.wait(time::monotonic());
+            }
+            poll_screen()
+        });
+        match outcome {
+            Outcome::Done => {}
+            Outcome::Raised(error) if error.is(Kind::RpcTimeoutError) => {
+                log("the emulator stopped answering; retrying");
+                sweeping.reset();
+                silent = true;
+            }
+            Outcome::Raised(error) if error.is(Kind::RpcError) => {
+                // A read of memory that is not there, through a pointer out of freed memory or a
+                // torn read. One bad pointer must not silence pa3ds for the rest of the session: a
+                // replay of menus.ctm stopped partway through on 2026-09-17. Logged once while it
+                // repeats.
+                if error.message != last_error {
+                    log(&format!("a read failed, carrying on: {}", error.message));
+                    last_error = error.message.clone();
+                }
+            }
+            Outcome::Raised(error) => {
+                // Anything else a reader raised. The rest of this poll is lost; the next one runs.
+                // Not caught, before 2026-09-23, so one bad read of a shape a reader did not
+                // expect took pa3ds down mid-game (ADR-0019).
+                faults.caught(&Failure::of_error(&error), time::monotonic());
+            }
+            Outcome::Panicked(failure) => {
+                faults.caught(&failure, time::monotonic());
+            }
+        }
+        let left = settings.tick - (time::monotonic() - started);
+        time::sleep(if left > 0.0 { left } else { 0.0 });
+    }
+    Ok(false)
+}
+
+/// `Counter(names).most_common()`: each name with how often it came, most first, a tie in the
+/// order the names first came.
+fn most_common(names: &[&String]) -> Vec<(String, i64)> {
+    let mut counts: IndexMap<String, i64> = IndexMap::new();
+    for &name in names {
+        *counts.entry(name.clone()).or_insert(0) += 1;
+    }
+    let mut counted: Vec<(String, i64)> = counts.into_iter().collect();
+    crate::py::sort_by_lt(&mut counted, |a, b| a.1 > b.1);
+    counted
+}
+
+/// Whether the game is still the one the emulator has selected, or None while it does not
+/// answer. A hiccup keeps the selection; a new emulator, or a state loaded, drops it, and the
+/// game is then read afresh.
+fn still_there(rpc: &dyn Rpc) -> Result<Option<bool>> {
+    match rpc.confirm() {
+        Ok(answer) => Ok(Some(answer)),
+        Err(error) if error.is(Kind::RpcError) => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+/// The keyboard hook, when keys are bound and this is Windows; otherwise none, and said so.
+fn start_hotkeys(settings: &Settings, log: &Log) -> Option<Hotkeys> {
+    let keys = settings.keys.as_ref()?;
+    if !cfg!(windows) {
+        log("keys need Windows; none bound");
+        return None;
+    }
+    let mut hotkeys = Hotkeys::of(bound_keys(keys));
+    match hotkeys.start() {
+        Ok(error) if !error.is_empty() => {
+            log(&format!("{error}; no keys bound"));
+            return None;
+        }
+        Ok(_) => {}
+        Err(error) => {
+            log(&format!("{error}; no keys bound"));
+            return None;
+        }
+    }
+    for (mode, bound) in keys {
+        log(&format!(
+            "keys, {mode} mode: {}",
+            bound.iter().map(|(key, action)| format!("{key} {action}")).collect::<Vec<_>>().join(", ")
+        ));
+    }
+    Some(hotkeys)
+}

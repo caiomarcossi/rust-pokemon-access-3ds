@@ -14,6 +14,8 @@
     clippy::collapsible_else_if
 )]
 
+#[allow(non_snake_case)]
+pub mod __main__;
 pub mod app;
 pub mod core;
 pub mod debug;

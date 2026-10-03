@@ -105,6 +105,16 @@ impl FakeEmulator {
         self.state.lock().unwrap().memory.remove(&base);
     }
 
+    /// `emu.processes = ...`: a game started, or ended, while a client waits.
+    pub fn set_processes(&self, processes: Vec<(u32, u64, String)>) {
+        self.state.lock().unwrap().processes = processes;
+    }
+
+    /// The pid reads are served from, or `NO_PROCESS`.
+    pub fn selected(&self) -> u32 {
+        self.state.lock().unwrap().selected
+    }
+
     /// Be the emulator after the game restarts itself: its RPC server is a new one, which
     /// drops the next `silent_reads` reads while it is down and then has no process selected.
     pub fn restart(&self, silent_reads: i64) {
