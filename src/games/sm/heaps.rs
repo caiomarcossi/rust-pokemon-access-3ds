@@ -36,7 +36,7 @@
 //! be the GPU's, is out of bounds the look it is taken.
 
 use std::cell::{Cell, RefCell};
-use std::collections::{BTreeSet, HashSet};
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use indexmap::IndexMap;
@@ -47,7 +47,7 @@ use crate::core::heaps::Block;
 use crate::core::memory::Memory;
 use crate::core::rpc::{Rpc, joined, reads_of};
 use crate::core::rtti::ClassNames;
-use crate::py::{self, Error, Log, Result};
+use crate::py::{self, Error, Log, PySet, Result};
 
 pub const CLASS: &str = "N4gfl24heap10CTRExpHeapE";
 pub const ENTRY: i64 = 8;
@@ -135,8 +135,10 @@ pub struct Heaps {
     rpc: Rc<dyn Rpc>,
     names: Rc<ClassNames>,
     log: Log,
-    wanted: BTreeSet<i64>,
-    unread: BTreeSet<i64>,
+    /// The ids in the order Python iterates the `frozenset` they are, which is the order the
+    /// walk reads them in (`PySet`).
+    wanted: Vec<i64>,
+    unread: Vec<i64>,
     said: Cell<Option<i64>>,
 }
 
@@ -144,11 +146,15 @@ impl Heaps {
     /// `Heaps(rpc, names)`: `log` left to its default, which says nothing, and `wanted` and
     /// `unread` to `DIALOGUE_HEAPS` and `UNREAD`.
     pub fn new(rpc: Rc<dyn Rpc>, names: Rc<ClassNames>) -> Self {
-        Heaps::with(rpc, names, Rc::new(|_line| {}), &DIALOGUE_HEAPS, &UNREAD)
+        let dialogue: Vec<i64> = PySet::of(DIALOGUE_HEAPS).iter().collect();
+        Heaps::with(rpc, names, Rc::new(|_line| {}), &dialogue, &UNREAD)
     }
 
     /// `names` should read exactly what it is asked for, as `RpcMemory` does: every read here
     /// is to the byte, since the byte after a block may be the GPU's.
+    ///
+    /// `wanted` and `unread` are `frozenset`s in Python, read in the order it iterates them, which
+    /// is not their numbers' order: pass them in that order (`PySet::iter`).
     pub fn with(
         rpc: Rc<dyn Rpc>,
         names: Rc<ClassNames>,
@@ -160,8 +166,8 @@ impl Heaps {
             rpc,
             names,
             log,
-            wanted: wanted.iter().copied().collect(),
-            unread: unread.iter().copied().collect(),
+            wanted: wanted.to_vec(),
+            unread: unread.to_vec(),
             said: Cell::new(None),
         }
     }
@@ -208,7 +214,7 @@ impl Heaps {
     }
 
     /// The heads of the heaps with these ids, each checked to be a heap with its own id.
-    fn listed(&self, table: &[u8], ids: &BTreeSet<i64>) -> Result<Vec<i64>> {
+    fn listed(&self, table: &[u8], ids: &[i64]) -> Result<Vec<i64>> {
         let mut found: Vec<i64> = Vec::new();
         for &index in ids {
             let heap = u32(table, index * ENTRY)?;

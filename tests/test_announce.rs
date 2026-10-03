@@ -1920,25 +1920,25 @@ fn test_a_first_page_waits_a_moment_for_the_name_on_its_plate() {
     let mut told = Announcements::with(
         Rc::new(Speech::plain(backend.clone())),
         silent(),
-        Some(Rc::new(move |window| known.borrow().get(&window).cloned())),
+        Some(Rc::new(move |window| Ok(known.borrow().get(&window).cloned()))),
         true,
     );
     let page = |window, index, text: &str| Shown::Page(PageShown::new(window, index, text));
-    assert!(!told.pages(&[page(1, 0, "Hello")]));
+    assert!(!told.pages(&[page(1, 0, "Hello")]).unwrap());
     assert_eq!(backend.spoken(), NOTHING);
     names.borrow_mut().insert(1, "Mom".to_string());
-    assert!(told.pages(&[]));
+    assert!(told.pages(&[]).unwrap());
     assert_eq!(backend.spoken(), ["Mom: Hello"]);
-    assert!(told.pages(&[page(1, 1, "Dear")]));
+    assert!(told.pages(&[page(1, 1, "Dear")]).unwrap());
     assert_eq!(backend.spoken(), ["Mom: Hello", "Dear"]);
-    told.pages(&[page(2, 0, "Ring ring")]);
+    told.pages(&[page(2, 0, "Ring ring")]).unwrap();
     for _ in 0..SPEAKER_POLLS - 1 {
-        assert!(!told.pages(&[]));
+        assert!(!told.pages(&[]).unwrap());
     }
-    assert!(told.pages(&[]));
+    assert!(told.pages(&[]).unwrap());
     assert_eq!(backend.spoken().last().unwrap(), "Ring ring");
-    told.pages(&[page(3, 0, "One")]);
-    assert!(told.pages(&[page(3, 1, "Two")]));
+    told.pages(&[page(3, 0, "One")]).unwrap();
+    assert!(told.pages(&[page(3, 1, "Two")]).unwrap());
     let spoken = backend.spoken();
     assert_eq!(spoken[spoken.len() - 2..], ["One", "Two"]);
 }

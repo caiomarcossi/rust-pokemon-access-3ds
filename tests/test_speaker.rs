@@ -151,7 +151,7 @@ fn announcing(
         Rc::new(Speech::plain(heard.clone())),
         Rc::new(|_: &str| {}),
         Some(Rc::new(move |window| {
-            speaking.borrow().get(&window).cloned().flatten()
+            Ok(speaking.borrow().get(&window).cloned().flatten())
         })),
         false,
     );
@@ -161,7 +161,7 @@ fn announcing(
 fn said(pages: Vec<PageShown>, speakers: HashMap<i64, Option<String>>) -> Vec<String> {
     let (mut announcements, heard) = announcing(&Rc::new(RefCell::new(speakers)));
     for page in pages {
-        announcements.pages(&[Shown::Page(page)]);
+        announcements.pages(&[Shown::Page(page)]).unwrap();
     }
     heard.spoken()
 }
@@ -171,7 +171,7 @@ fn page(text: &str) -> PageShown {
 }
 
 fn say(announcements: &mut Announcements, text: &str) {
-    announcements.pages(&[Shown::Page(page(text))]);
+    announcements.pages(&[Shown::Page(page(text))]).unwrap();
 }
 
 /// Norman and the trainer talk back and forth through one window (wally.ctm, spike 73). A name

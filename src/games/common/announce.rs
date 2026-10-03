@@ -127,8 +127,10 @@ impl Gathering {
 /// 23 pages were named (issue 4). A fifth of a second at the runtime's tick.
 pub const SPEAKER_POLLS: i64 = 12;
 
-/// `speaker: Callable[[int], str | None]`: who is showing a window's page.
-pub type Speaker = Rc<dyn Fn(i64) -> Option<String>>;
+/// `speaker: Callable[[int], str | None]`: who is showing a window's page. It reads the game's
+/// memory (`sm.talk.Speakers.name_for`), so it can raise, and the Rust one returns a `Result` for
+/// that: the raise reaches the caller of `pages`, as it does in Python.
+pub type Speaker = Rc<dyn Fn(i64) -> Result<Option<String>>>;
 
 /// Says what the dialogue, list, choice box and battle readers report, and logs each.
 pub struct Announcements {
@@ -198,7 +200,7 @@ impl Announcements {
 
     /// Say pages as they come, and hold written text for the screen poll. Returns whether a
     /// page was said.
-    pub fn pages(&mut self, shown: &[Shown]) -> bool {
+    pub fn pages(&mut self, shown: &[Shown]) -> Result<bool> {
         let mut said = false;
         let mut fresh: Vec<PageShown> = Vec::new();
         for item in shown {
@@ -207,32 +209,34 @@ impl Announcements {
                 Shown::Page(item) => fresh.push(item.clone()),
             }
         }
-        for item in self.ready(fresh) {
+        for item in self.ready(fresh)? {
             let window = item.window;
-            self.say(&Shown::Page(item));
+            self.say(&item)?;
             // A page covers whatever was written over its window before it.
             self.written.retain(|held| held.1.window != window);
             said = true;
         }
-        said
+        Ok(said)
     }
 
     /// The pages to say now, in order: those held for a name that has come, or that have
     /// waited `SPEAKER_POLLS`, or whose window has moved on to another page; then the new ones,
     /// less a first page with no name yet, which is held.
-    fn ready(&mut self, fresh: Vec<PageShown>) -> Vec<PageShown> {
+    fn ready(&mut self, fresh: Vec<PageShown>) -> Result<Vec<PageShown>> {
         let speaker = match &self.speaker {
             Some(speaker) if self.hold => speaker.clone(),
-            _ => return fresh,
+            _ => return Ok(fresh),
         };
         let mut out: Vec<PageShown> = Vec::new();
         let moved_on: HashSet<i64> = fresh.iter().map(|item| item.window).collect();
         let mut kept: Vec<(i64, PageShown)> = Vec::new();
-        for (waited, item) in std::mem::take(&mut self.unnamed) {
+        // The list is replaced only once the loop has run, as in Python: a speaker that raises
+        // leaves the pages as they were held.
+        for (waited, item) in self.unnamed.clone() {
             let waited = waited + 1;
             if moved_on.contains(&item.window)
                 || waited >= SPEAKER_POLLS
-                || speaker(item.window).is_some()
+                || speaker(item.window)?.is_some()
             {
                 out.push(item);
             } else {
@@ -241,13 +245,13 @@ impl Announcements {
         }
         self.unnamed = kept;
         for item in fresh {
-            if item.index == 0 && speaker(item.window).is_none() {
+            if item.index == 0 && speaker(item.window)?.is_none() {
                 self.unnamed.push((0, item));
             } else {
                 out.push(item);
             }
         }
-        out
+        Ok(out)
     }
 
     /// Say the last text written over each window that has waited a whole screen text poll.
@@ -264,14 +268,14 @@ impl Announcements {
             .filter(|(came, _item)| *came < self.screen_polls)
             .map(|(_came, item)| item.window)
             .collect();
-        let mut latest: IndexMap<i64, Shown> = IndexMap::new();
+        let mut latest: IndexMap<i64, TextWritten> = IndexMap::new();
         for (_came, item) in &self.written {
             if ready.contains(&item.window) {
-                latest.insert(item.window, Shown::Text(item.clone()));
+                latest.insert(item.window, item.clone());
             }
         }
         for item in latest.values() {
-            self.say(item);
+            self.say_text(item);
         }
         self.written
             .retain(|(_came, item)| !ready.contains(&item.window));
@@ -344,24 +348,23 @@ impl Announcements {
         self.sides.clear();
     }
 
-    fn say(&mut self, item: &Shown) {
-        let item = match item {
-            Shown::Text(item) => {
-                // Written text follows the cursor, as an option's description does: a menu's
-                // category.
-                (self.log)(&format!(
-                    "text {:#010x} (written over the window): {}",
-                    item.window, item.text
-                ));
-                self.speech.say(&item.text, Category::Menu);
-                return;
-            }
-            Shown::Page(item) => item,
+    /// Python's `_say` of a `TextWritten`, apart from the page's: it names nobody, so it cannot
+    /// raise, where the page's speaker can.
+    fn say_text(&mut self, item: &TextWritten) {
+        // Written text follows the cursor, as an option's description does: a menu's category.
+        (self.log)(&format!(
+            "text {:#010x} (written over the window): {}",
+            item.window, item.text
+        ));
+        self.speech.say(&item.text, Category::Menu);
+    }
+
+    /// Python's `_say` of a `PageShown`.
+    fn say(&mut self, item: &PageShown) -> Result<()> {
+        let name = match &self.speaker {
+            Some(speaker) => speaker(item.window)?,
+            None => None,
         };
-        let name = self
-            .speaker
-            .as_ref()
-            .and_then(|speaker| speaker(item.window));
         let said = match &name {
             Some(name) if self.said_speaker.as_deref() != Some(name.as_str()) => {
                 format!("{name}: {}", item.text)
@@ -378,6 +381,7 @@ impl Announcements {
             item.window, item.index, item.why, item.text
         ));
         self.speech.say(&said, Category::Dialogue);
+        Ok(())
     }
 }
 
