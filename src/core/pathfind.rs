@@ -486,8 +486,8 @@ pub fn turned(runs: &[Leg], heading: &str, angled: bool) -> Result<String> {
 }
 
 /// The way of the compass nearest a bearing in degrees clockwise from north.
-pub fn nearest(bearing: f64) -> &'static str {
-    COMPASS[py::modulo(py::round(bearing / 90.0), COMPASS.len() as i64) as usize]
+pub fn nearest(bearing: f64) -> Result<&'static str> {
+    Ok(COMPASS[py::modulo(py::round(bearing / 90.0)?, COMPASS.len() as i64) as usize])
 }
 
 /// How far a bearing in degrees clockwise from north is turned from `heading`, clockwise
