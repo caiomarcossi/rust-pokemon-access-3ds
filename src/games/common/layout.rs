@@ -611,8 +611,13 @@ impl Layouts {
     ///
     /// Python returns a `set`; the `IndexSet` here is in the order Python iterates it (`PySet`).
     pub fn roots(&self) -> IndexSet<i64> {
+        self.roots_set().iter().collect()
+    }
+
+    /// `roots()` as the `PySet` Python's set is, for the callers that go on to `-` or `&` it.
+    pub fn roots_set(&self) -> PySet {
         let roots: Vec<i64> = self.roots.borrow().keys().copied().collect();
-        PySet::of_dict(&roots).iter().collect()
+        PySet::of_dict(&roots)
     }
 
     /// The roots of layouts whose works stopped being works, which `revive` takes back if they

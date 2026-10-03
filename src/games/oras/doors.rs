@@ -65,8 +65,8 @@ impl Record {
         Ok([
             binary::u32(blob, offset)?,
             binary::u32(blob, offset + 4)?,
-            i64::from(binary::u32(blob, offset + 8)? as u32 as i32),
-            i64::from(binary::u32(blob, offset + 12)? as u32 as i32),
+            binary::s32(blob, offset + 8)?,
+            binary::s32(blob, offset + 12)?,
         ])
     }
 }
