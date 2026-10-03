@@ -23,15 +23,15 @@
 
 use std::collections::BTreeSet;
 
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
 
 use crate::core::binary::{f32, u32};
 use crate::games::common::layout::Layouts;
 use crate::games::common::layout_file::{LayoutFile, LayoutFiles};
 use crate::games::common::lyt;
 use crate::games::common::pictures::{EMPTY, OFF, ON, mark, words};
-use crate::games::common::screen::{ScreenText, sorted_by_lt};
-use crate::py::{self, Error, PySet, Result};
+use crate::games::common::screen::ScreenText;
+use crate::py::{self, Error, PySet, Result, sorted_by_lt};
 
 pub const PARTY: &str = "Party";
 pub const ROW: &str = "row";
@@ -135,22 +135,6 @@ pub fn slot(
     )))
 }
 
-/// `layouts.roots() - {root}`, in the order Python iterates the difference.
-///
-/// A set difference is built by `set_difference` in `Objects/setobject.c`: a set of eight or more
-/// is copied and the member taken out of the copy, and `layouts.roots()` is `set(dict)`, whose
-/// copy is the same table, so the order is the set's own less the member; a smaller one is built
-/// again member by member, in the order the first holds them. Checked against CPython over
-/// random sets of up to twenty works.
-fn roots_without(roots: &IndexSet<i64>, root: i64) -> Vec<i64> {
-    let kept = roots.iter().copied().filter(|&r| r != root);
-    if roots.len() >> 2 > 1 {
-        kept.collect()
-    } else {
-        PySet::of(kept).iter().collect()
-    }
-}
-
 /// A lone button of another layout on the cursor's screen whose touch area the cursor rests
 /// on the middle of, what to say of it, and that it is said alone: the words of the picture
 /// beside its touch area. The Box's pointer, down from its grid, rests on the bottom bar's
@@ -166,7 +150,7 @@ pub fn button(
     y: f64,
     top: bool,
 ) -> Result<Option<(i64, String, bool)>> {
-    for other in roots_without(&layouts.roots(), root) {
+    for other in layouts.roots_set().difference(&PySet::of([root])).iter() {
         let tree = layouts.tree(other);
         for (touch, kind) in &tree {
             let touch = *touch;

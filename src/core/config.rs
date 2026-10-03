@@ -25,7 +25,7 @@ use std::path::{Path, PathBuf};
 
 use indexmap::IndexMap;
 
-use crate::core::keyfile::{self, format_g, path_str, wrap};
+use crate::core::keyfile;
 use crate::core::toml;
 use crate::py::{self, Error, Kind, Result};
 
@@ -328,15 +328,17 @@ fn explained(said: &str) -> Vec<String> {
         .next()
         .map(|first| first.to_uppercase().collect())
         .unwrap_or_default();
-    toml::comment(wrap(&format!("{first}{}.", rest.as_str()), 94))
+    toml::comment(
+        py::wrap(&format!("{first}{}.", rest.as_str()), 94).expect("94 is a positive width"),
+    )
 }
 
 fn value(value: &Value) -> String {
     match value {
         Value::Bool(value) => value.to_string(),
         Value::Str(value) => toml::quote(value),
-        Value::Int(value) => format_g(*value as f64),
-        Value::Float(value) => format_g(*value),
+        Value::Int(value) => py::format_g(*value as f64),
+        Value::Float(value) => py::format_g(*value),
     }
 }
 
@@ -528,21 +530,21 @@ fn table<T: Table>(
                 } else {
                     notes.push(format!(
                         "{}: [{name}] {setting} = {} is not a setting it can take",
-                        path_str(path),
+                        py::path_str(path),
                         repr_of(value)
                     ));
                 }
             }
             None => notes.push(format!(
                 "{}: [{name}] has no setting called {}",
-                path_str(path),
+                py::path_str(path),
                 py::repr(setting)
             )),
             Some((field, default)) => match value_of(value) {
                 Some(kept_value) if same_kind(value, default) => kept.push((*field, kept_value)),
                 _ => notes.push(format!(
                     "{}: [{name}] {setting} = {} is not a setting it can take",
-                    path_str(path),
+                    py::path_str(path),
                     repr_of(value)
                 )),
             },
@@ -581,7 +583,7 @@ pub fn prepare(
         if write && toml::write(&path, &render()?)? {
             notes.push(format!(
                 "wrote {} with the default settings",
-                path_str(&path)
+                py::path_str(&path)
             ));
         }
         let mut shipped = ::toml::Table::new();
@@ -602,7 +604,7 @@ pub fn prepare(
         if loaded.is_empty() {
             notes.push(format!(
                 "{} could not be read, using the default settings",
-                path_str(&path)
+                py::path_str(&path)
             ));
         }
     }
@@ -611,7 +613,7 @@ pub fn prepare(
             notes.push(format!(
                 "{}: there is no [{name}] table, only [pa3ds], [pa3ds.ui], \
                  [pa3ds.navigation] and [azahar]",
-                path_str(&path)
+                py::path_str(&path)
             ));
         }
     }
@@ -623,8 +625,8 @@ pub fn prepare(
         let rate = General::default().poll_rate;
         notes.push(format!(
             "{}: poll_rate must be above zero, reading at {}",
-            path_str(&path),
-            format_g(rate)
+            py::path_str(&path),
+            py::format_g(rate)
         ));
         general.poll_rate = rate;
     }
@@ -644,7 +646,7 @@ pub fn prepare(
             }
             None => notes.push(format!(
                 "{}: Azahar's {name} is not a setting it can take",
-                path_str(&path)
+                py::path_str(&path)
             )),
         }
     }

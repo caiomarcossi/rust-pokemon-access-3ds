@@ -89,6 +89,9 @@ it. `py::Result<T>` is `Result<T, py::Error>`.
   - Where the Python catches `IndexError` or `KeyError`, produce that error at the same spot
     (`Error::index`, `Error::key`) with `.get()`. Where it does not catch it, returning the error
     is still better than a panic, but a panic is caught by the runtime as Python's was.
+  - `text.encode("ascii")` is `py::encode_ascii(text)?`, which raises `UnicodeEncodeError` (a
+    `ValueError`) with Python's message for the first non-ASCII run. Never test `is_ascii()` and
+    raise your own.
   - Never turn a raise into a default value: a reader that failed must fail.
 - The runtime keys a fault by where it was raised (`Error::fault`): construct errors where the
   Python raised them, not in a shared helper (`#[track_caller]` on a helper that raises for its
@@ -108,12 +111,13 @@ Rust's operators differ from Python's on negatives and halves. Use `py`:
 | `int(x)` of a float | `py::int(x)?` |
 | `math.floor(x)`, `math.ceil(x)` | `py::floor(x)?`, `py::ceil(x)?` |
 | `a / b` on ints | `a as f64 / b as f64` |
+| `~x` | `!x` |
+| a signed 32-bit field (`<i`) | `binary::s32(blob, offset)?`, never `u32(..) as u32 as i32` |
 
 `round`, `int`, `floor` and `ceil` return `Result` because Python raises on a NaN (`ValueError`)
 and an infinity (`OverflowError`), and a float read out of freed memory is either; `as i64` would
 quietly make it a number. Never cast a float to an int with `as` where Python called one of
 these.
-| `~x` | `!x` |
 
 `math.hypot` is `py::hypot`: Rust's differs from CPython's in the last bit on about one pair in
 eight. `min(a, b)` and `max(a, b)` of floats keep `a` unless `b` is strictly less (or greater), so
@@ -131,12 +135,33 @@ where it can happen.
 - `text.split()` is `py::split`; `strip`, `lstrip`, `rstrip` are `py::strip` and the rest
   (Python's whitespace is wider than Rust's). `split(sep)` with a separator is Rust's `split`.
 - f-strings: an `int` formats as itself. A `float` is **never** `{x}`: Python writes `1.0` where
-  Rust writes `1`, so use `py::float_repr(x)`. `{x:.1f}` is `{x:.1}`; `{x:#010x}` and `{x:x}` are
-  the same in Rust (on `i64`, mind a negative number: Python writes `-0x10`, Rust two's complement;
-  where it can be negative, format the sign yourself).
+  Rust writes `1`, so use `py::float_repr(x)`. `{x:.Nf}` is `py::fixed(x, n)` (Rust's `{x:.1}`
+  writes `NaN` and `inf` where Python writes `nan` and `inf`), and `{x:g}` is `py::format_g(x)`.
+  `{x:#010x}` and `{x:x}` are the same in Rust (on `i64`, mind a negative number: Python writes
+  `-0x10`, Rust two's complement; where it can be negative, format the sign yourself).
+- Reading text as a number: `int(text)` is `py::int_base10(text)?` and `int(text, 16)` is
+  `py::int_base16(text)?` (a sign, outer whitespace, underscores and any script's digits, and
+  Python's `ValueError` message otherwise), `float(text)` is `py::float_of(text)?`, and
+  `bytes.fromhex(text)` is `py::fromhex(text)?`. Never `str::parse` or `from_str_radix`, which
+  accept and refuse different texts.
+- Character classes: `c.isdigit()` is `py::is_digit(c)` and `text.isdigit()` is `py::isdigit(text)`
+  (it covers superscripts and circled numbers, which are digits and not decimals); `isdecimal()`
+  and a regex `\d` are `py::is_decimal(c)`; `isalpha()` and `isalnum()` are `py::is_alpha(c)` and
+  `py::is_alnum(c)`; `isspace()` is `py::is_space(c)`. Rust's `char::is_numeric`, `is_alphabetic`
+  and `is_alphanumeric` are none of them.
+- `text.splitlines()` and `text.splitlines(keepends=True)` are `py::splitlines` and
+  `py::splitlines_keepends`: Python ends a line at `\v`, `\f`, `\x1c` to `\x1e`, `\x85`, ` `
+  and ` ` as well as at `\n` and `\r`, and Rust's `lines()` does not.
+- `textwrap.wrap(text, width)` is `py::wrap(text, width)?`, with `TextWrapper`'s defaults.
+- Paths as text, on Windows: `str(path)` is `py::path_str(path)`, `Path(text)` is
+  `py::to_path(text)`, and `os.path.normcase` and `os.path.normpath` are `py::normcase` and
+  `py::normpath`. `PathBuf::display()` writes none of them.
+- Anything that `encode("ascii")`s: see `py::encode_ascii` under Exceptions.
 - `{x!r}` and `repr(text)` are `py::repr(text)`. `str(list)` writes each element's repr:
   `['a', 'b']`, `[(0, 0), (40, 0)]`. Write what Python writes.
-- `bytes.decode(...)` is `py::decode_utf16le`, `py::decode_ascii`, `py::decode_latin1`.
+- `bytes.decode(...)` is `py::decode_utf16le` (`errors="replace"`), `py::decode_utf16le_strict`
+  (which raises `UnicodeDecodeError` with Python's message), `py::decode_ascii`,
+  `py::decode_latin1`.
 - `re` is the `regex` crate. It has no look-around or back-references: if a pattern needs them,
   say so in the report.
 
@@ -144,16 +169,28 @@ where it can happen.
 
 - `data[a:b]` clamps where Rust panics: `py::slice(data, a, b)` and `py::slice_from`. Index
   directly only where the Python would raise.
-- `sorted` and `.sort()` are stable; so are `sort_by` and `sort_by_key`. Never `sort_unstable`.
+- `sorted(items, key=...)` is `py::sorted_by_lt(items, |a, b| key(a) < key(b))` and `.sort()` is
+  `py::sort_by_lt(&mut items, lt)`. Python's sort compares with `<` alone, so the order it makes
+  depends on timsort's exact steps as soon as a key is NaN (a float read out of freed memory often
+  is), and only CPython's own algorithm, which `py` follows step for step, gives that order: never
+  `sort_by`, `sort_by_key` or `sort_unstable` where a key can be a float. For a tuple key, `lt`
+  compares the first parts that differ with `!=` and then with `<`, as Python's tuple comparison
+  does. With `reverse=True`, Python reverses, sorts and reverses again; do the same.
 - `max(..., key=f)` returns the **first** of equal bests, and Rust's `max_by_key` the **last**:
   use `.rev().max_by_key(f)` or a loop where ties can happen. `min` and `min_by_key` both return
   the first. A float key needs `max_by`/`min_by` with `total_cmp`.
 - Python iterates a `set` in hash order, not insertion order, and that order does reach what
   pa3ds reads: an insertion-ordered set made `layout.track` read its works in another order. A
   set of **ints** that is iterated is `py::PySet`, which lays the set out as CPython does
-  (`PySet::of` for `set(iterable)` and `{a, b}`, `update_dict` for `set.update(a_dict)` and
-  `{*a_dict}`). If you need an operation it lacks (`-`, `&`, `discard`), write it from CPython's
-  `Objects/setobject.c` beside the others, check it against CPython, and report it. A set of
+  (`PySet::of` for `set(iterable)` and `{a, b}`, `of_dict` and `update_dict` for `set(a_dict)`,
+  `set.update(a_dict)` and `{*a_dict}`; `copy` for `set(s)` and `s.copy()`, `difference` for
+  `s - t`, `union` for `s | t`, `intersection` for `s & t`, `update`, `difference_update`,
+  `intersection_update`, `add`, `discard`, `remove`, `clear`). Each is written from CPython's
+  `Objects/setobject.c` and the table is CPython's slot for slot, discarded keys included, so use
+  the method rather than rebuilding a set from another one's iteration order: a copy and a
+  difference lay a set out differently from a fresh `set(...)` of the same keys. If you need an
+  operation it lacks (`symmetric_difference`, `pop`), write it from `setobject.c` beside the
+  others, check it against CPython on many random sequences, and report it. A set of
   strings Python iterates in an order that changes every run, so pa3ds cannot depend on it:
   `IndexSet`, and list the spot in your report.
 

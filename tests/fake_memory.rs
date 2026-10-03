@@ -1,8 +1,9 @@
 //! Writable memory for reader tests, with C++ classes laid out the way the game's RTTI is.
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
 use std::rc::Rc;
+
+use indexmap::IndexMap;
 
 use crate::core::memory::Memory;
 use crate::py::Result;
@@ -15,7 +16,7 @@ pub const PAGE: i64 = 0x1000;
 /// Written through `&self`, so a test can change the game's memory while a reader holds it.
 #[derive(Default)]
 pub struct FakeMemory {
-    pages: RefCell<HashMap<i64, Vec<u8>>>,
+    pages: RefCell<IndexMap<i64, Vec<u8>>>,
 }
 
 impl FakeMemory {
@@ -23,8 +24,9 @@ impl FakeMemory {
         Rc::new(FakeMemory::default())
     }
 
-    /// Everything written, as a sweep would find it.
-    pub fn pages(&self) -> HashMap<i64, Vec<u8>> {
+    /// Everything written, as a sweep would find it, in the order the pages were first written,
+    /// as the Python fake's dict keeps them.
+    pub fn pages(&self) -> IndexMap<i64, Vec<u8>> {
         self.pages.borrow().clone()
     }
 

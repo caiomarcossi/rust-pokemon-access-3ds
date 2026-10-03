@@ -29,11 +29,9 @@ fn pool(memory: &FakeMemory, works: &[i64], capacity: i64) {
     }
 }
 
-/// `memory.pages()`: everything written, in a fixed order where Python's was insertion order.
+/// `memory.pages()`, a dict in the order the pages were first written.
 fn pages(memory: &FakeMemory) -> IndexMap<i64, Vec<u8>> {
-    let mut pages: Vec<(i64, Vec<u8>)> = memory.pages().into_iter().collect();
-    pages.sort_by_key(|&(base, _)| base);
-    pages.into_iter().collect()
+    memory.pages()
 }
 
 /// `{work: root}`.

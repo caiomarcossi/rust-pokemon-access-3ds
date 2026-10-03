@@ -31,7 +31,7 @@
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use indexmap::IndexMap;
 
@@ -194,7 +194,7 @@ pub fn find(title: i64, candidates: impl IntoIterator<Item = PathBuf>) -> Result
 pub fn azahar_roms(config: &str) -> Vec<PathBuf> {
     let mut recent: Vec<String> = Vec::new();
     let mut folder = "";
-    for line in splitlines(config) {
+    for line in py::splitlines(config) {
         let (key, value) = line.split_once('=').unwrap_or((line, ""));
         if py::strip(key) == r"Paths\recentFiles" {
             recent = string_list(value);
@@ -205,13 +205,13 @@ pub fn azahar_roms(config: &str) -> Vec<PathBuf> {
     let mut found: Vec<PathBuf> = recent
         .iter()
         .filter(|item| !item.is_empty())
-        .map(|item| to_path(item))
+        .map(|item| py::to_path(item))
         .collect();
     if !folder.is_empty() {
         // `contextlib.suppress(OSError)`: a folder that cannot be listed, or an entry that fails
         // part way, adds nothing, as the failed `sorted(...)` added nothing.
-        let listing: std::io::Result<Vec<PathBuf>> =
-            std::fs::read_dir(to_path(folder)).and_then(|entries| {
+        let listing: std::io::Result<Vec<PathBuf>> = std::fs::read_dir(py::to_path(folder))
+            .and_then(|entries| {
                 entries
                     .map(|entry| entry.map(|entry| entry.path()))
                     .collect()
@@ -219,14 +219,14 @@ pub fn azahar_roms(config: &str) -> Vec<PathBuf> {
         if let Ok(mut listing) = listing {
             listing.retain(|path| EXTENSIONS.contains(&suffix(path).to_lowercase().as_str()));
             // Windows compares paths without regard to case, and sorts them so.
-            listing.sort_by_cached_key(|path| normcase(&path.to_string_lossy()));
+            listing.sort_by_cached_key(|path| py::normcase(&path.to_string_lossy()));
             found.extend(listing);
         }
     }
     let mut seen: HashSet<String> = HashSet::new();
     let mut out: Vec<PathBuf> = Vec::new();
     for path in found {
-        let key = normcase(&normpath(&path.to_string_lossy()));
+        let key = py::normcase(&py::normpath(&path.to_string_lossy()));
         if seen.insert(key) {
             out.push(path);
         }
@@ -437,7 +437,8 @@ fn walk<R: Read + Seek>(rom: &mut R, start: i64) -> Result<Vec<(String, Entry)>>
         let raw = binary::take::<24>(&dirs, offset)?;
         let (sibling, child, first, length) =
             (word(&raw, 4), word(&raw, 8), word(&raw, 12), word(&raw, 20));
-        let name = decode_utf16le(py::slice(&dirs, offset + 0x18, offset + 0x18 + length))?;
+        let name =
+            py::decode_utf16le_strict(py::slice(&dirs, offset + 0x18, offset + 0x18 + length))?;
         let here = if !name.is_empty() {
             format!("{path}/{name}")
         } else {
@@ -448,7 +449,7 @@ fn walk<R: Read + Seek>(rom: &mut R, start: i64) -> Result<Vec<(String, Entry)>>
             let raw = binary::take::<32>(&files, at)?;
             let (next_file, r#where, size, length) =
                 (word(&raw, 4), wide(&raw, 8), wide(&raw, 16), word(&raw, 28));
-            let name = decode_utf16le(py::slice(&files, at + 0x20, at + 0x20 + length))?;
+            let name = py::decode_utf16le_strict(py::slice(&files, at + 0x20, at + 0x20 + length))?;
             out.push((
                 format!("{here}/{name}").trim_start_matches('/').to_string(),
                 Entry {
@@ -543,151 +544,4 @@ fn word(raw: &[u8], at: usize) -> i64 {
 /// A little-endian u64 likewise.
 fn wide(raw: &[u8], at: usize) -> i64 {
     u64::from_le_bytes(raw[at..at + 8].try_into().expect("8 bytes")) as i64
-}
-
-/// `data.decode("utf-16-le")`, raising the UnicodeDecodeError Python's message gives: `py` has
-/// the error but not the message, and this one reaches the log inside a RomError.
-#[track_caller]
-fn decode_utf16le(data: &[u8]) -> Result<String> {
-    #[track_caller]
-    fn fail(data: &[u8], start: usize, end: usize, reason: &str) -> Result<String> {
-        let codec = "'utf-16-le' codec can't decode";
-        let message = if end == start + 1 {
-            format!(
-                "{codec} byte {:#04x} in position {start}: {reason}",
-                data[start]
-            )
-        } else {
-            format!("{codec} bytes in position {start}-{}: {reason}", end - 1)
-        };
-        Err(Error::new(Kind::UnicodeDecodeError, message))
-    }
-    let mut units: Vec<u16> = Vec::new();
-    let mut at = 0;
-    while data.len() - at >= 2 {
-        let unit = u16::from_le_bytes([data[at], data[at + 1]]);
-        if (0xD800..0xDC00).contains(&unit) {
-            if data.len() - (at + 2) < 2 {
-                return fail(data, at, data.len(), "unexpected end of data");
-            }
-            let next = u16::from_le_bytes([data[at + 2], data[at + 3]]);
-            if !(0xDC00..0xE000).contains(&next) {
-                return fail(data, at, at + 2, "illegal UTF-16 surrogate");
-            }
-            units.push(unit);
-            units.push(next);
-            at += 4;
-        } else if (0xDC00..0xE000).contains(&unit) {
-            return fail(data, at, at + 2, "illegal encoding");
-        } else {
-            units.push(unit);
-            at += 2;
-        }
-    }
-    if at < data.len() {
-        return fail(data, at, data.len(), "truncated data");
-    }
-    Ok(String::from_utf16(&units).expect("surrogates were paired"))
-}
-
-/// `text.splitlines()`: Python ends a line at more than `\n`.
-fn splitlines(text: &str) -> Vec<&str> {
-    let mut lines = Vec::new();
-    let mut start = 0;
-    let mut chars = text.char_indices().peekable();
-    while let Some((i, c)) = chars.next() {
-        if matches!(
-            c,
-            '\n' | '\r' | '\x0b' | '\x0c' | '\x1c'..='\x1e' | '\u{85}' | '\u{2028}' | '\u{2029}'
-        ) {
-            lines.push(&text[start..i]);
-            let mut end = i + c.len_utf8();
-            if c == '\r' && chars.peek().map(|&(_, next)| next) == Some('\n') {
-                chars.next();
-                end += 1;
-            }
-            start = end;
-        }
-    }
-    if start < text.len() {
-        lines.push(&text[start..]);
-    }
-    lines
-}
-
-/// `Path(text)` as `pathlib` writes it on Windows: separators made backslashes, doubled ones and
-/// `.` parts gone, a trailing one dropped.
-fn to_path(text: &str) -> PathBuf {
-    Path::new(text)
-        .components()
-        .filter(|part| !matches!(part, Component::CurDir))
-        .collect()
-}
-
-/// `os.path.normcase(path)` on Windows: lower case, backslashes.
-fn normcase(path: &str) -> String {
-    path.replace('/', "\\").to_lowercase()
-}
-
-/// `os.path.normpath(path)` on Windows.
-fn normpath(path: &str) -> String {
-    let path = path.replace('/', "\\");
-    let (drive, root, rest) = splitroot(&path);
-    let prefix = format!("{drive}{root}");
-    let mut comps: Vec<&str> = rest.split('\\').collect();
-    let mut i = 0;
-    while i < comps.len() {
-        if comps[i].is_empty() || comps[i] == "." {
-            comps.remove(i);
-        } else if comps[i] == ".." {
-            if i > 0 && comps[i - 1] != ".." {
-                comps.drain(i - 1..=i);
-                i -= 1;
-            } else if i == 0 && prefix.ends_with('\\') {
-                comps.remove(i);
-            } else {
-                i += 1;
-            }
-        } else {
-            i += 1;
-        }
-    }
-    if prefix.is_empty() && comps.is_empty() {
-        comps.push(".");
-    }
-    format!("{prefix}{}", comps.join("\\"))
-}
-
-/// `ntpath.splitroot(path)` for a path whose separators are already backslashes.
-fn splitroot(path: &str) -> (&str, &str, &str) {
-    if let Some(rest) = path.strip_prefix('\\') {
-        if rest.starts_with('\\') {
-            let unc = path
-                .get(..8)
-                .is_some_and(|head| head.to_uppercase() == "\\\\?\\UNC\\");
-            let start = if unc { 8 } else { 2 };
-            let Some(index) = path[start..].find('\\').map(|i| i + start) else {
-                return (path, "", "");
-            };
-            let Some(index2) = path[index + 1..].find('\\').map(|i| i + index + 1) else {
-                return (path, "", "");
-            };
-            return (
-                &path[..index2],
-                &path[index2..index2 + 1],
-                &path[index2 + 1..],
-            );
-        }
-        return ("", &path[..1], rest);
-    }
-    let mut chars = path.chars();
-    let (first, second, third) = (chars.next(), chars.next(), chars.next());
-    if second == Some(':') {
-        let drive = first.map_or(0, char::len_utf8) + 1;
-        if third == Some('\\') {
-            return (&path[..drive], &path[drive..drive + 1], &path[drive + 1..]);
-        }
-        return (&path[..drive], "", &path[drive..]);
-    }
-    ("", "", path)
 }

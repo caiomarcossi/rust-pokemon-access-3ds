@@ -7,7 +7,7 @@ use crate::games::gen6::script;
 /// A zone's script as the game compiles one: the entry point switches on a sign's number to
 /// a case calling a function of the sign's own, which shows each of its messages, (line,
 /// style), by pushing the style, the line and their size, and calling the helper.
-fn sign_script(signs: &IndexMap<i64, Vec<(i64, i64)>>, compact: bool) -> Vec<u8> {
+pub(crate) fn sign_script(signs: &IndexMap<i64, Vec<(i64, i64)>>, compact: bool) -> Vec<u8> {
     fn push(value: i64) -> i64 {
         (value & 0xFFFF) << 16 | script::PUSH_CONSTANT
     }

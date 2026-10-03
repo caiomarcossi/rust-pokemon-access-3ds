@@ -1481,7 +1481,7 @@ fn unpack_class(form: &str, record: &[u8], at: i64) -> Result<i64> {
         (2, false) => u16(record, at)?,
         (2, true) => binary::s16(record, at)?,
         (4, false) => u32(record, at)?,
-        _ => u32(record, at)? as u32 as i32 as i64,
+        _ => binary::s32(record, at)?,
     })
 }
 

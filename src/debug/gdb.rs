@@ -143,128 +143,19 @@ fn hex10(value: i64) -> String {
     }
 }
 
-/// `payload.encode("ascii")` of text that is not ASCII, which raises `UnicodeEncodeError`. The port
-/// has no such kind yet, so it is raised as the `ValueError` it derives from.
-#[track_caller]
-fn not_ascii(payload: &str) -> Error {
-    let chars: Vec<char> = payload.chars().collect();
-    let start = chars.iter().position(|c| !c.is_ascii()).unwrap_or(0);
-    let end = start + chars[start..].iter().take_while(|c| !c.is_ascii()).count();
-    let escape = |c: char| match c as u32 {
-        n if n < 0x100 => format!("\\x{n:02x}"),
-        n if n < 0x10000 => format!("\\u{n:04x}"),
-        n => format!("\\U{n:08x}"),
-    };
-    let what = if end - start == 1 {
-        format!("character '{}' in position {start}", escape(chars[start]))
-    } else {
-        format!("characters in position {start}-{}", end - 1)
-    };
-    Error::value(format!(
-        "'ascii' codec can't encode {what}: ordinal not in range(128)"
-    ))
-}
-
 #[track_caller]
 fn checksum(payload: &str) -> Result<i64> {
-    if !payload.is_ascii() {
-        return Err(not_ascii(payload));
-    }
-    Ok(payload.bytes().map(i64::from).sum::<i64>() & 0xFF)
-}
-
-/// `bytes.fromhex(text)`.
-#[track_caller]
-fn fromhex(text: &str) -> Result<Vec<u8>> {
-    let bytes = text.as_bytes();
-    let digit = |at: usize| bytes.get(at).and_then(|&b| (b as char).to_digit(16));
-    let space = |at: usize| {
-        matches!(
-            bytes.get(at),
-            Some(b' ' | b'\t' | b'\n' | b'\x0b' | b'\x0c' | b'\r')
-        )
-    };
-    let mut out = Vec::new();
-    let mut at = 0;
-    while at < bytes.len() {
-        if space(at) {
-            while space(at) {
-                at += 1;
-            }
-            if at >= bytes.len() {
-                break;
-            }
-        }
-        let Some(top) = digit(at) else {
-            return Err(Error::value(format!(
-                "non-hexadecimal number found in fromhex() arg at position {at}"
-            )));
-        };
-        at += 1;
-        let Some(bottom) = digit(at) else {
-            return Err(if at >= bytes.len() {
-                Error::value("fromhex() arg must contain an even number of hexadecimal digits")
-            } else {
-                Error::value(format!(
-                    "non-hexadecimal number found in fromhex() arg at position {at}"
-                ))
-            });
-        };
-        at += 1;
-        out.push((top * 16 + bottom) as u8);
-    }
-    Ok(out)
-}
-
-/// `int(text, 16)`: a sign, a `0x`, and single underscores between digits are all accepted.
-#[track_caller]
-fn int_base16(text: &str) -> Result<i64> {
-    #[track_caller]
-    fn invalid(text: &str) -> Error {
-        Error::value(format!(
-            "invalid literal for int() with base 16: {}",
-            py::repr(text)
-        ))
-    }
-    let trimmed = py::strip(text);
-    let (negative, rest) = match trimmed.strip_prefix('-') {
-        Some(rest) => (true, rest),
-        None => (false, trimmed.strip_prefix('+').unwrap_or(trimmed)),
-    };
-    let (prefixed, rest) = match rest.strip_prefix("0x").or_else(|| rest.strip_prefix("0X")) {
-        Some(rest) => (true, rest),
-        None => (false, rest),
-    };
-    let digits = if prefixed {
-        rest.strip_prefix('_').unwrap_or(rest)
-    } else {
-        rest
-    };
-    let valid = !digits.is_empty()
-        && !digits.starts_with('_')
-        && !digits.ends_with('_')
-        && !digits.contains("__")
-        && digits.chars().all(|c| c == '_' || c.is_ascii_hexdigit());
-    if !valid {
-        return Err(invalid(text));
-    }
-    let magnitude = digits
-        .chars()
-        .filter_map(|c| c.to_digit(16))
-        .fold(0i128, |acc, digit| {
-            (acc << 4 | digit as i128) & i128::from(u64::MAX)
-        });
-    Ok(if negative {
-        -(magnitude as i64)
-    } else {
-        magnitude as i64
-    })
+    Ok(py::encode_ascii(payload)?
+        .iter()
+        .map(|&b| i64::from(b))
+        .sum::<i64>()
+        & 0xFF)
 }
 
 /// The stub writes register values as little-endian bytes in hex.
 #[track_caller]
 fn from_hex_le(text: &str) -> Result<i64> {
-    let bytes = fromhex(text)?;
+    let bytes = py::fromhex(text)?;
     Ok(bytes
         .iter()
         .rev()
@@ -295,11 +186,11 @@ fn parse_stop(reply: &str) -> Result<Stop> {
     if reply.starts_with(['W', 'X']) {
         let digits = chars_slice(reply, 1, 3);
         return Ok(Stop {
-            signal: int_base16(if digits.is_empty() { "0" } else { &digits })?,
+            signal: py::int_base16(if digits.is_empty() { "0" } else { &digits })?,
             ..Stop::default()
         });
     }
-    let signal = int_base16(&chars_slice(reply, 1, 3))?;
+    let signal = py::int_base16(&chars_slice(reply, 1, 3))?;
     let mut fields: IndexMap<String, String> = IndexMap::new();
     for item in chars_slice(reply, 3, reply.chars().count() as i64).split(';') {
         let (key, value) = item.split_once(':').unwrap_or((item, ""));
@@ -321,7 +212,7 @@ fn parse_stop(reply: &str) -> Result<Stop> {
         None => None,
     };
     let thread = match thread {
-        Some(text) if !text.is_empty() => Some(int_base16(text)?),
+        Some(text) if !text.is_empty() => Some(py::int_base16(text)?),
         _ => None,
     };
     Ok(Stop {
@@ -492,7 +383,7 @@ impl Gdb {
             .iter()
             .collect();
             let payload = py::decode_ascii(&body);
-            if int_base16(&got)? != checksum(&payload)? {
+            if py::int_base16(&got)? != checksum(&payload)? {
                 self.sock.write_all(&[NACK])?;
                 return Err(Error::new(
                     Kind::GdbError,
@@ -649,7 +540,7 @@ impl Gdb {
                 format!("nothing mapped at {}", hex10(address)),
             ));
         }
-        fromhex(&reply)
+        py::fromhex(&reply)
     }
 
     // -- breakpoints --------------------------------------------------------------
