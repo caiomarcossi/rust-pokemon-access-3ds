@@ -99,7 +99,10 @@ impl Tape {
     }
 
     fn diverge(&self, what: String) -> ! {
-        self.stop(Stop::Diverged(format!("record {}: {what}", self.count.get())))
+        self.stop(Stop::Diverged(format!(
+            "record {}: {what}",
+            self.count.get()
+        )))
     }
 
     fn take(&self, n: usize) -> &[u8] {
@@ -143,7 +146,10 @@ impl Tape {
         let got = self.u8();
         self.count.set(self.count.get() + 1);
         if got != kind {
-            self.diverge(format!("the runtime asked {what}, the tape has {}", name(got)));
+            self.diverge(format!(
+                "the runtime asked {what}, the tape has {}",
+                name(got)
+            ));
         }
     }
 
@@ -243,7 +249,11 @@ impl Rpc for TapeRpc {
         if let Some(error) = tape.error() {
             return Err(error);
         }
-        Ok(Process { pid: tape.u32(), title_id: tape.u64(), name: tape.text() })
+        Ok(Process {
+            pid: tape.u32(),
+            title_id: tape.u64(),
+            name: tape.text(),
+        })
     }
 }
 
@@ -265,7 +275,8 @@ impl Clock for TapeClock {
     }
 
     fn sleep(&mut self, seconds: f64) {
-        self.tape.expect(SLEEP, &format!("sleep {}", crate::py::float_repr(seconds)));
+        self.tape
+            .expect(SLEEP, &format!("sleep {}", crate::py::float_repr(seconds)));
         let recorded = self.tape.f64();
         if recorded != seconds {
             self.tape.diverge(format!(
