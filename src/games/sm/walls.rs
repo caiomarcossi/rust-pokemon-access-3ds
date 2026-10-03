@@ -60,6 +60,7 @@ use crate::games::common::field::{BLOCKED, CHUNK, Chunk};
 use crate::games::common::garc::garc_spans;
 use crate::games::sm::camera::{turned, turned_box, unturned};
 use crate::games::sm::zones::{AREA_FILES, EVENTS, pack, pack_with, unpacked};
+use crate::py::hypot;
 use crate::py::{self, Error, Kind, Result};
 
 pub type Cell = (i64, i64);
@@ -156,85 +157,6 @@ fn sorted(values: &[f64]) -> Vec<f64> {
     let mut ordered = values.to_vec();
     ordered.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     ordered
-}
-
-/// `math.hypot(x, y)` as CPython 3.14 computes it, which Rust's `f64::hypot` does not: that is
-/// the C library's, and it may differ from Python's in the last bit, where a distance is
-/// compared against `REACH` as it is.
-fn hypot(x: f64, y: f64) -> f64 {
-    let (x, y) = (x.abs(), y.abs());
-    let max = greatest(greatest(0.0, x), y);
-    vector_norm(&mut [x, y], max, x.is_nan() || y.is_nan())
-}
-
-/// CPython's `vector_norm` (Modules/mathmodule.c): the norm of the vector, accurate to a
-/// fraction of the last bit, from the vector, its largest member and whether one is a NaN.
-fn vector_norm(vec: &mut [f64], max: f64, found_nan: bool) -> f64 {
-    /// `dl_mul`: the product of two floats as a high and a low part, exactly.
-    fn dl_mul(x: f64, y: f64) -> (f64, f64) {
-        let z = x * y;
-        (z, x.mul_add(y, -z))
-    }
-    /// `dl_fast_sum`: the sum of two floats, the larger first, as a high and a low part.
-    fn dl_fast_sum(a: f64, b: f64) -> (f64, f64) {
-        let x = a + b;
-        (x, (a - x) + b)
-    }
-    if max.is_infinite() {
-        return max;
-    }
-    if found_nan {
-        return f64::NAN;
-    }
-    if max == 0.0 || vec.len() <= 1 {
-        return max;
-    }
-    let max_e = frexp_exponent(max);
-    if max_e < -1023 {
-        // When max_e < -1023, ldexp(1.0, -max_e) would overflow.
-        for x in vec.iter_mut() {
-            *x /= f64::MIN_POSITIVE;
-        }
-        return f64::MIN_POSITIVE * vector_norm(vec, max / f64::MIN_POSITIVE, found_nan);
-    }
-    let scale = ldexp_one(-max_e);
-    let (mut csum, mut frac1, mut frac2) = (1.0, 0.0, 0.0);
-    for &x in vec.iter() {
-        let x = x * scale;
-        let pr = dl_mul(x, x);
-        let sm = dl_fast_sum(csum, pr.0);
-        csum = sm.0;
-        frac1 += pr.1;
-        frac2 += sm.1;
-    }
-    let mut h = (csum - 1.0 + (frac1 + frac2)).sqrt();
-    let pr = dl_mul(-h, h);
-    let sm = dl_fast_sum(csum, pr.0);
-    csum = sm.0;
-    frac1 += pr.1;
-    frac2 += sm.1;
-    let x = csum - 1.0 + (frac1 + frac2);
-    h += x / (2.0 * h);
-    h / scale
-}
-
-/// The exponent `frexp` gives a positive finite float: 0.5 <= x / 2**e < 1.
-fn frexp_exponent(x: f64) -> i32 {
-    let exponent = ((x.to_bits() >> 52) & 0x7FF) as i32;
-    if exponent == 0 {
-        // A subnormal: scaled up into the normal range first.
-        return frexp_exponent(x * 2f64.powi(54)) - 54;
-    }
-    exponent - 1022
-}
-
-/// `ldexp(1.0, exponent)`, for the exponents `vector_norm` asks for, where `powi` might round.
-fn ldexp_one(exponent: i32) -> f64 {
-    if exponent >= -1022 {
-        f64::from_bits(((exponent + 1023) as u64) << 52)
-    } else {
-        f64::from_bits(1u64 << (exponent + 1074))
-    }
 }
 
 /// The 32-bit float at word `index` of a triangle's bytes, as the float Python reads it.

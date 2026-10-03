@@ -115,6 +115,11 @@ quietly make it a number. Never cast a float to an int with `as` where Python ca
 these.
 | `~x` | `!x` |
 
+`math.hypot` is `py::hypot`: Rust's differs from CPython's in the last bit on about one pair in
+eight. `min(a, b)` and `max(a, b)` of floats keep `a` unless `b` is strictly less (or greater), so
+a NaN goes where Python puts it: never `f64::min`/`f64::max`, which drop a NaN. `sin`, `cos`,
+`atan2`, `sqrt` and the rest are the same C library's in both on Windows.
+
 `a // b` and `a % b` with both sides known non-negative may use `/` and `%`, but `py::` is never
 wrong. A division Python could make by zero raises `ZeroDivisionError`; make it do so in Rust only
 where it can happen.
