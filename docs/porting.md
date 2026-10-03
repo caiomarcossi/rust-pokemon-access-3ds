@@ -47,7 +47,7 @@ The reference ports show every rule below in use: `src/core/rpc.rs`, `src/core/m
 | `list`, `Sequence` | `Vec<T>`, `&[T]` |
 | `tuple` | a tuple, or a struct where the Python named its parts |
 | `dict` | `IndexMap` (Python iterates a dict in insertion order) |
-| `set`, `frozenset` | `IndexSet` if iterated, `HashSet` if only tested for membership |
+| `set`, `frozenset` | `py::PySet` if iterated and of ints, `HashSet` if only tested for membership |
 | `X \| None` | `Option<X>` |
 | `@dataclass` | a struct with `pub` fields, `#[derive(Debug, Clone, PartialEq)]` |
 | `Protocol` | a trait |
@@ -115,6 +115,11 @@ quietly make it a number. Never cast a float to an int with `as` where Python ca
 these.
 | `~x` | `!x` |
 
+`math.hypot` is `py::hypot`: Rust's differs from CPython's in the last bit on about one pair in
+eight. `min(a, b)` and `max(a, b)` of floats keep `a` unless `b` is strictly less (or greater), so
+a NaN goes where Python puts it: never `f64::min`/`f64::max`, which drop a NaN. `sin`, `cos`,
+`atan2`, `sqrt` and the rest are the same C library's in both on Windows.
+
 `a // b` and `a % b` with both sides known non-negative may use `/` and `%`, but `py::` is never
 wrong. A division Python could make by zero raises `ZeroDivisionError`; make it do so in Rust only
 where it can happen.
@@ -143,9 +148,14 @@ where it can happen.
 - `max(..., key=f)` returns the **first** of equal bests, and Rust's `max_by_key` the **last**:
   use `.rev().max_by_key(f)` or a loop where ties can happen. `min` and `min_by_key` both return
   the first. A float key needs `max_by`/`min_by` with `total_cmp`.
-- Python iterates a `set` in hash order, not insertion order. Where a set's order reaches the log,
-  the speech or the order of reads, port it with `IndexSet` and **list the spot in your report**:
-  the tapes will say whether it matters.
+- Python iterates a `set` in hash order, not insertion order, and that order does reach what
+  pa3ds reads: an insertion-ordered set made `layout.track` read its works in another order. A
+  set of **ints** that is iterated is `py::PySet`, which lays the set out as CPython does
+  (`PySet::of` for `set(iterable)` and `{a, b}`, `update_dict` for `set.update(a_dict)` and
+  `{*a_dict}`). If you need an operation it lacks (`-`, `&`, `discard`), write it from CPython's
+  `Objects/setobject.c` beside the others, check it against CPython, and report it. A set of
+  strings Python iterates in an order that changes every run, so pa3ds cannot depend on it:
+  `IndexSet`, and list the spot in your report.
 
 ## Time, files, threads
 

@@ -271,18 +271,123 @@ pub fn modulo(a: i64, b: i64) -> i64 {
     }
 }
 
+/// CPython's `divmod` for floats (`_float_div_mod` in `Objects/floatobject.c`), which `//` and `%`
+/// are made of: the quotient is not `(a / b).floor()` (`1 // 0.1` is 9.0, not 10.0), and a zero
+/// remainder takes the divisor's sign. `b` must not be 0, where Python raises.
+fn float_div_mod(a: f64, b: f64) -> (f64, f64) {
+    let mut modulo = a % b;
+    let mut div = (a - modulo) / b;
+    if modulo != 0.0 {
+        if (b < 0.0) != (modulo < 0.0) {
+            modulo += b;
+            div -= 1.0;
+        }
+    } else {
+        modulo = 0.0_f64.copysign(b);
+    }
+    let floordiv = if div != 0.0 {
+        let floor = div.floor();
+        if div - floor > 0.5 {
+            floor + 1.0
+        } else {
+            floor
+        }
+    } else {
+        0.0_f64.copysign(a / b)
+    };
+    (floordiv, modulo)
+}
+
 /// `a // b` for floats.
 pub fn floordiv_f(a: f64, b: f64) -> f64 {
-    (a / b).floor()
+    float_div_mod(a, b).0
 }
 
 /// `a % b` for floats: the sign of `b`.
 pub fn modulo_f(a: f64, b: f64) -> f64 {
-    let r = a % b;
-    if r != 0.0 && ((r < 0.0) != (b < 0.0)) {
-        r + b
+    float_div_mod(a, b).1
+}
+
+/// `math.hypot(x, y)` as CPython 3.14 computes it, which Rust's `f64::hypot` does not: that is
+/// the C library's, and differs from Python's in the last bit on about one pair in eight, which
+/// moves a distance compared against a reach across it (checked against CPython on a million
+/// pairs by the walls' port).
+pub fn hypot(x: f64, y: f64) -> f64 {
+    let (x, y) = (x.abs(), y.abs());
+    // Python's max(), which a NaN does not win.
+    let max = [x, y]
+        .into_iter()
+        .fold(0.0, |best: f64, v| if v > best { v } else { best });
+    vector_norm(&mut [x, y], max, x.is_nan() || y.is_nan())
+}
+
+/// CPython's `vector_norm` (Modules/mathmodule.c): the norm of the vector, accurate to a
+/// fraction of the last bit, from the vector, its largest member and whether one is a NaN.
+fn vector_norm(vec: &mut [f64], max: f64, found_nan: bool) -> f64 {
+    /// `dl_mul`: the product of two floats as a high and a low part, exactly.
+    fn dl_mul(x: f64, y: f64) -> (f64, f64) {
+        let z = x * y;
+        (z, x.mul_add(y, -z))
+    }
+    /// `dl_fast_sum`: the sum of two floats, the larger first, as a high and a low part.
+    fn dl_fast_sum(a: f64, b: f64) -> (f64, f64) {
+        let x = a + b;
+        (x, (a - x) + b)
+    }
+    if max.is_infinite() {
+        return max;
+    }
+    if found_nan {
+        return f64::NAN;
+    }
+    if max == 0.0 || vec.len() <= 1 {
+        return max;
+    }
+    let max_e = frexp_exponent(max);
+    if max_e < -1023 {
+        // When max_e < -1023, ldexp(1.0, -max_e) would overflow.
+        for x in vec.iter_mut() {
+            *x /= f64::MIN_POSITIVE;
+        }
+        return f64::MIN_POSITIVE * vector_norm(vec, max / f64::MIN_POSITIVE, found_nan);
+    }
+    let scale = ldexp_one(-max_e);
+    let (mut csum, mut frac1, mut frac2) = (1.0, 0.0, 0.0);
+    for &x in vec.iter() {
+        let x = x * scale;
+        let pr = dl_mul(x, x);
+        let sm = dl_fast_sum(csum, pr.0);
+        csum = sm.0;
+        frac1 += pr.1;
+        frac2 += sm.1;
+    }
+    let mut h = (csum - 1.0 + (frac1 + frac2)).sqrt();
+    let pr = dl_mul(-h, h);
+    let sm = dl_fast_sum(csum, pr.0);
+    csum = sm.0;
+    frac1 += pr.1;
+    frac2 += sm.1;
+    let x = csum - 1.0 + (frac1 + frac2);
+    h += x / (2.0 * h);
+    h / scale
+}
+
+/// The exponent `frexp` gives a positive finite float: 0.5 <= x / 2**e < 1.
+fn frexp_exponent(x: f64) -> i32 {
+    let exponent = ((x.to_bits() >> 52) & 0x7FF) as i32;
+    if exponent == 0 {
+        // A subnormal: scaled up into the normal range first.
+        return frexp_exponent(x * 2f64.powi(54)) - 54;
+    }
+    exponent - 1022
+}
+
+/// `ldexp(1.0, exponent)`, for the exponents `vector_norm` asks for, where `powi` might round.
+fn ldexp_one(exponent: i32) -> f64 {
+    if exponent >= -1022 {
+        f64::from_bits(((exponent + 1023) as u64) << 52)
     } else {
-        r
+        f64::from_bits(1u64 << (exponent + 1074))
     }
 }
 
@@ -534,6 +639,183 @@ pub fn decode_latin1(data: &[u8]) -> String {
     data.iter().map(|&b| b as char).collect()
 }
 
+/// How CPython lays a `set` of ints out, for the order Python iterates one in (hash order, not
+/// insertion order).
+///
+/// A set's order reaches what pa3ds reads and says wherever one is iterated: `layout.track` reads
+/// each work in the order Python iterates `{*works, *known}`, and an insertion-ordered set read
+/// them in another order. Only what pa3ds's sets need is here: adding and never removing, ints
+/// below 2**61 - 1 hashing as themselves. Written against CPython's `Objects/setobject.c`
+/// (`set_add_entry`, `set_table_resize`, `set_update_internal`), and checked against it in
+/// `checks` below.
+pub struct PySet {
+    table: Vec<Option<i64>>,
+    used: usize,
+}
+
+impl PySet {
+    const LINEAR_PROBES: usize = 9;
+    const PERTURB_SHIFT: u32 = 5;
+    const MIN_SIZE: usize = 8;
+
+    pub fn new() -> Self {
+        PySet {
+            table: vec![None; Self::MIN_SIZE],
+            used: 0,
+        }
+    }
+
+    /// `hash(key)`.
+    fn hash(key: i64) -> i64 {
+        const MODULUS: u64 = (1 << 61) - 1;
+        let magnitude = (key.unsigned_abs() % MODULUS) as i64;
+        let hash = if key < 0 { -magnitude } else { magnitude };
+        if hash == -1 { -2 } else { hash }
+    }
+
+    /// The slot an insertion into a table of `mask + 1` slots finds free, by CPython's probing:
+    /// ten slots from the hash's own, then a jump, and again.
+    fn slot(table: &[Option<i64>], key: i64) -> Result<usize, usize> {
+        let mask = table.len() - 1;
+        let hash = Self::hash(key);
+        let mut perturb = hash as u64;
+        let mut i = (hash as u64 as usize) & mask;
+        loop {
+            let probes = if i + Self::LINEAR_PROBES <= mask {
+                Self::LINEAR_PROBES
+            } else {
+                0
+            };
+            for at in i..=i + probes {
+                match table[at] {
+                    None => return Err(at),
+                    Some(held) if held == key => return Ok(at),
+                    Some(_) => {}
+                }
+            }
+            perturb >>= Self::PERTURB_SHIFT;
+            i = i
+                .wrapping_mul(5)
+                .wrapping_add(1)
+                .wrapping_add(perturb as usize)
+                & mask;
+        }
+    }
+
+    /// `set.add(key)`.
+    pub fn add(&mut self, key: i64) {
+        let Err(at) = Self::slot(&self.table, key) else {
+            return;
+        };
+        self.table[at] = Some(key);
+        self.used += 1;
+        let mask = self.table.len() - 1;
+        if self.used * 5 >= mask * 3 {
+            self.resize(if self.used > 50000 {
+                self.used * 2
+            } else {
+                self.used * 4
+            });
+        }
+    }
+
+    /// A table of the least power of two slots above `minused`, every key put in again in the
+    /// order the old table holds them.
+    fn resize(&mut self, minused: usize) {
+        let mut size = Self::MIN_SIZE;
+        while size <= minused {
+            size <<= 1;
+        }
+        let old = std::mem::replace(&mut self.table, vec![None; size]);
+        for key in old.into_iter().flatten() {
+            if let Err(at) = Self::slot(&self.table, key) {
+                self.table[at] = Some(key);
+            }
+        }
+    }
+
+    /// `set.update(some_dict)`, which makes room for every key before adding any.
+    pub fn update_dict(&mut self, keys: &[i64]) {
+        let mask = self.table.len() - 1;
+        if (self.used + keys.len()) * 5 >= mask * 3 {
+            self.resize((self.used + keys.len()) * 2);
+        }
+        for &key in keys {
+            self.add(key);
+        }
+    }
+
+    /// `set(iterable)` of an iterator, which adds one key at a time.
+    pub fn of(keys: impl IntoIterator<Item = i64>) -> Self {
+        let mut set = PySet::new();
+        for key in keys {
+            set.add(key);
+        }
+        set
+    }
+
+    /// `set(some_dict)`.
+    pub fn of_dict(keys: &[i64]) -> Self {
+        let mut set = PySet::new();
+        set.update_dict(keys);
+        set
+    }
+
+    /// `key in set`.
+    pub fn contains(&self, key: i64) -> bool {
+        Self::slot(&self.table, key).is_ok()
+    }
+
+    /// `len(set)`.
+    pub fn len(&self) -> usize {
+        self.used
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.used == 0
+    }
+
+    /// The keys in the order Python iterates them.
+    pub fn iter(&self) -> impl Iterator<Item = i64> + '_ {
+        self.table.iter().flatten().copied()
+    }
+}
+
+/// `PySet` against orders CPython 3.14 gave, over works like the field's (0x104 apart) and the
+/// screens' (0x10000 apart), which collide in a small table.
+#[cfg(test)]
+mod set_checks {
+    use super::PySet;
+
+    #[test]
+    fn pyset_iterates_as_cpython_does() {
+        let mut every = PySet::of([0x083002a4, 0x14B00000, 0x14B10000]);
+        every.update_dict(&[0x14B00000, 0x14C00000, 0x14B20000]);
+        assert_eq!(
+            every.iter().collect::<Vec<_>>(),
+            [0x14B00000, 0x14B10000, 0x14C00000, 0x14B20000, 0x083002a4]
+        );
+        let field: Vec<i64> = (0..12).map(|index| 0x08300000 + index * 0x104).collect();
+        assert_eq!(
+            PySet::of_dict(&field).iter().collect::<Vec<_>>(),
+            [
+                0x8300000, 0x8300820, 0x8300104, 0x8300924, 0x8300208, 0x8300a28, 0x830030c,
+                0x8300b2c, 0x8300410, 0x8300514, 0x8300618, 0x830071c
+            ]
+        );
+        assert_eq!(
+            PySet::of([0x14B30600, 0x14B10600, 0x14B20600])
+                .iter()
+                .collect::<Vec<_>>(),
+            [0x14B30600, 0x14B10600, 0x14B20600]
+        );
+        let mut small = PySet::of([5, 3, 1]);
+        assert!(small.contains(3) && !small.contains(4) && small.len() == 3);
+        small.update_dict(&[9, 2, 8]);
+        assert_eq!(small.iter().collect::<Vec<_>>(), [1, 2, 3, 5, 8, 9]);
+    }
+}
+
 #[cfg(test)]
 mod checks {
     use super::*;
@@ -551,6 +833,12 @@ mod checks {
         assert_eq!((int(-2.7)?, floor(-2.5)?, ceil(-2.5)?), (-2, -3, -2));
         assert_eq!(round_to(2.675, 2), 2.67);
         assert_eq!(modulo_f(-1.0, 360.0), 359.0);
+        assert_eq!(
+            (floordiv_f(1.0, 0.1), modulo_f(1.0, 0.1)),
+            (9.0, 0.09999999999999995)
+        );
+        assert!(modulo_f(-0.0, 360.0).is_sign_positive() && modulo_f(5.0, -5.0).is_sign_negative());
+        assert_eq!((floordiv_f(-7.5, 2.0), modulo_f(-7.5, 2.0)), (-4.0, 0.5));
         Ok(())
     }
 
