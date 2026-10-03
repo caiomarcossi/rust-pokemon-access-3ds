@@ -10,24 +10,24 @@ use crate::core::discovery::ALLOCATION;
 use crate::games::gen6::rail::{self, Line, Network};
 use crate::py::Result;
 
-const TABLE: i64 = 0x08247214;
+pub(crate) const TABLE: i64 = 0x08247214;
 const OWNER: i64 = 0x08247CC4;
-const FILE: i64 = 0x147FA080;
+pub(crate) const FILE: i64 = 0x147FA080;
 // Three lines of Lumiose's, as spike 103 read them: A ends where B starts, and C, laid the other
 // way round, ends there too. A line's id is its start point's with bit 15 set.
-const A: i64 = 0x0305AC3B;
-const B: i64 = 0x0504BEF6;
-const C: i64 = 0x0504F514;
+pub(crate) const A: i64 = 0x0305AC3B;
+pub(crate) const B: i64 = 0x0504BEF6;
+pub(crate) const C: i64 = 0x0504F514;
 const P0: i64 = 0x03052C3B;
 const P1: i64 = 0x05043EF6;
-const P2: i64 = 0x05045991;
-const P3: i64 = 0x05047514;
+pub(crate) const P2: i64 = 0x05045991;
+pub(crate) const P3: i64 = 0x05047514;
 /// Seven cells across, three either side of the middle.
-const ACROSS: i64 = 7;
+pub(crate) const ACROSS: i64 = 7;
 
 /// A line's wall table: the outer column each side a wall, and `blocked` (row, offset)
 /// besides.
-fn walls(along: i64, blocked: &[(i64, i64)]) -> Vec<i64> {
+pub(crate) fn walls(along: i64, blocked: &[(i64, i64)]) -> Vec<i64> {
     let mut out = Vec::new();
     for row in 0..=along {
         for column in 0..ACROSS {
@@ -75,7 +75,7 @@ fn line_record(
 }
 
 /// The table listing lines A, B and C loaded, and one entry for a line no longer loaded.
-fn network(memory: &FakeMemory) {
+pub(crate) fn network(memory: &FakeMemory) {
     let records = [(A, FILE + 0xE8), (B, FILE + 0x5580), (C, FILE + 0x84E8)];
     line_record(memory, records[0].1, A, P0, P1, 10, &[(4, 1)]);
     line_record(memory, records[1].1, B, P1, P2, 6, &[]);
