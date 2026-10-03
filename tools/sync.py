@@ -52,7 +52,7 @@ def rust_path(python: str) -> str | None:
         if rel == "__init__.py":
             return "src/lib.rs"
         if rel == "__main__.py":
-            return "src/main.rs"
+            return "src/__main__.rs"
         if rel.endswith("/__init__.py"):
             return f"src/{rel.removesuffix('/__init__.py')}/mod.rs"
         if rel.endswith(".py"):
@@ -118,7 +118,7 @@ def layout() -> int:
     created = 0
     for python in tracked():
         target = rust_path(python)
-        if target is None or not target.endswith(".rs") or target == "src/main.rs":
+        if target is None or not target.endswith(".rs"):
             continue
         path = ROOT / target
         if not path.exists():
