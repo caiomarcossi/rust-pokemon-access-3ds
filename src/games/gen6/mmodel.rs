@@ -221,7 +221,10 @@ pub fn cell(head: &[u8]) -> Result<Option<(i64, i64)>> {
         py::round((x - half) / CELL as f64)?,
         py::round((z - half) / CELL as f64)?,
     );
-    let heading = (py::round(f32(head, CELL_X)?)?, py::round(f32(head, CELL_Z)?)?);
+    let heading = (
+        py::round(f32(head, CELL_X)?)?,
+        py::round(f32(head, CELL_Z)?)?,
+    );
     if (heading.0 - world.0).abs() <= 1 && (heading.1 - world.1).abs() <= 1 {
         return Ok(Some(heading));
     }
