@@ -1,1 +1,1607 @@
+//! One file saying what every key does — pa3ds's keys and the emulator's buttons together.
+//!
+//! pa3ds takes the keys it is bound to and keeps them from the game (`pa3ds.core.keys`). That
+//! hides a problem: **a key pa3ds takes is a button the player has lost.** The user's Azahar
+//! happens to have I, J, K and L on the C-stick and O on the debug button, which cost nothing —
+//! until M was bound to the navigation mode and M turned out to be Start.
+//!
+//! So `<pa3ds>/user/keys.toml` holds both halves, written with defaults on the first run and never
+//! overwritten afterwards:
+//!
+//! - **`[pa3ds.navigation]`** — key to action. A key that means the same thing in both navigation
+//!   modes lives here; a key that does not lives in `[pa3ds.navigation.list]` or
+//!   `[pa3ds.navigation.direction]`, which win over it. A key may carry modifiers: `shift+k`.
+//! - **`[azahar]`** — button to key, and `[azahar.circle_pad]` / `[azahar.c_stick]` for the two
+//!   sticks, which hold four directions, a modifier and a scale rather than one key. pa3ds patches
+//!   these into Azahar's `qt-config.ini` at startup. It ships **empty**, so nothing is rebound
+//!   until the player asks: this machine's config is hand-tuned, and a file that silently rewrote
+//!   it would be the opposite of useful. The bindings Azahar has are written in as a comment,
+//!   which is the only way to read them without Azahar's own settings dialog.
+//!
+//! Whatever `[azahar]` says, pa3ds reads the emulator's real bindings and **says which buttons its
+//! keys are sitting on**. It does not refuse to bind them: a player who wants K on the C-stick may
+//! have it, and being told is what they were missing.
+//!
+//! Three facts about `qt-config.ini` that everything here turns on:
+//!
+//! - **`code:` is a Qt key code, not a Windows virtual-key code.** Azahar records `event->key()`
+//!   (`citra_qt/configuration/configure_input.cpp`). Letters and digits are the same number in
+//!   both — which is why nothing has noticed — but the semicolon is 59 to Qt and 186 to Windows,
+//!   and the arrow keys are not in the virtual-key range at all.
+//! - **A value is ignored while its `\default` flag is `true`**, and Azahar re-saves the file at
+//!   startup. Every binding written here sets `...\default=false` beside it. `spikes/rig.py`
+//!   carries the scar of learning that with `frame_limit`.
+//! - **A stick is a parameter package**: `key:value` pairs separated by commas, with `$0`, `$1`
+//!   and `$2` standing for a colon, a comma and a dollar inside a part
+//!   (`common/param_package.cpp`). Azahar holds one in a sorted map, so the pairs come back out in
+//!   alphabetical order. pa3ds reads the whole package, changes the directions it was asked for
+//!   and writes the rest back untouched — a stick rebuilt from scratch would drop the annotations
+//!   Azahar keeps beside each direction.
+//!
+//! Azahar saves `qt-config.ini` over whatever is there when it closes
+//! (`GMainWindow::closeEvent`), so a patch written while it runs is lost. pa3ds patches at every
+//! start while Azahar is closed; with Azahar open it writes nothing and says to close it and start
+//! pa3ds again (`save`).
+//!
+//! Nothing here raises at a player. A keys file that is missing, unreadable or malformed reads as
+//! the defaults, and a config that cannot be patched is said and left alone.
 
+use std::collections::{HashMap, HashSet};
+use std::path::{Component, Path, PathBuf};
+use std::sync::LazyLock;
+
+use indexmap::{IndexMap, IndexSet};
+use regex::Regex;
+use unicode_general_category::{GeneralCategory, get_general_category};
+
+use crate::core::config::Value;
+use crate::core::keys::{ORDER, PUNCTUATION};
+use crate::core::toml;
+use crate::py::{self, Error, Kind, Result};
+
+/// Mode -> key -> action, as `common.navigate` defines the modes and the actions. Nothing here
+/// knows what an action means; this module only decides which keys carry them.
+pub type Bindings = IndexMap<String, IndexMap<String, String>>;
+
+pub const FILE_NAME: &str = "keys.toml";
+pub const SECTION: &str = "pa3ds";
+/// The one group of pa3ds's own keys there is so far. Its sub-tables are the navigation modes,
+/// and the keys directly under it are the ones that mean the same thing in both.
+pub const GROUP: &str = "navigation";
+pub const EMULATOR_SECTION: &str = "azahar";
+
+/// The Qt key codes that are not just the character's own. `Qt::Key_Left` is `0x01000012`, which
+/// is the `16777234` in this machine's circle pad binding. Shift, ctrl and alt are here because a
+/// stick's modifier is usually one of them: held down, it moves the stick halfway.
+pub const QT_NAMED: [(&str, i64); 20] = [
+    ("escape", 0x01000000),
+    ("tab", 0x01000001),
+    ("backspace", 0x01000003),
+    ("return", 0x01000004),
+    ("enter", 0x01000005),
+    ("insert", 0x01000006),
+    ("delete", 0x01000007),
+    ("home", 0x01000010),
+    ("end", 0x01000011),
+    ("left", 0x01000012),
+    ("up", 0x01000013),
+    ("right", 0x01000014),
+    ("down", 0x01000015),
+    ("pageup", 0x01000016),
+    ("pagedown", 0x01000017),
+    ("shift", 0x01000020),
+    ("ctrl", 0x01000021),
+    ("meta", 0x01000022),
+    ("alt", 0x01000023),
+    ("space", 0x20),
+];
+
+/// The punctuation keys pa3ds can name, so a binding cannot ask for a character no key carries.
+pub const CHARACTERS: [&str; PUNCTUATION.len()] = {
+    let mut out = [""; PUNCTUATION.len()];
+    let mut at = 0;
+    while at < PUNCTUATION.len() {
+        out[at] = PUNCTUATION[at].1;
+        at += 1;
+    }
+    out
+};
+
+/// What each of the emulator's controls is called out loud.
+pub const CONTROLS: [(&str, &str); 20] = [
+    ("button_a", "A"),
+    ("button_b", "B"),
+    ("button_x", "X"),
+    ("button_y", "Y"),
+    ("button_up", "up"),
+    ("button_down", "down"),
+    ("button_left", "left"),
+    ("button_right", "right"),
+    ("button_l", "L"),
+    ("button_r", "R"),
+    ("button_zl", "ZL"),
+    ("button_zr", "ZR"),
+    ("button_start", "Start"),
+    ("button_select", "Select"),
+    ("button_home", "Home"),
+    ("button_power", "Power"),
+    ("button_debug", "the debug button"),
+    ("button_gpio14", "the GPIO 14 button"),
+    ("c_stick", "the C-stick"),
+    ("circle_pad", "the circle pad"),
+];
+
+/// Controls whose loss is logged but not said. ORAS uses none of them — the C-stick does nothing
+/// in it, and the debug and GPIO 14 buttons are the emulator's own — so taking one costs the player
+/// nothing, and saying so at every start would be noise. Everything else is a button somebody
+/// presses, and M turning out to be Start is exactly what this is for.
+pub const QUIET: [&str; 3] = ["c_stick", "button_debug", "button_gpio14"];
+
+// Written out where Python derives it from `CONTROLS`: the names of its `button_` entries, in
+// order.
+pub const BUTTONS: [&str; 18] = [
+    "a", "b", "x", "y", "up", "down", "left", "right", "l", "r", "zl", "zr", "start", "select",
+    "home", "power", "debug", "gpio14",
+];
+pub const STICKS: [&str; 2] = ["circle_pad", "c_stick"];
+pub const DIRECTIONS: [&str; 4] = ["up", "down", "left", "right"];
+pub const MODIFIER: &str = "modifier";
+pub const SCALE: &str = "modifier_scale";
+/// What a player may bind a key to on a stick. `modifier_scale` is the fifth setting and is a
+/// number, not a key.
+pub const STICK_KEYS: [&str; 5] = ["up", "down", "left", "right", MODIFIER];
+
+pub const KEYBOARD: &str = "keyboard";
+
+/// `CONTROLS.get(name)`.
+fn controls(name: &str) -> Option<&'static str> {
+    CONTROLS
+        .iter()
+        .find(|(control, _)| *control == name)
+        .map(|(_, said)| *said)
+}
+
+/// `str.isdigit()` for one character: the decimal digits and the superscripts, subscripts and
+/// circled numbers that Unicode counts as digits without being able to `int()` them.
+fn is_digit(c: char) -> bool {
+    // The code points with Python's `isdigit` true and a general category other than Nd.
+    const OTHER_DIGITS: [(u32, u32); 20] = [
+        (178, 179),
+        (185, 185),
+        (4969, 4977),
+        (6618, 6618),
+        (8304, 8304),
+        (8308, 8313),
+        (8320, 8329),
+        (9312, 9320),
+        (9332, 9340),
+        (9352, 9360),
+        (9450, 9450),
+        (9461, 9469),
+        (9471, 9471),
+        (10102, 10110),
+        (10112, 10120),
+        (10122, 10130),
+        (68160, 68163),
+        (69216, 69224),
+        (69714, 69722),
+        (127232, 127242),
+    ];
+    py::is_digit(c)
+        || OTHER_DIGITS
+            .iter()
+            .any(|(first, last)| (*first..=*last).contains(&(c as u32)))
+}
+
+/// `text.isdigit()`.
+fn isdigit(text: &str) -> bool {
+    !text.is_empty() && text.chars().all(is_digit)
+}
+
+/// The value of a string of Unicode decimal digits, which is what `\d+` matched and what `int()`
+/// reads. Python's integers have no end and these have: a number past `i64` stops at its largest.
+fn digits_value(digits: &str) -> i64 {
+    digits.chars().fold(0i64, |value, digit| {
+        // Decimal digits come in runs of ten from a zero, so a digit's value is how far into its
+        // run of neighbours it is.
+        let mut before = 0u32;
+        while let Some(previous) = char::from_u32((digit as u32).wrapping_sub(before + 1)) {
+            if get_general_category(previous) != GeneralCategory::DecimalNumber {
+                break;
+            }
+            before += 1;
+        }
+        value
+            .saturating_mul(10)
+            .saturating_add(i64::from(before % 10))
+    })
+}
+
+/// `int(text)` of a string `isdigit` accepted: a ValueError for the digits `int()` cannot read.
+#[track_caller]
+fn int_of(text: &str) -> Result<i64> {
+    if text.chars().all(py::is_digit) {
+        Ok(digits_value(text))
+    } else {
+        Err(Error::value(format!(
+            "invalid literal for int() with base 10: {}",
+            py::repr(text)
+        )))
+    }
+}
+
+/// A key's name as the number Azahar stores, or None for a name no key has.
+///
+/// Qt numbers a printable key by its unshifted character — `A` is `0x41`, `;` is `0x3b` — and
+/// everything else from `0x01000000` up.
+pub fn qt_code(name: &str) -> Result<Option<i64>> {
+    let key = name.to_lowercase();
+    if let Some((_, code)) = QT_NAMED.iter().find(|(named, _)| *named == key) {
+        return Ok(Some(*code));
+    }
+    let mut characters = key.chars();
+    let (Some(only), None) = (characters.next(), characters.next()) else {
+        return Ok(None);
+    };
+    if is_alpha(only) {
+        let upper: Vec<char> = only.to_uppercase().collect();
+        if upper.len() != 1 {
+            return Err(Error::new(
+                Kind::TypeError,
+                format!(
+                    "ord() expected a character, but string of length {} found",
+                    upper.len()
+                ),
+            ));
+        }
+        return Ok(Some(i64::from(upper[0] as u32)));
+    }
+    if is_digit(only) || CHARACTERS.contains(&key.as_str()) {
+        return Ok(Some(i64::from(only as u32)));
+    }
+    Ok(None)
+}
+
+/// `str.isalpha()` for one character: the letters, which is every general category starting
+/// with L.
+fn is_alpha(c: char) -> bool {
+    use GeneralCategory::*;
+    matches!(
+        get_general_category(c),
+        UppercaseLetter | LowercaseLetter | TitlecaseLetter | ModifierLetter | OtherLetter
+    )
+}
+
+/// What Azahar's `code:` number is called here, or the number itself when nothing knows it.
+pub fn qt_name(code: i64) -> String {
+    if let Some((name, _)) = QT_NAMED.iter().find(|(_, named)| *named == code) {
+        return name.to_string();
+    }
+    if (0x41..=0x5A).contains(&code) {
+        return (code as u8 as char).to_ascii_lowercase().to_string();
+    }
+    if (0x20..0x7F).contains(&code) {
+        let character = code as u8 as char;
+        if character.is_ascii_digit() || CHARACTERS.contains(&character.to_string().as_str()) {
+            return character.to_string();
+        }
+    }
+    format!("code {code}")
+}
+
+/// A bound name without its modifiers: `shift+k` is still the k key as far as Azahar is
+/// concerned, because the emulator watches the key and not what is held with it.
+pub fn bare(name: &str) -> String {
+    let mut name = name;
+    for modifier in ORDER {
+        name = name.strip_prefix(&format!("{modifier}+")).unwrap_or(name);
+    }
+    name.to_string()
+}
+
+/// Somewhere else to keep the player's things, for a test and for an agent's session: a run from
+/// a checkout would otherwise write into whatever the person at this machine is really playing
+/// with.
+pub const HOME_ENV: &str = "PA3DS_HOME";
+
+/// The folder pa3ds itself is in: beside the executable once there is one, and the checkout
+/// otherwise.
+///
+/// There is always an executable here, where Python's `sys.frozen` is only set in a build.
+pub fn app_path() -> Result<PathBuf> {
+    let executable = std::env::current_exe()?;
+    Ok(executable
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_default())
+}
+
+/// `<pa3ds>/user`: the folder pa3ds keeps the player's own things in — the log, the keys file,
+/// and the names they have given (`pa3ds.core.names`).
+///
+/// **Beside pa3ds, never in `%APPDATA%` and never under Program Files** (ADR-0032, the user
+/// 2026-09-22): pa3ds is meant to sit next to its emulator in a folder that can be copied to
+/// another machine whole, names and keys and all. `PA3DS_HOME` moves it, which is what a test
+/// wants and what keeps an agent's run off the player's real files.
+pub fn home_path() -> Result<PathBuf> {
+    if let Some(moved) = std::env::var_os(HOME_ENV).filter(|moved| !moved.is_empty()) {
+        return Ok(PathBuf::from(moved));
+    }
+    Ok(app_path()?.join("user"))
+}
+
+/// `<pa3ds>/user/keys.toml`, or under `home` instead.
+pub fn keys_path(home: Option<&Path>) -> Result<PathBuf> {
+    let home = match home {
+        None => home_path()?,
+        Some(home) => home.to_path_buf(),
+    };
+    Ok(home.join(FILE_NAME))
+}
+
+/// `Path.home()`.
+fn home() -> Result<PathBuf> {
+    #[cfg(windows)]
+    let found = std::env::var_os("USERPROFILE").or_else(|| {
+        let path = std::env::var_os("HOMEPATH")?;
+        let mut home = std::env::var_os("HOMEDRIVE").unwrap_or_default();
+        home.push(path);
+        Some(home)
+    });
+    #[cfg(not(windows))]
+    let found = std::env::var_os("HOME");
+    match found {
+        Some(found) => Ok(PathBuf::from(found)),
+        None => Err(Error::new(
+            Kind::RuntimeError,
+            "Could not determine home directory.",
+        )),
+    }
+}
+
+/// `%APPDATA%\Azahar\config\qt-config.ini`, where the player's own Azahar keeps its
+/// settings. The rig's fork keeps its own beside the executable and is never patched from
+/// here.
+pub fn emulator_config() -> Result<PathBuf> {
+    let root = match std::env::var_os("APPDATA").filter(|root| !root.is_empty()) {
+        Some(root) => PathBuf::from(root),
+        None => home()?,
+    };
+    Ok(root.join("Azahar").join("config").join("qt-config.ini"))
+}
+
+// ---------------------------------------------------------------- parameter packages
+
+/// One of Azahar's parameter strings as the pairs it holds, unescaped. A pair that is not one
+/// pair is dropped, which is what the emulator does with it too.
+pub fn unpack(serialized: &str) -> IndexMap<String, String> {
+    let mut out = IndexMap::new();
+    for pair in serialized.split(',') {
+        if let Some((key, value)) = pair.split_once(':') {
+            out.insert(unescape(key), unescape(value));
+        }
+    }
+    out
+}
+
+/// Pairs back into one of Azahar's parameter strings, in the alphabetical order its own
+/// sorted map hands them out in, so a value pa3ds did not change comes back byte for byte.
+pub fn pack(params: &IndexMap<String, String>) -> String {
+    let mut items: Vec<(&String, &String)> = params.iter().collect();
+    items.sort();
+    items
+        .into_iter()
+        .map(|(key, value)| format!("{}:{}", escape(key), escape(value)))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn unescape(part: &str) -> String {
+    part.replace("$0", ":")
+        .replace("$1", ",")
+        .replace("$2", "$")
+}
+
+fn escape(part: &str) -> String {
+    part.replace('$', "$2")
+        .replace(',', "$1")
+        .replace(':', "$0")
+}
+
+/// One key as a binding of its own: what a button holds, and what a stick holds for each of
+/// its directions.
+pub fn keyboard_param(code: i64) -> String {
+    pack(&IndexMap::from([
+        ("code".to_string(), code.to_string()),
+        ("engine".to_string(), KEYBOARD.to_string()),
+    ]))
+}
+
+/// The key a binding is on, or None when it is not on the keyboard at all.
+pub fn keyboard_code(params: &IndexMap<String, String>) -> Result<Option<i64>> {
+    let code = params.get("code").map(String::as_str).unwrap_or("");
+    if params.get("engine").map(String::as_str) == Some(KEYBOARD) && isdigit(code) {
+        Ok(Some(int_of(code)?))
+    } else {
+        Ok(None)
+    }
+}
+
+// ---------------------------------------------------------------- the emulator's config
+
+// `\s` as Python reads it in a `str` pattern, which is `str.isspace`: wider than the regex crate's.
+const SPACE: &str = concat!(
+    r"[\t\n\x0b\x0c\r\x1c-\x1f \x85\xa0\x{1680}\x{2000}-\x{200a}",
+    r"\x{2028}\x{2029}\x{202f}\x{205f}\x{3000}]"
+);
+
+static PROFILE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&format!(r"(?m)^profile=(\d+){SPACE}*$")).expect("a fixed pattern")
+});
+static CONTROL: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^profiles\\(\d+)\\(button_[a-z0-9_]+|c_stick|circle_pad)=(.*)$")
+        .expect("a fixed pattern")
+});
+
+/// A setting's value with the quotes Azahar writes around a parameter string taken off.
+fn plain(value: &str) -> &str {
+    py::strip(value).trim_matches('"')
+}
+
+/// Which `profiles\<n>\` section is in use. `profile=0` chooses `profiles\1\`: the
+/// setting counts from zero and the sections count from one.
+fn profile(text: &str) -> i64 {
+    let chosen = PROFILE.captures(text);
+    chosen
+        .map(|chosen| digits_value(&chosen[1]))
+        .unwrap_or(0)
+        .saturating_add(1)
+}
+
+/// Every control of the chosen profile with the key names bound to it, sticks included.
+///
+/// A stick holds four directions and a modifier in one value, so a control maps to a list, in
+/// `STICK_KEYS` order rather than the alphabetical one the value is stored in. Anything not on
+/// the keyboard — a gamepad, the touch screen — is left out, since a binding elsewhere costs the
+/// player no key.
+pub fn emulator_keys(text: &str) -> Result<IndexMap<String, Vec<String>>> {
+    let wanted = profile(text);
+    let mut found: IndexMap<String, Vec<String>> = IndexMap::new();
+    for captured in CONTROL.captures_iter(text) {
+        let (profile, control, value) = (&captured[1], &captured[2], &captured[3]);
+        if digits_value(profile) != wanted {
+            continue;
+        }
+        let params = unpack(plain(value));
+        // A button is one binding of its own; a stick holds one per direction, nested inside.
+        let mut inside = vec![params.clone()];
+        for name in STICK_KEYS {
+            inside.push(unpack(params.get(name).map(String::as_str).unwrap_or("")));
+        }
+        let mut codes = Vec::new();
+        for part in &inside {
+            if let Some(code) = keyboard_code(part)? {
+                codes.push(code);
+            }
+        }
+        let names: IndexSet<String> = codes.into_iter().map(qt_name).collect();
+        if !names.is_empty() {
+            found.insert(control.to_string(), names.into_iter().collect());
+        }
+    }
+    Ok(found)
+}
+
+/// Each stick with the key on each of its settings: `{"c_stick": {"up": "i", ...}}`.
+///
+/// `emulator_keys` answers "which keys does this control cost me"; this answers "what is it
+/// bound to", which is what the keys file has to show for a stick to be editable by hand.
+pub fn emulator_sticks(text: &str) -> Result<IndexMap<String, IndexMap<String, String>>> {
+    let wanted = profile(text);
+    let mut found: IndexMap<String, IndexMap<String, String>> = IndexMap::new();
+    for captured in CONTROL.captures_iter(text) {
+        let (profile, control, value) = (&captured[1], &captured[2], &captured[3]);
+        if digits_value(profile) != wanted || !STICKS.contains(&control) {
+            continue;
+        }
+        let params = unpack(plain(value));
+        let mut on: IndexMap<String, String> = IndexMap::new();
+        for name in STICK_KEYS {
+            let inner = unpack(params.get(name).map(String::as_str).unwrap_or(""));
+            if let Some(code) = keyboard_code(&inner)? {
+                on.insert(name.to_string(), qt_name(code));
+            }
+        }
+        if let Some(scale) = params.get(SCALE).filter(|scale| !scale.is_empty()) {
+            on.insert(SCALE.to_string(), scale.clone());
+        }
+        if !on.is_empty() {
+            found.insert(control.to_string(), on);
+        }
+    }
+    Ok(found)
+}
+
+/// The line ending a line was read with, so patching one line does not change the file's.
+fn ending(line: &str) -> &'static str {
+    for end in ["\r\n", "\n", "\r"] {
+        if line.ends_with(end) {
+            return end;
+        }
+    }
+    ""
+}
+
+/// `text.splitlines(keepends=True)`: Python breaks a line at more than `\n`.
+fn splitlines(text: &str) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut line = String::new();
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        line.push(c);
+        let breaks = matches!(
+            c,
+            '\n' | '\r'
+                | '\x0b'
+                | '\x0c'
+                | '\x1c'
+                | '\x1d'
+                | '\x1e'
+                | '\u{85}'
+                | '\u{2028}'
+                | '\u{2029}'
+        );
+        if breaks {
+            if c == '\r' && chars.peek() == Some(&'\n') {
+                line.push('\n');
+                chars.next();
+            }
+            lines.push(std::mem::take(&mut line));
+        }
+    }
+    if !line.is_empty() {
+        lines.push(line);
+    }
+    lines
+}
+
+/// The emulator's config as lines, so patching changes the lines it means to and leaves the
+/// file's own line endings alone.
+struct Config {
+    profile: i64,
+    lines: Vec<String>,
+    r#where: HashMap<String, usize>,
+}
+
+impl Config {
+    fn new(text: &str) -> Self {
+        let lines = splitlines(text);
+        let r#where = lines
+            .iter()
+            .enumerate()
+            .map(|(index, line)| {
+                let name = line.split_once('=').map_or(line.as_str(), |(name, _)| name);
+                (py::strip(name).to_string(), index)
+            })
+            .collect();
+        Config {
+            profile: profile(text),
+            lines,
+            r#where,
+        }
+    }
+
+    fn text(&self) -> String {
+        self.lines.concat()
+    }
+
+    fn setting(&self, control: &str) -> String {
+        format!("profiles\\{}\\{control}", self.profile)
+    }
+
+    fn value(&self, setting: &str) -> Option<String> {
+        let index = *self.r#where.get(setting)?;
+        Some(
+            plain(
+                self.lines[index]
+                    .split_once('=')
+                    .map_or("", |(_, value)| value),
+            )
+            .to_string(),
+        )
+    }
+
+    /// Write a value and force its `\default` flag off; True when something changed.
+    ///
+    /// The flag is not optional: Azahar ignores a stored value while its flag is true and
+    /// re-saves the file at startup, which is how a `frame_limit` of 1000 was silently ignored
+    /// for a whole afternoon.
+    fn set(&mut self, setting: &str, value: &str, quoted: bool) -> bool {
+        let (at, flag_at) = (
+            self.r#where.get(setting).copied(),
+            self.r#where.get(&format!("{setting}\\default")).copied(),
+        );
+        let (Some(at), Some(flag_at)) = (at, flag_at) else {
+            return false;
+        };
+        let was = plain(self.lines[at].split_once('=').map_or("", |(_, was)| was));
+        let flagged = py::strip(
+            self.lines[flag_at]
+                .split_once('=')
+                .map_or("", |(_, flagged)| flagged),
+        );
+        if was == value && flagged == "false" {
+            return false; // as it was, quotes and all: a start that changes nothing writes nothing
+        }
+        let written = if quoted {
+            format!("\"{value}\"")
+        } else {
+            value.to_string()
+        };
+        self.lines[at] = format!("{setting}={written}{}", ending(&self.lines[at]));
+        self.lines[flag_at] = format!("{setting}\\default=false{}", ending(&self.lines[flag_at]));
+        true
+    }
+}
+
+/// What one control is asked to be: a button's key, or the settings inside a stick.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Asked {
+    Key(String),
+    Stick(IndexMap<String, String>),
+}
+
+/// Button to key, and a stick to the settings inside it, as `[azahar]` holds them.
+pub type Wanted = IndexMap<String, Asked>;
+
+/// The config with `wanted` written into it, and a line for each control actually changed.
+///
+/// A control already bound the way it asks for is not rewritten, so a start that changes nothing
+/// says nothing and does not tell the player to restart the game for no reason.
+pub fn patch(text: &str, wanted: &Wanted) -> Result<(String, Vec<String>)> {
+    let mut config = Config::new(text);
+    let mut changed = Vec::new();
+    for (control, asked) in wanted {
+        match asked {
+            Asked::Key(asked) => patch_button(&mut config, control, asked, &mut changed)?,
+            Asked::Stick(asked) => patch_stick(&mut config, control, asked, &mut changed)?,
+        }
+    }
+    Ok((config.text(), changed))
+}
+
+/// The config with Azahar's own settings written into it (`pa3ds.core.config`), and a line
+/// for each changed. A setting is found by its name alone: these are unique across the file's
+/// sections, and one the file does not have is said rather than invented.
+pub fn patch_settings(text: &str, wanted: &IndexMap<String, Value>) -> (String, Vec<String>) {
+    let mut config = Config::new(text);
+    let mut changed = Vec::new();
+    for (setting, asked) in wanted {
+        let value = match asked {
+            Value::Bool(asked) => asked.to_string(),
+            Value::Int(asked) => asked.to_string(),
+            Value::Float(asked) => py::float_repr(*asked),
+            Value::Str(asked) => asked.clone(),
+        };
+        if config.value(setting).is_none() {
+            changed.push(format!(
+                "Azahar has no setting called {}",
+                py::repr(setting)
+            ));
+        } else if config.set(setting, &value, matches!(asked, Value::Str(_))) {
+            changed.push(format!("Azahar's {setting} is now {value}"));
+        }
+    }
+    (config.text(), changed)
+}
+
+/// `str(OSError)` as Python words it: errno and its text for what `open` raised, the Windows
+/// error for what a direct Windows call (`mkdir`) raised, and the path as `repr` shows it.
+fn os_error(error: &std::io::Error, path: &Path, opened: bool) -> String {
+    let shown = py::repr(&path_str(path));
+    let Some(code) = error.raw_os_error() else {
+        return error.to_string();
+    };
+    let words = error.to_string();
+    let text = words
+        .strip_suffix(&format!(" (os error {code})"))
+        .unwrap_or(&words);
+    if cfg!(windows) {
+        let errno = match code {
+            2 | 3 => Some((2, "No such file or directory")),
+            5 | 32 | 33 => Some((13, "Permission denied")),
+            80 => Some((17, "File exists")),
+            112 => Some((28, "No space left on device")),
+            _ => None,
+        };
+        return match errno {
+            Some((errno, text)) if opened => format!("[Errno {errno}] {text}: {shown}"),
+            _ => format!(
+                "[WinError {code}] {}: {shown}",
+                text.strip_suffix('.').unwrap_or(text)
+            ),
+        };
+    }
+    format!("[Errno {code}] {text}: {shown}")
+}
+
+/// `str(path)`: pathlib writes a Windows path with backslashes, without a doubled separator and
+/// without a trailing one, and an empty path as `.`.
+pub(crate) fn path_str(path: &Path) -> String {
+    let normal: PathBuf = path
+        .components()
+        .filter(|component| !matches!(component, Component::CurDir))
+        .collect();
+    if normal.as_os_str().is_empty() {
+        ".".to_string()
+    } else {
+        normal.display().to_string()
+    }
+}
+
+/// Write a patched config, and say what became of it: "applied", "waiting" while Azahar is
+/// open, or "" when nothing changed or it could not be written.
+///
+/// Azahar saves its own settings over the file when it closes, so a patch written while it runs
+/// is lost — which is why "restart the game" was the wrong thing to tell the player. Nothing is
+/// written while it is open, and the player is told to close it and start pa3ds again.
+pub fn save(
+    config: &Path,
+    text: &str,
+    patched: &str,
+    write: bool,
+    running: bool,
+    notes: &mut Vec<String>,
+) -> String {
+    if patched == text {
+        return String::new();
+    }
+    if running {
+        notes.push(format!(
+            "{} left alone: Azahar is open, and saves its own settings over the \
+             file when it closes",
+            path_str(config)
+        ));
+        return "waiting".to_string();
+    }
+    if write && let Err(error) = std::fs::write(config, patched) {
+        notes.push(format!(
+            "{} could not be written: {}",
+            path_str(config),
+            os_error(&error, config, true)
+        ));
+        return String::new();
+    }
+    "applied".to_string()
+}
+
+/// The emulator's config as it is on disk, or "" when it cannot be read.
+pub fn read_config(config: &Path, notes: &mut Vec<String>) -> Result<String> {
+    // newline="" both ways, or Python quietly rewrites a CRLF config as LF on the way in and
+    // hands the whole file back changed on the way out.
+    match std::fs::read(config) {
+        Ok(bytes) => String::from_utf8(bytes)
+            .map_err(|error| toml::decode_error(error.as_bytes(), error.utf8_error())),
+        Err(error) => {
+            notes.push(format!(
+                "{} could not be read: {}",
+                path_str(config),
+                os_error(&error, config, true)
+            ));
+            Ok(String::new())
+        }
+    }
+}
+
+fn patch_button(
+    config: &mut Config,
+    button: &str,
+    key: &str,
+    changed: &mut Vec<String>,
+) -> Result<()> {
+    let setting = config.setting(&format!("button_{button}"));
+    let code = qt_code(key)?;
+    match code {
+        None => changed.push(format!("{button}: no key is called {}", py::repr(key))),
+        Some(code) => {
+            if config.value(&setting).is_none() {
+                changed.push(format!("{button}: no {setting} in the config to patch"));
+            } else if config.set(&setting, &keyboard_param(code), true) {
+                let named = format!("button_{button}");
+                let said = controls(&named).ok_or_else(|| Error::key(py::repr(&named)))?;
+                changed.push(format!("{said} is now {key}"));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// One stick, changed in place.
+///
+/// The whole package is read, the settings asked for are replaced, and everything else is put
+/// back as it was. Azahar keeps a per-direction annotation **keyed by that direction's own
+/// binding** (`configure_input.cpp`), so a direction that moves takes its annotation with it;
+/// rebuilding the value instead would drop whatever a gamepad had left in there.
+fn patch_stick(
+    config: &mut Config,
+    stick: &str,
+    asked: &IndexMap<String, String>,
+    changed: &mut Vec<String>,
+) -> Result<()> {
+    let setting = config.setting(stick);
+    let Some(current) = config.value(&setting) else {
+        changed.push(format!("{stick}: no {setting} in the config to patch"));
+        return Ok(());
+    };
+    let mut params = unpack(&current);
+    for (name, value) in asked {
+        if name == SCALE {
+            params.insert(SCALE.to_string(), value.clone());
+            continue;
+        }
+        let code = qt_code(value)?;
+        if !STICK_KEYS.contains(&name.as_str()) {
+            changed.push(format!("{stick}: a stick has no {}", py::repr(name)));
+        } else if let Some(code) = code {
+            let now = keyboard_param(code);
+            let was = params.get(name).cloned();
+            if let Some(was) = was
+                && params.contains_key(&was)
+            {
+                let held = params.shift_remove(&was).unwrap_or_default();
+                params.insert(now.clone(), held); // the annotation follows its direction
+            }
+            params.insert(name.clone(), now);
+        } else {
+            changed.push(format!("{stick}: no key is called {}", py::repr(value)));
+        }
+    }
+    if config.set(&setting, &pack(&params), true) {
+        let said = asked
+            .iter()
+            .map(|(name, value)| format!("{name} {value}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        changed.push(format!(
+            "{} is now {said}",
+            controls(stick).unwrap_or(stick)
+        ));
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------- the keys file
+
+/// The keys that mean the same thing in every mode: what the file writes once under
+/// `[pa3ds.navigation]` instead of repeating under each mode.
+pub fn shared(bindings: &Bindings) -> IndexMap<String, String> {
+    let modes: Vec<&IndexMap<String, String>> = bindings.values().collect();
+    let Some((first, others)) = modes.split_first() else {
+        return IndexMap::new();
+    };
+    first
+        .iter()
+        .filter(|(key, action)| others.iter().all(|other| other.get(*key) == Some(*action)))
+        .map(|(key, action)| (key.clone(), action.clone()))
+        .collect()
+}
+
+/// The keys file as it is first written: the defaults, and the emulator's own bindings set
+/// down as a comment so a player can read their layout without Azahar's settings dialog.
+/// `explained` is what an action does where its name does not say it all, written above each
+/// key that does it.
+pub fn render(
+    bindings: &Bindings,
+    emulator: &IndexMap<String, Vec<String>>,
+    sticks: Option<&IndexMap<String, IndexMap<String, String>>>,
+    explained: Option<&IndexMap<String, String>>,
+) -> Result<String> {
+    let no_sticks = IndexMap::new();
+    let sticks = sticks.unwrap_or(&no_sticks);
+    let no_explained = IndexMap::new();
+    let explained = explained.unwrap_or(&no_explained);
+
+    let line = |key: &str, action: &str| -> Vec<String> {
+        let said = explained.get(action).filter(|said| !said.is_empty());
+        let mut lines = match said {
+            Some(said) => toml::comment(wrap(said, 94)),
+            None => Vec::new(),
+        };
+        lines.push(format!("{} = {}", toml::quote(key), toml::quote(action)));
+        lines
+    };
+
+    let both = shared(bindings);
+    let mut lines: Vec<String> = vec![
+        "# What every key does: the keys pa3ds answers and the buttons Azahar is bound to.".into(),
+        "# Written once with the defaults, and never overwritten — this file is yours.".into(),
+        "".into(),
+        "# pa3ds takes these while Azahar's window is in front, and the game never sees them."
+            .into(),
+        r#"# A key may carry modifiers in front of it: "shift+k", "ctrl+alt+k"."#.into(),
+        "#".into(),
+        "# These mean the same thing in both navigation modes.".into(),
+        "".into(),
+        format!("[{SECTION}.{GROUP}]"),
+    ];
+    for (key, action) in &both {
+        lines.extend(line(key, action));
+    }
+    for (mode, keys) in bindings {
+        lines.push("".into());
+        lines.push(format!(
+            "# What a key means in {mode} mode. One here wins over one above."
+        ));
+        lines.push(format!("[{SECTION}.{GROUP}.{mode}]"));
+        for (key, action) in keys {
+            if !both.contains_key(key) {
+                lines.extend(line(key, action));
+            }
+        }
+    }
+    lines.extend([
+        "".to_string(),
+        "# Buttons to bind in the emulator, written into qt-config.ini when pa3ds starts.".into(),
+        "# A button left out keeps whatever Azahar already has, so an empty section changes".into(),
+        "# nothing. Azahar saves its own over them when it closes, so close it before starting"
+            .into(),
+        "# pa3ds after a change here.".into(),
+        "#".into(),
+        "# What Azahar has now, in the form a line here takes — uncomment one to change it:".into(),
+    ]);
+    for button in BUTTONS {
+        let names = emulator
+            .get(&format!("button_{button}"))
+            .filter(|names| !names.is_empty());
+        lines.push(match names {
+            Some(names) => format!("#   {button} = \"{}\"", names[0]),
+            None => format!("#   {button} = ?"),
+        });
+    }
+    lines.extend([
+        "".to_string(),
+        format!("[{EMULATOR_SECTION}]"),
+        "".into(),
+        "# A stick is four directions, a modifier that moves it halfway while it is held — which"
+            .into(),
+        "# is how ORAS is walked rather than run — and the scale that halving uses. Each stick"
+            .into(),
+        "# takes a table of its own, and a setting left out keeps what Azahar has.".into(),
+    ]);
+    for stick in STICKS {
+        let no_settings = IndexMap::new();
+        let on = sticks.get(stick).unwrap_or(&no_settings);
+        lines.extend(["#".to_string(), format!("# [{EMULATOR_SECTION}.{stick}]")]);
+        for name in STICK_KEYS {
+            lines.push(match on.get(name) {
+                Some(key) => format!("#   {name} = \"{key}\""),
+                None => format!("#   {name} = ?"),
+            });
+        }
+        let scale = on.get(SCALE).map(String::as_str).unwrap_or("0.500000");
+        lines.push(format!("#   {SCALE} = {}", format_g(float_of(scale)?)));
+    }
+    lines.push("".into());
+    Ok(lines.join("\n"))
+}
+
+/// Whether a parser handed back a table rather than one value. Asked here rather than with a
+/// bare `isinstance` so what a caller holds stays plainly unknown until `toml.table` opens it.
+fn is_table(value: &::toml::Value) -> bool {
+    matches!(value, ::toml::Value::Table(_))
+}
+
+/// A table's strings keyed in lower case: a key and a button both name themselves in lower
+/// case, and a file written by hand will not always agree.
+fn strings(section: Option<&::toml::Value>) -> IndexMap<String, String> {
+    toml::strings(section)
+        .into_iter()
+        .map(|(key, value)| (key.to_lowercase(), value))
+        .collect()
+}
+
+/// `[pa3ds.navigation]` and its modes, merged: a mode's own key wins over a shared one.
+///
+/// None is the defaults themselves, which `prepare` tells from a file that happens to say the same
+/// (`bindings is defaults` in Python).
+fn read_keys(
+    path: &Path,
+    loaded: &IndexMap<String, ::toml::Value>,
+    defaults: &Bindings,
+    notes: &mut Vec<String>,
+) -> Option<Bindings> {
+    let group = toml::table(loaded.get(SECTION)).get(GROUP).cloned();
+    let Some(group) = group else {
+        notes.push(format!(
+            "{} has no [{SECTION}.{GROUP}], using the default keys",
+            path_str(path)
+        ));
+        return None;
+    };
+    // Every action pa3ds has, pooled across the modes. A mode names its own, but a player who
+    // writes an action under the wrong heading has made a typo, not a new feature, and a typo
+    // that reaches the navigator quietly does something else rather than nothing.
+    let known: HashSet<&str> = defaults
+        .values()
+        .flat_map(|keys| keys.values().map(String::as_str))
+        .collect();
+    let both = actions(path, Some(&group), &known, notes);
+    let mut bindings: Bindings = IndexMap::new();
+    for (mode, keys) in toml::table(Some(&group)) {
+        if !is_table(&keys) {
+            continue;
+        }
+        if !defaults.contains_key(&mode) {
+            notes.push(format!(
+                "{}: there is no mode called {}",
+                path_str(path),
+                py::repr(&mode)
+            ));
+            continue;
+        }
+        let mut merged = both.clone();
+        merged.extend(actions(path, Some(&keys), &known, notes));
+        bindings.insert(mode, merged);
+    }
+    for mode in defaults.keys() {
+        if !bindings.contains_key(mode) {
+            bindings.insert(mode.clone(), both.clone());
+        }
+    }
+    if !bindings.values().any(|keys| !keys.is_empty()) {
+        notes.push(format!(
+            "{} binds no keys, using the defaults",
+            path_str(path)
+        ));
+        return None;
+    }
+    Some(bindings)
+}
+
+/// A table of key to action, with the actions pa3ds does not have said and dropped.
+fn actions(
+    path: &Path,
+    table: Option<&::toml::Value>,
+    known: &HashSet<&str>,
+    notes: &mut Vec<String>,
+) -> IndexMap<String, String> {
+    let mut out = strings(table);
+    let unknown: Vec<String> = out
+        .iter()
+        .filter(|(_, action)| !known.contains(action.as_str()))
+        .map(|(key, _)| key.clone())
+        .collect();
+    for key in unknown {
+        notes.push(format!(
+            "{}: {key} is set to {}, which pa3ds does not do",
+            path_str(path),
+            py::repr(&out[&key])
+        ));
+        out.shift_remove(&key);
+    }
+    out
+}
+
+/// `[azahar]`: a button to the key it wants, a stick to the table inside it.
+fn read_emulator(
+    path: &Path,
+    loaded: &IndexMap<String, ::toml::Value>,
+    notes: &mut Vec<String>,
+) -> Wanted {
+    let mut wanted = Wanted::new();
+    for (name, value) in toml::table(loaded.get(EMULATOR_SECTION)) {
+        let control = name.to_lowercase();
+        match &value {
+            ::toml::Value::String(value) if BUTTONS.contains(&control.as_str()) => {
+                wanted.insert(control, Asked::Key(value.to_lowercase()));
+            }
+            value if is_table(value) && STICKS.contains(&control.as_str()) => {
+                wanted.insert(control, Asked::Stick(stick(value)));
+            }
+            value if is_table(value) => notes.push(format!(
+                "{}: there is no stick called {}",
+                path_str(path),
+                py::repr(&control)
+            )),
+            _ => notes.push(format!(
+                "{}: there is no button called {}",
+                path_str(path),
+                py::repr(&control)
+            )),
+        }
+    }
+    wanted
+}
+
+/// A stick's settings: its keys by name, and `modifier_scale` as the number Azahar writes,
+/// which a player gives as 0.5 and the config keeps as `0.500000`.
+fn stick(stick: &::toml::Value) -> IndexMap<String, String> {
+    let mut out: IndexMap<String, String> = strings(Some(stick))
+        .into_iter()
+        .map(|(name, value)| (name.to_lowercase(), value.to_lowercase()))
+        .collect();
+    let scale = toml::table(Some(stick)).get(SCALE).cloned();
+    let scale = match scale {
+        Some(::toml::Value::Integer(scale)) => Some(scale as f64),
+        Some(::toml::Value::Float(scale)) => Some(scale),
+        _ => None,
+    };
+    if let Some(scale) = scale {
+        out.insert(SCALE.to_string(), fixed(scale, 6));
+    }
+    out
+}
+
+/// What the keys file settled: the bindings the hook takes, and what to say about it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Keys {
+    pub bindings: Bindings,
+    /// Everything worth logging: the file written, the buttons patched, the buttons taken.
+    pub notes: Vec<String>,
+    /// The one sentence worth saying out loud, or "" when there is nothing the player must
+    /// hear.
+    pub said: String,
+}
+
+/// Actions pa3ds has that the player's file puts on no key, with the key pa3ds would use and
+/// the table of the file it would go in.
+///
+/// The file is written once and never overwritten, which is what makes it the player's — and
+/// what means a key added to pa3ds after they first ran it is not in their file. Saying so is
+/// the only honest way out: writing the key in would overrule a player who unbound it on
+/// purpose, and staying quiet leaves a feature they cannot reach and no way to find out why. So
+/// the log says the line to add, and where (Orion, 2026-09-29: a utility beside pa3ds may one day
+/// walk a player through its settings, this file's new keys among them).
+pub fn unreachable(bindings: &Bindings, defaults: &Bindings) -> IndexMap<String, (String, String)> {
+    let bound: HashSet<&str> = bindings
+        .values()
+        .flat_map(|keys| keys.values().map(String::as_str))
+        .collect();
+    let both = shared(defaults);
+    let mut out: IndexMap<String, (String, String)> = IndexMap::new();
+    for (mode, keys) in defaults {
+        for (key, action) in keys {
+            if !bound.contains(action.as_str()) {
+                let table = if both.get(key) == Some(action) {
+                    format!("{SECTION}.{GROUP}")
+                } else {
+                    format!("{SECTION}.{GROUP}.{mode}")
+                };
+                if !out.contains_key(action) {
+                    out.insert(action.clone(), (key.clone(), table));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Which of the emulator's controls pa3ds's keys are sitting on: what it is called, which key
+/// took it, and whether its loss is one to keep quiet about (`QUIET`).
+///
+/// Sorted by the control, so the same overlap is reported the same way every run.
+pub fn taken(
+    bindings: &Bindings,
+    emulator: &IndexMap<String, Vec<String>>,
+) -> Vec<(String, String, bool)> {
+    let mine: HashSet<String> = bindings
+        .values()
+        .flat_map(|keys| keys.keys().map(|key| bare(key)))
+        .collect();
+    let mut found: Vec<(String, String, bool)> = Vec::new();
+    for (control, names) in emulator {
+        for name in names {
+            if mine.contains(name) {
+                found.push((
+                    controls(control).unwrap_or(control).to_string(),
+                    name.clone(),
+                    QUIET.contains(&control.as_str()),
+                ));
+            }
+        }
+    }
+    found.sort();
+    found
+}
+
+/// Read the keys file, writing it with the defaults the first time, and patch the emulator.
+///
+/// `write` off reads and reports without touching either file, which is what a test and a dry
+/// run want. `running` says Azahar is open, when the emulator's config is left alone (`save`).
+/// `explained` is written above the keys of the actions it explains (`render`).
+pub fn prepare(
+    defaults: &Bindings,
+    home: Option<&Path>,
+    config: Option<&Path>,
+    write: bool,
+    running: bool,
+    explained: Option<&IndexMap<String, String>>,
+) -> Result<Keys> {
+    let path = keys_path(home)?;
+    let config = match config {
+        None => emulator_config()?,
+        Some(config) => config.to_path_buf(),
+    };
+    let mut notes: Vec<String> = Vec::new();
+    let text = read_config(&config, &mut notes)?;
+    let mut emulator = emulator_keys(&text)?;
+
+    let mut read: Option<Bindings> = None;
+    let mut wanted = Wanted::new();
+    if !path.exists() {
+        if write {
+            let parent = path.parent().unwrap_or(&path);
+            match std::fs::create_dir_all(parent) {
+                Err(error) => notes.push(format!(
+                    "{} could not be written, using the default keys: {}",
+                    path_str(&path),
+                    os_error(&error, parent, false)
+                )),
+                Ok(()) => {
+                    let text = render(
+                        defaults,
+                        &emulator,
+                        Some(&emulator_sticks(&text)?),
+                        explained,
+                    )?;
+                    // `Path.write_text` opens the file in text mode, which writes each "\n" as the
+                    // platform's line ending: a keys file pa3ds writes on Windows has CRLF lines,
+                    // as the Python's did.
+                    let body = if cfg!(windows) {
+                        text.replace('\n', "\r\n")
+                    } else {
+                        text
+                    };
+                    match std::fs::write(&path, body) {
+                        Ok(()) => {
+                            notes.push(format!("wrote {} with the default keys", path_str(&path)))
+                        }
+                        Err(error) => notes.push(format!(
+                            "{} could not be written, using the default keys: {}",
+                            path_str(&path),
+                            os_error(&error, &path, true)
+                        )),
+                    }
+                }
+            }
+        }
+    } else {
+        let loaded = toml::read(&path)?;
+        if !loaded.is_empty() {
+            read = read_keys(&path, &loaded, defaults, &mut notes);
+            wanted = read_emulator(&path, &loaded, &mut notes);
+        } else {
+            notes.push(format!(
+                "{} could not be read, using the default keys",
+                path_str(&path)
+            ));
+        }
+    }
+    let bindings: &Bindings = read.as_ref().unwrap_or(defaults);
+
+    let mut saved = String::new();
+    if !wanted.is_empty() && !text.is_empty() {
+        let (patched, changed) = patch(&text, &wanted)?;
+        notes.extend(changed);
+        saved = save(&config, &text, &patched, write, running, &mut notes);
+        if saved == "applied" {
+            emulator = emulator_keys(&patched)?;
+        }
+    }
+
+    let over = taken(bindings, &emulator);
+    for (control, key, _) in &over {
+        notes.push(format!("pa3ds takes {key}, which is {control}"));
+    }
+    let missing = if read.is_some() {
+        unreachable(bindings, defaults)
+    } else {
+        IndexMap::new()
+    };
+    for (action, (key, table)) in &missing {
+        notes.push(format!(
+            "{} puts no key on {}: add {} = {} under [{table}]",
+            path_str(&path),
+            py::repr(action),
+            toml::quote(key),
+            toml::quote(action)
+        ));
+    }
+    let said = sentence(&over, &saved, &missing.keys().cloned().collect::<Vec<_>>());
+    Ok(Keys {
+        bindings: bindings.clone(),
+        notes,
+        said,
+    })
+}
+
+/// The one thing worth saying at startup: which buttons pa3ds has taken, whether a rebinding
+/// is waiting for Azahar to be closed, and anything the player cannot reach at all.
+fn sentence(over: &[(String, String, bool)], saved: &str, missing: &[String]) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    let mut loud: Vec<&str> = over
+        .iter()
+        .filter(|(_, _, quiet)| !quiet)
+        .map(|(control, _, _)| control.as_str())
+        .collect();
+    loud.sort();
+    loud.dedup();
+    if !loud.is_empty() {
+        parts.push(format!("pa3ds takes {}", listed(loud)));
+    }
+    if saved == "applied" {
+        parts.push("keys applied to Azahar".to_string());
+    } else if saved == "waiting" {
+        parts.push("close Azahar and start pa3ds again to apply your keys".to_string());
+    }
+    if !missing.is_empty() {
+        let mut sorted: Vec<&str> = missing.iter().map(String::as_str).collect();
+        sorted.sort();
+        parts.push(format!(
+            "your keys file has no key for {}, the log says what to add",
+            listed(sorted)
+        ));
+    }
+    parts.join(". ")
+}
+
+/// Several things as `A, B and C`: how a list is heard rather than how one is read.
+fn listed<'a>(things: impl IntoIterator<Item = &'a str>) -> String {
+    let items: Vec<&str> = things.into_iter().collect();
+    match items.split_last() {
+        None => String::new(),
+        Some((only, [])) => only.to_string(),
+        Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+    }
+}
+
+// ---------------------------------------------------------------- what Python's formatting does
+
+/// `float(text)`: a ValueError for what is not a number, as Python words it.
+#[track_caller]
+pub(crate) fn float_of(text: &str) -> Result<f64> {
+    let bad = || {
+        Error::value(format!(
+            "could not convert string to float: {}",
+            py::repr(text)
+        ))
+    };
+    // Only the whitespace of ASCII and of other scripts: the separators U+001C to U+001F are
+    // `isspace` to `strip` and not to the parser.
+    let stripped = text.trim_matches(|c: char| py::is_space(c) && !('\x1c'..='\x1f').contains(&c));
+    // An underscore is allowed between two digits and nowhere else.
+    let chars: Vec<char> = stripped.chars().collect();
+    for (at, c) in chars.iter().enumerate() {
+        if *c == '_' {
+            let digit = |at: Option<usize>| at.is_some_and(|at| chars[at].is_ascii_digit());
+            if !digit(at.checked_sub(1)) || !digit(Some(at + 1).filter(|at| *at < chars.len())) {
+                return Err(bad());
+            }
+        }
+    }
+    let digits: String = chars.iter().filter(|c| **c != '_').collect();
+    digits.parse::<f64>().map_err(|_| bad())
+}
+
+/// `f"{x:.{digits}f}"`.
+pub(crate) fn fixed(x: f64, digits: usize) -> String {
+    if x.is_nan() {
+        "nan".to_string()
+    } else if x.is_infinite() {
+        if x > 0.0 { "inf" } else { "-inf" }.to_string()
+    } else {
+        format!("{x:.digits$}")
+    }
+}
+
+/// `f"{x:g}"`: six significant digits, the zeros after them dropped, and an exponent when the
+/// number is small or large enough.
+pub(crate) fn format_g(x: f64) -> String {
+    if x.is_nan() || x.is_infinite() {
+        return fixed(x, 0);
+    }
+    let trimmed = |text: &str| -> String {
+        if text.contains('.') {
+            text.trim_end_matches('0').trim_end_matches('.').to_string()
+        } else {
+            text.to_string()
+        }
+    };
+    let scientific = format!("{x:.5e}");
+    let (mantissa, exponent) = scientific.split_once('e').unwrap_or((&scientific, "0"));
+    let exponent: i32 = exponent.parse().unwrap_or(0);
+    if !(-4..6).contains(&exponent) {
+        let sign = if exponent < 0 { '-' } else { '+' };
+        return format!("{}e{sign}{:02}", trimmed(mantissa), exponent.abs());
+    }
+    trimmed(&format!("{x:.*}", (5 - exponent) as usize))
+}
+
+/// `textwrap.wrap(text, width)` with its defaults: the lines the text breaks into, none longer
+/// than `width` characters unless a word is.
+pub(crate) fn wrap(text: &str, width: usize) -> Vec<String> {
+    wrap_chunks(split_chunks(text), width)
+}
+
+/// `\w`: a letter, a number or an underscore.
+fn is_word(c: char) -> bool {
+    use GeneralCategory::*;
+    c == '_'
+        || matches!(
+            get_general_category(c),
+            UppercaseLetter
+                | LowercaseLetter
+                | TitlecaseLetter
+                | ModifierLetter
+                | OtherLetter
+                | DecimalNumber
+                | LetterNumber
+                | OtherNumber
+        )
+}
+
+/// `[^\d\W]`.
+fn is_letter(c: char) -> bool {
+    is_word(c) && get_general_category(c) != GeneralCategory::DecimalNumber
+}
+
+/// `[\w!"'&.,?]`.
+fn is_word_punct(c: char) -> bool {
+    is_word(c) || matches!(c, '!' | '"' | '\'' | '&' | '.' | ',' | '?')
+}
+
+/// `textwrap._whitespace`: what `TextWrapper` turns into a space and splits chunks on.
+fn is_wrap_space(c: char) -> bool {
+    matches!(c, '\t' | '\n' | '\x0b' | '\x0c' | '\r' | ' ')
+}
+
+/// Whether a run of two or more hyphens starts at `at` with a word character after it.
+fn dashes_then_word(text: &[char], at: usize) -> bool {
+    let run = text[at..].iter().take_while(|c| **c == '-').count();
+    run >= 2 && text.get(at + run).is_some_and(|c| is_word(*c))
+}
+
+/// Where the chunk starting at `at` ends: `TextWrapper.wordsep_re` by hand, since the regex crate
+/// has no look-around. A chunk is a run of whitespace, a run of hyphens between words, or a word
+/// that ends at whitespace, after a hyphen inside it, or before a run of hyphens.
+fn chunk_end(text: &[char], at: usize) -> usize {
+    if is_wrap_space(text[at]) {
+        return at + text[at..].iter().take_while(|c| is_wrap_space(**c)).count();
+    }
+    if at > 0 && is_word_punct(text[at - 1]) && dashes_then_word(text, at) {
+        return at + text[at..].iter().take_while(|c| **c == '-').count();
+    }
+    let letter = |at: usize| text.get(at).is_some_and(|c| is_letter(*c));
+    let mut end = at + 1;
+    loop {
+        if end >= text.len() || is_wrap_space(text[end]) {
+            return end;
+        }
+        if text[end] == '-' {
+            let behind = (end >= 2 && letter(end - 2) && letter(end - 1))
+                || (end >= 3 && letter(end - 3) && text[end - 2] == '-' && letter(end - 1));
+            let ahead = letter(end + 1)
+                && (letter(end + 2) || (text.get(end + 2) == Some(&'-') && letter(end + 3)));
+            if behind && ahead {
+                return end + 1;
+            }
+        }
+        if is_word_punct(text[end - 1]) && dashes_then_word(text, end) {
+            return end;
+        }
+        end += 1;
+    }
+}
+
+/// `_munge_whitespace` and `_split`: tabs expanded, every other whitespace character a space,
+/// and the text cut into chunks.
+fn split_chunks(text: &str) -> Vec<Vec<char>> {
+    let mut munged: Vec<char> = Vec::new();
+    let mut column = 0;
+    for c in text.chars() {
+        if c == '\t' {
+            let spaces = 8 - column % 8;
+            munged.extend(std::iter::repeat_n(' ', spaces));
+            column += spaces;
+        } else {
+            munged.push(if is_wrap_space(c) { ' ' } else { c });
+            column = if c == '\n' || c == '\r' {
+                0
+            } else {
+                column + 1
+            };
+        }
+    }
+    let mut chunks = Vec::new();
+    let mut at = 0;
+    while at < munged.len() {
+        let end = chunk_end(&munged, at);
+        chunks.push(munged[at..end].to_vec());
+        at = end;
+    }
+    chunks
+}
+
+fn blank(chunk: &[char]) -> bool {
+    chunk.iter().all(|c| py::is_space(*c))
+}
+
+/// `_handle_long_word`: put as much of a word too long for any line as fits on this one, breaking
+/// after its last hyphen when there is one.
+fn handle_long_word(
+    reversed_chunks: &mut Vec<Vec<char>>,
+    cur_line: &mut Vec<Vec<char>>,
+    cur_len: usize,
+    width: usize,
+) {
+    // Figure out when indent is larger than the specified width, and make
+    // sure at least one character is stripped off on every pass
+    let space_left = if width < 1 { 1 } else { width - cur_len };
+    // If we're allowed to break long words, then do so: put as much
+    // of the next chunk onto the current line as will fit.
+    if space_left > 0 {
+        let mut end = space_left;
+        let chunk = reversed_chunks[reversed_chunks.len() - 1].clone();
+        if chunk.len() > space_left {
+            // break after last hyphen, but only if there are
+            // non-hyphens before it
+            let hyphen = chunk[..space_left].iter().rposition(|c| *c == '-');
+            if let Some(hyphen) = hyphen
+                && hyphen > 0
+                && chunk[..hyphen].iter().any(|c| *c != '-')
+            {
+                end = hyphen + 1;
+            }
+        }
+        cur_line.push(chunk[..end].to_vec());
+        let last = reversed_chunks.len() - 1;
+        reversed_chunks[last] = chunk[end..].to_vec();
+    } else if cur_line.is_empty() {
+        // Otherwise, we have to preserve the long word intact.  Only add
+        // it to the current line if there's nothing already there --
+        // that minimizes how much we violate the width constraint.
+        cur_line.extend(reversed_chunks.pop());
+    }
+}
+
+/// `_wrap_chunks`: lines of `width` characters or fewer, whitespace dropped from both ends of each.
+fn wrap_chunks(mut chunks: Vec<Vec<char>>, width: usize) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    // Arrange in reverse order so items can be efficiently popped
+    // from a stack of chucks.
+    chunks.reverse();
+    while !chunks.is_empty() {
+        let mut cur_line: Vec<Vec<char>> = Vec::new();
+        let mut cur_len = 0;
+        // First chunk on line is whitespace -- drop it, unless this
+        // is the very beginning of the text (ie. no lines started yet).
+        if !lines.is_empty() && chunks.last().is_some_and(|chunk| blank(chunk)) {
+            chunks.pop();
+        }
+        while let Some(chunk) = chunks.last() {
+            let length = chunk.len();
+            // Can at least squeeze this chunk onto the current line.
+            if cur_len + length <= width {
+                cur_line.extend(chunks.pop());
+                cur_len += length;
+            } else {
+                // Nope, this line is full.
+                break;
+            }
+        }
+        // The current line is full, and the next chunk is too big to
+        // fit on *any* line (not just this one).
+        if chunks.last().is_some_and(|chunk| chunk.len() > width) {
+            handle_long_word(&mut chunks, &mut cur_line, cur_len, width);
+        }
+        // If the last chunk on this line is all whitespace, drop it. Python also takes it off
+        // `cur_len`, which only the `max_lines` branch reads, and that is not ported.
+        if cur_line.last().is_some_and(|chunk| blank(chunk)) {
+            cur_line.pop();
+        }
+        if !cur_line.is_empty() {
+            lines.push(cur_line.concat().into_iter().collect());
+        }
+    }
+    lines
+}
