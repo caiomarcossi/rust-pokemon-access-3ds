@@ -98,20 +98,6 @@ fn byte(head: &[u8], index: i64) -> Result<i64> {
     }
 }
 
-/// `round(x)` of a float, which Python refuses for a NaN rather than turning it into a number.
-#[track_caller]
-fn round(x: f64) -> Result<i64> {
-    if x.is_nan() {
-        return Err(Error::value("cannot convert float NaN to integer"));
-    }
-    if x.is_infinite() {
-        // Python raises `OverflowError` here; `py::Kind` has no such class, so this is the
-        // nearest one it has.
-        return Err(Error::value("cannot convert float infinity to integer"));
-    }
-    Ok(py::round(x))
-}
-
 /// Who or what this slot is, or 0 when it is empty.
 pub fn character(head: &[u8]) -> Result<i64> {
     Ok(u32(head, CHARACTER)? & INDEX_MASK)
@@ -232,10 +218,10 @@ pub fn cell(head: &[u8]) -> Result<Option<(i64, i64)>> {
     }
     let half = CELL as f64 / 2.0;
     let world = (
-        round((x - half) / CELL as f64)?,
-        round((z - half) / CELL as f64)?,
+        py::round((x - half) / CELL as f64)?,
+        py::round((z - half) / CELL as f64)?,
     );
-    let heading = (round(f32(head, CELL_X)?)?, round(f32(head, CELL_Z)?)?);
+    let heading = (py::round(f32(head, CELL_X)?)?, py::round(f32(head, CELL_Z)?)?);
     if (heading.0 - world.0).abs() <= 1 && (heading.1 - world.1).abs() <= 1 {
         return Ok(Some(heading));
     }
