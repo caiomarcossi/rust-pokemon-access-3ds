@@ -13,6 +13,7 @@ for name in "$@"; do
     fi
     tail -1 "$tapes/$name.record.out"
     "$py" "$here/tools/tape/py.py" replay "$tapes/$name.tape.gz" "$tapes/$name.py.log" | tail -1
-    diff -q "$tapes/$name.tape.gz.log" "$tapes/$name.py.log" > /dev/null || echo "$name: the Python replay differs from its recording"
+    diff -q --strip-trailing-cr "$tapes/$name.tape.gz.log" "$tapes/$name.py.log" > /dev/null         || echo "$name: the Python replay logged otherwise than its recording"
+    diff -q --strip-trailing-cr "$tapes/$name.tape.gz.said" "$tapes/$name.py.said" > /dev/null         || echo "$name: the Python replay said otherwise than its recording"
 done
 "$here/target/release/tape.exe" $(for name in "$@"; do echo "$tapes/$name.tape.gz"; done)

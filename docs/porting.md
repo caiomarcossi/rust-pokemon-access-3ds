@@ -229,3 +229,22 @@ where it can happen.
 Report: each module ported (Python lines to Rust lines), tests ported and passing, every place the
 Rust behaves differently from the Python (the target is none), every set whose order you guessed,
 every edit outside your files, any crate added, and any upstream bug you ported as it is.
+
+## Where the port knowingly differs
+
+Kept here so the next porter, and anyone reading a tape that differs, knows what is deliberate.
+
+- **Integers past `i64`.** Python's ints never overflow. A float made an int past about 9.2e18
+  saturates (`py::int`, `round`, `floor`, `ceil`); a product of two words out of freed memory is
+  saturated where a port saw it (`lists`, `rtti`, `walls`, `keyfile`) and widened to `i128` in
+  `mapblock`; anything else overflows, and since release builds check overflow (`Cargo.toml`) it
+  panics and the runtime takes it for a reader's failure ("Reader error") where Python would have
+  read on with a big number. Only garbage reaches these sizes.
+- **A reader's failure is logged with where it was raised, not a traceback**, and a fault is
+  keyed by that line, always with a file and line where Python's could be a bare class name.
+- **Tests adapted where Python patched code in place.** `test_app` reaches the runtime through
+  `__main__::main_with` and `app::run_with`; `test_navigate`'s "P again finds no way" uses a
+  `FakeField` hook; and `test_sm_zones`' "areas read file by file" lost its guard that the event
+  archive is never read whole, which needed `Rom.read` patched.
+- **What the tapes cannot check.** A movie presses no pa3ds keys, so the navigation keys are
+  checked by their tests alone; and no tape so far holds a reader's failure.

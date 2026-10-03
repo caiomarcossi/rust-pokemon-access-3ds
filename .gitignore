@@ -5,3 +5,5 @@
 /user/
 __pycache__/
 /.port-graph.json
+# Agents' worktrees and the pstack skills are the session's, not the port's.
+/.claude/worktrees/
