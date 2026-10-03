@@ -167,7 +167,7 @@ fn repr_of(path: &Path) -> String {
 }
 
 /// The `UnicodeDecodeError` that `bytes.decode()` raises for these bytes.
-fn decode_error(bytes: &[u8], error: std::str::Utf8Error) -> Error {
+pub(crate) fn decode_error(bytes: &[u8], error: std::str::Utf8Error) -> Error {
     let start = error.valid_up_to();
     let length = error.error_len().unwrap_or(bytes.len() - start);
     let end = start + length;
