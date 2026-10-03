@@ -177,9 +177,6 @@ pub struct Gen6Profile {
     managers: RefCell<PySet>,
     /// The cell the Secret Base's decorating cursor was last said on, and what was there.
     decorating: RefCell<Option<((i64, i64), String)>>,
-    /// What `speaker.name_for` raised while `announcements` was saying a page: its `Speaker` has
-    /// no way to raise, so `poll_dialogue` raises it once the pages have been said.
-    speaker_failed: Rc<RefCell<Option<Error>>>,
 }
 
 /// `FieldReader` is what a `Navigator` reads the map through in the gen 6 games.
@@ -343,11 +340,10 @@ impl Gen6Profile {
         // The navigator says what it finds by the name it has been given, and renames it on a
         // key: the player standing in front of a sign is the only one who can name it.
         let ui = ui.unwrap_or_default();
-        let speaker_failed = Rc::new(RefCell::new(None));
         let announcements = Rc::new(RefCell::new(Announcements::with(
             speech.clone(),
             log.clone(),
-            Some(name_for(&speaker, &speaker_failed)),
+            Some(name_for(&speaker)),
             false,
         )));
         let field = Rc::new(RefCell::new(field));
@@ -438,7 +434,6 @@ impl Gen6Profile {
             speaker_wanted: Cell::new(false),
             managers: RefCell::new(PySet::new()),
             decorating: RefCell::new(None),
-            speaker_failed,
         }
     }
 
@@ -572,10 +567,7 @@ impl Gen6Profile {
         let shown = phase(&*self.memory, "dialogue", || {
             self.dialogue.borrow_mut().poll()
         })?;
-        let said = self.announcements.borrow_mut().pages(&shown);
-        if let Some(error) = self.speaker_failed.borrow_mut().take() {
-            return Err(error);
-        }
+        let said = self.announcements.borrow_mut().pages(&shown)?;
         if said && self.apps.borrow().running.as_deref() == Some(FIELD) {
             self.look_for_speakers(&shown)?;
         }
@@ -987,18 +979,9 @@ impl Gen6Profile {
 }
 
 /// `speaker.name_for`, as the `Speaker` that `Announcements` asks who is showing a window.
-///
-/// `Speaker` cannot raise, so a read that fails is kept in the profile's `speaker_failed` and
-/// raised by `poll_dialogue` after the pages are said; Python raised out of the page being said.
-fn name_for(speaker: &Rc<SpeakerReader>, failed: &Rc<RefCell<Option<Error>>>) -> Speaker {
-    let (speaker, failed) = (speaker.clone(), failed.clone());
-    Rc::new(move |window| match speaker.name_for(window) {
-        Ok(name) => name,
-        Err(error) => {
-            failed.borrow_mut().get_or_insert(error);
-            None
-        }
-    })
+fn name_for(speaker: &Rc<SpeakerReader>) -> Speaker {
+    let speaker = speaker.clone();
+    Rc::new(move |window| speaker.name_for(window))
 }
 
 /// What the game calls a character that RAM gives only a number: the rival, by the
