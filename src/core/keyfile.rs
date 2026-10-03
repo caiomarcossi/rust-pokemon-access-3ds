@@ -47,12 +47,11 @@
 //! the defaults, and a config that cannot be patched is said and left alone.
 
 use std::collections::{HashMap, HashSet};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 use indexmap::{IndexMap, IndexSet};
 use regex::Regex;
-use unicode_general_category::{GeneralCategory, get_general_category};
 
 use crate::core::config::Value;
 use crate::core::keys::{ORDER, PUNCTUATION};
@@ -161,73 +160,10 @@ fn controls(name: &str) -> Option<&'static str> {
         .map(|(_, said)| *said)
 }
 
-/// `str.isdigit()` for one character: the decimal digits and the superscripts, subscripts and
-/// circled numbers that Unicode counts as digits without being able to `int()` them.
-fn is_digit(c: char) -> bool {
-    // The code points with Python's `isdigit` true and a general category other than Nd.
-    const OTHER_DIGITS: [(u32, u32); 20] = [
-        (178, 179),
-        (185, 185),
-        (4969, 4977),
-        (6618, 6618),
-        (8304, 8304),
-        (8308, 8313),
-        (8320, 8329),
-        (9312, 9320),
-        (9332, 9340),
-        (9352, 9360),
-        (9450, 9450),
-        (9461, 9469),
-        (9471, 9471),
-        (10102, 10110),
-        (10112, 10120),
-        (10122, 10130),
-        (68160, 68163),
-        (69216, 69224),
-        (69714, 69722),
-        (127232, 127242),
-    ];
-    py::is_digit(c)
-        || OTHER_DIGITS
-            .iter()
-            .any(|(first, last)| (*first..=*last).contains(&(c as u32)))
-}
-
-/// `text.isdigit()`.
-fn isdigit(text: &str) -> bool {
-    !text.is_empty() && text.chars().all(is_digit)
-}
-
-/// The value of a string of Unicode decimal digits, which is what `\d+` matched and what `int()`
-/// reads. Python's integers have no end and these have: a number past `i64` stops at its largest.
+/// `int(text)` of the digits `\d+` matched, for the callers that cannot raise. A number past
+/// `i64` stops at its largest, and so does one `int()` refuses for its length.
 fn digits_value(digits: &str) -> i64 {
-    digits.chars().fold(0i64, |value, digit| {
-        // Decimal digits come in runs of ten from a zero, so a digit's value is how far into its
-        // run of neighbours it is.
-        let mut before = 0u32;
-        while let Some(previous) = char::from_u32((digit as u32).wrapping_sub(before + 1)) {
-            if get_general_category(previous) != GeneralCategory::DecimalNumber {
-                break;
-            }
-            before += 1;
-        }
-        value
-            .saturating_mul(10)
-            .saturating_add(i64::from(before % 10))
-    })
-}
-
-/// `int(text)` of a string `isdigit` accepted: a ValueError for the digits `int()` cannot read.
-#[track_caller]
-fn int_of(text: &str) -> Result<i64> {
-    if text.chars().all(py::is_digit) {
-        Ok(digits_value(text))
-    } else {
-        Err(Error::value(format!(
-            "invalid literal for int() with base 10: {}",
-            py::repr(text)
-        )))
-    }
+    py::int_base10(digits).unwrap_or(i64::MAX)
 }
 
 /// A key's name as the number Azahar stores, or None for a name no key has.
@@ -243,7 +179,7 @@ pub fn qt_code(name: &str) -> Result<Option<i64>> {
     let (Some(only), None) = (characters.next(), characters.next()) else {
         return Ok(None);
     };
-    if is_alpha(only) {
+    if py::is_alpha(only) {
         let upper: Vec<char> = only.to_uppercase().collect();
         if upper.len() != 1 {
             return Err(Error::new(
@@ -256,20 +192,10 @@ pub fn qt_code(name: &str) -> Result<Option<i64>> {
         }
         return Ok(Some(i64::from(upper[0] as u32)));
     }
-    if is_digit(only) || CHARACTERS.contains(&key.as_str()) {
+    if py::is_digit(only) || CHARACTERS.contains(&key.as_str()) {
         return Ok(Some(i64::from(only as u32)));
     }
     Ok(None)
-}
-
-/// `str.isalpha()` for one character: the letters, which is every general category starting
-/// with L.
-fn is_alpha(c: char) -> bool {
-    use GeneralCategory::*;
-    matches!(
-        get_general_category(c),
-        UppercaseLetter | LowercaseLetter | TitlecaseLetter | ModifierLetter | OtherLetter
-    )
 }
 
 /// What Azahar's `code:` number is called here, or the number itself when nothing knows it.
@@ -420,8 +346,8 @@ pub fn keyboard_param(code: i64) -> String {
 /// The key a binding is on, or None when it is not on the keyboard at all.
 pub fn keyboard_code(params: &IndexMap<String, String>) -> Result<Option<i64>> {
     let code = params.get("code").map(String::as_str).unwrap_or("");
-    if params.get("engine").map(String::as_str) == Some(KEYBOARD) && isdigit(code) {
-        Ok(Some(int_of(code)?))
+    if params.get("engine").map(String::as_str) == Some(KEYBOARD) && py::isdigit(code) {
+        Ok(Some(py::int_base10(code)?))
     } else {
         Ok(None)
     }
@@ -532,39 +458,6 @@ fn ending(line: &str) -> &'static str {
     ""
 }
 
-/// `text.splitlines(keepends=True)`: Python breaks a line at more than `\n`.
-fn splitlines(text: &str) -> Vec<String> {
-    let mut lines = Vec::new();
-    let mut line = String::new();
-    let mut chars = text.chars().peekable();
-    while let Some(c) = chars.next() {
-        line.push(c);
-        let breaks = matches!(
-            c,
-            '\n' | '\r'
-                | '\x0b'
-                | '\x0c'
-                | '\x1c'
-                | '\x1d'
-                | '\x1e'
-                | '\u{85}'
-                | '\u{2028}'
-                | '\u{2029}'
-        );
-        if breaks {
-            if c == '\r' && chars.peek() == Some(&'\n') {
-                line.push('\n');
-                chars.next();
-            }
-            lines.push(std::mem::take(&mut line));
-        }
-    }
-    if !line.is_empty() {
-        lines.push(line);
-    }
-    lines
-}
-
 /// The emulator's config as lines, so patching changes the lines it means to and leaves the
 /// file's own line endings alone.
 struct Config {
@@ -575,7 +468,10 @@ struct Config {
 
 impl Config {
     fn new(text: &str) -> Self {
-        let lines = splitlines(text);
+        let lines: Vec<String> = py::splitlines_keepends(text)
+            .into_iter()
+            .map(str::to_string)
+            .collect();
         let r#where = lines
             .iter()
             .enumerate()
@@ -698,7 +594,7 @@ pub fn patch_settings(text: &str, wanted: &IndexMap<String, Value>) -> (String, 
 /// `str(OSError)` as Python words it: errno and its text for what `open` raised, the Windows
 /// error for what a direct Windows call (`mkdir`) raised, and the path as `repr` shows it.
 fn os_error(error: &std::io::Error, path: &Path, opened: bool) -> String {
-    let shown = py::repr(&path_str(path));
+    let shown = py::repr(&py::path_str(path));
     let Some(code) = error.raw_os_error() else {
         return error.to_string();
     };
@@ -725,20 +621,6 @@ fn os_error(error: &std::io::Error, path: &Path, opened: bool) -> String {
     format!("[Errno {code}] {text}: {shown}")
 }
 
-/// `str(path)`: pathlib writes a Windows path with backslashes, without a doubled separator and
-/// without a trailing one, and an empty path as `.`.
-pub(crate) fn path_str(path: &Path) -> String {
-    let normal: PathBuf = path
-        .components()
-        .filter(|component| !matches!(component, Component::CurDir))
-        .collect();
-    if normal.as_os_str().is_empty() {
-        ".".to_string()
-    } else {
-        normal.display().to_string()
-    }
-}
-
 /// Write a patched config, and say what became of it: "applied", "waiting" while Azahar is
 /// open, or "" when nothing changed or it could not be written.
 ///
@@ -760,14 +642,14 @@ pub fn save(
         notes.push(format!(
             "{} left alone: Azahar is open, and saves its own settings over the \
              file when it closes",
-            path_str(config)
+            py::path_str(config)
         ));
         return "waiting".to_string();
     }
     if write && let Err(error) = std::fs::write(config, patched) {
         notes.push(format!(
             "{} could not be written: {}",
-            path_str(config),
+            py::path_str(config),
             os_error(&error, config, true)
         ));
         return String::new();
@@ -785,7 +667,7 @@ pub fn read_config(config: &Path, notes: &mut Vec<String>) -> Result<String> {
         Err(error) => {
             notes.push(format!(
                 "{} could not be read: {}",
-                path_str(config),
+                py::path_str(config),
                 os_error(&error, config, true)
             ));
             Ok(String::new())
@@ -904,7 +786,7 @@ pub fn render(
     let line = |key: &str, action: &str| -> Vec<String> {
         let said = explained.get(action).filter(|said| !said.is_empty());
         let mut lines = match said {
-            Some(said) => toml::comment(wrap(said, 94)),
+            Some(said) => toml::comment(py::wrap(said, 94).expect("94 is a positive width")),
             None => Vec::new(),
         };
         lines.push(format!("{} = {}", toml::quote(key), toml::quote(action)));
@@ -979,7 +861,10 @@ pub fn render(
             });
         }
         let scale = on.get(SCALE).map(String::as_str).unwrap_or("0.500000");
-        lines.push(format!("#   {SCALE} = {}", format_g(float_of(scale)?)));
+        lines.push(format!(
+            "#   {SCALE} = {}",
+            py::format_g(py::float_of(scale)?)
+        ));
     }
     lines.push("".into());
     Ok(lines.join("\n"))
@@ -1014,7 +899,7 @@ fn read_keys(
     let Some(group) = group else {
         notes.push(format!(
             "{} has no [{SECTION}.{GROUP}], using the default keys",
-            path_str(path)
+            py::path_str(path)
         ));
         return None;
     };
@@ -1034,7 +919,7 @@ fn read_keys(
         if !defaults.contains_key(&mode) {
             notes.push(format!(
                 "{}: there is no mode called {}",
-                path_str(path),
+                py::path_str(path),
                 py::repr(&mode)
             ));
             continue;
@@ -1051,7 +936,7 @@ fn read_keys(
     if !bindings.values().any(|keys| !keys.is_empty()) {
         notes.push(format!(
             "{} binds no keys, using the defaults",
-            path_str(path)
+            py::path_str(path)
         ));
         return None;
     }
@@ -1074,7 +959,7 @@ fn actions(
     for key in unknown {
         notes.push(format!(
             "{}: {key} is set to {}, which pa3ds does not do",
-            path_str(path),
+            py::path_str(path),
             py::repr(&out[&key])
         ));
         out.shift_remove(&key);
@@ -1100,12 +985,12 @@ fn read_emulator(
             }
             value if is_table(value) => notes.push(format!(
                 "{}: there is no stick called {}",
-                path_str(path),
+                py::path_str(path),
                 py::repr(&control)
             )),
             _ => notes.push(format!(
                 "{}: there is no button called {}",
-                path_str(path),
+                py::path_str(path),
                 py::repr(&control)
             )),
         }
@@ -1127,7 +1012,7 @@ fn stick(stick: &::toml::Value) -> IndexMap<String, String> {
         _ => None,
     };
     if let Some(scale) = scale {
-        out.insert(SCALE.to_string(), fixed(scale, 6));
+        out.insert(SCALE.to_string(), py::fixed(scale, 6));
     }
     out
 }
@@ -1234,7 +1119,7 @@ pub fn prepare(
             match std::fs::create_dir_all(parent) {
                 Err(error) => notes.push(format!(
                     "{} could not be written, using the default keys: {}",
-                    path_str(&path),
+                    py::path_str(&path),
                     os_error(&error, parent, false)
                 )),
                 Ok(()) => {
@@ -1253,12 +1138,13 @@ pub fn prepare(
                         text
                     };
                     match std::fs::write(&path, body) {
-                        Ok(()) => {
-                            notes.push(format!("wrote {} with the default keys", path_str(&path)))
-                        }
+                        Ok(()) => notes.push(format!(
+                            "wrote {} with the default keys",
+                            py::path_str(&path)
+                        )),
                         Err(error) => notes.push(format!(
                             "{} could not be written, using the default keys: {}",
-                            path_str(&path),
+                            py::path_str(&path),
                             os_error(&error, &path, true)
                         )),
                     }
@@ -1273,7 +1159,7 @@ pub fn prepare(
         } else {
             notes.push(format!(
                 "{} could not be read, using the default keys",
-                path_str(&path)
+                py::path_str(&path)
             ));
         }
     }
@@ -1301,7 +1187,7 @@ pub fn prepare(
     for (action, (key, table)) in &missing {
         notes.push(format!(
             "{} puts no key on {}: add {} = {} under [{table}]",
-            path_str(&path),
+            py::path_str(&path),
             py::repr(action),
             toml::quote(key),
             toml::quote(action)
@@ -1353,255 +1239,4 @@ fn listed<'a>(things: impl IntoIterator<Item = &'a str>) -> String {
         Some((only, [])) => only.to_string(),
         Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
     }
-}
-
-// ---------------------------------------------------------------- what Python's formatting does
-
-/// `float(text)`: a ValueError for what is not a number, as Python words it.
-#[track_caller]
-pub(crate) fn float_of(text: &str) -> Result<f64> {
-    let bad = || {
-        Error::value(format!(
-            "could not convert string to float: {}",
-            py::repr(text)
-        ))
-    };
-    // Only the whitespace of ASCII and of other scripts: the separators U+001C to U+001F are
-    // `isspace` to `strip` and not to the parser.
-    let stripped = text.trim_matches(|c: char| py::is_space(c) && !('\x1c'..='\x1f').contains(&c));
-    // An underscore is allowed between two digits and nowhere else.
-    let chars: Vec<char> = stripped.chars().collect();
-    for (at, c) in chars.iter().enumerate() {
-        if *c == '_' {
-            let digit = |at: Option<usize>| at.is_some_and(|at| chars[at].is_ascii_digit());
-            if !digit(at.checked_sub(1)) || !digit(Some(at + 1).filter(|at| *at < chars.len())) {
-                return Err(bad());
-            }
-        }
-    }
-    let digits: String = chars.iter().filter(|c| **c != '_').collect();
-    digits.parse::<f64>().map_err(|_| bad())
-}
-
-/// `f"{x:.{digits}f}"`.
-pub(crate) fn fixed(x: f64, digits: usize) -> String {
-    if x.is_nan() {
-        "nan".to_string()
-    } else if x.is_infinite() {
-        if x > 0.0 { "inf" } else { "-inf" }.to_string()
-    } else {
-        format!("{x:.digits$}")
-    }
-}
-
-/// `f"{x:g}"`: six significant digits, the zeros after them dropped, and an exponent when the
-/// number is small or large enough.
-pub(crate) fn format_g(x: f64) -> String {
-    if x.is_nan() || x.is_infinite() {
-        return fixed(x, 0);
-    }
-    let trimmed = |text: &str| -> String {
-        if text.contains('.') {
-            text.trim_end_matches('0').trim_end_matches('.').to_string()
-        } else {
-            text.to_string()
-        }
-    };
-    let scientific = format!("{x:.5e}");
-    let (mantissa, exponent) = scientific.split_once('e').unwrap_or((&scientific, "0"));
-    let exponent: i32 = exponent.parse().unwrap_or(0);
-    if !(-4..6).contains(&exponent) {
-        let sign = if exponent < 0 { '-' } else { '+' };
-        return format!("{}e{sign}{:02}", trimmed(mantissa), exponent.abs());
-    }
-    trimmed(&format!("{x:.*}", (5 - exponent) as usize))
-}
-
-/// `textwrap.wrap(text, width)` with its defaults: the lines the text breaks into, none longer
-/// than `width` characters unless a word is.
-pub(crate) fn wrap(text: &str, width: usize) -> Vec<String> {
-    wrap_chunks(split_chunks(text), width)
-}
-
-/// `\w`: a letter, a number or an underscore.
-fn is_word(c: char) -> bool {
-    use GeneralCategory::*;
-    c == '_'
-        || matches!(
-            get_general_category(c),
-            UppercaseLetter
-                | LowercaseLetter
-                | TitlecaseLetter
-                | ModifierLetter
-                | OtherLetter
-                | DecimalNumber
-                | LetterNumber
-                | OtherNumber
-        )
-}
-
-/// `[^\d\W]`.
-fn is_letter(c: char) -> bool {
-    is_word(c) && get_general_category(c) != GeneralCategory::DecimalNumber
-}
-
-/// `[\w!"'&.,?]`.
-fn is_word_punct(c: char) -> bool {
-    is_word(c) || matches!(c, '!' | '"' | '\'' | '&' | '.' | ',' | '?')
-}
-
-/// `textwrap._whitespace`: what `TextWrapper` turns into a space and splits chunks on.
-fn is_wrap_space(c: char) -> bool {
-    matches!(c, '\t' | '\n' | '\x0b' | '\x0c' | '\r' | ' ')
-}
-
-/// Whether a run of two or more hyphens starts at `at` with a word character after it.
-fn dashes_then_word(text: &[char], at: usize) -> bool {
-    let run = text[at..].iter().take_while(|c| **c == '-').count();
-    run >= 2 && text.get(at + run).is_some_and(|c| is_word(*c))
-}
-
-/// Where the chunk starting at `at` ends: `TextWrapper.wordsep_re` by hand, since the regex crate
-/// has no look-around. A chunk is a run of whitespace, a run of hyphens between words, or a word
-/// that ends at whitespace, after a hyphen inside it, or before a run of hyphens.
-fn chunk_end(text: &[char], at: usize) -> usize {
-    if is_wrap_space(text[at]) {
-        return at + text[at..].iter().take_while(|c| is_wrap_space(**c)).count();
-    }
-    if at > 0 && is_word_punct(text[at - 1]) && dashes_then_word(text, at) {
-        return at + text[at..].iter().take_while(|c| **c == '-').count();
-    }
-    let letter = |at: usize| text.get(at).is_some_and(|c| is_letter(*c));
-    let mut end = at + 1;
-    loop {
-        if end >= text.len() || is_wrap_space(text[end]) {
-            return end;
-        }
-        if text[end] == '-' {
-            let behind = (end >= 2 && letter(end - 2) && letter(end - 1))
-                || (end >= 3 && letter(end - 3) && text[end - 2] == '-' && letter(end - 1));
-            let ahead = letter(end + 1)
-                && (letter(end + 2) || (text.get(end + 2) == Some(&'-') && letter(end + 3)));
-            if behind && ahead {
-                return end + 1;
-            }
-        }
-        if is_word_punct(text[end - 1]) && dashes_then_word(text, end) {
-            return end;
-        }
-        end += 1;
-    }
-}
-
-/// `_munge_whitespace` and `_split`: tabs expanded, every other whitespace character a space,
-/// and the text cut into chunks.
-fn split_chunks(text: &str) -> Vec<Vec<char>> {
-    let mut munged: Vec<char> = Vec::new();
-    let mut column = 0;
-    for c in text.chars() {
-        if c == '\t' {
-            let spaces = 8 - column % 8;
-            munged.extend(std::iter::repeat_n(' ', spaces));
-            column += spaces;
-        } else {
-            munged.push(if is_wrap_space(c) { ' ' } else { c });
-            column = if c == '\n' || c == '\r' {
-                0
-            } else {
-                column + 1
-            };
-        }
-    }
-    let mut chunks = Vec::new();
-    let mut at = 0;
-    while at < munged.len() {
-        let end = chunk_end(&munged, at);
-        chunks.push(munged[at..end].to_vec());
-        at = end;
-    }
-    chunks
-}
-
-fn blank(chunk: &[char]) -> bool {
-    chunk.iter().all(|c| py::is_space(*c))
-}
-
-/// `_handle_long_word`: put as much of a word too long for any line as fits on this one, breaking
-/// after its last hyphen when there is one.
-fn handle_long_word(
-    reversed_chunks: &mut Vec<Vec<char>>,
-    cur_line: &mut Vec<Vec<char>>,
-    cur_len: usize,
-    width: usize,
-) {
-    // Figure out when indent is larger than the specified width, and make
-    // sure at least one character is stripped off on every pass
-    let space_left = if width < 1 { 1 } else { width - cur_len };
-    // If we're allowed to break long words, then do so: put as much
-    // of the next chunk onto the current line as will fit.
-    if space_left > 0 {
-        let mut end = space_left;
-        let chunk = reversed_chunks[reversed_chunks.len() - 1].clone();
-        if chunk.len() > space_left {
-            // break after last hyphen, but only if there are
-            // non-hyphens before it
-            let hyphen = chunk[..space_left].iter().rposition(|c| *c == '-');
-            if let Some(hyphen) = hyphen
-                && hyphen > 0
-                && chunk[..hyphen].iter().any(|c| *c != '-')
-            {
-                end = hyphen + 1;
-            }
-        }
-        cur_line.push(chunk[..end].to_vec());
-        let last = reversed_chunks.len() - 1;
-        reversed_chunks[last] = chunk[end..].to_vec();
-    } else if cur_line.is_empty() {
-        // Otherwise, we have to preserve the long word intact.  Only add
-        // it to the current line if there's nothing already there --
-        // that minimizes how much we violate the width constraint.
-        cur_line.extend(reversed_chunks.pop());
-    }
-}
-
-/// `_wrap_chunks`: lines of `width` characters or fewer, whitespace dropped from both ends of each.
-fn wrap_chunks(mut chunks: Vec<Vec<char>>, width: usize) -> Vec<String> {
-    let mut lines: Vec<String> = Vec::new();
-    // Arrange in reverse order so items can be efficiently popped
-    // from a stack of chucks.
-    chunks.reverse();
-    while !chunks.is_empty() {
-        let mut cur_line: Vec<Vec<char>> = Vec::new();
-        let mut cur_len = 0;
-        // First chunk on line is whitespace -- drop it, unless this
-        // is the very beginning of the text (ie. no lines started yet).
-        if !lines.is_empty() && chunks.last().is_some_and(|chunk| blank(chunk)) {
-            chunks.pop();
-        }
-        while let Some(chunk) = chunks.last() {
-            let length = chunk.len();
-            // Can at least squeeze this chunk onto the current line.
-            if cur_len + length <= width {
-                cur_line.extend(chunks.pop());
-                cur_len += length;
-            } else {
-                // Nope, this line is full.
-                break;
-            }
-        }
-        // The current line is full, and the next chunk is too big to
-        // fit on *any* line (not just this one).
-        if chunks.last().is_some_and(|chunk| chunk.len() > width) {
-            handle_long_word(&mut chunks, &mut cur_line, cur_len, width);
-        }
-        // If the last chunk on this line is all whitespace, drop it. Python also takes it off
-        // `cur_len`, which only the `max_lines` branch reads, and that is not ported.
-        if cur_line.last().is_some_and(|chunk| blank(chunk)) {
-            cur_line.pop();
-        }
-        if !cur_line.is_empty() {
-            lines.push(cur_line.concat().into_iter().collect());
-        }
-    }
-    lines
 }

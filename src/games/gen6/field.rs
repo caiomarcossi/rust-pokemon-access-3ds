@@ -1222,7 +1222,10 @@ impl FieldReader {
                 floors.extend(chunk.floors.iter().cloned());
             }
             if let Some(far_floors) = &self.far_floors {
-                for file in without(&PySet::of(files.iter().copied()), NO_CHUNK_FILE) {
+                for file in PySet::of(files.iter().copied())
+                    .difference(&PySet::of([NO_CHUNK_FILE]))
+                    .iter()
+                {
                     floors.extend(far_floors(file)?);
                 }
             }
@@ -2777,49 +2780,11 @@ fn find(page: &[u8], needle: &[u8], start: usize) -> Option<usize> {
     None
 }
 
-/// How many slots a set of `n` ints added one at a time has: it grows to the least power of two
-/// over four times its size once it is three fifths full (`set_add_entry`).
-fn slots_after(n: usize) -> usize {
-    let mut slots = 8;
-    for used in 1..=n {
-        if used * 5 >= (slots - 1) * 3 {
-            slots = 8;
-            while slots <= used * 4 {
-                slots <<= 1;
-            }
-        }
-    }
-    slots
-}
-
-/// The keys of `set - {out}` in the order Python iterates the difference, which is laid out afresh
-/// (`set_difference` in `Objects/setobject.c`): added in the set's order into a new set, or, where
-/// the set holds eight or more and the other one, copied and `out` discarded. A copy takes the
-/// same slots where its table is as big as the set's and is built key by key in the set's order
-/// into one sized for them (`set_merge`) where it is not.
-fn without(set: &PySet, out: i64) -> Vec<i64> {
-    let keys: Vec<i64> = set.iter().collect();
-    if set.len() >> 2 <= 1 {
-        let kept = keys.iter().copied().filter(|&key| key != out);
-        return PySet::of(kept).iter().collect();
-    }
-    let mut slots = 8;
-    while slots <= set.len() * 2 {
-        slots <<= 1;
-    }
-    let copy = if slots == slots_after(set.len()) {
-        keys
-    } else {
-        let mut copy = PySet::new();
-        copy.update_dict(&keys);
-        copy.iter().collect()
-    };
-    copy.into_iter().filter(|&key| key != out).collect()
-}
-
 /// `statistics.median`: the middle of the sorted values, or the mean of the two middle ones.
 fn median(values: &mut [f64]) -> f64 {
-    values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    // `sorted`: a height read from a freed mesh can be NaN, which only CPython's sort places
+    // as Python does.
+    py::sort_by_lt(values, |a, b| a < b);
     let (n, i) = (values.len(), values.len() / 2);
     if n % 2 == 1 {
         values[i]

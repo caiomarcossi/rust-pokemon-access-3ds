@@ -81,9 +81,9 @@ impl Spot {
             binary::u16(blob, offset)?,
             i64::from(blob[offset as usize + 2]),
             i64::from(blob[offset as usize + 3]),
-            i64::from(binary::u32(blob, offset + 4)? as u32 as i32),
-            i64::from(binary::u32(blob, offset + 8)? as u32 as i32),
-            i64::from(binary::u32(blob, offset + 12)? as u32 as i32),
+            binary::s32(blob, offset + 4)?,
+            binary::s32(blob, offset + 8)?,
+            binary::s32(blob, offset + 12)?,
             binary::u16(blob, offset + 16)?,
             binary::u16(blob, offset + 18)?,
         ])

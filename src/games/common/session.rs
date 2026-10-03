@@ -18,7 +18,7 @@ use crate::core::rom::Rom;
 use crate::core::rpc::Process;
 use crate::core::{keyfile, rom};
 use crate::games::common::navigate::{Bindings, DEFAULT_BINDINGS};
-use crate::py::{Error, Kind, Log, Result};
+use crate::py::{self, Error, Kind, Log, Result};
 
 /// What the schedule asks of a game's readers, poll by poll (`gen6.profile`, `sm.profile`).
 ///
@@ -175,7 +175,7 @@ impl Setup {
         };
         (self.log)(&format!(
             "the game's own words from {} ({})",
-            keyfile::path_str(&path),
+            py::path_str(&path),
             self.language
         ));
         Ok(Some(words))

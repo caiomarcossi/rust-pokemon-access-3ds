@@ -30,7 +30,7 @@ use crate::core::rtti::ClassNames;
 use crate::games::common::layout::Layouts;
 use crate::games::common::text::pages;
 use crate::games::common::{lyt, msgwin};
-use crate::py::{self, Error, Kind, PySet, Result};
+use crate::py::{self, Error, Kind, PySet, Result, sorted_by_lt};
 
 /// Halfwords. Screen text is labels and short sentences; this only rejects garbage lengths.
 pub const MAX_TEXT: i64 = 0x400;
@@ -172,151 +172,6 @@ fn max_of(a: f64, b: f64) -> f64 {
     if b > a { b } else { a }
 }
 
-/// `sorted(items, key=...)`, where `lt(a, b)` is `key(a) < key(b)`.
-///
-/// Python's sort compares with `<` alone, and where a key is a NaN, which is no order at all, the
-/// order it makes depends on timsort's steps: a pane whose place reads NaN is common enough in
-/// freed memory. Of fewer than 64 items timsort is `count_run` then a binary insertion sort,
-/// both written here as `Objects/listobject.c` has them (and checked against `sorted` over
-/// random lists with NaNs). From 64 items it also merges runs, which this does not follow: a
-/// stable merge sort gives the same order for any keys that are ordered, and a different one only
-/// around a NaN.
-pub(crate) fn sorted_by_lt<T>(mut items: Vec<T>, lt: impl Fn(&T, &T) -> bool) -> Vec<T> {
-    let n = items.len();
-    if n < 2 {
-        return items;
-    }
-    if n >= 64 {
-        return merge_sorted(items, &lt);
-    }
-    let run = count_run(&mut items, &lt);
-    for start in run..n {
-        let (mut low, mut high) = (0, start);
-        while low < high {
-            let middle = low + ((high - low) >> 1);
-            if lt(&items[start], &items[middle]) {
-                high = middle;
-            } else {
-                low = middle + 1;
-            }
-        }
-        items[low..=start].rotate_right(1);
-    }
-    items
-}
-
-/// The length of the run timsort takes from the start of `items`, which it leaves ascending: a
-/// descending run is reversed, with each stretch of equal items in it turned back so the sort
-/// stays stable.
-fn count_run<T>(items: &mut [T], lt: &impl Fn(&T, &T) -> bool) -> usize {
-    fn reverse_last_neq<T>(items: &mut [T], n: usize, neq: &mut usize) {
-        if *neq > 0 {
-            items[n - (*neq + 1)..n].reverse();
-            *neq = 0;
-        }
-    }
-    let remaining = items.len();
-    let mut n = 1;
-    while n < remaining {
-        if lt(&items[n], &items[n - 1]) {
-            break;
-        }
-        n += 1;
-    }
-    if n == remaining {
-        return n;
-    }
-    let mut neq = 0;
-    if n > 1 {
-        if lt(&items[0], &items[n - 1]) {
-            return n;
-        }
-        neq = n - 1;
-    }
-    reverse_last_neq(items, n, &mut neq);
-    n += 1;
-    while n < remaining {
-        if lt(&items[n], &items[n - 1]) {
-            reverse_last_neq(items, n, &mut neq);
-        } else {
-            if lt(&items[n - 1], &items[n]) {
-                break;
-            }
-            neq += 1;
-        }
-        n += 1;
-    }
-    reverse_last_neq(items, n, &mut neq);
-    items[..n].reverse();
-    while n < remaining {
-        if lt(&items[n], &items[n - 1]) {
-            break;
-        }
-        n += 1;
-    }
-    n
-}
-
-/// A stable merge sort by `lt` alone, for the lists `sorted_by_lt` leaves to merging.
-fn merge_sorted<T>(mut items: Vec<T>, lt: &impl Fn(&T, &T) -> bool) -> Vec<T> {
-    if items.len() < 2 {
-        return items;
-    }
-    let right = items.split_off(items.len() / 2);
-    let (left, right) = (merge_sorted(items, lt), merge_sorted(right, lt));
-    let mut merged = Vec::with_capacity(left.len() + right.len());
-    let (mut left, mut right) = (left.into_iter().peekable(), right.into_iter().peekable());
-    while let (Some(a), Some(b)) = (left.peek(), right.peek()) {
-        merged.push(if lt(b, a) {
-            right.next().expect("peeked")
-        } else {
-            left.next().expect("peeked")
-        });
-    }
-    merged.extend(left);
-    merged.extend(right);
-    merged
-}
-
-/// `str.isalpha()` for one character: the letter categories.
-fn is_alpha(c: char) -> bool {
-    use unicode_general_category::GeneralCategory::*;
-    matches!(
-        unicode_general_category::get_general_category(c),
-        UppercaseLetter | LowercaseLetter | TitlecaseLetter | ModifierLetter | OtherLetter
-    )
-}
-
-/// `str.isdigit()` for one character: `py::is_digit`'s decimal digits, and the digits that are no
-/// decimal ones (superscripts, circled numbers), which `py::is_digit` leaves out.
-fn is_digit(c: char) -> bool {
-    py::is_digit(c)
-        || matches!(c,
-            '\u{b2}'..='\u{b3}' | '\u{b9}' | '\u{1369}'..='\u{1371}' | '\u{19da}' | '\u{2070}'
-            | '\u{2074}'..='\u{2079}' | '\u{2080}'..='\u{2089}' | '\u{2460}'..='\u{2468}'
-            | '\u{2474}'..='\u{247c}' | '\u{2488}'..='\u{2490}' | '\u{24ea}'
-            | '\u{24f5}'..='\u{24fd}' | '\u{24ff}' | '\u{2776}'..='\u{277e}'
-            | '\u{2780}'..='\u{2788}' | '\u{278a}'..='\u{2792}' | '\u{10a40}'..='\u{10a43}'
-            | '\u{10e60}'..='\u{10e68}' | '\u{11052}'..='\u{1105a}' | '\u{1f100}'..='\u{1f10a}')
-}
-
-/// `str.isalnum()` for one character: a letter, or any number (`isdecimal`, `isdigit` and
-/// `isnumeric` together).
-fn is_alnum(c: char) -> bool {
-    use unicode_general_category::GeneralCategory::*;
-    is_alpha(c)
-        || is_digit(c)
-        || matches!(
-            unicode_general_category::get_general_category(c),
-            DecimalNumber | LetterNumber | OtherNumber
-        )
-}
-
-/// `text.isdigit()`: some characters, all of them digits.
-fn is_digits(text: &str) -> bool {
-    !text.is_empty() && text.chars().all(is_digit)
-}
-
 /// The pieces in the order given, with each run of them on one row read left to right.
 ///
 /// The order the game built its TextBoxes in keeps a screen's parts together — the summary's two
@@ -453,8 +308,8 @@ fn labels(first: &ScreenText, second: &ScreenText) -> bool {
         || first.changed
         || first.picture
         || first.text.ends_with(':')
-        || first.text.chars().any(is_digit)
-        || !first.text.chars().any(is_alpha)
+        || first.text.chars().any(py::is_digit)
+        || !first.text.chars().any(py::is_alpha)
     {
         return false;
     }
@@ -462,7 +317,7 @@ fn labels(first: &ScreenText, second: &ScreenText) -> bool {
     // A sign is no value: the party slot draws the gender sign at a place of its own, far past a
     // short name.
     py::split(&first.text).len() <= LABEL_WORDS
-        && second.text.chars().any(is_alnum)
+        && second.text.chars().any(py::is_alnum)
         && second.left
             >= (if below {
                 first.right
@@ -491,44 +346,6 @@ type Frame = (i64, f64, f64, f64, f64);
 /// `Result` for that.
 pub type Pictures = Rc<dyn Fn(i64) -> Result<Option<String>>>;
 
-/// A `set` of ints as Python lays it out, from the order its members were added in: the copy
-/// `set(s)` makes, which is what a method returning one hands its caller to iterate.
-///
-/// A copy is made by `set_merge` in `Objects/setobject.c`, into a table sized for it: where that
-/// is the size the original grew to (up to four members, and eight to fifteen) every member
-/// keeps its slot; otherwise the members are put in again, in the order the original holds them.
-fn copy_of_set(added: &[i64]) -> IndexSet<i64> {
-    let original: Vec<i64> = PySet::of(added.iter().copied()).iter().collect();
-    let used = original.len();
-    let table = |minused: usize| {
-        let mut size = 8;
-        while size <= minused {
-            size <<= 1;
-        }
-        size
-    };
-    let mut grown = 8;
-    for members in 1..=used {
-        if members * 5 >= (grown - 1) * 3 {
-            grown = table(if members > 50000 {
-                members * 2
-            } else {
-                members * 4
-            });
-        }
-    }
-    let copied = if used * 5 >= 7 * 3 {
-        table(used * 2)
-    } else {
-        8
-    };
-    if copied == grown {
-        original.into_iter().collect()
-    } else {
-        PySet::of_dict(&original).iter().collect()
-    }
-}
-
 /// `dict[key]`, raising `KeyError` where the key is not there.
 #[track_caller]
 fn get(map: &IndexMap<i64, i64>, key: i64) -> Result<i64> {
@@ -554,9 +371,8 @@ pub struct ScreenTextReader {
     last_said: IndexMap<i64, ScreenText>,
     /// TextBox -> the words it left the screen with, for TextBoxes off screen and tracked.
     gone: IndexMap<i64, String>,
-    /// Roots of layouts with words on screen that have not been reported yet, in the order the
-    /// Python set was added to (a set of ints is iterated by its callers, see [`copy_of_set`]).
-    settling: Vec<i64>,
+    /// Roots of layouts with words on screen that have not been reported yet.
+    settling: PySet,
     /// TextBox -> its piece at the last poll, for TextBoxes counted on screen then.
     last: IndexMap<i64, ScreenText>,
     /// TextBoxes counted on screen at the last poll only because they had been the poll before.
@@ -571,9 +387,8 @@ pub struct ScreenTextReader {
     box_since: IndexMap<i64, i64>,
     /// Tag processor -> whether it is one a message window embeds, until the next `track`.
     window_tags: IndexMap<i64, bool>,
-    /// TextBoxes a message window was typing into at the last poll, in the order the Python set
-    /// was added to.
-    message_lines: Vec<i64>,
+    /// TextBoxes a message window was typing into at the last poll.
+    message_lines: PySet,
     /// TextBox -> its words, for TextBoxes drawn outside their screen at the last poll.
     outside: IndexMap<i64, String>,
     /// TextBox -> its words, for TextBoxes that moved onto their screen and are not reported
@@ -622,7 +437,7 @@ impl ScreenTextReader {
             said: IndexMap::new(),
             last_said: IndexMap::new(),
             gone: IndexMap::new(),
-            settling: Vec::new(),
+            settling: PySet::new(),
             last: IndexMap::new(),
             carried: HashSet::new(),
             on_screen: Vec::new(),
@@ -631,7 +446,7 @@ impl ScreenTextReader {
             root_since: IndexMap::new(),
             box_since: IndexMap::new(),
             window_tags: IndexMap::new(),
-            message_lines: Vec::new(),
+            message_lines: PySet::new(),
             outside: IndexMap::new(),
             scrolled: IndexMap::new(),
             frames: IndexMap::new(),
@@ -655,7 +470,7 @@ impl ScreenTextReader {
     ///
     /// Python returns a `set`; the `IndexSet` here is in the order Python iterates it.
     pub fn message_lines(&self) -> IndexSet<i64> {
-        copy_of_set(&self.message_lines)
+        self.message_lines.copy().iter().collect()
     }
 
     /// The roots of layouts whose words on screen at the last poll were not all reported,
@@ -663,7 +478,7 @@ impl ScreenTextReader {
     ///
     /// Python returns a `set`; the `IndexSet` here is in the order Python iterates it.
     pub fn settling(&self) -> IndexSet<i64> {
-        copy_of_set(&self.settling)
+        self.settling.copy().iter().collect()
     }
 
     /// Read these TextBoxes from now on.
@@ -810,12 +625,11 @@ impl ScreenTextReader {
             self.gone.insert(r#box, words);
             self.last_said.shift_remove(&r#box);
         }
-        self.settling = Vec::new();
-        for (r#box, p) in &now {
-            if self.said.get(r#box) != Some(&p.text) && !self.settling.contains(&p.root) {
-                self.settling.push(p.root);
-            }
-        }
+        self.settling = PySet::of(
+            now.iter()
+                .filter(|(r#box, p)| self.said.get(*r#box) != Some(&p.text))
+                .map(|(_, p)| p.root),
+        );
         self.seen = now
             .iter()
             .map(|(&r#box, piece)| (r#box, piece.text.clone()))
@@ -839,9 +653,7 @@ impl ScreenTextReader {
         let head = self.layouts.textbox(r#box)?;
         let tag = u32(&head, shape.tag_processor)?;
         if tag != 0 && self.is_window_tag(tag)? {
-            if !self.message_lines.contains(&r#box) {
-                self.message_lines.push(r#box);
-            }
+            self.message_lines.add(r#box);
             return Ok((None, false));
         }
         let placement = self.layouts.placement(r#box)?;
@@ -1057,7 +869,7 @@ fn separators(
     designed
         .iter()
         .filter(|(_, piece)| {
-            !piece.text.chars().any(is_alnum) && beside(piece, true) && beside(piece, false)
+            !piece.text.chars().any(py::is_alnum) && beside(piece, true) && beside(piece, false)
         })
         .map(|(&r#box, piece)| (r#box, piece.clone()))
         .collect()
@@ -1071,7 +883,7 @@ fn level_marks(found: &IndexMap<i64, ScreenText>, words: &str) -> IndexMap<i64, 
         if piece.text == LEVEL_GLYPH
             && found.values().any(|other| {
                 other.parent == piece.parent
-                    && is_digits(&other.text)
+                    && py::isdigit(&other.text)
                     && other.left > piece.left
                     && (other.row - piece.row).abs() < max_of(piece.glyph, other.glyph) / 2.0
             })

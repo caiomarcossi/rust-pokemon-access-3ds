@@ -10,24 +10,24 @@ use crate::core::discovery::ALLOCATION;
 use crate::games::gen6::rail::{self, Line, Network};
 use crate::py::Result;
 
-pub(crate) const TABLE: i64 = 0x08247214;
+pub(super) const TABLE: i64 = 0x08247214;
 const OWNER: i64 = 0x08247CC4;
-pub(crate) const FILE: i64 = 0x147FA080;
+pub(super) const FILE: i64 = 0x147FA080;
 // Three lines of Lumiose's, as spike 103 read them: A ends where B starts, and C, laid the other
 // way round, ends there too. A line's id is its start point's with bit 15 set.
-pub(crate) const A: i64 = 0x0305AC3B;
-pub(crate) const B: i64 = 0x0504BEF6;
-pub(crate) const C: i64 = 0x0504F514;
+pub(super) const A: i64 = 0x0305AC3B;
+pub(super) const B: i64 = 0x0504BEF6;
+pub(super) const C: i64 = 0x0504F514;
 const P0: i64 = 0x03052C3B;
 const P1: i64 = 0x05043EF6;
-pub(crate) const P2: i64 = 0x05045991;
-pub(crate) const P3: i64 = 0x05047514;
+pub(super) const P2: i64 = 0x05045991;
+pub(super) const P3: i64 = 0x05047514;
 /// Seven cells across, three either side of the middle.
-pub(crate) const ACROSS: i64 = 7;
+pub(super) const ACROSS: i64 = 7;
 
 /// A line's wall table: the outer column each side a wall, and `blocked` (row, offset)
 /// besides.
-pub(crate) fn walls(along: i64, blocked: &[(i64, i64)]) -> Vec<i64> {
+pub(super) fn walls(along: i64, blocked: &[(i64, i64)]) -> Vec<i64> {
     let mut out = Vec::new();
     for row in 0..=along {
         for column in 0..ACROSS {
@@ -75,7 +75,7 @@ fn line_record(
 }
 
 /// The table listing lines A, B and C loaded, and one entry for a line no longer loaded.
-pub(crate) fn network(memory: &FakeMemory) {
+pub(super) fn network(memory: &FakeMemory) {
     let records = [(A, FILE + 0xE8), (B, FILE + 0x5580), (C, FILE + 0x84E8)];
     line_record(memory, records[0].1, A, P0, P1, 10, &[(4, 1)]);
     line_record(memory, records[1].1, B, P1, P2, 6, &[]);
@@ -222,7 +222,7 @@ fn record(out: &mut Vec<u8>, tables: &[i64], kind: usize, i: i64, body: &[u8]) {
 /// Chunk (5, 4)'s street section as the ROM keeps it: the chunk, 18.0, how many of each
 /// kind of record and where each kind's offsets are, then the records, a line's or a track's
 /// walls after it and its file pointer 0, a point or joint placed from the chunk's middle.
-fn street_section(
+pub(super) fn street_section(
     lines: &[Line],
     points: &[(i64, (f64, f64))],
     joints: &[(i64, (f64, f64))],

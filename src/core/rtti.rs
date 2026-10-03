@@ -76,15 +76,7 @@ pub fn find_vtables(
         None => (base, base + image.len() as i64),
     };
     let mut out: Vec<i64> = Vec::new();
-    // Python's `encode("ascii")` raises UnicodeEncodeError, a ValueError, for anything else.
-    if let Some((position, c)) = mangled.chars().enumerate().find(|(_, c)| !c.is_ascii()) {
-        return Err(Error::value(format!(
-            "'ascii' codec can't encode character {} in position {position}: ordinal not in \
-             range(128)",
-            py::repr(&c.to_string())
-        )));
-    }
-    let mut wanted = mangled.as_bytes().to_vec();
+    let mut wanted = py::encode_ascii(mangled)?;
     wanted.push(0);
     for name in aligned(image, &wanted, 1, start) {
         for name_ref in aligned(image, &pack_u32(base + name)?, 4, start) {
