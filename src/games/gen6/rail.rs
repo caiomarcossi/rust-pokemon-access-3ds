@@ -1,1 +1,740 @@
+//! Rails: how Lumiose City's boulevards place things in X, and the walls along them (spikes 102,
+//! 103, 106, 107).
+//!
+//! A **line** is one stretch of boulevard between two points. A place on it is the line's id and
+//! two numbers, in cells; the game keeps the walls of each line in a table of its own, a row a cell
+//! along and a column a cell across, the rows running from the line's start point to its end point.
+//! The two numbers are the line's **way** of measuring, a way of the compass the line keeps at
+//! +0x10: the cells along and the offset across on a line measured south, both turned round on one
+//! measured north, and the two swapped on one measured east or west (`Line.upright`, spike 107).
+//! Lines meet at points, two to a point. A **track** is a short line of its own table from a point
+//! to a **joint**, where up to eight tracks meet as streets cross and branch.
+//!
+//! ```text
+//! table entry  u32 owner, u32 line id, u32 0, ptr the line's record, in the linear heap
+//! line record  +0x00 id, its start point's with bit 15 set, +0x08 start point, +0x0c end
+//!              point, +0x10 u32 its way (0 north, 1 south, 2 west, 3 east), +0x1c name,
+//!              +0x3c u16 cells along, +0x3e u16 cells across, +0x44 ptr the file it is in,
+//!              +0x54 u32 where its walls are in that file: (along + 1) rows of `across` words,
+//!              bit 0 set where the player cannot walk, as a chunk's cells are
+//! track record the same to +0x3e, its id never its start point's, its end a joint, then +0x40
+//!              ptr the file and +0x44 its walls
+//! ```
+//!
+//! The file is section 4 of a map chunk's file, and the game loads a line with the chunks it runs
+//! through, so the table lists only the lines near the player, and a door on a line further on is
+//! nowhere until the player walks up to it. The ROM has every chunk's section, each line whole in
+//! every chunk it crosses, so `section_streets` reads a map's streets from there (spikes 106, 107).
+//! Ids are a map's own: the same point id is in two other maps.
+//!
+//! ```text
+//! section      +0x00 u32 the chunk's column << 8 | its row, +0x04 f32 18.0, +0x08 five u16
+//!              counts, of lines, points, tracks, joints and cameras, +0x14 five u32s where each
+//!              kind's table of offsets from the section's start is
+//! point        +0x00 id, +0x08 the line or track ending there, +0x0c the line starting there,
+//!              +0x10 f32 x, y, z from the middle of its chunk, 720 units a side
+//! joint        +0x00 id, +0x08 eight u32 tracks meeting there, 0xffffffff after the last,
+//!              +0x28 f32 x, y, z
+//! ```
+//!
+//! Every line joined to the player's is laid out flat as one corridor, a grid of its own with the
+//! first line running north, where a way is found as on any other ground. The camera there is
+//! behind the player, and the D-pad works from it: up walks the way it looks, down walks back from
+//! it, and left and right turn the player a quarter, the camera following only while the key is
+//! held (spike 105). So a way on a rail is said from the camera (`pathfind.turned`), whose heading
+//! the corridor gives as a bearing of its own (`bearing`).
 
+use std::collections::VecDeque;
+use std::rc::Rc;
+
+use indexmap::IndexMap;
+
+use crate::core::binary::{f32, s16, u16, u32};
+use crate::core::discovery::{ALLOCATION, HEAP_SPAN, LINEAR_SPAN, within};
+use crate::core::memory::Memory;
+use crate::core::pathfind::{Box, Cell};
+use crate::py::{self, Error, Result};
+
+/// A table entry: owner, line id, 0, the line's record.
+pub const ENTRY: i64 = 16;
+pub const LINE_HEAD: i64 = 0x58;
+pub const LINE_START: i64 = 0x08;
+pub const LINE_END: i64 = 0x0C;
+pub const LINE_WAY: i64 = 0x10;
+pub const LINE_ALONG: i64 = 0x3C;
+pub const LINE_ACROSS: i64 = 0x3E;
+pub const LINE_FILE: i64 = 0x44;
+pub const LINE_WALLS: i64 = 0x54;
+/// Set in a line's id over its start point's, and never so in a track's (829 lines, spike 107).
+pub const LINE_BIT: i64 = 0x8000;
+pub const TRACK_FILE: i64 = 0x40;
+pub const TRACK_WALLS: i64 = 0x44;
+pub const WAY_NORTH: i64 = 0;
+pub const WAY_SOUTH: i64 = 1;
+pub const WAY_WEST: i64 = 2;
+pub const WAY_EAST: i64 = 3;
+pub const SECTION_COUNTS: i64 = 0x08;
+pub const SECTION_TABLES: i64 = 0x14;
+/// The kinds of record a section lists, in the order of its counts and tables.
+pub const LINES: i64 = 0;
+pub const POINTS: i64 = 1;
+pub const TRACKS: i64 = 2;
+pub const JOINTS: i64 = 3;
+pub const POINT_PLACE: i64 = 0x10;
+pub const JOINT_PLACE: i64 = 0x28;
+/// World units a map chunk is across: 40 cells of 18.
+pub const CHUNK_UNITS: i64 = 720;
+pub const BLOCKED: i64 = 0x1;
+pub const MAX_TABLE: i64 = 0x4000;
+/// Cells a line's wall table may hold: rows along times columns across.
+pub const MAX_CELLS: i64 = 0x10000;
+
+/// One stretch of boulevard and its walls.
+///
+/// `walls` is a shared slice where Python's is a tuple: a line is cloned wherever Python shares
+/// the one frozen object, and this keeps that cheap.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Line {
+    pub id: i64,
+    pub start: i64,
+    pub end: i64,
+    /// Cells along it: its wall table has one row more, both ends included.
+    pub along: i64,
+    pub across: i64,
+    pub walls: Rc<[i64]>,
+    /// The way of the compass the game measures places on it by.
+    pub way: i64,
+    /// Whether it is a track, which the game measures from the joint it ends at, back along its
+    /// rows: a person on a track measured west at (2, 0) stands at its joint, 2 cells to one side
+    /// (spike 107).
+    pub track: bool,
+}
+
+impl Line {
+    /// A line measured south and not a track; `way` and `track` are set with
+    /// `Line { way, track, ..Line::new(...) }`.
+    pub fn new(
+        id: i64,
+        start: i64,
+        end: i64,
+        along: i64,
+        across: i64,
+        walls: impl Into<Rc<[i64]>>,
+    ) -> Self {
+        Line {
+            id,
+            start,
+            end,
+            along,
+            across,
+            walls: walls.into(),
+            way: WAY_SOUTH,
+            track: false,
+        }
+    }
+
+    pub fn open(&self, row: i64, column: i64) -> bool {
+        if !(0..=self.along).contains(&row) || !(0..self.across).contains(&column) {
+            return false;
+        }
+        self.walls[(row * self.across + column) as usize] & BLOCKED == 0
+    }
+
+    /// A place as the game gives it on this line, as the cells along it from its start and
+    /// the offset across it, rising to its left. The game measures by the line's way, as if
+    /// the line ran that way of the world's (x, z): along it and across it on a line measured
+    /// south, both turned round on one measured north, and on one measured east or west the
+    /// two swapped. Through a warp into zone 0x44 the player stood at (-5, 8) on a line
+    /// measured north, 5 cells from its start and 8 to its right (spike 107); a record fits
+    /// its line so in 328 of Lumiose's 329, and every warp is on a wall beside an open cell,
+    /// and 20 places of people and the player fit the world within a few units.
+    pub fn upright(&self, a: f64, x: f64) -> (f64, f64) {
+        let (along, across) = self.direction(a, x);
+        if self.track {
+            (self.along as f64 + along, across)
+        } else {
+            (along, across)
+        }
+    }
+
+    /// A direction as the game gives it on this line, as its parts along the line and
+    /// across it: measured by the way as a place is, and on a track turned round.
+    pub fn direction(&self, a: f64, x: f64) -> (f64, f64) {
+        let (along, across) = if self.way == WAY_NORTH {
+            (-a, -x)
+        } else if self.way == WAY_WEST {
+            (-x, a)
+        } else if self.way == WAY_EAST {
+            (x, -a)
+        } else {
+            (a, x)
+        };
+        if self.track {
+            (-along, -across)
+        } else {
+            (along, across)
+        }
+    }
+}
+
+/// A map's streets as the ROM keeps them: its lines and tracks by id, and where the world
+/// has each point and joint they meet at, as (x, z).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Network {
+    pub lines: IndexMap<i64, Line>,
+    pub places: IndexMap<i64, (f64, f64)>,
+}
+
+/// One cell's step in the corridor, a way of the compass: north is (0, -1).
+pub type Step = (i64, i64);
+pub const NORTH: Step = (0, -1);
+
+/// The step a quarter turn left of `step`: west of north.
+fn left(step: Step) -> Step {
+    (step.1, -step.0)
+}
+
+/// `step` turned clockwise by `quarters` quarter turns.
+fn turned(step: Step, quarters: i64) -> Step {
+    let mut step = step;
+    for _ in 0..py::modulo(quarters, 4) {
+        step = (-step.1, step.0);
+    }
+    step
+}
+
+/// A line as the corridor has it: where the middle of its first row is, and the step one
+/// row on takes, its offsets rising to the left of that.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Laid {
+    pub line: Line,
+    pub origin: Cell,
+    pub ahead: Step,
+}
+
+impl Laid {
+    pub fn cell(&self, along: f64, across: f64) -> Result<Cell> {
+        let ((ox, oz), (ax, az), (lx, lz)) = (self.origin, self.ahead, left(self.ahead));
+        Ok((
+            py::round(ox as f64 + along * ax as f64 + across * lx as f64)?,
+            py::round(oz as f64 + along * az as f64 + across * lz as f64)?,
+        ))
+    }
+
+    /// The row and the offset a cell is at, on the line or off it.
+    pub fn place(&self, cell: Cell) -> (i64, i64) {
+        let (dx, dz) = (cell.0 - self.origin.0, cell.1 - self.origin.1);
+        let ((ax, az), (lx, lz)) = (self.ahead, left(self.ahead));
+        (dx * ax + dz * az, dx * lx + dz * lz)
+    }
+}
+
+/// The streets joined to the line the player is on, laid out flat: a cell is (x, z) with z
+/// falling northward and x rising eastward, the way right moves, and the first line runs north
+/// from (0, 0). A line goes on straight from the one it meets at a point, so a curving avenue
+/// is laid as it is walked, and turns at a joint by the quarter nearest the way it leaves it in
+/// the world (`lay_out`, spike 107).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Corridor {
+    pub laid: Vec<Laid>,
+}
+
+impl Corridor {
+    fn of(&self, line: i64) -> Option<&Laid> {
+        self.laid.iter().find(|laid| laid.line.id == line)
+    }
+
+    pub fn holds(&self, line: i64) -> bool {
+        self.of(line).is_some()
+    }
+
+    pub fn line(&self, line: i64) -> Option<&Line> {
+        self.of(line).map(|laid| &laid.line)
+    }
+
+    /// Where a place on one of the corridor's lines is in it, or None off them.
+    pub fn cell(&self, line: i64, along: f64, across: f64) -> Result<Option<Cell>> {
+        match self.of(line) {
+            None => Ok(None),
+            Some(laid) => Ok(Some(laid.cell(along, across)?)),
+        }
+    }
+
+    /// A place or a direction as the game gives it on one of the corridor's lines, as its
+    /// parts along the line and across it (`Line.upright`), or None off them.
+    pub fn upright(&self, line: i64, a: f64, x: f64) -> Option<(f64, f64)> {
+        self.of(line).map(|laid| laid.line.upright(a, x))
+    }
+
+    /// Where a place the game gives on one of the corridor's lines is in it.
+    pub fn at(&self, line: i64, a: f64, x: f64) -> Result<Option<Cell>> {
+        match self.upright(line, a, x) {
+            None => Ok(None),
+            Some(place) => self.cell(line, place.0, place.1),
+        }
+    }
+
+    /// Where a direction on a line points in the corridor, in degrees clockwise from its
+    /// north, the direction given as its parts across the line and along it; None for a line
+    /// the corridor does not hold.
+    pub fn bearing(&self, line: i64, across: f64, along: f64) -> Option<f64> {
+        let laid = self.of(line)?;
+        let ((ax, az), (lx, lz)) = (laid.ahead, left(laid.ahead));
+        let (east, north) = (
+            along * ax as f64 + across * lx as f64,
+            -(along * az as f64 + across * lz as f64),
+        );
+        Some(py::modulo_f(east.atan2(north).to_degrees(), 360.0))
+    }
+
+    /// Whether the player can stand in a cell of the corridor: a cell no line holds is not
+    /// somewhere on these streets.
+    pub fn open(&self, cell: Cell) -> bool {
+        for laid in &self.laid {
+            let (row, offset) = laid.place(cell);
+            if laid
+                .line
+                .open(row, offset + py::floordiv(laid.line.across, 2))
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn r#box(&self) -> Result<Box> {
+        let mut corners: Vec<Cell> = Vec::new();
+        for laid in &self.laid {
+            for along in [0, laid.line.along] {
+                for across in [
+                    -py::floordiv(laid.line.across, 2),
+                    py::floordiv(laid.line.across, 2),
+                ] {
+                    corners.push(laid.cell(along as f64, across as f64)?);
+                }
+            }
+        }
+        let xs: Vec<i64> = corners.iter().map(|corner| corner.0).collect();
+        let zs: Vec<i64> = corners.iter().map(|corner| corner.1).collect();
+        let (Some(&west), Some(&north), Some(&east), Some(&south)) = (
+            xs.iter().min(),
+            zs.iter().min(),
+            xs.iter().max(),
+            zs.iter().max(),
+        ) else {
+            return Err(Error::value("min() iterable argument is empty"));
+        };
+        Ok(Box {
+            west,
+            north,
+            east,
+            south,
+        })
+    }
+}
+
+/// The streets joined to the line `through`, laid out with it running north from (0, 0).
+/// Where two lines meet at a point the next goes on straight; where three or more meet, at a
+/// joint, each is turned the quarter nearest the way it leaves the joint in the world, from
+/// `places`, the world's (x, z) of each point, and a line whose way there is not known is left
+/// out rather than laid across another.
+pub fn lay_out(
+    lines: &IndexMap<i64, Line>,
+    through: i64,
+    places: Option<&IndexMap<i64, (f64, f64)>>,
+) -> Result<Option<Corridor>> {
+    let Some(first) = lines.get(&through) else {
+        return Ok(None);
+    };
+    let mut meeting: IndexMap<i64, Vec<&Line>> = IndexMap::new();
+    for line in lines.values() {
+        // Python's `{line.start, line.end}` is a set, visited in hash order; each point's list is
+        // filled in `lines`' order whichever point comes first, so only the pair matters.
+        let points = if line.start == line.end {
+            vec![line.start]
+        } else {
+            vec![line.start, line.end]
+        };
+        for point in points {
+            meeting.entry(point).or_default().push(line);
+        }
+    }
+    let nowhere = IndexMap::new();
+    let places = places.unwrap_or(&nowhere);
+    let mut laid: IndexMap<i64, Laid> = IndexMap::new();
+    laid.insert(
+        first.id,
+        Laid {
+            line: first.clone(),
+            origin: (0, 0),
+            ahead: NORTH,
+        },
+    );
+    let mut queue: VecDeque<i64> = VecDeque::from([first.id]);
+    while let Some(next) = queue.pop_front() {
+        let here = laid[&next].clone();
+        for (point, row, outward) in [
+            (here.line.end, here.line.along, here.ahead),
+            (here.line.start, 0, turned(here.ahead, 2)),
+        ] {
+            let met: &[&Line] = meeting.get(&point).map_or(&[], Vec::as_slice);
+            let mut sorted = met.to_vec();
+            sorted.sort_by_key(|line| line.id);
+            for other in sorted {
+                if laid.contains_key(&other.id) {
+                    continue;
+                }
+                let mut way = outward;
+                if met.len() > 2 {
+                    let Some(quarters) = quarters(&here.line, other, point, places)? else {
+                        continue;
+                    };
+                    way = turned(outward, quarters);
+                }
+                let at = here.cell(row as f64, 0.0)?;
+                laid.insert(other.id, leaving(other, point, at, way));
+                queue.push_back(other.id);
+            }
+        }
+    }
+    Ok(Some(Corridor {
+        laid: laid.into_values().collect(),
+    }))
+}
+
+/// `line` laid so its end at `point` is the cell `at` and it runs on from there `way`.
+fn leaving(line: &Line, point: i64, at: Cell, way: Step) -> Laid {
+    if line.start == point {
+        return Laid {
+            line: line.clone(),
+            origin: at,
+            ahead: way,
+        };
+    }
+    Laid {
+        line: line.clone(),
+        origin: (at.0 + line.along * way.0, at.1 + line.along * way.1),
+        ahead: turned(way, 2),
+    }
+}
+
+/// How many quarters clockwise `other` turns from the way `here` goes into the joint at
+/// `point`, from where the world has the joint and each line's far end; None where it has not
+/// got them. The world measures a heading from +z towards +x, as a line's way at a model's
+/// +0xa4 and +0xac is given, and a line's offset rises a quarter on from its way there, which
+/// is its left: so a world turn is the corridor's turned the other way round (spike 107).
+fn quarters(
+    here: &Line,
+    other: &Line,
+    point: i64,
+    places: &IndexMap<i64, (f64, f64)>,
+) -> Result<Option<i64>> {
+    let centre = places.get(&point);
+    let came = places.get(&if here.end == point {
+        here.start
+    } else {
+        here.end
+    });
+    let goes = places.get(&if other.start == point {
+        other.end
+    } else {
+        other.start
+    });
+    let (Some(centre), Some(came), Some(goes)) = (centre, came, goes) else {
+        return Ok(None);
+    };
+    let into = (centre.0 - came.0).atan2(centre.1 - came.1);
+    let out = (goes.0 - centre.0).atan2(goes.1 - centre.1);
+    Ok(Some(py::modulo(
+        py::round(-(out - into).to_degrees() / 90.0)?,
+        4,
+    )))
+}
+
+/// `bytes.find(needle, start)`.
+fn find(page: &[u8], needle: &[u8], start: usize) -> Option<usize> {
+    let tail = page.get(start..)?;
+    let first = *needle.first()?;
+    let mut from = 0;
+    while let Some(skip) = tail[from..].iter().position(|&byte| byte == first) {
+        let at = from + skip;
+        if tail[at..].starts_with(needle) {
+            return Some(start + at);
+        }
+        from = at + 1;
+    }
+    None
+}
+
+/// The table the rails loaded are listed in, found through the entry of a line the player
+/// is on: the block the entry sits in, from its allocator's tag.
+pub fn find_table(
+    pages: &IndexMap<i64, Vec<u8>>,
+    memory: &dyn Memory,
+    line: i64,
+) -> Result<Option<i64>> {
+    let mut needle = Vec::new();
+    needle.extend_from_slice(&u32_bytes(line)?);
+    needle.extend_from_slice(&[0; 4]);
+    for (&base, page) in pages {
+        let mut at = find(page, &needle, 0);
+        while let Some(index) = at {
+            let entry = base + index as i64 - 4;
+            if index % 4 == 0 && self::entry(memory, entry)?.is_some() {
+                for back in (0..MAX_TABLE).step_by(4) {
+                    let head = memory.read(entry - back, 8)?;
+                    if u32(&head, 0)? == ALLOCATION
+                        && back < u32(&head, 4)?
+                        && u32(&head, 4)? <= MAX_TABLE
+                    {
+                        return Ok(Some(entry - back));
+                    }
+                }
+                return Ok(None);
+            }
+            at = find(page, &needle, index + 1);
+        }
+    }
+    Ok(None)
+}
+
+/// `struct.pack("<I", value)`.
+#[track_caller]
+fn u32_bytes(value: i64) -> Result<[u8; 4]> {
+    match std::primitive::u32::try_from(value) {
+        Ok(value) => Ok(value.to_le_bytes()),
+        Err(_) => Err(Error::unpack(
+            "'I' format requires 0 <= number <= 4294967295",
+        )),
+    }
+}
+
+/// Every line the table lists as loaded, read afresh only where its record is new.
+pub fn read_table(
+    memory: &dyn Memory,
+    table: i64,
+    known: &IndexMap<i64, Line>,
+) -> Result<IndexMap<i64, Line>> {
+    let size = u32(&memory.read(table + 4, 4)?, 0)?;
+    if !(0 < size && size <= MAX_TABLE) {
+        return Ok(IndexMap::new());
+    }
+    let raw = memory.read(table + 8, size)?;
+    let mut out: IndexMap<i64, Line> = IndexMap::new();
+    for at in (0..size - ENTRY + 1).step_by(4) {
+        let (owner, line, zero, record) = (
+            u32(&raw, at)?,
+            u32(&raw, at + 4)?,
+            u32(&raw, at + 8)?,
+            u32(&raw, at + 12)?,
+        );
+        if zero != 0 || line == 0 || !within(HEAP_SPAN, owner) || !within(LINEAR_SPAN, record) {
+            continue;
+        }
+        if let Some(cached) = known.get(&line) {
+            out.insert(line, cached.clone());
+            continue;
+        }
+        let read = read_line(memory, record, line)?;
+        if let Some(read) = read {
+            out.insert(line, read);
+        }
+    }
+    Ok(out)
+}
+
+/// The line or track whose record is at `record`, or None where the record is not its.
+pub fn read_line(memory: &dyn Memory, record: i64, line: i64) -> Result<Option<Line>> {
+    let head = memory.read(record, LINE_HEAD)?;
+    if u32(&head, 0)? != line || !sized(&head)? {
+        return Ok(None);
+    }
+    let track = !is_line(&head)?;
+    let file = u32(&head, if track { TRACK_FILE } else { LINE_FILE })?;
+    if !within(LINEAR_SPAN, file) {
+        return Ok(None);
+    }
+    let walls = file + u32(&head, if track { TRACK_WALLS } else { LINE_WALLS })?;
+    Ok(Some(self::line(
+        &head,
+        &memory.read(walls, cells(&head)? * 4)?,
+        track,
+    )?))
+}
+
+/// Every line and track a chunk's street section holds, as the ROM keeps them, and where
+/// the world has its points and joints; nothing from a section that is not one, and a chunk
+/// with no streets has a section of none.
+pub fn section_streets(section: &[u8]) -> Result<Network> {
+    if (section.len() as i64) < SECTION_TABLES + 4 * (JOINTS + 1) {
+        return Ok(Network::default());
+    }
+    let mut counts = Vec::new();
+    let mut tables = Vec::new();
+    for kind in 0..=JOINTS {
+        counts.push(u16(section, SECTION_COUNTS + 2 * kind)?);
+        tables.push(u32(section, SECTION_TABLES + 4 * kind)?);
+    }
+    let chunk = u32(section, 0)?;
+    let middle = (
+        ((chunk >> 8) & 0xFF) as f64 * CHUNK_UNITS as f64 + CHUNK_UNITS as f64 / 2.0,
+        (chunk & 0xFF) as f64 * CHUNK_UNITS as f64 + CHUNK_UNITS as f64 / 2.0,
+    );
+    let mut lines: IndexMap<i64, Line> = IndexMap::new();
+    let mut places: IndexMap<i64, (f64, f64)> = IndexMap::new();
+    for kind in 0..=JOINTS {
+        let (count, table) = (counts[kind as usize], tables[kind as usize]);
+        if table + 4 * count > section.len() as i64 {
+            continue;
+        }
+        for i in 0..count {
+            let record = u32(section, table + 4 * i)?;
+            if kind == LINES || kind == TRACKS {
+                let head = py::slice(section, record, record + LINE_HEAD);
+                if (head.len() as i64) < LINE_HEAD || !sized(head)? {
+                    continue;
+                }
+                let walls = u32(
+                    head,
+                    if kind == TRACKS {
+                        TRACK_WALLS
+                    } else {
+                        LINE_WALLS
+                    },
+                )?;
+                let raw = py::slice(section, walls, walls + cells(head)? * 4);
+                if raw.len() as i64 == cells(head)? * 4 {
+                    lines.insert(u32(head, 0)?, self::line(head, raw, kind == TRACKS)?);
+                }
+                continue;
+            }
+            let at = record
+                + if kind == POINTS {
+                    POINT_PLACE
+                } else {
+                    JOINT_PLACE
+                };
+            if at + 12 <= section.len() as i64 {
+                places.insert(
+                    u32(section, record)?,
+                    (
+                        middle.0 + f32(section, at)?,
+                        middle.1 + f32(section, at + 8)?,
+                    ),
+                );
+            }
+        }
+    }
+    Ok(Network { lines, places })
+}
+
+fn sized(head: &[u8]) -> Result<bool> {
+    let (along, across) = (u16(head, LINE_ALONG)?, u16(head, LINE_ACROSS)?);
+    Ok(along != 0 && across != 0 && cells(head)? <= MAX_CELLS)
+}
+
+fn cells(head: &[u8]) -> Result<i64> {
+    Ok((u16(head, LINE_ALONG)? + 1) * u16(head, LINE_ACROSS)?)
+}
+
+fn is_line(head: &[u8]) -> Result<bool> {
+    Ok(u32(head, 0)? == (u32(head, LINE_START)? | LINE_BIT))
+}
+
+fn line(head: &[u8], walls: &[u8], track: bool) -> Result<Line> {
+    let count = walls.len() / 4;
+    if !walls.len().is_multiple_of(4) {
+        return Err(Error::unpack(format!(
+            "unpack requires a buffer of {} bytes",
+            count * 4
+        )));
+    }
+    let mut words = Vec::with_capacity(count);
+    for i in 0..count {
+        words.push(u32(walls, 4 * i as i64)?);
+    }
+    Ok(Line {
+        id: u32(head, 0)?,
+        start: u32(head, LINE_START)?,
+        end: u32(head, LINE_END)?,
+        along: u16(head, LINE_ALONG)?,
+        across: u16(head, LINE_ACROSS)?,
+        walls: words.into(),
+        way: u32(head, LINE_WAY)?,
+        track,
+    })
+}
+
+/// A furniture or warp record placed on a rail: (line, a, x, cells a, cells x), the same
+/// five fields in both kinds of record (spike 102), all five signed and measured by the line's
+/// way (`Line.upright`, spike 107).
+pub fn placed(record: &[u8]) -> Result<(i64, i64, i64, i64, i64)> {
+    Ok((
+        u32(record, 0x08)?,
+        s16(record, 0x0C)?,
+        s16(record, 0x0E)?,
+        s16(record, 0x10)?,
+        s16(record, 0x12)?,
+    ))
+}
+
+/// The corridor's cells a record covers: `width` on from `a` and `height` on from `x`, a
+/// negative size running back from where the record starts, each measured by the line's way:
+/// the warps a player comes into zone 0x44 by sit at -4 on a line measured north, across the
+/// street on the wall row before its first open one (spike 107).
+pub fn cells_of(
+    corridor: &Corridor,
+    line: i64,
+    a: i64,
+    x: i64,
+    width: i64,
+    height: i64,
+) -> Result<Vec<Cell>> {
+    let mut out = Vec::new();
+    for along in span(a, width) {
+        for across in span(x, height) {
+            if let Some(cell) = corridor.at(line, along as f64, across as f64)? {
+                out.push(cell);
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// The cells a record spans from `start`: `size` onwards, or back from it when `size` is
+/// negative, and the one cell for a size of 0.
+pub fn span(start: i64, size: i64) -> std::ops::Range<i64> {
+    if size < 0 {
+        return start + size + 1..start + 1;
+    }
+    start..start + size.max(1)
+}
+
+fn entry(memory: &dyn Memory, entry: i64) -> Result<Option<i64>> {
+    let raw = memory.read(entry, ENTRY)?;
+    let (owner, line, zero, record) = (u32(&raw, 0)?, u32(&raw, 4)?, u32(&raw, 8)?, u32(&raw, 12)?);
+    if zero != 0 || !within(HEAP_SPAN, owner) || !within(LINEAR_SPAN, record) {
+        return Ok(None);
+    }
+    Ok(if u32(&memory.read(record, 4)?, 0)? == line {
+        Some(record)
+    } else {
+        None
+    })
+}
+
+/// The first corner and size of the box holding these cells.
+pub fn spread(cells: impl IntoIterator<Item = Cell>) -> Result<(Cell, (i64, i64))> {
+    let cells: Vec<Cell> = cells.into_iter().collect();
+    let xs: Vec<i64> = cells.iter().map(|c| c.0).collect();
+    let zs: Vec<i64> = cells.iter().map(|c| c.1).collect();
+    let (Some(&west), Some(&north), Some(&east), Some(&south)) = (
+        xs.iter().min(),
+        zs.iter().min(),
+        xs.iter().max(),
+        zs.iter().max(),
+    ) else {
+        return Err(Error::value("min() iterable argument is empty"));
+    };
+    Ok(((west, north), (east - west + 1, south - north + 1)))
+}
