@@ -1,0 +1,80 @@
+# What to call the people on X and Y's maps in Spanish, when nothing better is known.
+#
+# The same as data/en/sprites.toml, in this language: a key is the sprite a move model is
+# drawn with (findings, spikes 75, 89 and 100), and a name is looked for in order — what the
+# player has called them, what the game calls them out of the player's own ROM, and only
+# then this file. So it is heard only when pa3ds cannot read the ROM.
+#
+# Every word here is the ROM's own, in this language. The English table's Nurse is a word of
+# pa3ds's own that the ROM has nothing for, so it is not here.
+#
+# Nor is Mom: the Spanish text calls the player's mother only "tu madre", your mother, and
+# never by a word of her own (spike 108).
+
+[sprites]
+# People the ROM never lists as trainers, read off lines of its own text that name them —
+# the same line in every language (spikes/108_x_people.py lines).
+"0x26" = "Handsome"                   # Looker: "It's me! Looker!" (system 102:16)
+"0x9a" = "Alexia"                     # Alexa: "I'm Alexa. [...] Viola, is my younger sister." (story 421:10)
+"0x9b" = "Clem"                       # Bonnie: "You can call me Bonnie." (story 404:0)
+"0x97" = "Megayayo"                   # the Mega Evolution guru: "People call me the Mega Evolution guru!" (story 281:6)
+"0x98" = "director del juego"         # the Game Director: "Hello! I am the Game Director." (story 272:0)
+
+# The game's own words for the story's people and for kinds of trainer, as `archives`
+# reads them (findings, spikes 90 and 108): spikes/108_x_people.py table es.
+"0x3" = "Xana"
+"0x4" = "Beni"
+"0x5" = "Trovato"
+"0x6" = "Ciprés"
+"0xa" = "Dianta"
+"0xb" = "Tileo"
+"0xc" = "Malva"
+"0xd" = "Drácena"
+"0xe" = "Narciso"
+"0xf" = "Violeta"
+"0x10" = "Lino"
+"0x11" = "Corelia"
+"0x12" = "Amaro"
+"0x13" = "Lem"
+"0x14" = "Valeria"
+"0x15" = "Ástrid"
+"0x16" = "Édel"
+"0x17" = "Lysson"
+"0x21" = "A. Z."
+"0x93" = "Kalm"
+"0x94" = "Serena"
+"0x9c" = "Lysson"
+"0x9f" = "Kalm"
+"0xa0" = "Serena"
+"0x1a" = "Team Flare Recluta"
+"0x1b" = "Team Flare Recluta"
+"0x28" = "Preescolar"
+"0x2a" = "Preescolar"
+"0x2c" = "Estudiante"
+"0x30" = "Estudiante"
+"0x34" = "Turista"
+"0x35" = "Mochilero"
+"0x43" = "Joven"
+"0x44" = "Pokéfan"
+"0x47" = "Chica"
+"0x4a" = "Luchadora"
+"0x4b" = "Patinadora"
+"0x4c" = "Patinador"
+"0x4d" = "Pescador"
+"0x4e" = "Entrenadora Promesa"
+"0x4f" = "Entrenadora Guay"
+"0x50" = "Veterana"
+"0x52" = "Nadadora"
+"0x55" = "Turista"
+"0x57" = "Criapokémon"
+"0x58" = "Médium"
+"0x59" = "Entrenador Promesa"
+"0x5b" = "Veterano"
+"0x5d" = "Pokémon Ranger"
+"0x5f" = "Científico"
+"0x61" = "Operario"
+"0x64" = "Niña Soñadora"
+"0x67" = "Jardinero"
+"0x70" = "Montañero"
+"0xa3" = "Nadador"
+"0xa4" = "Nadadora"

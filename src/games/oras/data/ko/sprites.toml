@@ -1,0 +1,110 @@
+# What to call the people on ORAS's maps in Korean, when nothing better is known.
+#
+# The same as data/en/sprites.toml, in this language: a key is the sprite a move model is
+# drawn with (findings, spikes 75 and 89), and a name is looked for in order — what the
+# player has called them, what the game calls them out of the player's own ROM, and only
+# then this file. So it is heard only when pa3ds cannot read the ROM.
+#
+# Every word here is the ROM's own, in this language. The English table's Nurse, and the
+# people and trainers' looks it names by what their sprite's id says, are words of pa3ds's
+# own that the ROM has nothing for, so they are not here.
+
+[sprites]
+# People the ROM never lists as trainers, read off lines of its own text that name them —
+# the same line in every language (spikes/91_names_in_languages.py lines).
+"0x118" = "엄마"                        # Mom: the speaker's label in "Mom: Norman?" (story 268:0)
+"0x13e" = "털보박사"                      # Professor Birch: "Did you get to meet Professor Birch?" (story 253:11)
+"0xb3" = "털보박사"                       # Professor Birch: the same Birch, on Route 101 and in his lab
+"0x11b" = "하기노인"                      # Mr. Briney: "Mr. Briney's Cottage" (system 33:383) and story 559:13
+"0x135" = "해양관장"                      # Captain Stern: "handed the Scanner to Captain Stern." (story 589:60)
+"0x136" = "공석박사"                      # Professor Cozmo: "Y-you see... Professor Cozmo..." (story 36:14)
+"0x161" = "보은"                        # Lanette: "I'm Lanette." (story 40:2)
+"0x11a" = "나발명"                       # Mr. Stone: "Mr. Stone updated your PokeNav Plus!" (story 559:2)
+"0xd7" = "핸섬"                         # Looker: the "Looker Ticket" (system 114:712)
+"0xc1" = "풍"                          # Tate: "Liza and Tate" (system 123:107), the boy named first but in English
+"0xc2" = "란"                          # Liza: the same, the girl
+"0x103f" = "근육몬"                      # Machoke, from the species names
+
+# The game's own words for the story's people and for kinds of trainer, as `archives`
+# reads them (findings, spike 90): spikes/91_names_in_languages.py table ko.
+"0xb4" = "민진"
+"0xb5" = "민진"
+"0xb6" = "성호"
+"0xb7" = "혁진"
+"0xb8" = "회연"
+"0xb9" = "미혜"
+"0xba" = "권수"
+"0xbb" = "원규"
+"0xbc" = "철구"
+"0xbd" = "암페어"
+"0xbe" = "민지"
+"0xbf" = "종길"
+"0xc0" = "은송"
+"0xc3" = "윤진"
+"0xc4" = "마적"
+"0xc5" = "호걸"
+"0xc6" = "구열"
+"0xc9" = "아강"
+"0xca" = "해조"
+"0xcb" = "이연"
+"0xd3" = "성한"
+"0x13a" = "봄이"
+"0x13b" = "휘웅"
+"0x13c" = "봄이"
+"0x13d" = "휘웅"
+"0x13f" = "종길"
+"0x15d" = "철구"
+"0x15e" = "회연"
+"0x15f" = "은송"
+"0x160" = "혁진"
+"0xc7" = "마그마단 조무래기"
+"0xc8" = "마그마단 조무래기"
+"0xcc" = "아쿠아단 조무래기"
+"0xcd" = "아쿠아단 조무래기"
+"0xda" = "반바지 꼬마"
+"0xdb" = "짧은 치마"
+"0xdc" = "곤충채집소년"
+"0xde" = "학원 끝난 아이"
+"0xdf" = "캠프보이"
+"0xe0" = "피크닉걸"
+"0xe1" = "도련님"
+"0xe2" = "아기씨"
+"0xe3" = "튜브보이"
+"0xe4" = "튜브걸"
+"0xe6" = "비키니 아가씨"
+"0xe7" = "신사"
+"0xe8" = "선원"
+"0xe9" = "등산가"
+"0xed" = "배틀걸"
+"0xee" = "포켓몬 컬렉터"
+"0xf0" = "포켓몬 매니아"
+"0xf1" = "곤충마니아"
+"0xf2" = "유적마니아"
+"0xf3" = "오컬트마니아"
+"0xf4" = "초능력자"
+"0xf5" = "닌자놀이"
+"0xf6" = "캠프파이어"
+"0xf7" = "새 조련사"
+"0xf8" = "드래곤 조련사"
+"0xf9" = "기타리스트"
+"0xfa" = "포켓몬 레인저"
+"0xfb" = "포켓몬 레인저"
+"0xfc" = "아가씨"
+"0xfd" = "파라솔 아가씨"
+"0xfe" = "아로마 아가씨"
+"0xff" = "애호가클럽"
+"0x100" = "애호가클럽"
+"0x102" = "트라이애슬리트"
+"0x103" = "트라이애슬리트"
+"0x104" = "엘리트 트레이너"
+"0x107" = "달인"
+"0x111" = "엘리트 트레이너"
+"0x112" = "엘리트 트레이너"
+"0x113" = "백팩커"
+"0x114" = "무서운 아저씨"
+"0x115" = "무서운 아가씨"
+"0x116" = "다이버"
+"0x117" = "해녀"
+"0x158" = "낚시꾼"
+"0x15a" = "수영팬티소년"
+"0x15b" = "튜브보이"

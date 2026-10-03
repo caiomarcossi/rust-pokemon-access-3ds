@@ -1,0 +1,31 @@
+[package]
+name = "pa3ds"
+version = "0.0.0"
+edition = "2024"
+description = "Screen reader accessibility layer for 3DS Pokemon games running under the Azahar emulator"
+license = "MIT"
+default-run = "pa3ds"
+# The tests mirror the Python checkout's tests/ folder and are compiled into the library's own
+# test build (`src/lib.rs`), where they can reach crate-private items as pytest reached `_names`.
+autotests = false
+
+[dependencies]
+flate2 = "1"
+indexmap = "2"
+libloading = "0.8"
+regex = "1"
+sha1 = "0.10"
+socket2 = { version = "0.6", features = ["all"] }
+toml = { version = "0.9", features = ["preserve_order"] }
+unicode-general-category = "1"
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[profile.release]
+lto = "thin"

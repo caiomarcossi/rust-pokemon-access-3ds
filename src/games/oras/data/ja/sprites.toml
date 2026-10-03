@@ -1,0 +1,110 @@
+# What to call the people on ORAS's maps in Japanese, when nothing better is known.
+#
+# The same as data/en/sprites.toml, in this language: a key is the sprite a move model is
+# drawn with (findings, spikes 75 and 89), and a name is looked for in order — what the
+# player has called them, what the game calls them out of the player's own ROM, and only
+# then this file. So it is heard only when pa3ds cannot read the ROM.
+#
+# Every word here is the ROM's own, in this language. The English table's Nurse, and the
+# people and trainers' looks it names by what their sprite's id says, are words of pa3ds's
+# own that the ROM has nothing for, so they are not here.
+
+[sprites]
+# People the ROM never lists as trainers, read off lines of its own text that name them —
+# the same line in every language (spikes/91_names_in_languages.py lines).
+"0x118" = "ママ"                        # Mom: the speaker's label in "Mom: Norman?" (story 268:0)
+"0x13e" = "オダマキはかせ"                   # Professor Birch: "Did you get to meet Professor Birch?" (story 253:11)
+"0xb3" = "オダマキはかせ"                    # Professor Birch: the same Birch, on Route 101 and in his lab
+"0x11b" = "ハギろうじん"                    # Mr. Briney: "Mr. Briney's Cottage" (system 33:383) and story 559:13
+"0x135" = "クスノキかんちょう"                 # Captain Stern: "handed the Scanner to Captain Stern." (story 589:60)
+"0x136" = "ソライシはかせ"                   # Professor Cozmo: "Y-you see... Professor Cozmo..." (story 36:14)
+"0x161" = "マユミ"                       # Lanette: "I'm Lanette." (story 40:2)
+"0x11a" = "ツワブキ"                      # Mr. Stone: "Mr. Stone updated your PokeNav Plus!" (story 559:2)
+"0xd7" = "ハンサム"                       # Looker: the "Looker Ticket" (system 114:712)
+"0xc1" = "フウ"                         # Tate: "Liza and Tate" (system 123:107), the boy named first but in English
+"0xc2" = "ラン"                         # Liza: the same, the girl
+"0x103f" = "ゴーリキー"                    # Machoke, from the species names
+
+# The game's own words for the story's people and for kinds of trainer, as `archives`
+# reads them (findings, spike 90): spikes/91_names_in_languages.py table ja.
+"0xb4" = "ミツル"
+"0xb5" = "ミツル"
+"0xb6" = "ダイゴ"
+"0xb7" = "カゲツ"
+"0xb8" = "フヨウ"
+"0xb9" = "プリム"
+"0xba" = "ゲンジ"
+"0xbb" = "ツツジ"
+"0xbc" = "トウキ"
+"0xbd" = "テッセン"
+"0xbe" = "アスナ"
+"0xbf" = "センリ"
+"0xc0" = "ナギ"
+"0xc3" = "ミクリ"
+"0xc4" = "マツブサ"
+"0xc5" = "ホムラ"
+"0xc6" = "カガリ"
+"0xc9" = "アオギリ"
+"0xca" = "ウシオ"
+"0xcb" = "イズミ"
+"0xd3" = "ギリー"
+"0x13a" = "ハルカ"
+"0x13b" = "ユウキ"
+"0x13c" = "ハルカ"
+"0x13d" = "ユウキ"
+"0x13f" = "センリ"
+"0x15d" = "トウキ"
+"0x15e" = "フヨウ"
+"0x15f" = "ナギ"
+"0x160" = "カゲツ"
+"0xc7" = "マグマだん したっぱ"
+"0xc8" = "マグマだん したっぱ"
+"0xcc" = "アクアだん したっぱ"
+"0xcd" = "アクアだん したっぱ"
+"0xda" = "たんぱんこぞう"
+"0xdb" = "ミニスカート"
+"0xdc" = "むしとりしょうねん"
+"0xde" = "じゅくがえり"
+"0xdf" = "キャンプボーイ"
+"0xe0" = "ピクニックガール"
+"0xe1" = "おぼっちゃま"
+"0xe2" = "おじょうさま"
+"0xe3" = "うきわボーイ"
+"0xe4" = "うきわガール"
+"0xe6" = "ビキニのおねえさん"
+"0xe7" = "ジェントルマン"
+"0xe8" = "ふなのり"
+"0xe9" = "やまおとこ"
+"0xed" = "バトルガール"
+"0xee" = "ポケモンコレクター"
+"0xf0" = "かいじゅうマニア"
+"0xf1" = "こんちゅうマニア"
+"0xf2" = "いせきマニア"
+"0xf3" = "オカルトマニア"
+"0xf4" = "サイキッカー"
+"0xf5" = "ニンジャごっこ"
+"0xf6" = "キャンプファイヤー"
+"0xf7" = "とりつかい"
+"0xf8" = "ドラゴンつかい"
+"0xf9" = "ギタリスト"
+"0xfa" = "ポケモンレンジャー"
+"0xfb" = "ポケモンレンジャー"
+"0xfc" = "おとなのおねえさん"
+"0xfd" = "パラソルおねえさん"
+"0xfe" = "アロマなおねえさん"
+"0xff" = "だいすきクラブ"
+"0x100" = "だいすきクラブ"
+"0x102" = "トライアスリート"
+"0x103" = "トライアスリート"
+"0x104" = "エリートトレーナー"
+"0x107" = "たつじん"
+"0x111" = "エリートトレーナー"
+"0x112" = "エリートトレーナー"
+"0x113" = "バックパッカー"
+"0x114" = "こわいおじさん"
+"0x115" = "こわいおねえさん"
+"0x116" = "ダイバー"
+"0x117" = "あまさん"
+"0x158" = "つりびと"
+"0x15a" = "かいパンやろう"
+"0x15b" = "うきわボーイ"

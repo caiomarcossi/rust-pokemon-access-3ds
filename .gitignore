@@ -1,0 +1,7 @@
+/target
+# Raw captures and tapes hold the player's save data (ADR-0029): they live under
+# %LOCALAPPDATA%\pa3ds, never here.
+*.tape.gz
+/user/
+__pycache__/
+/.port-graph.json

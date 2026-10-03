@@ -1,0 +1,193 @@
+# What to call the people on ORAS's maps, when nothing better is known.
+#
+# A key is an overworld sprite, the one a move model is drawn with (findings, spikes 75 and 89),
+# so a name here is everyone drawn as it, everywhere in the game. A name is looked for in order:
+# what the player has called them, then what the game itself calls them, out of the player's own
+# ROM and in their language (`games.gen6.archives`), and only then this file. So most of what is
+# below is heard only when pa3ds cannot read the ROM (`pa3ds.core.names` has the rules).
+#
+# Each entry says where it came from, because a sprite is only as good as the reading behind it.
+
+[sprites]
+# People the game has no list of: never a trainer, so the ROM names them nowhere. Read in replays,
+# or from the ROM's own id for the sprite and where it stands (`spikes/86_door_kinds.py stands`).
+"0x118" = "Mom"                       # signs.ctm: "Now take care out there, honey!", in the player's house
+"0x13e" = "Professor Birch"           # opening.ctm: "Halloo! You over there! Please! Help me out!"
+"0xb3" = "Professor Birch"            # HAKASE_RS: Birch on Route 101 in movie3 (spike 52)
+"0x12a" = "Nurse"                     # wally.ctm: "Welcome to the Pokémon Center", in two Centers on two saves
+"0x103f" = "Machoke"                  # both openings: "Graoh, graoh, graoh..." with the movers
+"0x11b" = "Mr. Briney"                # HAGI_RS: Dewford, Routes 104 and 109, the S.S. Tidal
+"0x135" = "Captain Stern"             # KUSUNOKI_RS: Slateport and Lilycove
+"0x136" = "Professor Cozmo"           # SORAISI_RS: Fallarbor, Meteor Falls, Mossdeep
+"0x161" = "Lanette"                   # MAYUMI_RS: Fallarbor and Route 114
+"0x11a" = "Mr. Stone"                 # CHAMPFATHER_RS: Rustboro
+"0xd7" = "Looker"                     # HANDSOME_RS: the Battle Resort
+"0xc1" = "Tate"                       # LEADER7_M_RS: Mossdeep; the ROM names only "Liza & Tate"
+"0xc2" = "Liza"                       # LEADER7_F_RS: Mossdeep
+
+# Shared looks the game never names, called what the ROM's own id for the sprite says they are
+# (file 94, `spikes/85_rom_names.py sprite`), since everyone drawn as one hears the same word:
+# WOMAN_RS is Mrs. Birch in Littleroot and a woman in 27 other zones. A `_ROOM_RS` sprite is
+# the same look indoors. Every one here stands on ORAS's maps; those whose id says too little
+# (ELDER_RS, JUNIOR_RS, ZAZAKO_RS, CONTEST_RS, KIZUNA_RS, DIRECTOR_RS, STOPPER3) are left out.
+"0x119" = "Young man"                 # BROTHER_RS: Littleroot and Route 101
+"0x11c" = "Little boy"                # CHILDBOY_RS
+"0x150" = "Little boy"                # CHILDBOY_ROOM_RS
+"0x11d" = "Little girl"               # CHILDGIRL_RS
+"0x151" = "Little girl"               # CHILDGIRL_ROOM_RS
+"0x11e" = "Old man"                   # OLDMAN_RS
+"0x152" = "Old man"                   # OLDMAN_ROOM_RS
+"0x11f" = "Old woman"                 # OLDWOMAN_RS
+"0x153" = "Old woman"                 # OLDWOMAN_ROOM_RS
+"0x120" = "Big man"                   # BIGMAN1_RS
+"0x121" = "Big man"                   # BIGMAN2_RS
+"0x154" = "Big man"                   # BIGMAN1_ROOM_RS
+"0x155" = "Big man"                   # BIGMAN2_ROOM_RS
+"0x70" = "Big man"                    # BIGMAN, X's sprite, once in ORAS
+"0x122" = "Middle-aged man"           # OYAJI1_RS: Mauville, as are the four after it
+"0x123" = "Middle-aged man"           # OYAJI2_RS
+"0x124" = "Middle-aged man"           # OYAJI3_RS
+"0x125" = "Middle-aged man"           # OYAJI4_RS
+"0x126" = "Middle-aged man"           # OYAJI5_RS
+"0x128" = "Woman"                     # WOMAN_RS
+"0x142" = "Woman"                     # WOMAN2_RS
+"0x156" = "Woman"                     # WOMAN_ROOM_RS
+"0x132" = "Man"                       # MAN_RS
+"0x157" = "Man"                       # MAN_ROOM_RS
+"0x31" = "Man"                        # MAN1, X's sprite, once in ORAS
+"0x131" = "Girl"                      # GIRL_RS
+"0x10c" = "Young man"                 # COUPLE_M_RS: the young couples' man
+"0x10d" = "Young woman"               # COUPLE_F_RS: and woman
+"0x10a" = "Twin"                      # TWIN1_RS
+"0x10b" = "Twin"                      # TWIN2_RS
+"0x127" = "Trick Master"              # KARAKURI_RS: Route 110 only, the Trick House
+"0x129" = "Man in sunglasses"         # SUNGLASS_RS
+"0x12b" = "Clerk"                     # SHOP_M_RS
+"0x12c" = "Receptionist"              # INFORMATION_RS
+"0x3e" = "Receptionist"               # INFORMATIONW, X's sprite
+"0x12d" = "Gym guide"                 # DANPEI_RS: in all eight Gym towns, as X's DANPEI is in all eight Gyms
+"0x12e" = "Delivery person"           # DELIVER1_RS: in all sixteen Pokémon Centers
+"0x12f" = "Delivery person"           # DELIVER2_RS: likewise
+"0x133" = "Assistant"                 # ASSISTANT_M_RS
+"0x5f" = "Assistant"                  # ASSISTANTM, X's sprite
+"0x137" = "Woman in a kimono"         # KIMONO3_RS
+"0x140" = "Office worker"             # OFFICEWORKER_RS
+"0x141" = "Boy playing a game"        # GAMEBOY_RS
+"0x108" = "Reporter"                  # REPORTER_RS
+"0x109" = "Cameraman"                 # CAMERAMAN_RS
+
+# Trainers' looks the ROM leaves unnamed, one trainer or none of a class standing as each, or a
+# pair class beside the class (spike 90); called by the class their id and their trainers share.
+"0xdd" = "Schoolkid"                  # SCHOOL_M_RS
+"0x145" = "Schoolkid"                 # SCHOOL_M_ROOM_RS
+"0x146" = "Schoolkid"                 # SCHOOL_W_ROOM_RS
+"0x143" = "Youngster"                 # TANPAN_ROOM_RS
+"0x144" = "Lass"                      # MINI_ROOM_RS
+"0x147" = "Hiker"                     # MOUNTMAN_ROOM_RS
+"0x148" = "Aroma Lady"                # AROMA_ROOM_RS
+"0xe5" = "Swimmer ♂"                  # SWIMMER_M_RS
+"0x159" = "Swimmer ♀"                 # SWIMMER_W2_RS
+"0x15c" = "Tuber"                     # UKIWA_W2_RS
+"0xea" = "Pokémon Breeder"            # BREADER_M_RS
+"0xeb" = "Pokémon Breeder"            # BREADER_W_RS
+"0xec" = "Black Belt"                 # FIGHTER_M_RS
+"0xef" = "Fisherman"                  # FISHING_RS
+"0x101" = "Triathlete"                # TRIRUN_M_RS
+"0x105" = "Ace Trainer"               # ELITE_F_RS
+"0x149" = "Ace Trainer"               # ELITE_M_ROOM_RS
+"0x14a" = "Ace Trainer"               # ELITE_F_ROOM_RS
+"0x106" = "Expert"                    # VETERAN_M_RS
+"0x14b" = "Expert"                    # VETERAN_M_ROOM_RS
+"0x14c" = "Expert"                    # VETERAN_F_ROOM_RS
+"0x14d" = "Street Thug"               # SCARY_M_ROOM_RS
+"0x14e" = "Delinquent"                # SCARY_W_ROOM_RS
+
+# Things standing on the map that the game never names.
+"0x200b" = "bush"                     # omega_ruby_bush.ctm: "You can't pass because of prickly thorns, but a Pokémon may be able to cut the tree."
+"0x200c" = "cracked boulder"          # omega_ruby_smash.ctm: "It's a cracked boulder. A Pokémon may be able to break it."
+"0x2009" = "big boulder"              # omega_ruby_strength-boulders.ctm: "It's a big boulder, but a Pokémon may be able to push it aside."
+
+# The game's own words, copied from the ROM's English text by `spikes/90_sprite_trainers.py`: the
+# story's people by the trainer each is, and every other sprite that two trainers or more of one
+# class stand as, by that class (findings, spike 90). With the ROM, these come from it instead.
+"0xb4" = "Wally"                      # RIVAL_RS
+"0xb5" = "Wally"                      # RIVAL_EX_RS
+"0xb6" = "Steven"                     # CHAMPION_RS
+"0xb7" = "Sidney"                     # BIGFOUR1_RS
+"0xb8" = "Phoebe"                     # BIGFOUR2_RS
+"0xb9" = "Glacia"                     # BIGFOUR3_RS
+"0xba" = "Drake"                      # BIGFOUR4_RS
+"0xbb" = "Roxanne"                    # LEADER1_RS
+"0xbc" = "Brawly"                     # LEADER2_RS
+"0xbd" = "Wattson"                    # LEADER3_RS
+"0xbe" = "Flannery"                   # LEADER4_RS
+"0xbf" = "Norman"                     # LEADER5_RS
+"0xc0" = "Winona"                     # LEADER6_RS
+"0xc3" = "Wallace"                    # LEADER8_RS
+"0xc4" = "Maxie"                      # MAGMABOSS_RS
+"0xc5" = "Tabitha"                    # MAGMAKANBU_M_RS
+"0xc6" = "Courtney"                   # MAGMAKANBU_F_RS
+"0xc9" = "Archie"                     # AQUABOSS_RS
+"0xca" = "Matt"                       # AQUAKANBU_M_RS
+"0xcb" = "Shelly"                     # AQUAKANBU_F_RS
+"0xd3" = "Aarune"                     # HIMITU_RS
+"0x13a" = "May"                       # SUPPORT_F_RS, drawn into work object 0x7a (spike 89)
+"0x13b" = "Brendan"                   # SUPPORT_M_RS, likewise
+"0x13c" = "May"                       # SUPPORT_F_BIKE_RS, by the ROM's own id; no replay yet
+"0x13d" = "Brendan"                   # SUPPORT_M_BIKE_RS, likewise
+"0x13f" = "Norman"                    # LEADER5A_RS: wally.ctm, "thanked as Mr. Norman"
+"0x15d" = "Brawly"                    # LEADER2A_RS
+"0x15e" = "Phoebe"                    # BIGFOUR2A_RS
+"0x15f" = "Winona"                    # LEADER6A_RS
+"0x160" = "Sidney"                    # BIGFOUR1A_RS
+"0xc7" = "Team Magma Grunt"           # MAGMA_M_RS
+"0xc8" = "Team Magma Grunt"           # MAGMA_F_RS
+"0xcc" = "Team Aqua Grunt"            # AQUA_M_RS
+"0xcd" = "Team Aqua Grunt"            # AQUA_F_RS
+"0xda" = "Youngster"                  # TANPAN_RS
+"0xdb" = "Lass"                       # MINI_RS
+"0xdc" = "Bug Catcher"                # MUSITORI_RS
+"0xde" = "Schoolkid"                  # SCHOOL_W_RS
+"0xdf" = "Camper"                     # CAMPBOY_RS
+"0xe0" = "Picnicker"                  # PICNICGIRL_RS
+"0xe1" = "Rich Boy"                   # RICHBOY_RS
+"0xe2" = "Lady"                       # RICHGIRL_RS
+"0xe3" = "Tuber"                      # UKIWA_M_RS
+"0xe4" = "Tuber"                      # UKIWA_W_RS
+"0xe6" = "Swimmer ♀"                  # SWIMMER_W_RS
+"0xe7" = "Gentleman"                  # GENTLEMAN_RS
+"0xe8" = "Sailor"                     # MARINER_RS
+"0xe9" = "Hiker"                      # MOUNTMAN_RS
+"0xed" = "Battle Girl"                # FIGHTER_W_RS
+"0xee" = "Collector"                  # COLLECTOR_RS
+"0xf0" = "Poké Maniac"                # MONSTERMANIA_RS
+"0xf1" = "Bug Maniac"                 # BUGMANIA_RS
+"0xf2" = "Ruin Maniac"                # RUINMANIA_RS
+"0xf3" = "Hex Maniac"                 # OCCULT_RS
+"0xf4" = "Psychic"                    # ESP_M_RS
+"0xf5" = "Ninja Boy"                  # NINJA_RS
+"0xf6" = "Kindler"                    # CAMPFIRE_RS
+"0xf7" = "Bird Keeper"                # BIRDTAMER_RS
+"0xf8" = "Dragon Tamer"               # DRAGONTAMER_RS
+"0xf9" = "Guitarist"                  # GUITAR_RS
+"0xfa" = "Pokémon Ranger"             # RANGER_M_RS
+"0xfb" = "Pokémon Ranger"             # RANGER_W_RS
+"0xfc" = "Beauty"                     # ADULT_RS
+"0xfd" = "Parasol Lady"               # PARASOL_RS
+"0xfe" = "Aroma Lady"                 # AROMA_RS
+"0xff" = "Poké Fan"                   # DAISUKI_M_RS
+"0x100" = "Poké Fan"                  # DAISUKI_W_RS
+"0x102" = "Triathlete"                # TRIBIKE_M_RS
+"0x103" = "Triathlete"                # TRISWIM_M_RS
+"0x104" = "Ace Trainer"               # ELITE_M_RS
+"0x107" = "Expert"                    # VETERAN_F_RS
+"0x111" = "Ace Trainer"               # NAMINORI_M_RS
+"0x112" = "Ace Trainer"               # NAMINORI_F_RS
+"0x113" = "Backpacker"                # BACKPACKER_M_RS
+"0x114" = "Street Thug"               # SCARY_M_RS
+"0x115" = "Delinquent"                # SCARY_W_RS
+"0x116" = "Scuba Diver"               # DIVER_M_RS
+"0x117" = "Free Diver"                # DIVER_F_RS
+"0x158" = "Fisherman"                 # FISHING2_RS
+"0x15a" = "Swimmer ♂"                 # SWIMMER_M2_RS
+"0x15b" = "Tuber"                     # UKIWA_M2_RS

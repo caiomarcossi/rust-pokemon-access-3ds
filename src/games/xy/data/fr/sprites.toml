@@ -1,0 +1,78 @@
+# What to call the people on X and Y's maps in French, when nothing better is known.
+#
+# The same as data/en/sprites.toml, in this language: a key is the sprite a move model is
+# drawn with (findings, spikes 75, 89 and 100), and a name is looked for in order — what the
+# player has called them, what the game calls them out of the player's own ROM, and only
+# then this file. So it is heard only when pa3ds cannot read the ROM.
+#
+# Every word here is the ROM's own, in this language. The English table's Nurse is a word of
+# pa3ds's own that the ROM has nothing for, so it is not here.
+
+[sprites]
+# People the ROM never lists as trainers, read off lines of its own text that name them —
+# the same line in every language (spikes/108_x_people.py lines).
+"0x7" = "Maman"                       # Mom: "Mom's words echoed..." (system 140:43)
+"0x26" = "Beladonis"                  # Looker: "It's me! Looker!" (system 102:16)
+"0x9a" = "Alexia"                     # Alexa: "I'm Alexa. [...] Viola, is my younger sister." (story 421:10)
+"0x9b" = "Clem"                       # Bonnie: "You can call me Bonnie." (story 404:0)
+"0x97" = "Pépé Volution"              # the Mega Evolution guru: "People call me the Mega Evolution guru!" (story 281:6)
+"0x98" = "réalisateur du jeu"         # the Game Director: "Hello! I am the Game Director." (story 272:0)
+
+# The game's own words for the story's people and for kinds of trainer, as `archives`
+# reads them (findings, spikes 90 and 108): spikes/108_x_people.py table fr.
+"0x3" = "Sannah"
+"0x4" = "Tierno"
+"0x5" = "Trovato"
+"0x6" = "Platane"
+"0xa" = "Dianthéa"
+"0xb" = "Thyméo"
+"0xc" = "Malva"
+"0xd" = "Dracéna"
+"0xe" = "Narcisse"
+"0xf" = "Violette"
+"0x10" = "Lino"
+"0x11" = "Cornélia"
+"0x12" = "Amaro"
+"0x13" = "Lem"
+"0x14" = "Valériane"
+"0x15" = "Astera"
+"0x16" = "Urup"
+"0x17" = "Lysandre"
+"0x21" = "A.Z."
+"0x93" = "Kalem"
+"0x94" = "Serena"
+"0x9c" = "Lysandre"
+"0x9f" = "Kalem"
+"0xa0" = "Serena"
+"0x1a" = "Team Flare Sbire"
+"0x1b" = "Team Flare Sbire"
+"0x28" = "Petite"
+"0x2a" = "Petit"
+"0x2c" = "Écolière"
+"0x30" = "Écolier"
+"0x34" = "Touriste"
+"0x35" = "Randonneur"
+"0x43" = "Gamin"
+"0x44" = "Pokéfan"
+"0x47" = "Fillette"
+"0x4a" = "Combattante"
+"0x4b" = "Roller Skateuse"
+"0x4c" = "Roller Skateur"
+"0x4d" = "Pêcheur"
+"0x4e" = "Dresseur Prometteur"
+"0x4f" = "Topdresseur"
+"0x50" = "Vénérable"
+"0x52" = "Nageuse"
+"0x55" = "Touriste"
+"0x57" = "Éleveuse"
+"0x58" = "Kinésiste"
+"0x59" = "Dresseur Prometteur"
+"0x5b" = "Vénérable"
+"0x5d" = "Pokémon Ranger"
+"0x5f" = "Scientifique"
+"0x61" = "Ouvrier"
+"0x64" = "Fillette de Conte"
+"0x67" = "Jardinier"
+"0x70" = "Montagnard"
+"0xa3" = "Nageur"
+"0xa4" = "Nageuse"

@@ -1,0 +1,110 @@
+# What to call the people on ORAS's maps in French, when nothing better is known.
+#
+# The same as data/en/sprites.toml, in this language: a key is the sprite a move model is
+# drawn with (findings, spikes 75 and 89), and a name is looked for in order — what the
+# player has called them, what the game calls them out of the player's own ROM, and only
+# then this file. So it is heard only when pa3ds cannot read the ROM.
+#
+# Every word here is the ROM's own, in this language. The English table's Nurse, and the
+# people and trainers' looks it names by what their sprite's id says, are words of pa3ds's
+# own that the ROM has nothing for, so they are not here.
+
+[sprites]
+# People the ROM never lists as trainers, read off lines of its own text that name them —
+# the same line in every language (spikes/91_names_in_languages.py lines).
+"0x118" = "Maman"                     # Mom: the speaker's label in "Mom: Norman?" (story 268:0)
+"0x13e" = "Professeur Seko"           # Professor Birch: "Did you get to meet Professor Birch?" (story 253:11)
+"0xb3" = "Professeur Seko"            # Professor Birch: the same Birch, on Route 101 and in his lab
+"0x11b" = "M. Marco"                  # Mr. Briney: "Mr. Briney's Cottage" (system 33:383) and story 559:13
+"0x135" = "Capitaine Poupe"           # Captain Stern: "handed the Scanner to Captain Stern." (story 589:60)
+"0x136" = "Professeur Kosmo"          # Professor Cozmo: "Y-you see... Professor Cozmo..." (story 36:14)
+"0x161" = "Annette"                   # Lanette: "I'm Lanette." (story 40:2)
+"0x11a" = "M. Rochard"                # Mr. Stone: "Mr. Stone updated your PokeNav Plus!" (story 559:2)
+"0xd7" = "Beladonis"                  # Looker: the "Looker Ticket" (system 114:712)
+"0xc1" = "Lévy"                       # Tate: "Liza and Tate" (system 123:107), the boy named first but in English
+"0xc2" = "Tatia"                      # Liza: the same, the girl
+"0x103f" = "Machopeur"                # Machoke, from the species names
+
+# The game's own words for the story's people and for kinds of trainer, as `archives`
+# reads them (findings, spike 90): spikes/91_names_in_languages.py table fr.
+"0xb4" = "Timmy"
+"0xb5" = "Timmy"
+"0xb6" = "Pierre"
+"0xb7" = "Damien"
+"0xb8" = "Spectra"
+"0xb9" = "Glacia"
+"0xba" = "Aragon"
+"0xbb" = "Roxanne"
+"0xbc" = "Bastien"
+"0xbd" = "Voltère"
+"0xbe" = "Adriane"
+"0xbf" = "Norman"
+"0xc0" = "Alizée"
+"0xc3" = "Marc"
+"0xc4" = "Max"
+"0xc5" = "Kelvin"
+"0xc6" = "Courtney"
+"0xc9" = "Arthur"
+"0xca" = "Matthieu"
+"0xcb" = "Sarah"
+"0xd3" = "Millepertuis"
+"0x13a" = "Flora"
+"0x13b" = "Brice"
+"0x13c" = "Flora"
+"0x13d" = "Brice"
+"0x13f" = "Norman"
+"0x15d" = "Bastien"
+"0x15e" = "Spectra"
+"0x15f" = "Alizée"
+"0x160" = "Damien"
+"0xc7" = "Team Magma Sbire"
+"0xc8" = "Team Magma Sbire"
+"0xcc" = "Team Aqua Sbire"
+"0xcd" = "Team Aqua Sbire"
+"0xda" = "Gamin"
+"0xdb" = "Fillette"
+"0xdc" = "Scout"
+"0xde" = "Élève"
+"0xdf" = "Fan de Camping"
+"0xe0" = "Fan de Pique-Nique"
+"0xe1" = "Richard"
+"0xe2" = "Mademoiselle"
+"0xe3" = "Garçon à la Bouée"
+"0xe4" = "Fille à la Bouée"
+"0xe6" = "Nageuse"
+"0xe7" = "Gentleman"
+"0xe8" = "Marin"
+"0xe9" = "Montagnard"
+"0xed" = "Combattante"
+"0xee" = "Collectionneur"
+"0xf0" = "Pokémaniac"
+"0xf1" = "Entomomaniac"
+"0xf2" = "Ruinemaniac"
+"0xf3" = "Mystimaniac"
+"0xf4" = "Kinésiste"
+"0xf5" = "Ninja Amateur"
+"0xf6" = "Saltimbanque"
+"0xf7" = "Ornithologue"
+"0xf8" = "Dracologue"
+"0xf9" = "Guitariste"
+"0xfa" = "Pokémon Ranger"
+"0xfb" = "Pokémon Ranger"
+"0xfc" = "Canon"
+"0xfd" = "Sœur Parasol"
+"0xfe" = "Aromathérapeute"
+"0xff" = "Pokéfan"
+"0x100" = "Pokéfan"
+"0x102" = "Triathlète"
+"0x103" = "Triathlète"
+"0x104" = "Topdresseur"
+"0x107" = "Experte"
+"0x111" = "Topdresseur"
+"0x112" = "Topdresseur"
+"0x113" = "Randonneur"
+"0x114" = "Terreur"
+"0x115" = "Terreur"
+"0x116" = "Plongeur"
+"0x117" = "Pêcheuse de Perles"
+"0x158" = "Pêcheur"
+"0x15a" = "Nageur"
+"0x15b" = "Garçon à la Bouée"

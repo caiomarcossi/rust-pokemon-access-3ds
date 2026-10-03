@@ -1,0 +1,78 @@
+# What to call the people on X and Y's maps in Japanese, when nothing better is known.
+#
+# The same as data/en/sprites.toml, in this language: a key is the sprite a move model is
+# drawn with (findings, spikes 75, 89 and 100), and a name is looked for in order — what the
+# player has called them, what the game calls them out of the player's own ROM, and only
+# then this file. So it is heard only when pa3ds cannot read the ROM.
+#
+# Every word here is the ROM's own, in this language. The English table's Nurse is a word of
+# pa3ds's own that the ROM has nothing for, so it is not here.
+
+[sprites]
+# People the ROM never lists as trainers, read off lines of its own text that name them —
+# the same line in every language (spikes/108_x_people.py lines).
+"0x7" = "ママ"                          # Mom: "Mom's words echoed..." (system 140:43)
+"0x26" = "ハンサム"                       # Looker: "It's me! Looker!" (system 102:16)
+"0x9a" = "パンジー"                       # Alexa: "I'm Alexa. [...] Viola, is my younger sister." (story 421:10)
+"0x9b" = "ユリーカ"                       # Bonnie: "You can call me Bonnie." (story 404:0)
+"0x97" = "メガシンカおやじ"                   # the Mega Evolution guru: "People call me the Mega Evolution guru!" (story 281:6)
+"0x98" = "ゲーム　ディレクター"                 # the Game Director: "Hello! I am the Game Director." (story 272:0)
+
+# The game's own words for the story's people and for kinds of trainer, as `archives`
+# reads them (findings, spikes 90 and 108): spikes/108_x_people.py table ja.
+"0x3" = "サナ"
+"0x4" = "ティエルノ"
+"0x5" = "トロバ"
+"0x6" = "プラターヌ"
+"0xa" = "カルネ"
+"0xb" = "ガンピ"
+"0xc" = "パキラ"
+"0xd" = "ドラセナ"
+"0xe" = "ズミ"
+"0xf" = "ビオラ"
+"0x10" = "ザクロ"
+"0x11" = "コルニ"
+"0x12" = "フクジ"
+"0x13" = "シトロン"
+"0x14" = "マーシュ"
+"0x15" = "ゴジカ"
+"0x16" = "ウルップ"
+"0x17" = "フラダリ"
+"0x21" = "ＡＺ"
+"0x93" = "カルム"
+"0x94" = "セレナ"
+"0x9c" = "フラダリ"
+"0x9f" = "カルム"
+"0xa0" = "セレナ"
+"0x1a" = "フレアだん したっぱ"
+"0x1b" = "フレアだん したっぱ"
+"0x28" = "えんじ"
+"0x2a" = "えんじ"
+"0x2c" = "スクールガール"
+"0x30" = "スクールボーイ"
+"0x34" = "ツアーきゃく"
+"0x35" = "バックパッカー"
+"0x43" = "たんぱんこぞう"
+"0x44" = "だいすきクラブ"
+"0x47" = "ミニスカート"
+"0x4a" = "バトルガール"
+"0x4b" = "ローラースケート"
+"0x4c" = "ローラースケート"
+"0x4d" = "つりびと"
+"0x4e" = "ホープトレーナー"
+"0x4f" = "エリートトレーナー"
+"0x50" = "ベテラントレーナー"
+"0x52" = "ビキニのおねえさん"
+"0x55" = "ツアーきゃく"
+"0x57" = "ポケモンブリーダー"
+"0x58" = "サイキッカー"
+"0x59" = "ホープトレーナー"
+"0x5b" = "ベテラントレーナー"
+"0x5d" = "ポケモンレンジャー"
+"0x5f" = "けんきゅういん"
+"0x61" = "さぎょういん"
+"0x64" = "メルヘンしょうじょ"
+"0x67" = "にわし"
+"0x70" = "やまおとこ"
+"0xa3" = "かいパンやろう"
+"0xa4" = "ビキニのおねえさん"

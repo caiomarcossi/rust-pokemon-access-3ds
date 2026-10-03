@@ -1,0 +1,83 @@
+# What to call the people on X and Y's maps, when nothing better is known.
+#
+# A key is an overworld sprite, the one a move model is drawn with (findings, spikes 75, 89 and
+# 100), so a name here is everyone drawn as it, everywhere in the game. A name is looked for in
+# order: what the player has called them, then what the game itself calls them, out of the
+# player's own ROM and in their language (`games.xy`, `games.gen6.archives`), and only then this
+# file. So most of what is below is heard only when pa3ds cannot read the ROM (`pa3ds.core.names` has
+# the rules).
+#
+# Each entry says where it came from, because a sprite is only as good as the reading behind it.
+
+[sprites]
+# People the game has no list of: never a trainer, so the ROM names them nowhere. Each is the
+# sprite's own id, where it stands, and a line of the ROM's text naming them, the same line in
+# every language (`spikes/108_x_people.py lines`).
+"0x7" = "Mom"                         # MAMA, alone in the player's house: "Mom's words echoed..." (system 140:43)
+"0x26" = "Looker"                     # HANDSOME, his Japanese name: Lumiose and Lysandre Labs; "It's me! Looker!" (system 102:16)
+"0x9a" = "Alexa"                      # LEADER1_SIS: Santalune, where "I'm Alexa. [...] Viola, is my younger sister." (story 421:10)
+"0x9b" = "Bonnie"                     # LEADER5_SIS: Prism Tower, where "You can call me Bonnie." (story 404:0)
+"0x97" = "Mega Evolution guru"        # MEGAG: the Tower of Mastery, where "People call me the Mega Evolution guru!" (story 281:6)
+"0x98" = "Game Director"              # DIRECTOR: Coumarine, where "Hello! I am the Game Director." (story 272:0)
+"0x3b" = "Nurse"                      # PCWOMAN1: at the counter in all 16 Pokémon Centers (spike 101); also the Battle Maison's receptionist
+
+# The game's own words, copied from the ROM's English text by `spikes/108_x_people.py table`: the
+# story's people by the trainer each is (`xy.CHARACTERS`), and every other sprite that two
+# trainers or more of one class stand as, by that class (findings, spikes 90 and 108). With the
+# ROM, these come from it instead.
+"0x3" = "Shauna"                      # FRIEND1
+"0x4" = "Tierno"                      # FRIEND2
+"0x5" = "Trevor"                      # FRIEND3
+"0x6" = "Sycamore"                    # HAKASE1
+"0xa" = "Diantha"                     # CHAMPION
+"0xb" = "Wikstrom"                    # BIGFOUR1
+"0xc" = "Malva"                       # BIGFOUR2
+"0xd" = "Drasna"                      # BIGFOUR3
+"0xe" = "Siebold"                     # BIGFOUR4
+"0xf" = "Viola"                       # LEADER1
+"0x10" = "Grant"                      # LEADER2
+"0x11" = "Korrina"                    # LEADER3
+"0x12" = "Ramos"                      # LEADER4
+"0x13" = "Clemont"                    # LEADER5
+"0x14" = "Valerie"                    # LEADER6
+"0x15" = "Olympia"                    # LEADER7
+"0x16" = "Wulfric"                    # LEADER8
+"0x17" = "Lysandre"                   # FLAREBOSS
+"0x21" = "AZ"                         # AZ
+"0x93" = "Calem"                      # RIVALM
+"0x94" = "Serena"                     # RIVALW
+"0x9c" = "Lysandre"                   # FLAREBOSS2
+"0x9f" = "Calem"                      # RIVALM_EX
+"0xa0" = "Serena"                     # RIVALW_EX
+"0x1a" = "Team Flare Grunt"           # FLAREM
+"0x1b" = "Team Flare Grunt"           # FLAREW
+"0x28" = "Preschooler"                # BABYGIRL1
+"0x2a" = "Preschooler"                # BABYBOY1
+"0x2c" = "Schoolgirl"                 # CHILDGIRL2
+"0x30" = "Schoolboy"                  # CHILDBOY3
+"0x34" = "Tourist"                    # TOURISTW
+"0x35" = "Backpacker"                 # BACKPACKERM
+"0x43" = "Youngster"                  # CHILDBOY2
+"0x44" = "Poké Fan"                   # MIDDLEMAN1
+"0x47" = "Lass"                       # GIRL2
+"0x4a" = "Battle Girl"                # FIGHTERW
+"0x4b" = "Roller Skater"              # ROLLERW
+"0x4c" = "Roller Skater"              # ROLLERM
+"0x4d" = "Fisherman"                  # FISHING
+"0x4e" = "Rising Star"                # HOPEW
+"0x4f" = "Ace Trainer"                # TRAINERW
+"0x50" = "Veteran"                    # VETERANW
+"0x52" = "Swimmer ♀"                  # SWIMMERW
+"0x55" = "Tourist"                    # TRAVELERW
+"0x57" = "Pokémon Breeder"            # BREEDERW
+"0x58" = "Psychic"                    # ESPM
+"0x59" = "Rising Star"                # HOPEM
+"0x5b" = "Veteran"                    # VETERANM
+"0x5d" = "Pokémon Ranger"             # RANGERW
+"0x5f" = "Scientist"                  # ASSISTANTM
+"0x61" = "Worker"                     # WORKMAN1
+"0x64" = "Fairy Tale Girl"            # FAIRYTALEW
+"0x67" = "Gardener"                   # GARDENER
+"0x70" = "Hiker"                      # BIGMAN
+"0xa3" = "Swimmer ♂"                  # SWIMMERM2
+"0xa4" = "Swimmer ♀"                  # SWIMMERW2
