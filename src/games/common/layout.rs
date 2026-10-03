@@ -23,6 +23,7 @@ use crate::core::binary::{f32, u16, u32};
 use crate::core::memory::Memory;
 use crate::core::rtti::ClassNames;
 use crate::games::common::lyt;
+use crate::py::PySet;
 use crate::py::{self, Error, Kind, Result};
 
 /// The deepest chain seen is five panes; anything past this is a loop or garbage.
@@ -106,134 +107,6 @@ fn byte(head: &[u8], at: i64) -> Result<i64> {
     match usize::try_from(at).ok().and_then(|at| head.get(at)) {
         Some(&found) => Ok(i64::from(found)),
         None => Err(Error::index("index out of range")),
-    }
-}
-
-/// How CPython lays a `set` of ints out, for the order Python iterates one in (hash order, not
-/// insertion order).
-///
-/// `track` reads each work in the order Python iterates `{*works, *known}`, and the sets this
-/// module returns are iterated by readers that read and speak in that order, so the order is the
-/// Python's, not a guess. Only what those sets need is here: adding and never removing, ints
-/// below 2**61 - 1 hashing as themselves. Written against CPython's `Objects/setobject.c`
-/// (`set_add_entry`, `set_table_resize`, `set_update_internal`), and checked against it in
-/// `checks` below.
-struct PySet {
-    table: Vec<Option<i64>>,
-    used: usize,
-}
-
-impl PySet {
-    const LINEAR_PROBES: usize = 9;
-    const PERTURB_SHIFT: u32 = 5;
-    const MIN_SIZE: usize = 8;
-
-    fn new() -> Self {
-        PySet {
-            table: vec![None; Self::MIN_SIZE],
-            used: 0,
-        }
-    }
-
-    /// `hash(key)`.
-    fn hash(key: i64) -> i64 {
-        const MODULUS: u64 = (1 << 61) - 1;
-        let magnitude = (key.unsigned_abs() % MODULUS) as i64;
-        let hash = if key < 0 { -magnitude } else { magnitude };
-        if hash == -1 { -2 } else { hash }
-    }
-
-    /// The slot an insertion into a table of `mask + 1` slots finds free, by CPython's probing:
-    /// ten slots from the hash's own, then a jump, and again.
-    fn slot(table: &[Option<i64>], key: i64) -> Result<usize, usize> {
-        let mask = table.len() - 1;
-        let hash = Self::hash(key);
-        let mut perturb = hash as u64;
-        let mut i = (hash as u64 as usize) & mask;
-        loop {
-            let probes = if i + Self::LINEAR_PROBES <= mask {
-                Self::LINEAR_PROBES
-            } else {
-                0
-            };
-            for at in i..=i + probes {
-                match table[at] {
-                    None => return Err(at),
-                    Some(held) if held == key => return Ok(at),
-                    Some(_) => {}
-                }
-            }
-            perturb >>= Self::PERTURB_SHIFT;
-            i = i
-                .wrapping_mul(5)
-                .wrapping_add(1)
-                .wrapping_add(perturb as usize)
-                & mask;
-        }
-    }
-
-    /// `set.add(key)`.
-    fn add(&mut self, key: i64) {
-        let Err(at) = Self::slot(&self.table, key) else {
-            return;
-        };
-        self.table[at] = Some(key);
-        self.used += 1;
-        let mask = self.table.len() - 1;
-        if self.used * 5 >= mask * 3 {
-            self.resize(if self.used > 50000 {
-                self.used * 2
-            } else {
-                self.used * 4
-            });
-        }
-    }
-
-    /// A table of the least power of two slots above `minused`, every key put in again in the
-    /// order the old table holds them.
-    fn resize(&mut self, minused: usize) {
-        let mut size = Self::MIN_SIZE;
-        while size <= minused {
-            size <<= 1;
-        }
-        let old = std::mem::replace(&mut self.table, vec![None; size]);
-        for key in old.into_iter().flatten() {
-            if let Err(at) = Self::slot(&self.table, key) {
-                self.table[at] = Some(key);
-            }
-        }
-    }
-
-    /// `set.update(some_dict)`, which makes room for every key before adding any.
-    fn update_dict(&mut self, keys: &[i64]) {
-        let mask = self.table.len() - 1;
-        if (self.used + keys.len()) * 5 >= mask * 3 {
-            self.resize((self.used + keys.len()) * 2);
-        }
-        for &key in keys {
-            self.add(key);
-        }
-    }
-
-    /// `set(iterable)` of an iterator, which adds one key at a time.
-    fn of(keys: impl IntoIterator<Item = i64>) -> Self {
-        let mut set = PySet::new();
-        for key in keys {
-            set.add(key);
-        }
-        set
-    }
-
-    /// `set(some_dict)`.
-    fn of_dict(keys: &[i64]) -> Self {
-        let mut set = PySet::new();
-        set.update_dict(keys);
-        set
-    }
-
-    /// The keys in the order Python iterates them.
-    fn iter(&self) -> impl Iterator<Item = i64> + '_ {
-        self.table.iter().flatten().copied()
     }
 }
 
@@ -894,39 +767,5 @@ impl Layouts {
         }
         let width = f32(&body, lyt::LAYOUT_WIDTH)?;
         Ok(Some((root, width >= lyt::TOP_SCREEN_WIDTH, layout)))
-    }
-}
-
-/// `PySet` against orders CPython 3.14 gave, over works like the field's (0x104 apart) and the
-/// screens' (0x10000 apart), which collide in a small table.
-#[cfg(test)]
-mod checks {
-    use super::PySet;
-
-    #[test]
-    fn pyset_iterates_as_cpython_does() {
-        let mut every = PySet::of([0x083002a4, 0x14B00000, 0x14B10000]);
-        every.update_dict(&[0x14B00000, 0x14C00000, 0x14B20000]);
-        assert_eq!(
-            every.iter().collect::<Vec<_>>(),
-            [0x14B00000, 0x14B10000, 0x14C00000, 0x14B20000, 0x083002a4]
-        );
-        let field: Vec<i64> = (0..12).map(|index| 0x08300000 + index * 0x104).collect();
-        assert_eq!(
-            PySet::of_dict(&field).iter().collect::<Vec<_>>(),
-            [
-                0x8300000, 0x8300820, 0x8300104, 0x8300924, 0x8300208, 0x8300a28, 0x830030c,
-                0x8300b2c, 0x8300410, 0x8300514, 0x8300618, 0x830071c
-            ]
-        );
-        assert_eq!(
-            PySet::of([0x14B30600, 0x14B10600, 0x14B20600])
-                .iter()
-                .collect::<Vec<_>>(),
-            [0x14B30600, 0x14B10600, 0x14B20600]
-        );
-        let mut small = PySet::of([5, 3, 1]);
-        small.update_dict(&[9, 2, 8]);
-        assert_eq!(small.iter().collect::<Vec<_>>(), [1, 2, 3, 5, 8, 9]);
     }
 }
