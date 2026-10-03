@@ -678,6 +678,20 @@ impl PySet {
         set
     }
 
+    /// `key in set`.
+    pub fn contains(&self, key: i64) -> bool {
+        Self::slot(&self.table, key).is_ok()
+    }
+
+    /// `len(set)`.
+    pub fn len(&self) -> usize {
+        self.used
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.used == 0
+    }
+
     /// The keys in the order Python iterates them.
     pub fn iter(&self) -> impl Iterator<Item = i64> + '_ {
         self.table.iter().flatten().copied()
@@ -713,6 +727,7 @@ mod set_checks {
             [0x14B30600, 0x14B10600, 0x14B20600]
         );
         let mut small = PySet::of([5, 3, 1]);
+        assert!(small.contains(3) && !small.contains(4) && small.len() == 3);
         small.update_dict(&[9, 2, 8]);
         assert_eq!(small.iter().collect::<Vec<_>>(), [1, 2, 3, 5, 8, 9]);
     }
