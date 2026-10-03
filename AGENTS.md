@@ -77,7 +77,7 @@ The Python checkout is `PA3DS_PYTHON`, or `../pokemon-access-3ds` beside this on
 3. `cargo test --lib`, `cargo clippy --all-targets`, `sync.py tests`.
 4. With the upstream commit checked out there, record a tape of a movie that reaches the change
    and replay it here, with the tapes already recorded (`tools/tape/record_all.sh <replay>`, then
-   `targetelease	ape.exe %LOCALAPPDATA%\pa3ds	apes\*.tape.gz`; `tools/tape/README.md`).
+   `target\release\tape.exe %LOCALAPPDATA%\pa3ds\tapes\*.tape.gz`; `tools/tape/README.md`).
    Every tape must say "identical to the Python runtime's". This is the proof; the tests alone
    are not. Tapes recorded on an older upstream commit are re-referenced first by replaying them
    through the new Python (`tools/tape/py.py replay`), since what the Python says has changed.

@@ -40,7 +40,7 @@ replays it through the Rust runtime.
 
 ```
 cargo build --release
-targetelease	ape.exe %LOCALAPPDATA%\pa3ds	apes\*.tape.gz
+target\release\tape.exe %LOCALAPPDATA%\pa3ds\tapes\*.tape.gz
 ```
 
 writes `<name>.rust.log` and `<name>.rust.said` beside each tape and compares them with the
