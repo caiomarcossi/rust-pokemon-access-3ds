@@ -1,1 +1,693 @@
+//! The player's own ROM: finding it, and reading files out of it (ADR-0008).
+//!
+//! Some of what a player needs to hear is not in RAM when it is wanted — a place's name, the rival's
+//! — but it is in the ROM they are playing, in their language. This reads a 3DS ROM image as it lies
+//! on disk, with no keys and no other tool: an NCSD image, its first partition's NCCH, and the RomFS
+//! inside it (findings, spike 74). Nothing here knows about Pokémon; what the files mean is the game
+//! package's.
+//!
+//! **Only decrypted images.** An encrypted one would need keys pa3ds will never ship, so it is
+//! turned away with a reason, and pa3ds carries on without what the ROM would have named.
+//!
+//! **Finding it** needs nothing from the player. Azahar keeps the ROMs it has opened in its own
+//! config (`Paths\recentFiles`, newest first) and the folder they were opened from
+//! (`Paths\romsPath`); the running game's title id comes from the RPC's process list, and every
+//! NCCH carries its program id. The first decrypted image whose id matches is the one being played —
+//! found and validated, the way an anchor is, rather than a path written down. `--rom` names one
+//! outright.
+//!
+//! ```text
+//! NCSD    +0x100 "NCSD"   +0x120 eight partitions of (u32 offset, u32 size), in 0x200 units
+//! NCCH    +0x100 "NCCH"   +0x118 u64 program id   +0x18f flags, bit 2 of which is "no crypto"
+//!         +0x1b0 the RomFS's offset and size, in 0x200 units
+//! IVFC    +0x00 "IVFC"    +0x08 the master hash's size   +0x4c level 3's block size, as a shift
+//! level 3 follows the master hash, aligned to that block: +0x00 its header's length (0x28), then
+//!         the directory and file metadata and where the files' data starts
+//! ```
+//!
+//! The level offsets in the IVFC header describe the hash tree, not where the files are; that cost
+//! spike 74 an hour.
 
+use std::collections::HashSet;
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
+use std::path::{Component, Path, PathBuf};
+
+use indexmap::IndexMap;
+
+use crate::core::binary;
+use crate::py::{self, Error, Kind, Result};
+
+/// NCSD and NCCH count in media units of 0x200 bytes.
+pub const UNIT: i64 = 0x200;
+pub const NCSD_MAGIC: &[u8] = b"NCSD";
+pub const NCCH_MAGIC: &[u8] = b"NCCH";
+pub const IVFC_MAGIC: &[u8] = b"IVFC";
+/// Bit of the NCCH's flags byte at +0x18f that says its contents are stored in the clear.
+pub const NO_CRYPTO: i64 = 0x04;
+pub const LEVEL3_HEADER: i64 = 0x28;
+/// An empty link in the RomFS's metadata.
+pub const NONE: i64 = 0xFFFFFFFF;
+pub const LZ11: i64 = 0x11;
+/// What an NCSD image is called. A CIA is an installer, not an image, and is not read.
+pub const EXTENSIONS: [&str; 2] = [".3ds", ".cci"];
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Entry {
+    at: i64,
+    size: i64,
+}
+
+/// One ROM image, open for reading. Files are read on demand; nothing is held but the index.
+///
+/// Python's `with Rom(path) as rom:` is a `Rom` that is dropped, which closes the file.
+#[derive(Debug)]
+pub struct Rom {
+    pub path: PathBuf,
+    pub title_id: i64,
+    file: File,
+    entries: IndexMap<String, Entry>,
+}
+
+impl Rom {
+    pub fn new(path: &Path) -> Result<Rom> {
+        let mut file = File::open(path)?;
+        match index(&mut file) {
+            Ok((title_id, entries)) => Ok(Rom {
+                path: path.to_path_buf(),
+                title_id,
+                file,
+                entries,
+            }),
+            Err(error) => {
+                drop(file);
+                if error.is(Kind::RomError) {
+                    return Err(error);
+                }
+                if error.is(Kind::StructError)
+                    || error.is(Kind::OsError)
+                    || error.is(Kind::UnicodeDecodeError)
+                {
+                    return Err(Error::new(
+                        Kind::RomError,
+                        format!("{}: {error}", name(path)),
+                    ));
+                }
+                Err(error)
+            }
+        }
+    }
+
+    pub fn close(self) {
+        drop(self.file);
+    }
+
+    /// Every file in the RomFS, by its path: `a/0/7/3`.
+    pub fn paths(&self) -> Vec<String> {
+        let mut paths: Vec<String> = self.entries.keys().cloned().collect();
+        paths.sort();
+        paths
+    }
+
+    /// One file's bytes. A path the ROM does not have is a RomError, not an empty file.
+    pub fn read(&self, path: &str) -> Result<Vec<u8>> {
+        let Some(entry) = self.entries.get(path) else {
+            return Err(Error::new(
+                Kind::RomError,
+                format!("{} has no {path}", name(&self.path)),
+            ));
+        };
+        self.read_part(path, 0, entry.size)
+    }
+
+    /// `size` bytes of one file from `start`. Sun's map archive is 62 MB and a map block
+    /// is a fraction of one, so a block is read alone. A part past the file's end is a
+    /// RomError.
+    pub fn read_part(&self, path: &str, start: i64, size: i64) -> Result<Vec<u8>> {
+        let Some(entry) = self.entries.get(path) else {
+            return Err(Error::new(
+                Kind::RomError,
+                format!("{} has no {path}", name(&self.path)),
+            ));
+        };
+        if start < 0 || size < 0 || start + size > entry.size {
+            return Err(Error::new(
+                Kind::RomError,
+                format!(
+                    "{}: {path} has no bytes {} to {}",
+                    name(&self.path),
+                    hex(start),
+                    hex(start + size)
+                ),
+            ));
+        }
+        let mut file = &self.file;
+        seek(&mut file, entry.at + start)?;
+        let data = read(&mut file, size)?;
+        if data.len() as i64 != size {
+            return Err(Error::new(
+                Kind::RomError,
+                format!("{}: {path} is cut short", name(&self.path)),
+            ));
+        }
+        Ok(data)
+    }
+}
+
+/// A ROM image's program id, from its first 0x200-byte header and its NCCH's, or None when
+/// the file is not a readable, decrypted image. Two small reads: cheap enough to ask of every
+/// ROM Azahar remembers.
+///
+/// An IndexError from a header cut short inside the NCCH's flags is not caught in Python, so it
+/// is returned here.
+pub fn title_id(path: &Path) -> Result<Option<i64>> {
+    let Ok(mut rom) = File::open(path) else {
+        return Ok(None);
+    };
+    match header(&mut rom) {
+        Ok((program, _)) => Ok(Some(program)),
+        Err(error)
+            if error.is(Kind::RomError)
+                || error.is(Kind::OsError)
+                || error.is(Kind::StructError) =>
+        {
+            Ok(None)
+        }
+        Err(error) => Err(error),
+    }
+}
+
+/// The first candidate that is a decrypted image of this title, or None.
+pub fn find(title: i64, candidates: impl IntoIterator<Item = PathBuf>) -> Result<Option<PathBuf>> {
+    for path in candidates {
+        if EXTENSIONS.contains(&suffix(&path).to_lowercase().as_str())
+            && title_id(&path)? == Some(title)
+        {
+            return Ok(Some(path));
+        }
+    }
+    Ok(None)
+}
+
+/// The ROM images Azahar's `qt-config.ini` points at: its recent files, newest first, then
+/// whatever sits in the folder it opens ROMs from. Duplicates are left out.
+pub fn azahar_roms(config: &str) -> Vec<PathBuf> {
+    let mut recent: Vec<String> = Vec::new();
+    let mut folder = "";
+    for line in splitlines(config) {
+        let (key, value) = line.split_once('=').unwrap_or((line, ""));
+        if py::strip(key) == r"Paths\recentFiles" {
+            recent = string_list(value);
+        } else if py::strip(key) == r"Paths\romsPath" {
+            folder = py::strip(value);
+        }
+    }
+    let mut found: Vec<PathBuf> = recent
+        .iter()
+        .filter(|item| !item.is_empty())
+        .map(|item| to_path(item))
+        .collect();
+    if !folder.is_empty() {
+        // `contextlib.suppress(OSError)`: a folder that cannot be listed, or an entry that fails
+        // part way, adds nothing, as the failed `sorted(...)` added nothing.
+        let listing: std::io::Result<Vec<PathBuf>> =
+            std::fs::read_dir(to_path(folder)).and_then(|entries| {
+                entries
+                    .map(|entry| entry.map(|entry| entry.path()))
+                    .collect()
+            });
+        if let Ok(mut listing) = listing {
+            listing.retain(|path| EXTENSIONS.contains(&suffix(path).to_lowercase().as_str()));
+            // Windows compares paths without regard to case, and sorts them so.
+            listing.sort_by_cached_key(|path| normcase(&path.to_string_lossy()));
+            found.extend(listing);
+        }
+    }
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut out: Vec<PathBuf> = Vec::new();
+    for path in found {
+        let key = normcase(&normpath(&path.to_string_lossy()));
+        if seen.insert(key) {
+            out.push(path);
+        }
+    }
+    out
+}
+
+/// Decompress Nintendo's LZ11, written from the format as it is documented. A zone's data
+/// file is kept in the ROM this way (spike 86).
+///
+/// 0x11, then the size in 24 bits, or in the 32 after them when those are zero. Then a flag byte
+/// before every eight blocks, high bit first: a clear bit is one literal byte, a set bit a
+/// reference back into what is already out, whose first nibble says how wide its length is.
+pub fn lz11(blob: &[u8]) -> Result<Vec<u8>> {
+    if blob.is_empty() || blob[0] as i64 != LZ11 {
+        return Err(Error::new(Kind::RomError, "not LZ11"));
+    }
+    let mut size = byte(blob, 1)? | byte(blob, 2)? << 8 | byte(blob, 3)? << 16;
+    let mut at = 4;
+    if size == 0 {
+        size = binary::u32(blob, 4)?;
+        at = 8;
+    }
+    let mut out = lz11_blocks(blob, size, &mut at).map_err(|error| {
+        if error.is(Kind::IndexError) {
+            Error::new(Kind::RomError, "LZ11 ends early")
+        } else {
+            error
+        }
+    })?;
+    out.truncate(size as usize);
+    Ok(out)
+}
+
+/// The body of `lz11`'s `try`: an IndexError is a blob that ends before its size is reached.
+fn lz11_blocks(blob: &[u8], size: i64, at: &mut i64) -> Result<Vec<u8>> {
+    let mut out: Vec<u8> = Vec::new();
+    while (out.len() as i64) < size {
+        let flags = byte(blob, *at)?;
+        *at += 1;
+        if flags == 0 && size - out.len() as i64 >= 8 {
+            // Eight literals: common in images, and one slice instead of eight appends.
+            if *at + 8 > blob.len() as i64 {
+                return Err(Error::index(""));
+            }
+            out.extend_from_slice(py::slice(blob, *at, *at + 8));
+            *at += 8;
+            continue;
+        }
+        for bit in (0..=7).rev() {
+            if out.len() as i64 >= size {
+                break;
+            }
+            if flags >> bit & 1 == 0 {
+                out.push(byte(blob, *at)? as u8);
+                *at += 1;
+                continue;
+            }
+            let first = byte(blob, *at)?;
+            let (length, back);
+            if first >> 4 == 0 {
+                length = ((first & 0xF) << 4 | byte(blob, *at + 1)? >> 4) + 0x11;
+                back = ((byte(blob, *at + 1)? & 0xF) << 8 | byte(blob, *at + 2)?) + 1;
+                *at += 3;
+            } else if first >> 4 == 1 {
+                length =
+                    ((first & 0xF) << 12 | byte(blob, *at + 1)? << 4 | byte(blob, *at + 2)? >> 4)
+                        + 0x111;
+                back = ((byte(blob, *at + 2)? & 0xF) << 8 | byte(blob, *at + 3)?) + 1;
+                *at += 4;
+            } else {
+                length = (first >> 4) + 1;
+                back = ((first & 0xF) << 8 | byte(blob, *at + 1)?) + 1;
+                *at += 2;
+            }
+            if back > out.len() as i64 {
+                return Err(Error::new(
+                    Kind::RomError,
+                    "LZ11 reaches back before its start",
+                ));
+            }
+            // A reference that overlaps what it writes repeats its last `back` bytes; copied a
+            // slice at a time, not a byte, the census of the ROM's textures took 58 s, not
+            // (spike 147).
+            let start = out.len() - back as usize;
+            if back >= length {
+                out.extend_from_within(start..start + length as usize);
+            } else {
+                let tail = out[start..].to_vec();
+                for i in 0..length as usize {
+                    out.push(tail[i % back as usize]);
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// `blob[at]`: an IndexError past the end.
+#[track_caller]
+fn byte(blob: &[u8], at: i64) -> Result<i64> {
+    match usize::try_from(at).ok().and_then(|at| blob.get(at)) {
+        Some(&b) => Ok(b as i64),
+        None => Err(Error::index("index out of range")),
+    }
+}
+
+/// `Rom.__init__`'s reads of the image: (program id, the entries by path).
+fn index(file: &mut File) -> Result<(i64, IndexMap<String, Entry>)> {
+    let (title_id, romfs) = header(file)?;
+    let level3 = level3(file, romfs)?;
+    let entries = walk(file, level3)?;
+    Ok((title_id, entries.into_iter().collect()))
+}
+
+/// (program id, where the RomFS starts) for a decrypted NCSD image.
+fn header<R: Read + Seek>(rom: &mut R) -> Result<(i64, i64)> {
+    seek(rom, 0)?;
+    let head = read(rom, UNIT)?;
+    if py::slice(&head, 0x100, 0x104) != NCSD_MAGIC {
+        return Err(Error::new(Kind::RomError, "not an NCSD image"));
+    }
+    let partition = binary::u32(&head, 0x120)? * UNIT;
+    seek(rom, partition)?;
+    let ncch = read(rom, UNIT)?;
+    if py::slice(&ncch, 0x100, 0x104) != NCCH_MAGIC {
+        return Err(Error::new(
+            Kind::RomError,
+            "its first partition is not an NCCH",
+        ));
+    }
+    if byte(&ncch, 0x18F)? & NO_CRYPTO == 0 {
+        return Err(Error::new(
+            Kind::RomError,
+            "encrypted; pa3ds reads decrypted images only",
+        ));
+    }
+    let program = u64::from_le_bytes(binary::take(&ncch, 0x118)?) as i64;
+    let offset = binary::u32(&ncch, 0x1B0)?;
+    if offset == 0 {
+        return Err(Error::new(Kind::RomError, "it has no RomFS"));
+    }
+    Ok((program, partition + offset * UNIT))
+}
+
+/// Where the RomFS's level 3 — the file system itself — begins.
+fn level3<R: Read + Seek>(rom: &mut R, ivfc_at: i64) -> Result<i64> {
+    seek(rom, ivfc_at)?;
+    let ivfc = read(rom, 0x60)?;
+    if py::slice(&ivfc, 0, 4) != IVFC_MAGIC {
+        return Err(Error::new(
+            Kind::RomError,
+            "no IVFC header where the NCCH says the RomFS is",
+        ));
+    }
+    let master = binary::u32(&ivfc, 0x08)?;
+    let shift = binary::u32(&ivfc, 0x4C)?;
+    // Python's int has no width. A shift this large is no IVFC header, and Python would have
+    // run out of memory on it, which a panic stands in for.
+    assert!(
+        shift < 62,
+        "IVFC block size shift {shift} is not a block size"
+    );
+    let block = 1_i64 << shift;
+    let start = ivfc_at + py::floordiv(0x60 + master + block - 1, block) * block;
+    seek(rom, start)?;
+    let word = read(rom, 4)?;
+    // `struct.unpack` and not `unpack_from`: its message differs.
+    let &[a, b, c, d] = word.as_slice() else {
+        return Err(Error::unpack("unpack requires a buffer of 4 bytes"));
+    };
+    if u32::from_le_bytes([a, b, c, d]) as i64 != LEVEL3_HEADER {
+        return Err(Error::new(
+            Kind::RomError,
+            format!("no RomFS level 3 at {start:#x}"),
+        ));
+    }
+    Ok(start)
+}
+
+/// Every file in the RomFS: a directory lists its first child directory and first file, and
+/// each entry links to its next sibling.
+///
+/// Python yields these one by one and `Rom` consumes them all at once, so this returns them all.
+fn walk<R: Read + Seek>(rom: &mut R, start: i64) -> Result<Vec<(String, Entry)>> {
+    seek(rom, start)?;
+    let header = read(rom, LEVEL3_HEADER)?;
+    let raw = binary::take::<8>(&header, 0x0C)?;
+    let (dir_meta, dir_size) = (word(&raw, 0), word(&raw, 4));
+    let raw = binary::take::<8>(&header, 0x1C)?;
+    let (file_meta, file_size) = (word(&raw, 0), word(&raw, 4));
+    let data = start + binary::u32(&header, 0x24)?;
+    seek(rom, start + dir_meta)?;
+    let dirs = read(rom, dir_size)?;
+    seek(rom, start + file_meta)?;
+    let files = read(rom, file_size)?;
+    let mut out: Vec<(String, Entry)> = Vec::new();
+    let mut pending: Vec<(i64, String)> = vec![(0, String::new())];
+    let mut visited: HashSet<i64> = HashSet::new();
+    while let Some((offset, path)) = pending.pop() {
+        if visited.contains(&offset) || offset + 0x18 > dirs.len() as i64 {
+            return Err(Error::new(
+                Kind::RomError,
+                "the RomFS's directories do not hold together",
+            ));
+        }
+        visited.insert(offset);
+        let raw = binary::take::<24>(&dirs, offset)?;
+        let (sibling, child, first, length) =
+            (word(&raw, 4), word(&raw, 8), word(&raw, 12), word(&raw, 20));
+        let name = decode_utf16le(py::slice(&dirs, offset + 0x18, offset + 0x18 + length))?;
+        let here = if !name.is_empty() {
+            format!("{path}/{name}")
+        } else {
+            path.clone()
+        };
+        let mut at = first;
+        while at != NONE {
+            let raw = binary::take::<32>(&files, at)?;
+            let (next_file, r#where, size, length) =
+                (word(&raw, 4), wide(&raw, 8), wide(&raw, 16), word(&raw, 28));
+            let name = decode_utf16le(py::slice(&files, at + 0x20, at + 0x20 + length))?;
+            out.push((
+                format!("{here}/{name}").trim_start_matches('/').to_string(),
+                Entry {
+                    at: data + r#where,
+                    size,
+                },
+            ));
+            at = next_file;
+        }
+        if sibling != NONE && offset != 0 {
+            pending.push((sibling, path.clone()));
+        }
+        if child != NONE {
+            pending.push((child, here));
+        }
+    }
+    Ok(out)
+}
+
+/// A QSettings string list as Azahar writes one: comma-separated, an item holding a comma
+/// quoted, and a backslash doubled.
+fn string_list(value: &str) -> Vec<String> {
+    let value: Vec<char> = value.chars().collect();
+    let mut items: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut quoted = false;
+    let mut at = 0;
+    while at < value.len() {
+        let char = value[at];
+        if char == '\\' && at + 1 < value.len() {
+            current.push(value[at + 1]);
+            at += 2;
+            continue;
+        }
+        if char == '"' {
+            quoted = !quoted;
+        } else if char == ',' && !quoted {
+            items.push(py::strip(&current).to_string());
+            current = String::new();
+        } else {
+            current.push(char);
+        }
+        at += 1;
+    }
+    items.push(py::strip(&current).to_string());
+    items.into_iter().filter(|item| !item.is_empty()).collect()
+}
+
+/// `path.name`.
+fn name(path: &Path) -> String {
+    path.file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+/// `path.suffix`.
+fn suffix(path: &Path) -> String {
+    let name = name(path);
+    match name.rfind('.') {
+        Some(i) if 0 < i && i < name.len() - 1 => name[i..].to_string(),
+        _ => String::new(),
+    }
+}
+
+/// `f"{x:#x}"` for an int, which writes a negative one as `-0x10`.
+fn hex(x: i64) -> String {
+    if x < 0 {
+        format!("-{:#x}", x.unsigned_abs())
+    } else {
+        format!("{x:#x}")
+    }
+}
+
+/// `file.seek(to)`.
+fn seek<R: Seek>(rom: &mut R, to: i64) -> Result<()> {
+    rom.seek(SeekFrom::Start(to as u64))?;
+    Ok(())
+}
+
+/// `file.read(size)`: up to `size` bytes, fewer only at the end of the file.
+fn read<R: Read>(rom: &mut R, size: i64) -> Result<Vec<u8>> {
+    let mut data = Vec::new();
+    rom.take(size as u64).read_to_end(&mut data)?;
+    Ok(data)
+}
+
+/// A little-endian u32 out of bytes a `struct.unpack_from` already took, as an int.
+fn word(raw: &[u8], at: usize) -> i64 {
+    u32::from_le_bytes(raw[at..at + 4].try_into().expect("4 bytes")) as i64
+}
+
+/// A little-endian u64 likewise.
+fn wide(raw: &[u8], at: usize) -> i64 {
+    u64::from_le_bytes(raw[at..at + 8].try_into().expect("8 bytes")) as i64
+}
+
+/// `data.decode("utf-16-le")`, raising the UnicodeDecodeError Python's message gives: `py` has
+/// the error but not the message, and this one reaches the log inside a RomError.
+#[track_caller]
+fn decode_utf16le(data: &[u8]) -> Result<String> {
+    #[track_caller]
+    fn fail(data: &[u8], start: usize, end: usize, reason: &str) -> Result<String> {
+        let codec = "'utf-16-le' codec can't decode";
+        let message = if end == start + 1 {
+            format!(
+                "{codec} byte {:#04x} in position {start}: {reason}",
+                data[start]
+            )
+        } else {
+            format!("{codec} bytes in position {start}-{}: {reason}", end - 1)
+        };
+        Err(Error::new(Kind::UnicodeDecodeError, message))
+    }
+    let mut units: Vec<u16> = Vec::new();
+    let mut at = 0;
+    while data.len() - at >= 2 {
+        let unit = u16::from_le_bytes([data[at], data[at + 1]]);
+        if (0xD800..0xDC00).contains(&unit) {
+            if data.len() - (at + 2) < 2 {
+                return fail(data, at, data.len(), "unexpected end of data");
+            }
+            let next = u16::from_le_bytes([data[at + 2], data[at + 3]]);
+            if !(0xDC00..0xE000).contains(&next) {
+                return fail(data, at, at + 2, "illegal UTF-16 surrogate");
+            }
+            units.push(unit);
+            units.push(next);
+            at += 4;
+        } else if (0xDC00..0xE000).contains(&unit) {
+            return fail(data, at, at + 2, "illegal encoding");
+        } else {
+            units.push(unit);
+            at += 2;
+        }
+    }
+    if at < data.len() {
+        return fail(data, at, data.len(), "truncated data");
+    }
+    Ok(String::from_utf16(&units).expect("surrogates were paired"))
+}
+
+/// `text.splitlines()`: Python ends a line at more than `\n`.
+fn splitlines(text: &str) -> Vec<&str> {
+    let mut lines = Vec::new();
+    let mut start = 0;
+    let mut chars = text.char_indices().peekable();
+    while let Some((i, c)) = chars.next() {
+        if matches!(
+            c,
+            '\n' | '\r' | '\x0b' | '\x0c' | '\x1c'..='\x1e' | '\u{85}' | '\u{2028}' | '\u{2029}'
+        ) {
+            lines.push(&text[start..i]);
+            let mut end = i + c.len_utf8();
+            if c == '\r' && chars.peek().map(|&(_, next)| next) == Some('\n') {
+                chars.next();
+                end += 1;
+            }
+            start = end;
+        }
+    }
+    if start < text.len() {
+        lines.push(&text[start..]);
+    }
+    lines
+}
+
+/// `Path(text)` as `pathlib` writes it on Windows: separators made backslashes, doubled ones and
+/// `.` parts gone, a trailing one dropped.
+fn to_path(text: &str) -> PathBuf {
+    Path::new(text)
+        .components()
+        .filter(|part| !matches!(part, Component::CurDir))
+        .collect()
+}
+
+/// `os.path.normcase(path)` on Windows: lower case, backslashes.
+fn normcase(path: &str) -> String {
+    path.replace('/', "\\").to_lowercase()
+}
+
+/// `os.path.normpath(path)` on Windows.
+fn normpath(path: &str) -> String {
+    let path = path.replace('/', "\\");
+    let (drive, root, rest) = splitroot(&path);
+    let prefix = format!("{drive}{root}");
+    let mut comps: Vec<&str> = rest.split('\\').collect();
+    let mut i = 0;
+    while i < comps.len() {
+        if comps[i].is_empty() || comps[i] == "." {
+            comps.remove(i);
+        } else if comps[i] == ".." {
+            if i > 0 && comps[i - 1] != ".." {
+                comps.drain(i - 1..=i);
+                i -= 1;
+            } else if i == 0 && prefix.ends_with('\\') {
+                comps.remove(i);
+            } else {
+                i += 1;
+            }
+        } else {
+            i += 1;
+        }
+    }
+    if prefix.is_empty() && comps.is_empty() {
+        comps.push(".");
+    }
+    format!("{prefix}{}", comps.join("\\"))
+}
+
+/// `ntpath.splitroot(path)` for a path whose separators are already backslashes.
+fn splitroot(path: &str) -> (&str, &str, &str) {
+    if let Some(rest) = path.strip_prefix('\\') {
+        if rest.starts_with('\\') {
+            let unc = path
+                .get(..8)
+                .is_some_and(|head| head.to_uppercase() == "\\\\?\\UNC\\");
+            let start = if unc { 8 } else { 2 };
+            let Some(index) = path[start..].find('\\').map(|i| i + start) else {
+                return (path, "", "");
+            };
+            let Some(index2) = path[index + 1..].find('\\').map(|i| i + index + 1) else {
+                return (path, "", "");
+            };
+            return (
+                &path[..index2],
+                &path[index2..index2 + 1],
+                &path[index2 + 1..],
+            );
+        }
+        return ("", &path[..1], rest);
+    }
+    let mut chars = path.chars();
+    let (first, second, third) = (chars.next(), chars.next(), chars.next());
+    if second == Some(':') {
+        let drive = first.map_or(0, char::len_utf8) + 1;
+        if third == Some('\\') {
+            return (&path[..drive], &path[drive..drive + 1], &path[drive + 1..]);
+        }
+        return (&path[..drive], "", &path[drive..]);
+    }
+    ("", "", path)
+}
