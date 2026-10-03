@@ -14,7 +14,7 @@ use super::fake_rom::{TmpDir, rom_image, rom_image_with};
 use super::fake_speech::Recorder;
 use super::test_archives::oras_files;
 use crate::__main__::{Hooks, KEPT_LOGS, default_log_path, log_path, main, main_with};
-use crate::app::{Busy, Every, Failure, Faults, PATIENCE, Settings, run, run_with, wait_for_game};
+use crate::app::{Busy, Every, Failure, Faults, PATIENCE, Settings, run_with, wait_for_game};
 use crate::core::keyfile;
 use crate::core::memory::{self, Memory};
 use crate::core::rpc::{MAX_READ, Process, Rpc, UdpRpc};
@@ -43,7 +43,9 @@ struct Home {
 
 impl Home {
     fn new() -> Home {
-        let lock = ENVIRONMENT.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let lock = ENVIRONMENT
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let root = TmpDir::new();
         let home = root.path().join("user");
         // SAFETY: every test that touches the environment holds `ENVIRONMENT`.
@@ -53,7 +55,11 @@ impl Home {
             // test.
             std::env::set_var("APPDATA", root.path().join("appdata"));
         }
-        Home { _lock: lock, root, home }
+        Home {
+            _lock: lock,
+            root,
+            home,
+        }
     }
 
     fn tmp(&self) -> &Path {
@@ -81,7 +87,10 @@ fn args(argv: &[&str]) -> Vec<String> {
 fn logger() -> (Log, Rc<RefCell<Vec<String>>>) {
     let logged = Rc::new(RefCell::new(Vec::new()));
     let into = logged.clone();
-    (Rc::new(move |line: &str| into.borrow_mut().push(line.to_string())), logged)
+    (
+        Rc::new(move |line: &str| into.borrow_mut().push(line.to_string())),
+        logged,
+    )
 }
 
 fn quiet() -> Log {
@@ -110,7 +119,10 @@ fn test_attaches_at_once_when_the_game_is_already_running() {
         &Settings::default(),
     )
     .unwrap();
-    assert_eq!(process.map(|process| process.name), Some("sango-1".to_string()));
+    assert_eq!(
+        process.map(|process| process.name),
+        Some("sango-1".to_string())
+    );
     assert!(backend.spoken().is_empty());
 }
 
@@ -131,10 +143,16 @@ fn test_waits_for_the_game_and_says_so_once() {
         &Speech::plain(backend.clone()),
         &until,
         &quiet(),
-        &Settings { wait: 0.0, ..Settings::default() },
+        &Settings {
+            wait: 0.0,
+            ..Settings::default()
+        },
     )
     .unwrap();
-    assert_eq!(process.map(|process| process.name), Some("sango-1".to_string()));
+    assert_eq!(
+        process.map(|process| process.name),
+        Some("sango-1".to_string())
+    );
     assert_eq!(backend.spoken(), ["Waiting for the game"]);
 }
 
@@ -145,13 +163,20 @@ fn test_written_text_waits_a_whole_poll_and_only_the_last_is_said() {
     let backend = Recorder::new();
     let mut announcements = Announcements::new(Rc::new(Speech::plain(backend.clone())), quiet());
     let written = |window: i64, text: &str| {
-        Shown::Text(TextWritten { window, text: text.to_string() })
+        Shown::Text(TextWritten {
+            window,
+            text: text.to_string(),
+        })
     };
     announcements.screen_polled();
-    announcements.pages(&[written(1, "Move animations.")]);
+    announcements
+        .pages(&[written(1, "Move animations.")])
+        .unwrap();
     announcements.screen_polled();
     assert!(backend.spoken().is_empty());
-    announcements.pages(&[written(1, "Switching."), written(2, "Elsewhere.")]);
+    announcements
+        .pages(&[written(1, "Switching."), written(2, "Elsewhere.")])
+        .unwrap();
     announcements.screen_polled();
     assert_eq!(backend.spoken(), ["Switching."]);
     announcements.screen_polled();
@@ -242,8 +267,14 @@ fn test_each_run_logs_afresh_and_keeps_the_runs_before() {
 #[test]
 fn test_everything_the_player_owns_sits_beside_pa3ds() {
     let home = Home::new();
-    assert_eq!(default_log_path().unwrap().parent().unwrap(), home.home.join("logs"));
-    assert_eq!(keyfile::keys_path(None).unwrap().parent().unwrap(), home.home);
+    assert_eq!(
+        default_log_path().unwrap().parent().unwrap(),
+        home.home.join("logs")
+    );
+    assert_eq!(
+        keyfile::keys_path(None).unwrap().parent().unwrap(),
+        home.home
+    );
     assert_eq!(keyfile::home_path().unwrap(), home.home);
 }
 
@@ -272,7 +303,10 @@ fn test_a_log_path_given_keeps_its_own_runs_beside_it() {
 #[test]
 fn test_a_folder_given_as_the_log_path_gets_the_usual_name() {
     let tmp = TmpDir::new();
-    assert_eq!(log_path(Some(tmp.path())).unwrap(), tmp.path().join("pa3ds.log"));
+    assert_eq!(
+        log_path(Some(tmp.path())).unwrap(),
+        tmp.path().join("pa3ds.log")
+    );
 }
 
 fn logs_in(folder: &Path) -> Vec<PathBuf> {
@@ -300,7 +334,10 @@ fn test_a_run_logs_where_it_is_told() {
     let home = Home::new();
     let target = home.tmp().join("elsewhere.log");
     let given = target.to_string_lossy().into_owned();
-    assert_eq!(main(&args(&["--silent", "--seconds", "0", "--log-path", &given])), 0);
+    assert_eq!(
+        main(&args(&["--silent", "--seconds", "0", "--log-path", &given])),
+        0
+    );
     assert!(target.exists());
     assert!(logs_in(&home.home).is_empty());
 }
@@ -330,9 +367,15 @@ fn keeping(
 fn test_a_run_keeps_the_players_own_names_beside_pa3ds() {
     let home = Home::new();
     let seen = Rc::new(RefCell::new(Vec::new()));
-    let hooks = Hooks { run: keeping(seen.clone(), |_speech| {}), ..Hooks::default() };
+    let hooks = Hooks {
+        run: keeping(seen.clone(), |_speech| {}),
+        ..Hooks::default()
+    };
     main_with(&args(&["--silent", "--seconds", "0", "--no-log"]), &hooks);
-    assert_eq!(seen.borrow()[0].names_home.as_deref(), Some(home.home.as_path()));
+    assert_eq!(
+        seen.borrow()[0].names_home.as_deref(),
+        Some(home.home.as_path())
+    );
 }
 
 /// The rig calls `run` with the settings as they come, and a name given on this machine must
@@ -402,11 +445,25 @@ fn test_the_runtime_is_quiet_while_another_window_is_in_front() {
             silent: heard.clone(),
             in_front: Rc::new(|| false),
         };
-        settings_file(&home.home, &format!("[pa3ds.ui]\nunfocused = {unfocused}\n"));
-        main_with(&args(&["--silent", "--seconds", "0", "--no-log", "--no-keys"]), &hooks);
-        let said: Vec<String> = heard.0.borrow().iter().map(|(text, _)| text.clone()).collect();
-        let expected: &[&str] =
-            if unfocused { &["pa3ds ready", "Welcome."] } else { &["pa3ds ready"] };
+        settings_file(
+            &home.home,
+            &format!("[pa3ds.ui]\nunfocused = {unfocused}\n"),
+        );
+        main_with(
+            &args(&["--silent", "--seconds", "0", "--no-log", "--no-keys"]),
+            &hooks,
+        );
+        let said: Vec<String> = heard
+            .0
+            .borrow()
+            .iter()
+            .map(|(text, _)| text.clone())
+            .collect();
+        let expected: &[&str] = if unfocused {
+            &["pa3ds ready", "Welcome."]
+        } else {
+            &["pa3ds ready"]
+        };
         assert_eq!(said, expected, "unfocused {unfocused}");
     }
 }
@@ -416,7 +473,10 @@ fn test_the_runtime_is_quiet_while_another_window_is_in_front() {
 fn test_the_poll_rate_is_the_frame_rate_unless_asked_for_less() {
     let home = Home::new();
     let seen = Rc::new(RefCell::new(Vec::new()));
-    let hooks = Hooks { run: keeping(seen.clone(), |_speech| {}), ..Hooks::default() };
+    let hooks = Hooks {
+        run: keeping(seen.clone(), |_speech| {}),
+        ..Hooks::default()
+    };
     let argv = args(&["--silent", "--seconds", "0", "--no-log"]);
     main_with(&argv, &hooks);
     settings_file(&home.home, "[pa3ds]\npoll_rate = 30\n");
@@ -435,12 +495,18 @@ fn test_the_poll_rate_is_the_frame_rate_unless_asked_for_less() {
 fn test_the_settings_file_reaches_the_readers() {
     let home = Home::new();
     let seen = Rc::new(RefCell::new(Vec::new()));
-    let hooks = Hooks { run: keeping(seen.clone(), |_speech| {}), ..Hooks::default() };
+    let hooks = Hooks {
+        run: keeping(seen.clone(), |_speech| {}),
+        ..Hooks::default()
+    };
     settings_file(
         &home.home,
         "[pa3ds.ui]\npauses = true\n\n[pa3ds.navigation]\nturn_by_turn = false\n",
     );
-    main_with(&args(&["--silent", "--seconds", "0", "--no-log", "--no-keys"]), &hooks);
+    main_with(
+        &args(&["--silent", "--seconds", "0", "--no-log", "--no-keys"]),
+        &hooks,
+    );
     let seen = seen.borrow();
     assert!(seen[0].ui.pauses && !seen[0].ui.interrupt);
     assert!(!seen[0].navigation.turn_by_turn);
@@ -482,8 +548,13 @@ fn test_a_reader_that_raises_is_logged_and_said_once() {
 #[test]
 fn test_a_fault_that_comes_back_after_a_quiet_spell_is_said_again() {
     let backend = Recorder::new();
-    let faults =
-        Faults::new(Rc::new(Speech::plain(backend.clone())), quiet(), None, 10.0, Faults::CAPTURES);
+    let faults = Faults::new(
+        Rc::new(Speech::plain(backend.clone())),
+        quiet(),
+        None,
+        10.0,
+        Faults::CAPTURES,
+    );
     let failure = raising("a reader");
     faults.caught(&failure, 100.0);
     faults.caught(&failure, 105.0);
@@ -523,7 +594,10 @@ fn test_a_snapshot_of_the_failure_is_written_and_then_capped() {
         log,
         Some(Box::new(move || {
             counter.set(counter.get() + 1);
-            Ok(Some(PathBuf::from(format!("capture-{}.idx", counter.get()))))
+            Ok(Some(PathBuf::from(format!(
+                "capture-{}.idx",
+                counter.get()
+            ))))
         })),
         0.0,
         2,
@@ -533,12 +607,22 @@ fn test_a_snapshot_of_the_failure_is_written_and_then_capped() {
     }
     assert_eq!(taken.get(), 2);
     let logged = logged.borrow();
-    let snapshots: Vec<&String> = logged.iter().filter(|line| line.starts_with("snapshot")).collect();
+    let snapshots: Vec<&String> = logged
+        .iter()
+        .filter(|line| line.starts_with("snapshot"))
+        .collect();
     assert_eq!(
         snapshots,
-        ["snapshot of the failure: capture-1.idx", "snapshot of the failure: capture-2.idx"]
+        [
+            "snapshot of the failure: capture-1.idx",
+            "snapshot of the failure: capture-2.idx"
+        ]
     );
-    assert!(logged.iter().any(|line| line == "no snapshot: this run has written all it will"));
+    assert!(
+        logged
+            .iter()
+            .any(|line| line == "no snapshot: this run has written all it will")
+    );
 }
 
 /// The emulator having stopped answering is a likely reason the reader failed at all.
@@ -549,13 +633,20 @@ fn test_a_snapshot_that_cannot_be_taken_is_not_a_second_failure() {
     let faults = Faults::new(
         Rc::new(Speech::plain(backend.clone())),
         log,
-        Some(Box::new(|| Err(Error::new(Kind::OsError, "the emulator is gone")))),
+        Some(Box::new(|| {
+            Err(Error::new(Kind::OsError, "the emulator is gone"))
+        })),
         Faults::QUIET,
         Faults::CAPTURES,
     );
     assert!(faults.caught(&raising("a reader"), 100.0).is_some());
     assert_eq!(backend.spoken(), ["Reader error"]);
-    assert!(logged.borrow().iter().any(|line| line.contains("no snapshot of the failure")));
+    assert!(
+        logged
+            .borrow()
+            .iter()
+            .any(|line| line.contains("no snapshot of the failure"))
+    );
 }
 
 /// An executable naming the message window classes, as the emulator serves it.
@@ -571,7 +662,12 @@ fn emulator_running_a_game() -> HashMap<i64, Vec<u8>> {
     let image = memory.read(CODE.0, 0x2000).unwrap();
     (0..image.len())
         .step_by(MAX_READ as usize)
-        .map(|at| (CODE.0 + at as i64, image[at..at + MAX_READ as usize].to_vec()))
+        .map(|at| {
+            (
+                CODE.0 + at as i64,
+                image[at..at + MAX_READ as usize].to_vec(),
+            )
+        })
         .collect()
 }
 
@@ -628,7 +724,10 @@ fn patched(
     move |game, rpc, speech, code, setup, image| {
         let mut session = catalog::start(game, rpc, speech, code, setup, image)?;
         let poll = patch(&session);
-        session.profile = Rc::new(Patched { real: session.profile.clone(), poll });
+        session.profile = Rc::new(Patched {
+            real: session.profile.clone(),
+            poll,
+        });
         Ok(session)
     }
 }
@@ -651,7 +750,10 @@ fn test_a_reader_that_raises_does_not_stop_the_loop() {
     let ticks = Rc::new(Cell::new(0));
     let counted = ticks.clone();
     let start = patched(|session| {
-        let pages = session.pages.clone().expect("gen 6 reads through a page cache");
+        let pages = session
+            .pages
+            .clone()
+            .expect("gen 6 reads through a page cache");
         Box::new(move |_real| {
             // Read before raising, as a reader that got partway through a structure has. The
             // snapshot is of what was read, so a reader that failed before reading anything
@@ -668,17 +770,37 @@ fn test_a_reader_that_raises_does_not_stop_the_loop() {
     run_with(
         connect(&emu),
         Rc::new(Speech::plain(backend.clone())),
-        Settings { tick: 0.0, captures: Some(tmp.path().to_path_buf()), ..Settings::default() },
+        Settings {
+            tick: 0.0,
+            captures: Some(tmp.path().to_path_buf()),
+            ..Settings::default()
+        },
         &until,
         log,
         &start,
     )
     .unwrap();
     assert!(ticks.get() > 20, "the loop gave up at the first exception");
-    assert_eq!(backend.spoken().iter().filter(|said| *said == "Reader error").count(), 1);
-    assert!(logged.borrow().join("\n").contains("a shape no reader expected"));
+    assert_eq!(
+        backend
+            .spoken()
+            .iter()
+            .filter(|said| *said == "Reader error")
+            .count(),
+        1
+    );
+    assert!(
+        logged
+            .borrow()
+            .join("\n")
+            .contains("a shape no reader expected")
+    );
     assert!(std::fs::read_dir(tmp.path()).unwrap().any(|entry| {
-        entry.unwrap().file_name().to_string_lossy().ends_with("_reader-error.idx")
+        entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .ends_with("_reader-error.idx")
     }));
 }
 
@@ -714,7 +836,11 @@ fn test_a_new_emulator_in_the_old_ones_place_is_attached_before_it_is_read() {
     run_with(
         connect(&emu),
         Rc::new(Speech::plain(Recorder::new())),
-        Settings { tick: 0.0, wait: 0.0, ..Settings::default() },
+        Settings {
+            tick: 0.0,
+            wait: 0.0,
+            ..Settings::default()
+        },
         &ticks_up_to(40),
         log,
         &lose_the_emulator(emu.clone(), true),
@@ -722,7 +848,12 @@ fn test_a_new_emulator_in_the_old_ones_place_is_attached_before_it_is_read() {
     .unwrap();
     assert_eq!(emu.unselected_reads(), 0);
     assert_eq!(emu.selected(), GAME.0);
-    assert!(logged.borrow().iter().any(|line| line.contains("waiting for a game again")));
+    assert!(
+        logged
+            .borrow()
+            .iter()
+            .any(|line| line.contains("waiting for a game again"))
+    );
 }
 
 /// A hiccup keeps the process selected, so the game is read on without starting over.
@@ -733,15 +864,27 @@ fn test_the_same_emulator_answering_again_is_read_on() {
     run_with(
         connect(&emu),
         Rc::new(Speech::plain(Recorder::new())),
-        Settings { tick: 0.0, wait: 0.0, ..Settings::default() },
+        Settings {
+            tick: 0.0,
+            wait: 0.0,
+            ..Settings::default()
+        },
         &ticks_up_to(40),
         log,
         &lose_the_emulator(emu.clone(), false),
     )
     .unwrap();
     let logged = logged.borrow();
-    assert!(logged.iter().any(|line| line == "the emulator is answering again"));
-    assert!(!logged.iter().any(|line| line.contains("waiting for a game again")));
+    assert!(
+        logged
+            .iter()
+            .any(|line| line == "the emulator is answering again")
+    );
+    assert!(
+        !logged
+            .iter()
+            .any(|line| line.contains("waiting for a game again"))
+    );
 }
 
 #[test]
@@ -757,7 +900,10 @@ fn test_gives_up_when_told_to_stop() {
         &Speech::plain(Recorder::new()),
         &until,
         &quiet(),
-        &Settings { wait: 0.0, ..Settings::default() },
+        &Settings {
+            wait: 0.0,
+            ..Settings::default()
+        },
     )
     .unwrap();
     assert_eq!(process, None);
@@ -766,16 +912,25 @@ fn test_gives_up_when_told_to_stop() {
 fn game_rom(folder: &Path, title: i64, encrypted: bool) -> PathBuf {
     let path = folder.join(if encrypted { "locked.3ds" } else { "or.3ds" });
     let files = oras_files(None);
-    let files: Vec<(&str, &[u8])> =
-        files.iter().map(|(name, data)| (name.as_str(), data.as_slice())).collect();
-    let image =
-        if encrypted { rom_image_with(&files, title, true) } else { rom_image(&files, title) };
+    let files: Vec<(&str, &[u8])> = files
+        .iter()
+        .map(|(name, data)| (name.as_str(), data.as_slice()))
+        .collect();
+    let image = if encrypted {
+        rom_image_with(&files, title, true)
+    } else {
+        rom_image(&files, title)
+    };
     std::fs::write(&path, image).unwrap();
     path
 }
 
 fn process() -> Process {
-    Process { pid: 11, title_id: GAME.1 as i64, name: "sango-1".to_string() }
+    Process {
+        pid: 11,
+        title_id: GAME.1 as i64,
+        name: "sango-1".to_string(),
+    }
 }
 
 /// Nothing for the player to set: Azahar already knows which ROMs it has opened, and the
@@ -785,17 +940,35 @@ fn test_the_games_own_words_come_from_the_rom_azahar_last_opened() {
     let home = Home::new();
     let locked = game_rom(home.tmp(), GAME.1 as i64, true);
     let wanted = game_rom(home.tmp(), GAME.1 as i64, false);
-    let config = home.tmp().join("appdata").join("Azahar").join("config").join("qt-config.ini");
+    let config = home
+        .tmp()
+        .join("appdata")
+        .join("Azahar")
+        .join("config")
+        .join("qt-config.ini");
     std::fs::create_dir_all(config.parent().unwrap()).unwrap();
     let posix = |path: &Path| path.to_string_lossy().replace('\\', "/");
-    std::fs::write(&config, format!("Paths\\recentFiles={}, {}\n", posix(&locked), posix(&wanted)))
-        .unwrap();
+    std::fs::write(
+        &config,
+        format!(
+            "Paths\\recentFiles={}, {}\n",
+            posix(&locked),
+            posix(&wanted)
+        ),
+    )
+    .unwrap();
     let (log, logged) = logger();
     let text = game_text(&Setup::new(process(), log), oras::rom()).unwrap();
-    assert_eq!(text.and_then(|text| text.place(3)), Some("Littleroot Town".to_string()));
+    assert_eq!(
+        text.and_then(|text| text.place(3)),
+        Some("Littleroot Town".to_string())
+    );
     assert_eq!(
         *logged.borrow(),
-        [format!("the game's own words from {} (en)", crate::py::path_str(&wanted))]
+        [format!(
+            "the game's own words from {} (en)",
+            crate::py::path_str(&wanted)
+        )]
     );
 }
 
@@ -804,7 +977,10 @@ fn test_a_rom_of_another_game_is_refused() {
     let home = Home::new();
     let (log, logged) = logger();
     let other = game_rom(home.tmp(), 0x0004000000055D00, false);
-    let setup = Setup { rom: Some(other), ..Setup::new(process(), log) };
+    let setup = Setup {
+        rom: Some(other),
+        ..Setup::new(process(), log)
+    };
     assert!(game_text(&setup, oras::rom()).unwrap().is_none());
     assert!(logged.borrow()[0].contains("the game running is 000400000011c400"));
 }
@@ -813,7 +989,11 @@ fn test_a_rom_of_another_game_is_refused() {
 fn test_without_a_rom_the_game_runs_on_without_its_own_words() {
     let _home = Home::new();
     let (log, logged) = logger();
-    assert!(game_text(&Setup::new(process(), log), oras::rom()).unwrap().is_none());
+    assert!(
+        game_text(&Setup::new(process(), log), oras::rom())
+            .unwrap()
+            .is_none()
+    );
     assert!(logged.borrow()[0].starts_with("no decrypted ROM of title 000400000011c400"));
 }
 
@@ -830,7 +1010,14 @@ fn test_each_engine_puts_its_own_game_together() {
         rpc.clone(),
         Rc::new(Speech::plain(Recorder::new())),
         CODE,
-        Setup::new(Process { pid: 11, title_id: oras::OMEGA_RUBY, name: "sango-1".into() }, quiet()),
+        Setup::new(
+            Process {
+                pid: 11,
+                title_id: oras::OMEGA_RUBY,
+                name: "sango-1".into(),
+            },
+            quiet(),
+        ),
         &[],
     )
     .unwrap();
@@ -839,7 +1026,14 @@ fn test_each_engine_puts_its_own_game_together() {
         rpc,
         Rc::new(Speech::plain(Recorder::new())),
         CODE,
-        Setup::new(Process { pid: 11, title_id: sm::SUN, name: "kujira-1".into() }, quiet()),
+        Setup::new(
+            Process {
+                pid: 11,
+                title_id: sm::SUN,
+                name: "kujira-1".into(),
+            },
+            quiet(),
+        ),
         &[],
     )
     .unwrap();

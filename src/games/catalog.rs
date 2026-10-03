@@ -44,7 +44,10 @@ pub fn for_title(title: i64) -> Running {
         }
     }
     Running::Gen6(
-        games().into_iter().find(|game| game.titles.contains(&title)).unwrap_or(oras::game()),
+        games()
+            .into_iter()
+            .find(|game| game.titles.contains(&title))
+            .unwrap_or(oras::game()),
     )
 }
 

@@ -68,7 +68,9 @@ fn help() -> Result<String, String> {
          before it are kept beside it as pa3ds.1.log (the newest) to pa3ds.{}.log. Everything \
          else is set in {}.",
         usage(),
-        default_log_path().map_err(|error| error.to_string())?.display(),
+        default_log_path()
+            .map_err(|error| error.to_string())?
+            .display(),
         KEPT_LOGS - 1,
         KEPT_LOGS - 1,
         config.display(),
@@ -76,11 +78,16 @@ fn help() -> Result<String, String> {
 }
 
 fn parse(argv: &[String]) -> Result<Args, String> {
-    let mut args = Args { port: DEFAULT_PORT, ..Args::default() };
+    let mut args = Args {
+        port: DEFAULT_PORT,
+        ..Args::default()
+    };
     let mut at = 0;
     let value = |at: &mut usize, flag: &str| -> Result<String, String> {
         *at += 1;
-        argv.get(*at).cloned().ok_or_else(|| format!("argument {flag}: expected one argument"))
+        argv.get(*at)
+            .cloned()
+            .ok_or_else(|| format!("argument {flag}: expected one argument"))
     };
     while at < argv.len() {
         let arg = argv[at].as_str();
@@ -88,7 +95,7 @@ fn parse(argv: &[String]) -> Result<Args, String> {
             Some((flag, inline)) if flag.starts_with("--") => (flag, Some(inline.to_string())),
             _ => (arg, None),
         };
-        let mut take = |at: &mut usize| match &inline {
+        let take = |at: &mut usize| match &inline {
             Some(inline) => Ok(inline.clone()),
             None => value(at, flag),
         };
@@ -99,10 +106,10 @@ fn parse(argv: &[String]) -> Result<Args, String> {
             "--no-log" => args.no_log = true,
             "--seconds" => {
                 let text = take(&mut at)?;
-                args.seconds = Some(
-                    py::float_of(&text)
-                        .map_err(|_| format!("argument --seconds: invalid float value: '{text}'"))?,
-                );
+                args.seconds =
+                    Some(py::float_of(&text).map_err(|_| {
+                        format!("argument --seconds: invalid float value: '{text}'")
+                    })?);
             }
             "--port" => {
                 let text = take(&mut at)?;
@@ -132,7 +139,8 @@ pub fn main(argv: &[String]) -> i32 {
 /// What `main` hands its run to: the runtime, the backend `--silent` says nothing through, and
 /// whether the game's window is in front. The Python's tests patched each of these in place.
 pub struct Hooks {
-    pub run: Box<dyn Fn(Rc<dyn Rpc>, Rc<Speech>, Settings, &dyn Fn() -> bool, Log) -> py::Result<()>>,
+    pub run:
+        Box<dyn Fn(Rc<dyn Rpc>, Rc<Speech>, Settings, &dyn Fn() -> bool, Log) -> py::Result<()>>,
     pub silent: Rc<dyn Backend>,
     pub in_front: Rc<dyn Fn() -> bool>,
 }
@@ -156,8 +164,11 @@ pub fn main_with(argv: &[String], hooks: &Hooks) -> i32 {
             return 0;
         }
         Err(message) => {
-            eprintln!("{}
-pa3ds: error: {message}", usage());
+            eprintln!(
+                "{}
+pa3ds: error: {message}",
+                usage()
+            );
             return 2;
         }
     };
@@ -234,10 +245,18 @@ fn run(args: Args, hooks: &Hooks) -> py::Result<()> {
     }
     let mut bindings = None;
     if settings.general.keys && !args.no_keys {
-        let explained: IndexMap<String, String> =
-            EXPLAINED.iter().map(|(key, why)| (key.to_string(), why.to_string())).collect();
-        let keys =
-            keyfile::prepare(&DEFAULT_BINDINGS, None, None, true, running, Some(&explained))?;
+        let explained: IndexMap<String, String> = EXPLAINED
+            .iter()
+            .map(|(key, why)| (key.to_string(), why.to_string()))
+            .collect();
+        let keys = keyfile::prepare(
+            &DEFAULT_BINDINGS,
+            None,
+            None,
+            true,
+            running,
+            Some(&explained),
+        )?;
         for note in &keys.notes {
             log(note);
         }
@@ -298,7 +317,10 @@ pub fn log_path(place: Option<&Path>) -> py::Result<PathBuf> {
 /// run becomes `.1`.
 fn rotate(path: &Path) -> py::Result<()> {
     let numbered = |n: usize| -> PathBuf {
-        let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let stem = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let name = match path.extension() {
             Some(extension) => format!("{stem}.{n}.{}", extension.to_string_lossy()),
             None => format!("{stem}.{n}"),
@@ -323,4 +345,3 @@ fn rotate(path: &Path) -> py::Result<()> {
     }
     Ok(())
 }
-

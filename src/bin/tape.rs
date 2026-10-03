@@ -24,7 +24,9 @@ struct Heard(Rc<RefCell<Vec<String>>>);
 
 impl Backend for Heard {
     fn speak(&self, text: &str, interrupt: bool) {
-        self.0.borrow_mut().push(format!("{}{text}", if interrupt { "!" } else { "" }));
+        self.0
+            .borrow_mut()
+            .push(format!("{}{text}", if interrupt { "!" } else { "" }));
     }
 
     fn braille(&self, _text: &str) {}
@@ -36,7 +38,10 @@ fn replay_settings() -> Settings {
     let home = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .map(|local| local.join("pa3ds").join("captures").join("replay-home"));
-    Settings { names_home: home, ..Settings::default() }
+    Settings {
+        names_home: home,
+        ..Settings::default()
+    }
 }
 
 /// A file's lines, CRLF or LF.
@@ -55,8 +60,11 @@ fn comparable(lines: &[String]) -> Vec<String> {
             out.push(line.clone());
             continue;
         }
-        if in_failure && (line.starts_with(' ') || line.contains("Error") || line.contains("Traceback")
-            || line.starts_with("panic"))
+        if in_failure
+            && (line.starts_with(' ')
+                || line.contains("Error")
+                || line.contains("Traceback")
+                || line.starts_with("panic"))
         {
             continue;
         }
@@ -81,7 +89,11 @@ fn first_difference(python: &[String], rust: &[String]) -> Option<String> {
             "python has {} lines, rust {}; the first unmatched: {}",
             python.len(),
             rust.len(),
-            python.get(rust.len()).or(rust.get(python.len())).cloned().unwrap_or_default()
+            python
+                .get(rust.len())
+                .or(rust.get(python.len()))
+                .cloned()
+                .unwrap_or_default()
         )),
         None => None,
     }
@@ -99,7 +111,11 @@ fn replay(path: &Path) -> Result<bool, String> {
     let said = Rc::new(RefCell::new(Vec::<String>::new()));
     let log: Log = {
         let logged = logged.clone();
-        Rc::new(move |line: &str| logged.borrow_mut().extend(line.split('\n').map(str::to_string)))
+        Rc::new(move |line: &str| {
+            logged
+                .borrow_mut()
+                .extend(line.split('\n').map(str::to_string))
+        })
     };
     let previous = time::set_clock(Some(Box::new(TapeClock::new(tape.clone()))));
     let rpc: Rc<dyn Rpc> = Rc::new(TapeRpc::new(tape.clone()));
@@ -130,7 +146,12 @@ fn replay(path: &Path) -> Result<bool, String> {
     };
     let (python_log, python_said) = (read(".py.log")?, read(".py.said")?);
     let mut same = true;
-    let mut report = format!("{name}: {} records, {} lines, {} said", tape.count(), logged.len(), said.len());
+    let mut report = format!(
+        "{name}: {} records, {} lines, {} said",
+        tape.count(),
+        logged.len(),
+        said.len()
+    );
     if let Stop::Diverged(why) = &ending {
         same = false;
         report += &format!("\n  DIVERGED, {why}");
@@ -166,5 +187,9 @@ fn main() -> ExitCode {
             }
         }
     }
-    if all { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+    if all {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
 }

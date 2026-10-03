@@ -1920,7 +1920,9 @@ fn test_a_first_page_waits_a_moment_for_the_name_on_its_plate() {
     let mut told = Announcements::with(
         Rc::new(Speech::plain(backend.clone())),
         silent(),
-        Some(Rc::new(move |window| Ok(known.borrow().get(&window).cloned()))),
+        Some(Rc::new(move |window| {
+            Ok(known.borrow().get(&window).cloned())
+        })),
         true,
     );
     let page = |window, index, text: &str| Shown::Page(PageShown::new(window, index, text));

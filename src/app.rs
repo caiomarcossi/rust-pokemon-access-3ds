@@ -148,7 +148,10 @@ pub struct Every {
 
 impl Every {
     pub fn new(period: f64) -> Self {
-        Every { period, next: Cell::new(0.0) }
+        Every {
+            period,
+            next: Cell::new(0.0),
+        }
     }
 
     /// Whether the task is due now. If it is, the next time is set from now.
@@ -200,7 +203,10 @@ pub struct Busy {
 
 impl Busy {
     pub fn new(rpc: Rc<dyn Rpc>) -> Self {
-        Busy { rpc, since: Cell::new(None) }
+        Busy {
+            rpc,
+            since: Cell::new(None),
+        }
     }
 
     pub fn now(&self, now: f64) -> bool {
@@ -232,8 +238,13 @@ impl Failure {
     pub fn of_error(error: &Error) -> Self {
         Failure {
             fault: error.fault(),
-            detail: format!("{}: {}\n  raised at {}:{}", error.kind.name(), error.message,
-                            error.location.file(), error.location.line()),
+            detail: format!(
+                "{}: {}\n  raised at {}:{}",
+                error.kind.name(),
+                error.message,
+                error.location.file(),
+                error.location.line()
+            ),
         }
     }
 
@@ -245,7 +256,9 @@ impl Failure {
             .map(|text| text.to_string())
             .or_else(|| payload.downcast_ref::<String>().cloned())
             .unwrap_or_else(|| "a panic".to_string());
-        let (file, line) = PANICKED_AT.with(|at| at.borrow().clone()).unwrap_or_default();
+        let (file, line) = PANICKED_AT
+            .with(|at| at.borrow().clone())
+            .unwrap_or_default();
         let name = file.rsplit(['/', '\\']).next().unwrap_or("").to_string();
         Failure {
             fault: format!("panic at {name}:{line}"),
@@ -333,7 +346,10 @@ impl Faults {
         {
             return None;
         }
-        (self.log)(&format!("a reader failed, carrying on:\n{}", failure.detail));
+        (self.log)(&format!(
+            "a reader failed, carrying on:\n{}",
+            failure.detail
+        ));
         self.snapshot();
         self.speech.say("Reader error", Category::System);
         Some(failure.fault.clone())
@@ -353,9 +369,7 @@ impl Faults {
             Ok(Ok(Some(written))) => {
                 (self.log)(&format!("snapshot of the failure: {}", written.display()))
             }
-            Ok(Ok(None)) => {
-                (self.log)("no snapshot of the failure: nothing had been read yet")
-            }
+            Ok(Ok(None)) => (self.log)("no snapshot of the failure: nothing had been read yet"),
             Ok(Err(failed)) => (self.log)(&format!("no snapshot of the failure: {failed:?}")),
             Err(payload) if tape::is_stop(&*payload) => panic::resume_unwind(payload),
             Err(payload) => (self.log)(&format!(
@@ -380,8 +394,14 @@ pub fn run(
 
 /// How a game is started: `catalog::start`, or a test's own, where the Python's tests patched a
 /// reader the catalog's profile builds.
-pub type Start<'a> =
-    &'a dyn Fn(catalog::Running, Rc<dyn Rpc>, Rc<Speech>, (i64, i64), Setup, &[u8]) -> Result<Session>;
+pub type Start<'a> = &'a dyn Fn(
+    catalog::Running,
+    Rc<dyn Rpc>,
+    Rc<Speech>,
+    (i64, i64),
+    Setup,
+    &[u8],
+) -> Result<Session>;
 
 /// `run`, with the game started by `start`.
 pub fn run_with(
@@ -397,7 +417,15 @@ pub fn run_with(
         let Some(process) = wait_for_game(&*rpc, &speech, until, &log, &settings)? else {
             return Ok(());
         };
-        if !session(rpc.clone(), speech.clone(), &settings, until, &log, process, start)? {
+        if !session(
+            rpc.clone(),
+            speech.clone(),
+            &settings,
+            until,
+            &log,
+            process,
+            start,
+        )? {
             return Ok(());
         }
         log("the game the emulator was running has gone; waiting for a game again");
@@ -478,7 +506,10 @@ fn session(
         speech.clone(),
         code,
         Setup {
-            keys: settings.keys.clone().unwrap_or_else(|| DEFAULT_BINDINGS.clone()),
+            keys: settings
+                .keys
+                .clone()
+                .unwrap_or_else(|| DEFAULT_BINDINGS.clone()),
             ui: settings.ui.clone(),
             navigation: settings.navigation.clone(),
             language: settings.language.clone(),
@@ -523,8 +554,12 @@ fn session(
         })
     };
     let poll_screen: Rc<dyn Fn() -> Result<()>> = {
-        let (profile, busy, screen, sweeping) =
-            (profile.clone(), busy.clone(), screen.clone(), sweeping.clone());
+        let (profile, busy, screen, sweeping) = (
+            profile.clone(),
+            busy.clone(),
+            screen.clone(),
+            sweeping.clone(),
+        );
         Rc::new(move || {
             let now = time::monotonic();
             if !busy.now(now) && screen.due(now) {
@@ -538,8 +573,11 @@ fn session(
         })
     };
     let between: Rc<dyn Fn()> = {
-        let (poll_dialogue, answer_keys, poll_screen) =
-            (poll_dialogue.clone(), answer_keys.clone(), poll_screen.clone());
+        let (poll_dialogue, answer_keys, poll_screen) = (
+            poll_dialogue.clone(),
+            answer_keys.clone(),
+            poll_screen.clone(),
+        );
         let walking = heap_walk.is_some();
         Rc::new(move || {
             raise(poll_dialogue());
@@ -587,9 +625,16 @@ fn session(
 
     // The pages the readers had been reading, saved where raw captures live (ADR-0029).
     let capture_failure: Box<dyn Fn() -> Result<Option<PathBuf>>> = {
-        let (pages, rpc, captures) = (session.pages.clone(), rpc.clone(), settings.captures.clone());
+        let (pages, rpc, captures) = (
+            session.pages.clone(),
+            rpc.clone(),
+            settings.captures.clone(),
+        );
         Box::new(move || {
-            let recent = pages.as_ref().map(|pages| pages.recent()).unwrap_or_default();
+            let recent = pages
+                .as_ref()
+                .map(|pages| pages.recent())
+                .unwrap_or_default();
             if recent.is_empty() {
                 return Ok(None);
             }
@@ -706,7 +751,7 @@ fn session(
                 (session.allocated)(&blocks);
                 for block in &blocks {
                     for &delay in &settings.sweep_again {
-                        again.push((started + delay, block.clone()));
+                        again.push((started + delay, *block));
                     }
                 }
                 crate::py::sort_by_lt(&mut again, |a, b| a.0 < b.0);
@@ -715,8 +760,10 @@ fn session(
                     .position(|(when, _block)| *when > started)
                     .unwrap_or(again.len());
                 blocks.extend(again.drain(..due).map(|(_when, block)| block));
-                let spans: Vec<(i64, i64)> =
-                    blocks.into_iter().filter_map(|block| (session.to_sweep)(block)).collect();
+                let spans: Vec<(i64, i64)> = blocks
+                    .into_iter()
+                    .filter_map(|block| (session.to_sweep)(block))
+                    .collect();
                 if !spans.is_empty() {
                     let found = discovery.sweep_spans(&spans)?;
                     swept.extend(found.heap.keys().copied());
@@ -809,7 +856,11 @@ fn start_hotkeys(settings: &Settings, log: &Log) -> Option<Hotkeys> {
     for (mode, bound) in keys {
         log(&format!(
             "keys, {mode} mode: {}",
-            bound.iter().map(|(key, action)| format!("{key} {action}")).collect::<Vec<_>>().join(", ")
+            bound
+                .iter()
+                .map(|(key, action)| format!("{key} {action}"))
+                .collect::<Vec<_>>()
+                .join(", ")
         ));
     }
     Some(hotkeys)
