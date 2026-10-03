@@ -95,6 +95,16 @@ impl FakeEmulator {
         self.state.lock().unwrap().memory.insert(base, data);
     }
 
+    /// `emu.memory.clear()`.
+    pub fn clear_pages(&self) {
+        self.state.lock().unwrap().memory.clear();
+    }
+
+    /// `del emu.memory[base]`.
+    pub fn remove_page(&self, base: i64) {
+        self.state.lock().unwrap().memory.remove(&base);
+    }
+
     /// Be the emulator after the game restarts itself: its RPC server is a new one, which
     /// drops the next `silent_reads` reads while it is down and then has no process selected.
     pub fn restart(&self, silent_reads: i64) {

@@ -59,7 +59,7 @@ pub fn capture_dir() -> Result<PathBuf> {
 
 /// `range(low, high, step)`, which raises for a step of zero and counts down for a negative one.
 #[track_caller]
-fn range_of(low: i64, high: i64, step: i64) -> Result<Vec<i64>> {
+pub(crate) fn range_of(low: i64, high: i64, step: i64) -> Result<Vec<i64>> {
     if step == 0 {
         return Err(Error::value("range() arg 3 must not be zero"));
     }
