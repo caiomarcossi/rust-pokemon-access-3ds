@@ -2819,7 +2819,9 @@ fn without(set: &PySet, out: i64) -> Vec<i64> {
 
 /// `statistics.median`: the middle of the sorted values, or the mean of the two middle ones.
 fn median(values: &mut [f64]) -> f64 {
-    values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    // `sorted`: a height read from a freed mesh can be NaN, which only CPython's sort places
+    // as Python does.
+    py::sort_by_lt(values, |a, b| a < b);
     let (n, i) = (values.len(), values.len() / 2);
     if n % 2 == 1 {
         values[i]
