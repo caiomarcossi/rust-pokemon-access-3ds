@@ -26,6 +26,7 @@ use crate::core::modules::{Module, Modules};
 use crate::core::rpc::{Rpc, joined, reads_of};
 use crate::core::rtti::{find_objects, find_vtables};
 use crate::core::snapshot::{DEFAULT_GAP, PAGE, PROBE_STEP, merge, probe, range_of, sweep};
+use crate::py::PySet;
 use crate::py::{self, Result};
 
 /// Where the 3DS maps every executable, with room to spare. No ASLR, so this is platform, not game.
@@ -347,9 +348,10 @@ impl Discovery {
     }
 
     fn found(&self, pages: &IndexMap<i64, Vec<u8>>) -> Result<IndexMap<i64, String>> {
-        // Python passes `set(self._names)`, which it iterates in hash order; this is the order
-        // the names were learned in. It decides the order of what is found, not of any read.
-        let vtables: Vec<i64> = self.names.keys().copied().collect();
+        // `set(self._names)`: `find_objects` goes vtable by vtable, so the set's order is the
+        // order of what is found, which a whole sweep's log line counts in (sun_10.ctm's tape).
+        let names: Vec<i64> = self.names.keys().copied().collect();
+        let vtables: Vec<i64> = PySet::of_dict(&names).iter().collect();
         let mut out: IndexMap<i64, String> = IndexMap::new();
         for (address, vtable) in find_objects(pages, &vtables)? {
             out.insert(address, self.names[&vtable].clone());
@@ -371,14 +373,15 @@ impl Discovery {
 
     /// Sweep the heap whole for these classes alone, at once, as a list opening needs.
     pub fn sweep_for(&mut self, classes: &[&str]) -> Result<Vec<i64>> {
-        // A set in Python, iterated in hash order: this is the order the names were learned in.
-        // It decides the order of the objects returned, not of any read.
-        let vtables: Vec<i64> = self
-            .names
-            .iter()
-            .filter(|(_, name)| classes.contains(&name.as_str()))
-            .map(|(&vtable, _)| vtable)
-            .collect();
+        // A set comprehension, whose order is the order of the objects returned.
+        let vtables: Vec<i64> = PySet::of(
+            self.names
+                .iter()
+                .filter(|(_, name)| classes.contains(&name.as_str()))
+                .map(|(&vtable, _)| vtable),
+        )
+        .iter()
+        .collect();
         let pages = if self.walk.is_some() {
             self.walked()?
         } else {

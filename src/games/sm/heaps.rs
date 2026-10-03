@@ -153,8 +153,8 @@ impl Heaps {
     /// `names` should read exactly what it is asked for, as `RpcMemory` does: every read here
     /// is to the byte, since the byte after a block may be the GPU's.
     ///
-    /// `wanted` and `unread` are `frozenset`s in Python, read in the order it iterates them, which
-    /// is not their numbers' order: pass them in that order (`PySet::iter`).
+    /// `wanted` and `unread` are `frozenset`s in Python, only ever read in their numbers' order
+    /// (`listed`), so the order they are passed in does not matter.
     pub fn with(
         rpc: Rc<dyn Rpc>,
         names: Rc<ClassNames>,
@@ -216,7 +216,9 @@ impl Heaps {
     /// The heads of the heaps with these ids, each checked to be a heap with its own id.
     fn listed(&self, table: &[u8], ids: &[i64]) -> Result<Vec<i64>> {
         let mut found: Vec<i64> = Vec::new();
-        for &index in ids {
+        let mut ids = ids.to_vec();
+        ids.sort();
+        for index in ids {
             let heap = u32(table, index * ENTRY)?;
             if heap != 0
                 && heap & 3 == 0
