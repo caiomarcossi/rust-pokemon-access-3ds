@@ -24,7 +24,7 @@ use crate::core::snapshot::{self, PAGE};
 use crate::core::speech::{Category, Speech};
 use crate::games::catalog;
 use crate::games::common::navigate::{Bindings, DEFAULT_BINDINGS, bound_keys};
-use crate::games::common::session::Setup;
+use crate::games::common::session::{Session, Setup};
 use crate::py::{Error, Kind, Log, Result, time};
 use crate::tape;
 
@@ -375,12 +375,29 @@ pub fn run(
     until: &dyn Fn() -> bool,
     log: Log,
 ) -> Result<()> {
+    run_with(rpc, speech, settings, until, log, &catalog::start)
+}
+
+/// How a game is started: `catalog::start`, or a test's own, where the Python's tests patched a
+/// reader the catalog's profile builds.
+pub type Start<'a> =
+    &'a dyn Fn(catalog::Running, Rc<dyn Rpc>, Rc<Speech>, (i64, i64), Setup, &[u8]) -> Result<Session>;
+
+/// `run`, with the game started by `start`.
+pub fn run_with(
+    rpc: Rc<dyn Rpc>,
+    speech: Rc<Speech>,
+    settings: Settings,
+    until: &dyn Fn() -> bool,
+    log: Log,
+    start: Start<'_>,
+) -> Result<()> {
     hook_panics();
     loop {
         let Some(process) = wait_for_game(&*rpc, &speech, until, &log, &settings)? else {
             return Ok(());
         };
-        if !session(rpc.clone(), speech.clone(), &settings, until, &log, process)? {
+        if !session(rpc.clone(), speech.clone(), &settings, until, &log, process, start)? {
             return Ok(());
         }
         log("the game the emulator was running has gone; waiting for a game again");
@@ -429,6 +446,7 @@ fn session(
     until: &dyn Fn() -> bool,
     log: &Log,
     process: Process,
+    start: Start<'_>,
 ) -> Result<bool> {
     let began = time::monotonic();
     let code_spans = snapshot::regions(
@@ -454,7 +472,7 @@ fn session(
     .read(code.0, code.1 - code.0)?;
     // The title says which game is running, and its engine's package puts it together.
     let game = catalog::for_title(process.title_id);
-    let session = catalog::start(
+    let session = start(
         game,
         rpc.clone(),
         speech.clone(),

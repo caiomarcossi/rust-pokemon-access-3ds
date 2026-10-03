@@ -22,7 +22,7 @@ const LOG_NAME: &str = "pa3ds.log";
 const LOG_FOLDER: &str = "logs";
 
 /// A backend that says nothing, for runs where the log is the output.
-struct Silent;
+pub struct Silent;
 
 impl Backend for Silent {
     fn speak(&self, _text: &str, _interrupt: bool) {}
@@ -126,6 +126,29 @@ fn parse(argv: &[String]) -> Result<Args, String> {
 /// The command line `argv` (without the program's name), run: 0 when it ran, 2 when the arguments
 /// were wrong, 1 when it failed.
 pub fn main(argv: &[String]) -> i32 {
+    main_with(argv, &Hooks::default())
+}
+
+/// What `main` hands its run to: the runtime, the backend `--silent` says nothing through, and
+/// whether the game's window is in front. The Python's tests patched each of these in place.
+pub struct Hooks {
+    pub run: Box<dyn Fn(Rc<dyn Rpc>, Rc<Speech>, Settings, &dyn Fn() -> bool, Log) -> py::Result<()>>,
+    pub silent: Rc<dyn Backend>,
+    pub in_front: Rc<dyn Fn() -> bool>,
+}
+
+impl Default for Hooks {
+    fn default() -> Self {
+        Hooks {
+            run: Box::new(app::run),
+            silent: Rc::new(Silent),
+            in_front: Rc::new(|| window::in_front(window::EMULATOR)),
+        }
+    }
+}
+
+/// `main`, run through `hooks`.
+pub fn main_with(argv: &[String], hooks: &Hooks) -> i32 {
     let args = match parse(argv) {
         Ok(args) => args,
         Err(message) if message.starts_with("usage:") => {
@@ -138,7 +161,7 @@ pa3ds: error: {message}", usage());
             return 2;
         }
     };
-    match run(args) {
+    match run(args, hooks) {
         Ok(()) => 0,
         Err(error) => {
             eprintln!("pa3ds: {}: {}", error.kind.name(), error.message);
@@ -147,7 +170,7 @@ pa3ds: error: {message}", usage());
     }
 }
 
-fn run(args: Args) -> py::Result<()> {
+fn run(args: Args, hooks: &Hooks) -> py::Result<()> {
     // A patch of Azahar's config is lost when an open Azahar closes, so none is written while
     // it is open.
     let running = !window::titles(window::EMULATOR).is_empty();
@@ -155,7 +178,7 @@ fn run(args: Args) -> py::Result<()> {
     let ui = settings.ui.clone();
 
     let backend: Rc<dyn Backend> = if args.silent {
-        Rc::new(Silent)
+        hooks.silent.clone()
     } else {
         let (backend, name) = speech::screen_reader()?;
         println!("speaking through {name}");
@@ -197,7 +220,7 @@ fn run(args: Args) -> py::Result<()> {
     let listening: Option<speech::Listening> = if ui.unfocused {
         None
     } else {
-        Some(Rc::new(|| window::in_front(window::EMULATOR)))
+        Some(hooks.in_front.clone())
     };
     let speech = Rc::new(Speech::new(backend, interrupts, listening));
     // Before the game, not after: what a key does and which buttons it costs is about the
@@ -225,7 +248,7 @@ fn run(args: Args) -> py::Result<()> {
     }
 
     let until = move || deadline.is_some_and(|deadline| time::monotonic() >= deadline);
-    app::run(
+    (hooks.run)(
         rpc,
         speech,
         Settings {
