@@ -339,15 +339,54 @@ pub fn float_repr(x: f64) -> String {
     if x.is_infinite() {
         return if x > 0.0 { "inf".into() } else { "-inf".into() };
     }
-    let magnitude = x.abs();
-    if x == 0.0 || (1e-4..1e16).contains(&magnitude) {
-        return format!("{x:?}");
+    if x == 0.0 {
+        return if x.is_sign_negative() {
+            "-0.0".into()
+        } else {
+            "0.0".into()
+        };
     }
-    let shortest = format!("{x:e}");
-    let (mantissa, exponent) = shortest.split_once('e').unwrap_or((&shortest, "0"));
-    let exponent: i32 = exponent.parse().unwrap_or(0);
-    let sign = if exponent < 0 { '-' } else { '+' };
-    format!("{mantissa}e{sign}{:02}", exponent.abs())
+    // The fewest digits that read back as `x`, each count rounded halves-to-even as Python's
+    // repr rounds them. Rust's own shortest form breaks a tie between two 17-digit decimals the
+    // other way, and a float widened from an f32 out of the game's memory often sits on one.
+    let scientific = (1..=17)
+        .map(|digits| format!("{:.*e}", digits - 1, x))
+        .find(|text| text.parse::<f64>() == Ok(x))
+        .unwrap_or_else(|| format!("{x:.16e}"));
+    let (mantissa, exponent) = scientific.split_once('e').expect("scientific notation");
+    let exponent: i32 = exponent.parse().expect("an exponent");
+    let negative = mantissa.starts_with('-');
+    let digits: String = mantissa.chars().filter(char::is_ascii_digit).collect();
+    let digits = digits.trim_end_matches('0');
+    let digits = if digits.is_empty() { "0" } else { digits };
+    let mut out = String::from(if negative { "-" } else { "" });
+    if (-4..16).contains(&exponent) {
+        if exponent >= 0 {
+            let whole = exponent as usize + 1;
+            if digits.len() <= whole {
+                out.push_str(digits);
+                out.push_str(&"0".repeat(whole - digits.len()));
+                out.push_str(".0");
+            } else {
+                out.push_str(&digits[..whole]);
+                out.push('.');
+                out.push_str(&digits[whole..]);
+            }
+        } else {
+            out.push_str("0.");
+            out.push_str(&"0".repeat((-exponent - 1) as usize));
+            out.push_str(digits);
+        }
+    } else {
+        out.push_str(&digits[..1]);
+        if digits.len() > 1 {
+            out.push('.');
+            out.push_str(&digits[1..]);
+        }
+        let sign = if exponent < 0 { '-' } else { '+' };
+        out.push_str(&format!("e{sign}{:02}", exponent.abs()));
+    }
+    out
 }
 
 /// `str.isspace()` for one character: wider than [`char::is_whitespace`], which leaves out
@@ -522,6 +561,10 @@ mod checks {
         assert_eq!(float_repr(1e-5), "1e-05");
         assert_eq!(float_repr(1e16), "1e+16");
         assert_eq!(float_repr(-2.5), "-2.5");
+        assert_eq!(float_repr(148.534698486328125), "148.53469848632812");
+        assert_eq!(float_repr(1.5e16), "1.5e+16");
+        assert_eq!(float_repr(-0.0), "-0.0");
+        assert_eq!(float_repr(123.0), "123.0");
         assert_eq!(repr("it's"), "\"it's\"");
         assert_eq!(repr("a\nb\u{e08e}"), "'a\\nb\\ue08e'");
         assert_eq!(split(" a\u{a0}b\x1cc "), vec!["a", "b", "c"]);
