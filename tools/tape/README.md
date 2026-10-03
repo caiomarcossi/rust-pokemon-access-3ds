@@ -32,13 +32,28 @@ files exactly:
 ..\pokemon-access-3ds\.venv\Scripts\python.exe tools\tape\py.py replay <tape> <out.log>
 ```
 
+`tools/tape/record_all.sh <replay>...` does all three for each replay: records it, makes its
+references (`<name>.py.log`, `<name>.py.said`) by replaying it through the Python runtime, and
+replays it through the Rust runtime.
+
 ## Replaying through the Rust runtime
 
 ```
-cargo run --release --bin tape -- <tape>
+cargo build --release
+targetelease	ape.exe %LOCALAPPDATA%\pa3ds	apes\*.tape.gz
 ```
 
-writes `<tape>.rust.log` and `<tape>.rust.said` and compares them with the recording's.
+writes `<name>.rust.log` and `<name>.rust.said` beside each tape and compares them with the
+Python replay's `<name>.py.log` and `<name>.py.said`, saying for each tape either "identical to the
+Python runtime's" or the first record the two runtimes asked differently, and the first line each
+logged or said differently.
+
+## Live runs
+
+`tools/tape/live.py <replay>...` replays a movie with the shipped `pa3ds.exe` reading the running
+emulator, and with `--python` the Python runtime as the control; `spikes/regress.py compare
+python-live rust-live` in the Python checkout diffs the two. A live run is judged against the noise
+between two Python runs, as any change upstream is (`docs/runbooks/rig.md`), not line for line.
 
 ## What is compared, and what is not
 
