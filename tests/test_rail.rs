@@ -17,17 +17,17 @@ const FILE: i64 = 0x147FA080;
 // way round, ends there too. A line's id is its start point's with bit 15 set.
 const A: i64 = 0x0305AC3B;
 const B: i64 = 0x0504BEF6;
-const C: i64 = 0x0504F514;
+pub(super) const C: i64 = 0x0504F514;
 const P0: i64 = 0x03052C3B;
 const P1: i64 = 0x05043EF6;
-const P2: i64 = 0x05045991;
-const P3: i64 = 0x05047514;
+pub(super) const P2: i64 = 0x05045991;
+pub(super) const P3: i64 = 0x05047514;
 /// Seven cells across, three either side of the middle.
-const ACROSS: i64 = 7;
+pub(super) const ACROSS: i64 = 7;
 
 /// A line's wall table: the outer column each side a wall, and `blocked` (row, offset)
 /// besides.
-fn walls(along: i64, blocked: &[(i64, i64)]) -> Vec<i64> {
+pub(super) fn walls(along: i64, blocked: &[(i64, i64)]) -> Vec<i64> {
     let mut out = Vec::new();
     for row in 0..=along {
         for column in 0..ACROSS {
@@ -222,7 +222,7 @@ fn record(out: &mut Vec<u8>, tables: &[i64], kind: usize, i: i64, body: &[u8]) {
 /// Chunk (5, 4)'s street section as the ROM keeps it: the chunk, 18.0, how many of each
 /// kind of record and where each kind's offsets are, then the records, a line's or a track's
 /// walls after it and its file pointer 0, a point or joint placed from the chunk's middle.
-fn street_section(
+pub(super) fn street_section(
     lines: &[Line],
     points: &[(i64, (f64, f64))],
     joints: &[(i64, (f64, f64))],
