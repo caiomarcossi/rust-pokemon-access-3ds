@@ -26,7 +26,9 @@ pub enum Kind {
     LookupError,
     IndexError,
     KeyError,
+    ArithmeticError,
     ZeroDivisionError,
+    OverflowError,
     TypeError,
     /// `struct.error`: bytes too short for what was unpacked from them.
     StructError,
@@ -55,8 +57,9 @@ impl Kind {
         use Kind::*;
         match self {
             Exception => None,
-            RuntimeError | ValueError | LookupError | ZeroDivisionError | TypeError
+            RuntimeError | ValueError | LookupError | ArithmeticError | TypeError
             | StructError | OsError | QueueEmpty | RomError => Some(Exception),
+            ZeroDivisionError | OverflowError => Some(ArithmeticError),
             UnicodeDecodeError | TomlDecodeError => Some(ValueError),
             IndexError | KeyError => Some(LookupError),
             TimeoutError | ConnectionResetError => Some(OsError),
@@ -78,7 +81,9 @@ impl Kind {
             LookupError => "LookupError",
             IndexError => "IndexError",
             KeyError => "KeyError",
+            ArithmeticError => "ArithmeticError",
             ZeroDivisionError => "ZeroDivisionError",
+            OverflowError => "OverflowError",
             TypeError => "TypeError",
             StructError => "error",
             OsError => "OSError",
@@ -281,9 +286,41 @@ pub fn modulo_f(a: f64, b: f64) -> f64 {
     }
 }
 
+/// A float made an int: Python refuses a NaN and an infinity where Rust would quietly make them
+/// 0 and the largest `i64`, and a float read out of freed memory is either often enough.
+#[track_caller]
+fn whole(x: f64) -> Result<i64> {
+    if x.is_nan() {
+        return Err(Error::value("cannot convert float NaN to integer"));
+    }
+    if x.is_infinite() {
+        return Err(Error::new(Kind::OverflowError, "cannot convert float infinity to integer"));
+    }
+    Ok(x as i64)
+}
+
 /// `round(x)`: to the nearest int, halves to the even one.
-pub fn round(x: f64) -> i64 {
-    x.round_ties_even() as i64
+#[track_caller]
+pub fn round(x: f64) -> Result<i64> {
+    whole(x.round_ties_even())
+}
+
+/// `int(x)` of a float: toward zero.
+#[track_caller]
+pub fn int(x: f64) -> Result<i64> {
+    whole(x.trunc())
+}
+
+/// `math.floor(x)`.
+#[track_caller]
+pub fn floor(x: f64) -> Result<i64> {
+    whole(x.floor())
+}
+
+/// `math.ceil(x)`.
+#[track_caller]
+pub fn ceil(x: f64) -> Result<i64> {
+    whole(x.ceil())
 }
 
 /// `round(x, digits)`: rounded as the decimal it prints as, which is how Python rounds.
@@ -460,7 +497,7 @@ mod checks {
     use super::*;
 
     #[test]
-    fn python_arithmetic() {
+    fn python_arithmetic() -> Result<()> {
         assert_eq!((floordiv(-7, 2), modulo(-7, 2)), (-4, 1));
         assert_eq!((floordiv(7, -2), modulo(7, -2)), (-4, -1));
         assert_eq!(
@@ -469,6 +506,7 @@ mod checks {
         );
         assert_eq!(round_to(2.675, 2), 2.67);
         assert_eq!(modulo_f(-1.0, 360.0), 359.0);
+        Ok(())
     }
 
     #[test]

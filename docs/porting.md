@@ -103,11 +103,16 @@ Rust's operators differ from Python's on negatives and halves. Use `py`:
 | `a // b` on ints | `py::floordiv(a, b)` |
 | `a % b` on ints | `py::modulo(a, b)` |
 | `a // b`, `a % b` on floats | `py::floordiv_f`, `py::modulo_f` |
-| `round(x)` | `py::round(x)`: halves to even, returns `i64` |
+| `round(x)` | `py::round(x)?`: halves to even |
 | `round(x, n)` | `py::round_to(x, n)` |
-| `int(x)` of a float | `x as i64` (toward zero, as Python) |
+| `int(x)` of a float | `py::int(x)?` |
+| `math.floor(x)`, `math.ceil(x)` | `py::floor(x)?`, `py::ceil(x)?` |
 | `a / b` on ints | `a as f64 / b as f64` |
-| `math.floor(x)`, `math.ceil(x)` | `x.floor() as i64`, `x.ceil() as i64` |
+
+`round`, `int`, `floor` and `ceil` return `Result` because Python raises on a NaN (`ValueError`)
+and an infinity (`OverflowError`), and a float read out of freed memory is either; `as i64` would
+quietly make it a number. Never cast a float to an int with `as` where Python called one of
+these.
 | `~x` | `!x` |
 
 `a // b` and `a % b` with both sides known non-negative may use `/` and `%`, but `py::` is never
