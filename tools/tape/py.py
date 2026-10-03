@@ -80,6 +80,7 @@ def record(name: str, out: Path) -> int:
     logged = (folder / f"{replay.name}.log").read_text(encoding="utf-8").splitlines()
     lines = [strip_time(line) for line in logged if strip_time(line) != "done"]
     Path(f"{out}.log").write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
+    Path(f"{out}.said").write_text("".join(f"{line}\n" for line in said), encoding="utf-8")
     print(f"{out}: {writer.count} records, {len(lines)} lines, out of sync {drift}, "
           f"followed {followed}")
     return 0
@@ -114,9 +115,9 @@ def replay(path: Path, out: Path) -> int:
         pass
     except tape.Diverged as diverged:
         ending = f"diverged: {diverged}"
-    flat = [part for line in lines for part in [line]]
-    out.write_text("".join(f"{line}\n" for line in flat), encoding="utf-8")
-    print(f"{out}: {reader.count} records, {len(flat)} lines, {ending}")
+    out.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
+    out.with_suffix(".said").write_text("".join(f"{line}\n" for line in said), encoding="utf-8")
+    print(f"{out}: {reader.count} records, {len(lines)} lines, {len(said)} said, {ending}")
     return 0 if ending == "end of tape" else 1
 
 
