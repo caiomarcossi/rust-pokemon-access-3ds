@@ -16,7 +16,7 @@ libloading = "0.8"
 regex = "1"
 sha1 = "0.10"
 socket2 = { version = "0.6", features = ["all"] }
-toml = { version = "0.9", features = ["preserve_order"] }
+toml = { version = "0.8", features = ["preserve_order"] }
 unicode-general-category = "1"
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
