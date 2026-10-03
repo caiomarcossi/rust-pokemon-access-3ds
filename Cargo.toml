@@ -31,3 +31,7 @@ windows-sys = { version = "0.61", features = [
 
 [profile.release]
 lto = "thin"
+# Python's ints never overflow, and a product of two words read out of freed memory overflows an
+# i64: checked, it panics and the runtime takes it for a reader's failure, logged, rather than
+# reading on with a wrapped number nothing would notice.
+overflow-checks = true
