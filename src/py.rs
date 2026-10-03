@@ -561,7 +561,10 @@ mod checks {
         assert_eq!(float_repr(1e-5), "1e-05");
         assert_eq!(float_repr(1e16), "1e+16");
         assert_eq!(float_repr(-2.5), "-2.5");
-        assert_eq!(float_repr(148.534698486328125), "148.53469848632812");
+        assert_eq!(
+            float_repr(f64::from_bits(0x4062911c40000000)),
+            "148.53469848632812"
+        );
         assert_eq!(float_repr(1.5e16), "1.5e+16");
         assert_eq!(float_repr(-0.0), "-0.0");
         assert_eq!(float_repr(123.0), "123.0");
