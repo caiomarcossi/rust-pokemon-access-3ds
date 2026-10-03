@@ -1,1 +1,542 @@
+//! Pathfinding: the way on foot from one cell to another, round what cannot be walked, said as
+//! its legs.
+//!
+//! Nothing here knows a game (ADR-0006). A map is cells, x east and z south; whether a cell can be
+//! walked is the game's reading to answer, and a path is found inside a box of cells, since beyond
+//! what the game has loaded a cell is assumed open and an unbounded search for a way round would
+//! never end.
+//!
+//! A path is said as its **legs**, each a straight run: "5 east, 2 north". A player who cannot see
+//! the map counts steps and turns, so a turn costs as much as a step (`TURN`): a way two steps
+//! longer that saves three turns is the one taken. A player already walking one way turns if the
+//! path starts another way, so going on straight costs nothing. A goal can ask to be reached facing
+//! one way — the way to a door ends facing the door — and that settles a tie between two ways and
+//! no more (`FACE`). A ledge is jumped down, one way only, and never climbed. A step can carry a
+//! toll on top of its price, as going onto water to surf does, and a leg a word to say it by: "Surf
+//! 12 south".
 
+use std::cell::RefCell;
+use std::cmp::{Ordering, Reverse};
+use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::fmt;
+use std::hash::Hash;
+
+use indexmap::IndexMap;
+
+use crate::py::{self, Error, Result};
+
+pub type Cell = (i64, i64);
+
+pub const NORTH: &str = "north";
+pub const EAST: &str = "east";
+pub const SOUTH: &str = "south";
+pub const WEST: &str = "west";
+/// A step each way, in the order the search tries them.
+pub const STEPS: [(&str, Cell); 4] = [
+    (NORTH, (0, -1)),
+    (EAST, (1, 0)),
+    (SOUTH, (0, 1)),
+    (WEST, (-1, 0)),
+];
+/// Clockwise, a quarter turn apart.
+pub const COMPASS: [&str; 4] = [NORTH, EAST, SOUTH, WEST];
+pub const FORWARD: &str = "forward";
+
+pub const STEP: i64 = 2;
+/// What a turn costs: a step's worth.
+pub const TURN: i64 = 2;
+/// What arriving facing another way than the goal asks costs: half a step, less than anything
+/// else can differ by, so it only chooses between ways that are otherwise the same.
+pub const FACE: i64 = 1;
+
+/// `COMPASS.index(way)`, which raises where `way` is none of the four.
+#[track_caller]
+fn compass_index(way: &str) -> Result<i64> {
+    match COMPASS.iter().position(|&known| known == way) {
+        Some(at) => Ok(at as i64),
+        None => Err(Error::value("tuple.index(x): x not in tuple")),
+    }
+}
+
+/// `STEPS[way]`, which raises where `way` is none of the four.
+#[track_caller]
+fn step_of(way: &str) -> Result<Cell> {
+    match STEPS.iter().find(|(known, _)| *known == way) {
+        Some(&(_, step)) => Ok(step),
+        None => Err(Error::key(py::repr(way))),
+    }
+}
+
+/// The cells a search may walk: west to east and north to south, both ends in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Box {
+    pub west: i64,
+    pub north: i64,
+    pub east: i64,
+    pub south: i64,
+}
+
+impl Box {
+    pub fn holds(&self, cell: Cell) -> bool {
+        self.west <= cell.0 && cell.0 <= self.east && self.north <= cell.1 && cell.1 <= self.south
+    }
+
+    /// The smallest box holding every cell, `margin` cells wider each way.
+    pub fn around(cells: impl IntoIterator<Item = Cell>, margin: i64) -> Result<Box> {
+        let held: Vec<Cell> = cells.into_iter().collect();
+        let xs: Vec<i64> = held.iter().map(|cell| cell.0).collect();
+        let zs: Vec<i64> = held.iter().map(|cell| cell.1).collect();
+        let (Some(west), Some(north), Some(east), Some(south)) = (
+            xs.iter().min(),
+            zs.iter().min(),
+            xs.iter().max(),
+            zs.iter().max(),
+        ) else {
+            return Err(Error::value("min() iterable argument is empty"));
+        };
+        Ok(Box {
+            west: west - margin,
+            north: north - margin,
+            east: east + margin,
+            south: south + margin,
+        })
+    }
+
+    /// This box cut down to the part inside `other`.
+    pub fn within(&self, other: Box) -> Box {
+        Box {
+            west: self.west.max(other.west),
+            north: self.north.max(other.north),
+            east: self.east.min(other.east),
+            south: self.south.min(other.south),
+        }
+    }
+}
+
+/// One straight run of a path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Leg {
+    pub direction: &'static str,
+    pub steps: i64,
+    /// Where along the path the leg ends: the index of its last cell.
+    pub end: i64,
+    /// What the leg is walked with, said before it: "Surf". "" on foot.
+    pub how: String,
+}
+
+impl Leg {
+    /// A leg on foot; `how` is set with `..Leg::new(...)`.
+    pub fn new(direction: &'static str, steps: i64, end: i64) -> Self {
+        Leg {
+            direction,
+            steps,
+            end,
+            how: String::new(),
+        }
+    }
+}
+
+impl fmt::Display for Leg {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if !self.how.is_empty() {
+            return write!(f, "{} {} {}", self.how, self.steps, self.direction);
+        }
+        write!(f, "{} {}", self.steps, self.direction)
+    }
+}
+
+/// What a step can change on the way besides where the player is: how far each of Fortree Gym's
+/// rotating doors has turned (`find`'s `through`).
+pub type Turns = Vec<i64>;
+
+/// A cell, the way the player came into it ("" at the start), and the turns behind them.
+type State<'a> = (Cell, &'a str, Turns);
+/// Where every goal leads once facing its way is paid for.
+const ARRIVED: State<'static> = ((0, 0), "arrived", Vec::new());
+
+/// `find`'s arguments after `box`, each as the Python defaults it: pass what differs with
+/// `..Options::default()`. A callable that is None is the Python's default lambda.
+#[derive(Default)]
+pub struct Options<'a> {
+    pub heading: &'a str,
+    pub ledge: Option<&'a dyn Fn(Cell) -> Result<Option<&'static str>>>,
+    pub toll: Option<&'a dyn Fn(Cell, Cell) -> Result<i64>>,
+    pub closest: bool,
+    pub joined: Option<&'a dyn Fn(Cell, Cell) -> Result<bool>>,
+    pub turns: Turns,
+    pub through: Option<&'a dyn Fn(&[i64], Cell, Cell) -> Result<Option<Turns>>>,
+}
+
+/// What `functools.cache` makes of a callable: asked once for each argument. A call that raises
+/// is not remembered.
+struct Cached<K, V>(RefCell<HashMap<K, V>>);
+
+impl<K: Hash + Eq, V: Copy> Cached<K, V> {
+    fn new() -> Self {
+        Cached(RefCell::new(HashMap::new()))
+    }
+
+    fn get(&self, key: K, compute: impl FnOnce() -> Result<V>) -> Result<V> {
+        let known = self.0.borrow().get(&key).copied();
+        if let Some(value) = known {
+            return Ok(value);
+        }
+        let value = compute()?;
+        self.0.borrow_mut().insert(key, value);
+        Ok(value)
+    }
+}
+
+/// A place in the frontier. `heapq` orders its entries as tuples, and the third is a count no two
+/// share, so the order is total and any min-heap pops the entries in the order `heapq` does.
+struct Entry<'a> {
+    key: (i64, i64, i64),
+    state: State<'a>,
+}
+
+impl PartialEq for Entry<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.key == other.key
+    }
+}
+
+impl Eq for Entry<'_> {}
+
+impl PartialOrd for Entry<'_> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Entry<'_> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        Reverse(self.key).cmp(&Reverse(other.key))
+    }
+}
+
+/// The cheapest path from `start` to any of `goals`, both ends included, or None when none
+/// can be walked inside `box`; with `closest`, the cheapest path to the cell nearest the goals
+/// of all those it can reach instead, which is `start` alone where none is nearer, and whether
+/// it got there is whether it ends in `goals`. `goals` maps each cell to the way the player
+/// should face on it, or None for any way. `start` is never asked about: the player is already
+/// standing on it. Nor is a goal: a door is walked round on the way to anything else, and into
+/// when it is the goal. `heading` is the way the player is walking, "" when that is not known.
+///
+/// `ledge` says which way a cell goes down, or None. A cell that cannot be walked is a ledge,
+/// crossed that way only, from the cell before it to the cell after, which must be walkable,
+/// and never stood on; it is in the path all the same, so each cell is a step from the last. A
+/// cell that can is a slope, stepped onto, along and off only the way it goes down.
+///
+/// `toll` is what a move from one cell to the next costs on top of its steps and turns, and
+/// `joined` whether a step between two cells side by side can be taken at all: one off a
+/// platform onto the ground far below cannot, where both cells can be stood in.
+///
+/// `through` is what a step does to `turns`, the state of what the player's steps turn: the
+/// turns after it, or None where it cannot be taken. Fortree Gym's doors turn as an arm is
+/// walked into, and whether the next can be depends on how each has turned, so the search is
+/// over every way they can be turned on the way as well.
+///
+/// A* over (cell, heading), since a turn has a price and the same cell entered two ways is two
+/// different places to go on from. The estimate is the distance to the goals' box, which never
+/// overstates, so the first goal reached is the cheapest.
+pub fn find(
+    start: Cell,
+    goals: &IndexMap<Cell, Option<&'static str>>,
+    walkable: &dyn Fn(Cell) -> Result<bool>,
+    r#box: Box,
+    options: &Options,
+) -> Result<Option<Vec<Cell>>> {
+    let Options {
+        heading,
+        ledge,
+        toll,
+        closest,
+        joined,
+        turns,
+        through,
+    } = options;
+    if goals.is_empty() {
+        return Ok(None);
+    }
+    let reach = Box::around(goals.keys().copied(), 0)?;
+    let open_cells: Cached<Cell, bool> = Cached::new();
+    // Every step asks whether its cells are slopes, what it costs and whether it can be taken,
+    // and a search through Fortree Gym's doors takes each step once for every way they stand, so
+    // each is worked out once.
+    let down_cache: Cached<Cell, Option<&'static str>> = Cached::new();
+    let toll_cache: Cached<(Cell, Cell), i64> = Cached::new();
+    let joined_cache: Cached<(Cell, Cell), bool> = Cached::new();
+    let down = |cell: Cell| {
+        down_cache.get(cell, || match ledge {
+            Some(ledge) => ledge(cell),
+            None => Ok(None),
+        })
+    };
+    let toll = |cell: Cell, step: Cell| {
+        toll_cache.get((cell, step), || match toll {
+            Some(toll) => toll(cell, step),
+            None => Ok(0),
+        })
+    };
+    let joined = |cell: Cell, step: Cell| {
+        joined_cache.get((cell, step), || match joined {
+            Some(joined) => joined(cell, step),
+            None => Ok(true),
+        })
+    };
+
+    let estimate = |cell: Cell| -> i64 {
+        STEP * ((reach.west - cell.0).max(0).max(cell.0 - reach.east)
+            + (reach.north - cell.1).max(0).max(cell.1 - reach.south))
+    };
+
+    let can_walk = |cell: Cell| {
+        open_cells.get(cell, || {
+            if !r#box.holds(cell) {
+                return Ok(false);
+            }
+            Ok(goals.contains_key(&cell) || walkable(cell)?)
+        })
+    };
+
+    let first: State = (start, heading, turns.clone());
+    let mut spent: HashMap<State, i64> = HashMap::from([(first.clone(), 0)]);
+    let mut came: HashMap<State, State> = HashMap::new();
+    let mut done: HashSet<State> = HashSet::new();
+    let mut order: i64 = 0;
+    let mut frontier: BinaryHeap<Entry> = BinaryHeap::new();
+    frontier.push(Entry {
+        key: (estimate(start), 0, order),
+        state: first.clone(),
+    });
+    order += 1;
+    // Nearest the goals' box first, then cheapest: the box is the goals for an edge's gap or
+    // a cell beside a thing, which is what a way that falls short is walked to.
+    let mut nearest = (estimate(start), 0, first);
+    while let Some(Entry { state, .. }) = frontier.pop() {
+        if state == ARRIVED {
+            return Ok(Some(back(&came, &came[&ARRIVED])));
+        }
+        if done.contains(&state) {
+            continue;
+        }
+        done.insert(state.clone());
+        let (cell, going, turned) = (state.0, state.1, &state.2);
+        let cost = spent[&state];
+        // `min` keeps the first of equals, so a later state replaces it only by being less,
+        // and between equal estimates and costs the states themselves are compared, as tuples.
+        let candidate = (estimate(cell), cost, state.clone());
+        if candidate < nearest {
+            nearest = candidate;
+        }
+        if let Some(&face) = goals.get(&cell) {
+            let arrived = cost
+                + if face.is_some_and(|way| way != going) {
+                    FACE
+                } else {
+                    0
+                };
+            if arrived < spent.get(&ARRIVED).copied().unwrap_or(arrived + 1) {
+                spent.insert(ARRIVED, arrived);
+                came.insert(ARRIVED, state.clone());
+                frontier.push(Entry {
+                    key: (arrived, 0, order),
+                    state: ARRIVED,
+                });
+                order += 1;
+            }
+        }
+        for (direction, (dx, dz)) in STEPS {
+            let mut step = (cell.0 + dx, cell.1 + dz);
+            let mut steps = 1;
+            let unfit = |way: Option<&str>| way.is_some_and(|way| way != direction);
+            if !can_walk(step)? {
+                if !r#box.holds(step) || down(step)? != Some(direction) {
+                    continue;
+                }
+                step = (step.0 + dx, step.1 + dz);
+                steps = 2;
+                if !can_walk(step)? {
+                    continue;
+                }
+            } else if unfit(down(step)?) || unfit(down(cell)?) || !joined(cell, step)? {
+                continue;
+            }
+            let after = match through {
+                Some(through) if steps != 2 => through(turned, cell, step)?,
+                _ => Some(turned.clone()),
+            };
+            let Some(after) = after else {
+                continue;
+            };
+            let onward: State = (step, direction, after);
+            let price = cost
+                + STEP * steps
+                + if !going.is_empty() && going != direction {
+                    TURN
+                } else {
+                    0
+                }
+                + toll(cell, step)?;
+            if price < spent.get(&onward).copied().unwrap_or(price + 1) {
+                spent.insert(onward.clone(), price);
+                came.insert(onward.clone(), state.clone());
+                let left = estimate(step);
+                frontier.push(Entry {
+                    key: (price + left, left, order),
+                    state: onward,
+                });
+                order += 1;
+            }
+        }
+    }
+    Ok(if *closest {
+        Some(back(&came, &nearest.2))
+    } else {
+        None
+    })
+}
+
+fn back(came: &HashMap<State, State>, state: &State) -> Vec<Cell> {
+    let mut state = state;
+    let mut cells = vec![state.0];
+    while let Some(was) = came.get(state) {
+        // A jump comes two cells from the last: the ledge between goes in too.
+        let ((x, z), (x0, z0)) = (state.0, was.0);
+        if (x - x0).abs() + (z - z0).abs() == 2 {
+            cells.push((py::floordiv(x + x0, 2), py::floordiv(z + z0, 2)));
+        }
+        state = was;
+        cells.push(state.0);
+    }
+    cells.reverse();
+    cells
+}
+
+/// A path's straight runs, in order. `how` says what each step is walked with, and a run
+/// ends where that changes as well as where the path turns: "3 south, Surf 12 south".
+pub fn legs(path: &[Cell], how: Option<&dyn Fn(Cell, Cell) -> Result<String>>) -> Result<Vec<Leg>> {
+    let mut out: Vec<Leg> = Vec::new();
+    for i in 1..path.len() {
+        let direction = towards(path[i - 1], path[i]);
+        let walked = match how {
+            Some(how) => how(path[i - 1], path[i])?,
+            None => String::new(),
+        };
+        match out.last_mut() {
+            Some(last) if last.direction == direction && last.how == walked => {
+                *last = Leg {
+                    direction,
+                    steps: last.steps + 1,
+                    end: i as i64,
+                    how: walked,
+                };
+            }
+            _ => out.push(Leg {
+                direction,
+                steps: 1,
+                end: i as i64,
+                how: walked,
+            }),
+        }
+    }
+    Ok(out)
+}
+
+/// Legs as they are said: "5 east, 2 north".
+pub fn spoken(runs: &[Leg]) -> String {
+    runs.iter()
+        .map(|leg| leg.to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Legs as they are said to a player whose keys work from a camera behind them, as on
+/// Lumiose's boulevards: up walks the way the camera looks, down walks back from it without
+/// turning it, and left and right turn the player a quarter, the camera following only while
+/// the key is held (spike 105). So a leg to one side is a hold, then the steps forward, and a
+/// leg behind is steps back: "hold right, 5 forward, 3 back", "hold left, 4 forward".
+///
+/// `angled` is a camera a tap left pointing between two ways, where neither up nor down walks
+/// a leg straight. A hold always settles it on a way, the one a quarter from the way it is
+/// nearest, so a first leg to one side is said as ever, and one ahead or behind after holding
+/// one way and back: "camera angled, hold left, hold right, 5 forward".
+pub fn turned(runs: &[Leg], heading: &str, angled: bool) -> Result<String> {
+    let mut heading = heading;
+    let mut words: Vec<String> = Vec::new();
+    for (i, leg) in runs.iter().enumerate() {
+        let turn = py::modulo(
+            compass_index(leg.direction)? - compass_index(heading)?,
+            COMPASS.len() as i64,
+        );
+        if i == 0 && angled && (turn == 0 || turn == 2) {
+            words.push("camera angled, hold left, hold right".to_string());
+        }
+        if turn == 2 {
+            words.push(format!("{} back", leg.steps));
+            continue;
+        }
+        if turn != 0 {
+            words.push(if turn == 1 { "hold right" } else { "hold left" }.to_string());
+        }
+        words.push(format!("{} {}", leg.steps, FORWARD));
+        heading = leg.direction;
+    }
+    Ok(words.join(", "))
+}
+
+/// The way of the compass nearest a bearing in degrees clockwise from north.
+pub fn nearest(bearing: f64) -> &'static str {
+    COMPASS[py::modulo(py::round(bearing / 90.0), COMPASS.len() as i64) as usize]
+}
+
+/// How far a bearing in degrees clockwise from north is turned from `heading`, clockwise
+/// positive, between -180 and 180.
+pub fn off(bearing: f64, heading: &str) -> Result<f64> {
+    Ok(py::modulo_f(
+        bearing - 90.0 * compass_index(heading)? as f64 + 180.0,
+        360.0,
+    ) - 180.0)
+}
+
+/// Where `cell` is from `origin` for a player heading one way: "9 ahead 8 left", "3 behind",
+/// or "here".
+pub fn facing(origin: Cell, cell: Cell, heading: &str) -> Result<String> {
+    let (dx, dz) = (cell.0 - origin.0, cell.1 - origin.1);
+    let (ahead_x, ahead_z) = step_of(heading)?;
+    let (right_x, right_z) =
+        step_of(COMPASS[py::modulo(compass_index(heading)? + 1, COMPASS.len() as i64) as usize])?;
+    let (ahead, right) = (dx * ahead_x + dz * ahead_z, dx * right_x + dz * right_z);
+    let mut parts: Vec<String> = Vec::new();
+    if ahead != 0 {
+        parts.push(format!(
+            "{} {}",
+            ahead.abs(),
+            if ahead > 0 { "ahead" } else { "behind" }
+        ));
+    }
+    if right != 0 {
+        parts.push(format!(
+            "{} {}",
+            right.abs(),
+            if right > 0 { "right" } else { "left" }
+        ));
+    }
+    Ok(if parts.is_empty() {
+        "here".to_string()
+    } else {
+        parts.join(" ")
+    })
+}
+
+/// Which way `cell` lies from `origin` in a straight line, or "" when it is not in one.
+pub fn towards(origin: Cell, cell: Cell) -> &'static str {
+    let (dx, dz) = (cell.0 - origin.0, cell.1 - origin.1);
+    if dx != 0 && dz == 0 {
+        return if dx > 0 { EAST } else { WEST };
+    }
+    if dz != 0 && dx == 0 {
+        return if dz > 0 { SOUTH } else { NORTH };
+    }
+    ""
+}
