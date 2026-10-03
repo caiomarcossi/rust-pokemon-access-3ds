@@ -98,12 +98,9 @@ fn ljust(mut data: Vec<u8>, width: i64) -> Vec<u8> {
     data
 }
 
-/// What `FakeMemory.pages()` is in Python, a dict in the order the pages were first written:
-/// here by address.
+/// `memory.pages()`, a dict in the order the pages were first written.
 pub(crate) fn pages(memory: &FakeMemory) -> IndexMap<i64, Vec<u8>> {
-    let mut all: Vec<(i64, Vec<u8>)> = memory.pages().into_iter().collect();
-    all.sort_by_key(|(base, _)| *base);
-    all.into_iter().collect()
+    memory.pages()
 }
 
 /// `zone_file`'s keyword arguments, each as the Python defaults it: set what differs with

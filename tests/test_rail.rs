@@ -94,9 +94,7 @@ pub(super) fn network(memory: &FakeMemory) {
 /// What `FakeMemory.pages()` is in Python, a dict in the order the pages were first written: here
 /// by address, which only matters where two pages hold the line.
 fn pages(memory: &FakeMemory) -> IndexMap<i64, Vec<u8>> {
-    let mut all: Vec<(i64, Vec<u8>)> = memory.pages().into_iter().collect();
-    all.sort_by_key(|(base, _)| *base);
-    all.into_iter().collect()
+    memory.pages()
 }
 
 fn table_lines(memory: &FakeMemory) -> Result<IndexMap<i64, Line>> {
