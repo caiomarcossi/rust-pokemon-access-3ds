@@ -437,7 +437,7 @@ fn test_a_camera_left_between_two_ways_is_straightened_before_walking_ahead_or_b
 fn test_a_bearing_is_the_way_it_is_nearest_and_how_far_off_it() {
     let ways: Vec<&str> = [10.0, 50.0, 181.0, 314.0, 316.0]
         .into_iter()
-        .map(nearest)
+        .map(|bearing| nearest(bearing).unwrap())
         .collect();
     assert_eq!(ways, [NORTH, EAST, SOUTH, WEST, NORTH]);
     assert!(
