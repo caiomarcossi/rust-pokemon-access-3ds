@@ -271,19 +271,41 @@ pub fn modulo(a: i64, b: i64) -> i64 {
     }
 }
 
+/// CPython's `divmod` for floats (`_float_div_mod` in `Objects/floatobject.c`), which `//` and `%`
+/// are made of: the quotient is not `(a / b).floor()` (`1 // 0.1` is 9.0, not 10.0), and a zero
+/// remainder takes the divisor's sign. `b` must not be 0, where Python raises.
+fn float_div_mod(a: f64, b: f64) -> (f64, f64) {
+    let mut modulo = a % b;
+    let mut div = (a - modulo) / b;
+    if modulo != 0.0 {
+        if (b < 0.0) != (modulo < 0.0) {
+            modulo += b;
+            div -= 1.0;
+        }
+    } else {
+        modulo = 0.0_f64.copysign(b);
+    }
+    let floordiv = if div != 0.0 {
+        let floor = div.floor();
+        if div - floor > 0.5 {
+            floor + 1.0
+        } else {
+            floor
+        }
+    } else {
+        0.0_f64.copysign(a / b)
+    };
+    (floordiv, modulo)
+}
+
 /// `a // b` for floats.
 pub fn floordiv_f(a: f64, b: f64) -> f64 {
-    (a / b).floor()
+    float_div_mod(a, b).0
 }
 
 /// `a % b` for floats: the sign of `b`.
 pub fn modulo_f(a: f64, b: f64) -> f64 {
-    let r = a % b;
-    if r != 0.0 && ((r < 0.0) != (b < 0.0)) {
-        r + b
-    } else {
-        r
-    }
+    float_div_mod(a, b).1
 }
 
 /// A float made an int: Python refuses a NaN and an infinity where Rust would quietly make them
@@ -713,6 +735,12 @@ mod checks {
         assert_eq!((int(-2.7)?, floor(-2.5)?, ceil(-2.5)?), (-2, -3, -2));
         assert_eq!(round_to(2.675, 2), 2.67);
         assert_eq!(modulo_f(-1.0, 360.0), 359.0);
+        assert_eq!(
+            (floordiv_f(1.0, 0.1), modulo_f(1.0, 0.1)),
+            (9.0, 0.09999999999999995)
+        );
+        assert!(modulo_f(-0.0, 360.0).is_sign_positive() && modulo_f(5.0, -5.0).is_sign_negative());
+        assert_eq!((floordiv_f(-7.5, 2.0), modulo_f(-7.5, 2.0)), (-4.0, 0.5));
         Ok(())
     }
 
