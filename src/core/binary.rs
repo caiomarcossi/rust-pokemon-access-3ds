@@ -6,7 +6,7 @@ use crate::py::{Error, Result};
 // a fault is keyed by where it was raised, so every reader's short read is one fault.
 
 #[track_caller]
-fn take<const N: usize>(blob: &[u8], offset: i64) -> Result<[u8; N]> {
+pub(crate) fn take<const N: usize>(blob: &[u8], offset: i64) -> Result<[u8; N]> {
     let start = usize::try_from(offset).ok();
     match start.and_then(|s| blob.get(s..s.checked_add(N)?)) {
         Some(bytes) => Ok(bytes.try_into().expect("N bytes")),
