@@ -57,8 +57,8 @@ impl Kind {
         use Kind::*;
         match self {
             Exception => None,
-            RuntimeError | ValueError | LookupError | ArithmeticError | TypeError
-            | StructError | OsError | QueueEmpty | RomError => Some(Exception),
+            RuntimeError | ValueError | LookupError | ArithmeticError | TypeError | StructError
+            | OsError | QueueEmpty | RomError => Some(Exception),
             ZeroDivisionError | OverflowError => Some(ArithmeticError),
             UnicodeDecodeError | TomlDecodeError => Some(ValueError),
             IndexError | KeyError => Some(LookupError),
@@ -294,7 +294,10 @@ fn whole(x: f64) -> Result<i64> {
         return Err(Error::value("cannot convert float NaN to integer"));
     }
     if x.is_infinite() {
-        return Err(Error::new(Kind::OverflowError, "cannot convert float infinity to integer"));
+        return Err(Error::new(
+            Kind::OverflowError,
+            "cannot convert float infinity to integer",
+        ));
     }
     Ok(x as i64)
 }
@@ -501,9 +504,12 @@ mod checks {
         assert_eq!((floordiv(-7, 2), modulo(-7, 2)), (-4, 1));
         assert_eq!((floordiv(7, -2), modulo(7, -2)), (-4, -1));
         assert_eq!(
-            (round(0.5), round(1.5), round(2.5), round(-0.5)),
+            (round(0.5)?, round(1.5)?, round(2.5)?, round(-0.5)?),
             (0, 2, 2, 0)
         );
+        assert!(round(f64::NAN).unwrap_err().is(Kind::ValueError));
+        assert!(int(f64::INFINITY).unwrap_err().is(Kind::OverflowError));
+        assert_eq!((int(-2.7)?, floor(-2.5)?, ceil(-2.5)?), (-2, -3, -2));
         assert_eq!(round_to(2.675, 2), 2.67);
         assert_eq!(modulo_f(-1.0, 360.0), 359.0);
         Ok(())
