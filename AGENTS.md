@@ -48,6 +48,7 @@ cargo test --lib
 cargo clippy --all-targets
 cargo fmt
 cargo run --release -- --silent --no-log --seconds 60   # the runtime, printing what it would say
+powershell -ExecutionPolicy Bypass -File tools\package.ps1   # the release zip, in target\package
 ```
 
 `--silent` is mandatory from an agent session: without it pa3ds speaks through the screen reader
