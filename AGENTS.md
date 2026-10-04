@@ -55,8 +55,9 @@ powershell -ExecutionPolicy Bypass -File tools\package.ps1   # the release zip, 
 of whoever is at the machine, over whatever they are doing. `--no-log` keeps a run from rotating
 the live logs in `user\logs\` beside pa3ds.
 
-`pa3ds.exe` needs nothing installed: `prism.dll`, which reaches the screen reader, is copied
-beside it by `build.rs` from `vendor/prism/`.
+`pa3ds.exe` needs nothing installed: Prism, which reaches the screen reader, is built into it by
+the `prismer` crate's static build. Building pa3ds therefore needs Visual Studio 2026 (its C and
+C++ compiler) and CMake 4.2 or newer on the path; the first build compiles Prism, about a minute.
 
 ## Keeping up with upstream
 

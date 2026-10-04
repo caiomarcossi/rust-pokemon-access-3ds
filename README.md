@@ -32,8 +32,10 @@ ROMs are not distributed here and never will be.
 cargo build --release
 ```
 
-`target\release\pa3ds.exe` with `prism.dll` beside it is the whole program. To pack it with its
-licences into one zip a player unpacks and runs:
+Building needs Visual Studio 2026 (its C and C++ compiler) and CMake 4.2 or newer, since Prism is
+compiled into pa3ds; the first build takes about a minute longer for it.
+`target\release\pa3ds.exe` is the whole program. To pack it with its licences into one zip a
+player unpacks and runs:
 
 ```
 powershell -ExecutionPolicy Bypass -File tools\package.ps1

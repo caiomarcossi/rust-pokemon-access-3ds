@@ -1,13 +1,12 @@
-# Prism
+# Prism's licences
 
-`prism.dll` is Prism, the screen reader and speech library pa3ds speaks through
-(https://github.com/ethindp/prism), unmodified, as prismatoid 0.18.2 ships it. It is loaded at
-run time from beside `pa3ds.exe` (`src/core/speech.rs`), and `build.rs` copies it there.
+pa3ds speaks through Prism (https://github.com/ethindp/prism), the screen reader and speech
+library, built into `pa3ds.exe` by the `prismer` crate's static build (`prism-sys` compiles Prism's
+own source with CMake and the Visual Studio 2026 compiler). Nothing of Prism is kept here but its
+licences.
 
-Prism is under the Mozilla Public License 2.0 (`LICENSE`, `LICENSES/prism`); the libraries built
-into it are under the licences in `LICENSES/`, as `NOTICE` lists. pa3ds links none of it: it is a
-separate file, shipped as it came.
-
-Copied prebuilt rather than built from source, because the MSVC in Visual Studio 2022 cannot
-compile Prism's C23 sources. To update it, replace `prism.dll` and the licence files with a newer prismatoid
-wheel's `prism/_native/prism.dll` and `licenses/`.
+Prism is under the Mozilla Public License 2.0 (`LICENSE`, `LICENSES/prism`), and the libraries
+built into it under the licences in `LICENSES/`, as `NOTICE` lists. Since Prism's code is inside
+the executable, these go with every copy of pa3ds: `tools/package.ps1` puts them in the release.
+They are the licences prismatoid 0.18.2 ships with the same Prism; when `prismer` moves to a newer
+Prism, take that version's.

@@ -14,7 +14,6 @@
 //! (the user, 2026-09-13).
 
 use std::collections::HashSet;
-use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::rc::Rc;
 
 use crate::py::{self, Error, Kind, Result};
@@ -150,142 +149,30 @@ impl Speech {
 
 /// The best backend Prism can find on this machine, and its name.
 ///
-/// `prism.dll` is loaded here, at the first call, rather than linked: tests, and anything else
-/// that never speaks, do not need the native library, and a player without it hears why from the
-/// log rather than having pa3ds refuse to start. It is looked for beside pa3ds, then wherever
-/// Windows looks for a DLL.
+/// Prism is built into pa3ds (`prismer`'s static build), so there is no library to look for: the
+/// context is started here, at the first call, and kept for the rest of the run, since the backend
+/// borrows from it and is said through until pa3ds stops.
 pub fn screen_reader() -> Result<(Rc<dyn Backend>, String)> {
-    let prism = Prism::load()?;
-    let name = prism.name();
-    Ok((Rc::new(prism), name))
+    let failed = |what: &str, error: prismer::Error| {
+        Error::new(Kind::RuntimeError, format!("prism {what}: {error}"))
+    };
+    let context: &'static prismer::Prism = Box::leak(Box::new(
+        prismer::Prism::new().map_err(|error| failed("could not start", error))?,
+    ));
+    let backend = context.acquire_best().map_err(|error| failed("found no backend", error))?;
+    let name = backend.name();
+    Ok((Rc::new(Prism(backend)), name))
 }
 
-#[repr(C)]
-struct PrismConfig {
-    version: u8,
-    registry: *mut c_void,
-    availability_callback: *mut c_void,
-    availability_userdata: *mut c_void,
-    availability_poll_interval_ms: u32,
-    availability_debounce_samples: u32,
-    availability_backoff_max_ms: u32,
-    availability_auto_power_manage: bool,
-    availability_baseline_callback: *mut c_void,
-    /// Room for fields a newer Prism adds: `prism_config_init` returns the struct by value, and
-    /// writes as much of it as its own version has.
-    reserved: [u8; 64],
-}
-
-type ConfigInit = unsafe extern "C" fn() -> PrismConfig;
-type Init = unsafe extern "C" fn(*mut PrismConfig) -> *mut c_void;
-type AcquireBest = unsafe extern "C" fn(*mut c_void) -> *mut c_void;
-type BackendName = unsafe extern "C" fn(*mut c_void) -> *const c_char;
-type BackendInitialize = unsafe extern "C" fn(*mut c_void) -> c_int;
-type BackendSpeak = unsafe extern "C" fn(*mut c_void, *const c_char, bool) -> c_int;
-type BackendBraille = unsafe extern "C" fn(*mut c_void, *const c_char) -> c_int;
-
-const PRISM_OK: c_int = 0;
-const PRISM_ERROR_ALREADY_INITIALIZED: c_int = 15;
-
-/// A Prism backend reached through `prism.dll`.
-struct Prism {
-    _library: libloading::Library,
-    backend: *mut c_void,
-    name: BackendName,
-    speak: BackendSpeak,
-    braille: BackendBraille,
-}
-
-impl Prism {
-    fn load() -> Result<Self> {
-        let beside = std::env::current_exe()
-            .ok()
-            .and_then(|exe| exe.parent().map(|dir| dir.join("prism.dll")))
-            .filter(|path| path.exists());
-        let missing = |what: String| Error::new(Kind::OsError, what);
-        // SAFETY: prism.dll is Prism's own library; loading it runs only its initialisers.
-        let library = unsafe {
-            match &beside {
-                Some(path) => libloading::Library::new(path),
-                None => libloading::Library::new("prism.dll"),
-            }
-        }
-        .map_err(|error| missing(format!("prism.dll could not be loaded: {error}")))?;
-        // SAFETY: each symbol is looked up by its name in Prism's C API, with the signature the
-        // API gives it.
-        unsafe {
-            let symbol = |name: &[u8]| -> Result<*const c_void> {
-                library
-                    .get::<*const c_void>(name)
-                    .map(|s| *s)
-                    .map_err(|error| {
-                        missing(format!(
-                            "prism.dll has no {}: {error}",
-                            String::from_utf8_lossy(&name[..name.len() - 1])
-                        ))
-                    })
-            };
-            let config_init: ConfigInit = std::mem::transmute(symbol(b"prism_config_init\0")?);
-            let init: Init = std::mem::transmute(symbol(b"prism_init\0")?);
-            let acquire_best: AcquireBest =
-                std::mem::transmute(symbol(b"prism_registry_acquire_best\0")?);
-            let name: BackendName = std::mem::transmute(symbol(b"prism_backend_name\0")?);
-            let initialize: BackendInitialize =
-                std::mem::transmute(symbol(b"prism_backend_initialize\0")?);
-            let speak: BackendSpeak = std::mem::transmute(symbol(b"prism_backend_speak\0")?);
-            let braille: BackendBraille = std::mem::transmute(symbol(b"prism_backend_braille\0")?);
-            let mut config = config_init();
-            let context = init(&mut config);
-            if context.is_null() {
-                return Err(Error::new(Kind::RuntimeError, "prism could not start"));
-            }
-            let backend = acquire_best(context);
-            if backend.is_null() {
-                return Err(Error::new(Kind::RuntimeError, "prism found no backend"));
-            }
-            let started = initialize(backend);
-            if started != PRISM_OK && started != PRISM_ERROR_ALREADY_INITIALIZED {
-                return Err(Error::new(
-                    Kind::RuntimeError,
-                    format!("prism's backend did not start: error {started}"),
-                ));
-            }
-            Ok(Prism {
-                _library: library,
-                backend,
-                name,
-                speak,
-                braille,
-            })
-        }
-    }
-
-    fn name(&self) -> String {
-        // SAFETY: the backend is live for as long as the library is loaded, and Prism returns a
-        // NUL-terminated name it owns.
-        unsafe {
-            let name = (self.name)(self.backend);
-            if name.is_null() {
-                String::new()
-            } else {
-                CStr::from_ptr(name).to_string_lossy().into()
-            }
-        }
-    }
-}
+/// A Prism backend, as pa3ds says through it.
+struct Prism(prismer::Backend<'static>);
 
 impl Backend for Prism {
     fn speak(&self, text: &str, interrupt: bool) {
-        if let Ok(text) = CString::new(text) {
-            // SAFETY: the backend is live, and the text is NUL-terminated and outlives the call.
-            unsafe { (self.speak)(self.backend, text.as_ptr(), interrupt) };
-        }
+        let _ = self.0.speak(text, interrupt);
     }
 
     fn braille(&self, text: &str) {
-        if let Ok(text) = CString::new(text) {
-            // SAFETY: as for `speak`.
-            unsafe { (self.braille)(self.backend, text.as_ptr()) };
-        }
+        let _ = self.0.braille(text);
     }
 }

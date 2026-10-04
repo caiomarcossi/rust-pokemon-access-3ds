@@ -6,12 +6,11 @@ Build pa3ds for release and pack it into one zip a player unpacks and runs.
 Builds the release, checks the executable starts, and writes
 target\package\pa3ds-<version>-windows.zip holding:
 
-  pa3ds.exe          the program
-  prism.dll          Prism, which reaches the player's screen reader; loaded from beside pa3ds.exe
+  pa3ds.exe          the program, with Prism (which reaches the player's screen reader) built in
   README.md          what pa3ds is
   LICENSE            pa3ds's licence
   licenses\prism\    Prism's licence and those of the libraries built into it: Prism is under the
-                     MPL 2.0, which asks that its licence go wherever prism.dll goes
+                     MPL 2.0, which asks that its licence go wherever its code goes
 
 The player's own folder (settings, keys, names, logs) is not in the zip: pa3ds makes it beside
 itself on the first run (ADR-0032).
@@ -43,9 +42,7 @@ if (-not $SkipTests) {
 Invoke-Checked "release build" { cargo build --release --locked --bin pa3ds }
 
 $release = Join-Path $root "target\release"
-foreach ($file in "pa3ds.exe", "prism.dll") {
-    if (-not (Test-Path (Join-Path $release $file))) { throw "the build left no $file in $release" }
-}
+if (-not (Test-Path (Join-Path $release "pa3ds.exe"))) { throw "the build left no pa3ds.exe in $release" }
 # A start that prints its help reads nothing and says nothing, and proves the executable runs.
 Invoke-Checked "the executable starts" { & (Join-Path $release "pa3ds.exe") --help | Out-Null }
 
@@ -56,7 +53,7 @@ if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 if (Test-Path $zip) { Remove-Item -Force $zip }
 New-Item -ItemType Directory -Force (Join-Path $stage "licenses\prism") | Out-Null
 
-Copy-Item (Join-Path $release "pa3ds.exe"), (Join-Path $release "prism.dll") $stage
+Copy-Item (Join-Path $release "pa3ds.exe") $stage
 Copy-Item README.md, LICENSE $stage
 $prism = Join-Path $root "vendor\prism"
 Copy-Item (Join-Path $prism "LICENSE"), (Join-Path $prism "NOTICE") (Join-Path $stage "licenses\prism")
