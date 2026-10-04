@@ -32,4 +32,12 @@ ROMs are not distributed here and never will be.
 cargo build --release
 ```
 
-`target\release\pa3ds.exe` with `prism.dll` beside it is the whole program.
+`target\release\pa3ds.exe` with `prism.dll` beside it is the whole program. To pack it with its
+licences into one zip a player unpacks and runs:
+
+```
+powershell -ExecutionPolicy Bypass -File tools\package.ps1
+```
+
+which runs the tests, builds the release, checks it starts, and writes
+`target\package\pa3ds-<version>-windows.zip`.
