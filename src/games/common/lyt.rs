@@ -73,6 +73,7 @@ pub const VISIBLE: i64 = 0x01;
 pub const NAME: i64 = 0xB8;
 /// NUL-padded and minified ("2j"), but the name its layout file gives the pane.
 pub const NAME_SIZE: i64 = 16;
+/// Enough of a pane to take a TextBox's text, length and alignment in one read.
 pub const HEAD: i64 = 0x100;
 
 // nw::lyt::Picture and its nw::lyt::Material (spikes 128 and A)
@@ -87,7 +88,6 @@ pub const MATERIAL_SIZE: i64 = 0x88;
 pub const MATERIAL_STORED: i64 = 0x8C;
 /// The GPU's texture format (`textures.BITS`).
 pub const MATERIAL_FORMAT: i64 = 0x9C;
-// Enough of a pane to take a TextBox's text, length and alignment in one read.
 
 // nw::lyt::TextBox
 pub const TEXT: i64 = 0xD4;

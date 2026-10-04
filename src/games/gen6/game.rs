@@ -65,11 +65,11 @@ pub struct Game {
     pub barriers: HashSet<(i64, i64)>,
     /// (zone, a trigger's script) -> the category and kind it is listed as: a switch, the way
     /// between two rooms that share no floor, a trapdoor or a geyser between a floor and the hot
-    /// spring under it, or a Secret Base's way out. As with the belts, nothing
-    /// in the record says which.
+    /// spring under it, a lift or a teleporter between platforms, or a Secret Base's way out. As with
+    /// the belts, nothing in the record says which.
     pub triggers: IndexMap<(i64, i64), (String, String)>,
     /// (zone, a furniture record's script) -> what it is, where it is not a sign: a Secret Base's
-    /// PC and flag.
+    /// PC and flag, Mossdeep Gym's switches.
     pub furniture: IndexMap<(i64, i64), String>,
     /// The reader of its Secret Bases, given the executable's image to find every spot in, or None
     /// in a game with none: ORAS's (`games.oras.secret_base`).

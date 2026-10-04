@@ -186,6 +186,31 @@ fn test_a_name_no_key_has_is_no_code_at_all() {
     assert_eq!(keyfile::qt_code("").unwrap(), None);
 }
 
+/// Qt's `Key_ssharp` is 0xdf; upper case, "ß" is two letters.
+#[test]
+fn test_a_letter_with_no_single_capital_is_numbered_by_itself() {
+    assert_eq!(keyfile::qt_code("ß").unwrap(), Some(0xDF));
+}
+
+#[test]
+fn test_a_code_that_is_digits_but_no_number_is_no_key() {
+    let params = IndexMap::from([
+        ("engine".to_string(), "keyboard".to_string()),
+        ("code".to_string(), "²".to_string()),
+    ]);
+    assert_eq!(keyfile::keyboard_code(&params).unwrap(), None);
+}
+
+#[test]
+fn test_a_stick_scale_that_is_not_a_number_is_written_unknown() {
+    let sticks = IndexMap::from([(
+        "circle_pad".to_string(),
+        IndexMap::from([("modifier_scale".to_string(), "half".to_string())]),
+    )]);
+    let rendered = keyfile::render(&bindings(), &IndexMap::new(), Some(&sticks), None).unwrap();
+    assert!(rendered.contains("#   modifier_scale = ?"));
+}
+
 #[test]
 fn test_every_code_reads_back_as_the_name_it_was_written_from() {
     for name in [

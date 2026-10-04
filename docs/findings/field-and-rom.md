@@ -2806,3 +2806,89 @@ to know how the doors turn. omega_ruby_tree-gym.ctm, on the save of 14:22 (the r
 - **Left open**: what slots 4 to 7 of the table are for; whether the game also checks people
   where the arms sweep; whether the player always steps on with the door, as they did both times
   here; and pattern 0's one entry that checks another cell than the sweep.
+
+## Spike 162 — the shore Surf jumps, and surfing told from the bike
+
+2026-10-04 (`spikes/162_shore.py`, and the ROM's map chunks). The user, at (22, 8) on Route 122
+(zone `0x33`), pressed Shift and P to the path to Mt. Pyre on its island: "1 north, 2 east, then
+can't continue". They surfed south and east anyway, and from the water P said "48 south, 30 east,
+then can't continue" until they had landed; the log said "field: on the bike" all the while they
+were on the water. omega_ruby_surf3.ctm, on the save of 11:42 (the rig's `save_checkpoint_surf3`),
+replayed with 0 out of sync; it ends on no save.
+
+- **Between the land and the sea is a strip of shore one cell wide, and P walled it.** Route 122's
+  shore is `0x40180023`, kind `0x40`: the water bit and the blocked bit both set, between land and
+  the sea's `0x3d`. Spike 136 left `0x40` unknown, and P's ground walls every blocked cell, the
+  ground to surf included, so the water was cut off from the land on both sides.
+- **Surf jumps the player over it, never onto it.** Getting on, the player went from (22, 8) to
+  (22, 10) in one move, over the shore at (22, 9); getting off, from (54, 58) to (54, 56) over
+  (54, 57). Neither shore cell was ever the player's. That is a ledge's jump, but either way.
+- **`0x40` is the shore all over ORAS.** Its 1,528 cells are in 87 chunk files, in six words
+  differing only in their second byte. Of those inside a chunk, about 1,090 have land on one side
+  and the sea on the other; nearly all the rest are the strip's corners or run between the sea and
+  a cliff. `0x3f`, the other blocked water kind (`0x3f180003`, 72 cells in 8 files), is a line
+  with water on both sides and never land, and is still not known.
+- **Surfing sets the move model's riding bit as the bike does.** +0x06 read 0x01 on foot and 0x21
+  from the moment the player was on the water to the moment they landed, as on the Mach Bike
+  (spike 158). +0x07 tells the two apart: 0x13 on the water, going 0x00, 0x10, 0x13 as the
+  player got on, where omega_ruby_bike.ctm replayed reads 0x03 on the bike in all 78 polls it
+  rode and 0x00 in the 829 on foot.
+- **Built** (`field.SHORE`, `Ground.shore`, `pathfind.find`'s `over`, `mmodel.on_bike`): a ground
+  to surf jumps the shore either way, from the cell before it to the cell after, and the jump is
+  said with the side it lands on, so landing is a step on foot. Replayed, Shift and P at (22, 8)
+  says "Surf 48 south, Surf 22 east, 8 east, 2 north", P there still "1 north, 2 east, then can't
+  continue", and P from the water at (22, 34) "22 south, 30 east, 2 north"; guiding follows the
+  player over the water and their jump off at (54, 57). The log no longer says the player is on
+  the bike while they surf.
+- **Left open**: what `0x3f` is; whether the game lets the player jump the shore where land is
+  on both sides of it, which P allows with a ground to surf; and whether a shore between the sea
+  and a cliff is ever crossed.
+
+## Spike 163 — Mossdeep Gym's lifts, teleporter and switches
+
+2026-10-04 (`spikes/163_psychic_gym.py`, and the ROM's zone file and script). The user, in
+Mossdeep Gym (zone `0x1bb`, Liza and Tate already beaten), walked into "a thingy" that took them
+to Liza and Tate, and a "teleport thing" there that took them back to the entrance; neither was
+listed, and four of the list's six signs were what "changes the first thingy that lift you
+around". omega_ruby_psychic-gym.ctm, on the save of 14:03 (the rig's
+`save_checkpoint_psychic_gym`), replayed with 0 out of sync; it ends on no save.
+
+- **The Gym is seven platforms with no floor between them.** The cell table has the entrance's
+  (x 16 to 22, z 32 to 39), Liza and Tate's (x 16 to 22, z 3 to 9), two middle platforms a side
+  (x 9 to 15 and 23 to 29 at z 23 to 29; x 5 to 11 and 27 to 33 at z 11 to 17) and two small
+  pillars (x 14 to 16 and 22 to 24, z 18 to 20), and kind `0x01`, blocked, everywhere between.
+  The pictures show tracks of white lights joining them.
+- **A lift carries the player along a track.** The player walked north onto the trigger at
+  (19, 32), script 5, and was carried north along x 19 at height 2, rising from z 14 to height
+  146, and set down at (19, 10) on Liza and Tate's platform; their cell is in no platform between.
+- **All ten triggers from script 5 to `0xe` are lifts.** The zone's script runs each of them as
+  one call to the same native, 60, with a track's number last: 0 for script 5, and 1 to 9 for
+  scripts 6 to `0xe`. They stand at the edges of the platforms: (19, 32) on the entrance's; (12,
+  29); (26, 29) and (29, 26); (27, 12) and (27, 14); (11, 16) and (6, 17); and one on each pillar,
+  (14, 19) and (24, 19). Only the first was ridden; where each other track ends is in the Gym's
+  module, `DllUSGymEsper.cro`, which was not read.
+- **Script `0xf` is the teleporter.** The trigger at (21, 6), beside Liza and Tate, calls native
+  61 with nothing: the player stepped on it at height 146 and stood at (19, 35), the entrance, at
+  the next poll.
+- **The four other furniture records are switches.** Scripts 1 to 4, at (11, 25), (28, 27),
+  (32, 13) and (6, 13), one on each middle platform, are pressed by facing them; their messages
+  in the Gym's text (story file 507, lines 4 to 21) are all empty. Switch *n* sets work value
+  `0x413b + n` to 1 and calls the module's natives 58 and 59. The two other records, script 18
+  at (17, 33) and (21, 33), are the statues.
+- **A trigger is armed while a work value holds a number.** The lifts on each middle platform
+  carry their switch's work value at +0x04 and 1 at +0x02, and the teleporter `0x409a` and 1;
+  the entrance's lift and the pillars' carry 0 and 0. Script 5 reads the four switches' values
+  and, when all four are set, sets `0x409a` to 1 and rides track 0 with six positions of its own:
+  the way to the leaders. So the switches arm their platforms' lifts, and all four together send
+  the entrance's lift to the leaders and arm the teleporter. Spike 132's guess that +0x04 was
+  the value that arms a trigger was half right.
+- **The game names none of them.** The Gym's text has the guide's advice on types and the
+  leaders' lines, so "lift", "teleporter" and "switch" are pa3ds's.
+- **Built** (`oras.TRIGGERS`, `oras.FURNITURE`): the ten lifts and the teleporter are listed under
+  exits, walked onto when one is the goal and walked round otherwise, and the four switches under
+  signs as "switch". Replayed, from the entrance the list says "lift 3 north", "teleporter 2 east
+  29 north", and "switch 9 east 8 north" and three more; P says "3 north" to the entrance's lift.
+- **Left open**: where tracks 1 to 9 lead, and where track 0 goes before all four switches are
+  pressed, so P finds no way from one platform to another and says "no path" to everything off
+  the player's own; and whether pa3ds should say a lift is not armed, which needs the work
+  values read from the save.

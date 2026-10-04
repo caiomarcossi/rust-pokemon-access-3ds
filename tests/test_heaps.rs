@@ -354,7 +354,7 @@ fn test_a_block_larger_than_the_largest_read_is_told_by_its_size_and_never_read(
 #[test]
 fn test_an_unread_heaps_own_blocks_are_not_walked_and_the_heaps_inside_it_are() {
     let own = block(ROOT, 0);
-    let memory = Guarded::new(&[own]);
+    let memory = Guarded::new(&[(own.0, own.0 + own.1)]);
     lay_out(&memory.inner, ROOT, &[], 0, 0, &[CHILD]);
     memory
         .inner

@@ -558,15 +558,18 @@ fn test_the_player_is_the_model_with_index_ff() -> Result<()> {
 }
 
 /// Jagged Pass: +0x06 read 0x01 on foot and 0x21 on the Mach Bike (omega_ruby_bike.ctm,
-/// spike 158).
+/// spike 158). Surfing sets it too, with +0x07 0x13 where the bike has 0x03, and is not the bike
+/// (omega_ruby_surf3.ctm, spike 162).
 #[test]
 fn test_the_player_is_on_the_bike_while_the_models_riding_bit_is_set() -> Result<()> {
     let town = Town::new();
     town.reader.track(&town.found())?;
-    town.memory.write(POOL + 6, &[0x01]);
+    town.memory.write(POOL + 6, &[0x01, 0x00]);
     assert!(town.reader.poll()?.is_some_and(|r#where| !r#where.on_bike));
-    town.memory.write(POOL + 6, &[0x21]);
+    town.memory.write(POOL + 6, &[0x21, 0x03]);
     assert!(town.reader.poll()?.is_some_and(|r#where| r#where.on_bike));
+    town.memory.write(POOL + 6, &[0x21, 0x13]);
+    assert!(town.reader.poll()?.is_some_and(|r#where| !r#where.on_bike));
     Ok(())
 }
 
@@ -1897,6 +1900,24 @@ fn test_a_slope_is_one_thing_and_a_rail_is_listed_at_its_ends() -> Result<()> {
     );
     let sources: HashSet<i64> = bike.iter().map(|item| item.source).collect();
     assert_eq!(sources.len(), 5);
+    Ok(())
+}
+
+#[test]
+fn test_a_slope_patch_with_no_cell_at_its_corner_is_one_slope() -> Result<()> {
+    let slope: Vec<((i64, i64), i64)> = [(85, 165), (85, 166), (84, 166)]
+        .into_iter()
+        .map(|cell| (cell, 0x6C000020))
+        .collect();
+    let mut town = Town::new();
+    town.block_tiles(TOWN_BLOCK, TOWN_CHUNK, (80, 160), &border(160), &slope);
+    let seen: Vec<(String, (i64, i64), (i64, i64))> = town
+        .r#where()?
+        .of("bike")
+        .into_iter()
+        .map(|item| (item.kind, item.cell, item.size))
+        .collect();
+    assert_eq!(seen, [("slope".to_string(), (84, 165), (2, 2))]);
     Ok(())
 }
 

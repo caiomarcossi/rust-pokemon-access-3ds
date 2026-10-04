@@ -187,3 +187,5 @@ record too, not maintained code.
 | [159](field-and-rom.md) | Route 119's bridge: P's ground walked the path under it and cut it, the only way north; the zones east Hoenn's places are split into, whose edges said no place | 2026-10-03 |
 | [160](field-and-rom.md) | Fortree City: platforms beside the ground in one cell table, ladders as pairs of triggers, drops of two cells' height, and the invisible Kecleon in the Gym's one way in | 2026-10-03 |
 | [161](field-and-rom.md) | Fortree Gym's rotating doors: the Gym's module builds seven, keeps each one's pattern and turn, and its tables say every pattern's arms; P searches through them | 2026-10-03 |
+| [162](field-and-rom.md) | the shore: a strip of blocked water between land and the sea that Surf jumps either way, which P had walled; and surfing told from the bike by +0x07 | 2026-10-04 |
+| [163](field-and-rom.md) | Mossdeep Gym: seven platforms joined by tracks of light, ten lifts riding a track each, a teleporter back to the entrance, four switches arming their platforms' lifts; a trigger armed while a work value holds a number | 2026-10-04 |

@@ -614,7 +614,9 @@ impl CursorReader {
                 // The Mart's boxes point at their words from beside them. The PC Box's cursor is
                 // over its menu's words, and leaves for the grid of Pokémon a poll before they go,
                 // where the word on its row to its right was said (or/movie6_pc, 2026-09-27).
-                inside = distinct(in_rows(beside(on_screen, &rect, root)));
+                let placement = self.layouts.placement(holder)?;
+                let panel = placement.map_or(0, |placement| placement.panel);
+                inside = distinct(in_rows(beside(on_screen, &rect, root, panel)));
             }
             let (mut at_slot, mut alone, mut reporter) = (false, false, holder);
             if inside.is_empty()
@@ -2175,15 +2177,19 @@ fn within(piece: &ScreenText, rect: &Rect) -> bool {
     rect.left <= centre && centre <= rect.right && rect.low <= piece.row && piece.row <= rect.high
 }
 
-/// The words a cursor picture points at from beside them: its layout's, on its row, to its
+/// The words a cursor picture points at from beside them: its panel's, on its row, to its
 /// right. The Poké Mart's boxes draw `cursor.bclim` left of their words rather than over them
 /// (Buy, Sell, No thanks; a purchase's Yes and No), and move it from one row's height to the
-/// next (spike 98).
-fn beside(pieces: &[ScreenText], rect: &Rect, root: i64) -> Vec<ScreenText> {
+/// next (spike 98). Words of another panel are not pointed at: the Mart's count of what to buy
+/// draws `shop_mark_cursor.bclim` arrows above and below it, bobbing over the list behind, and
+/// taken for pointers they said that list's prices, "$ 3,000" and "$ 100", every poll as they
+/// bobbed (omega_ruby_shop.ctm, 2026-10-04).
+fn beside(pieces: &[ScreenText], rect: &Rect, root: i64, panel: i64) -> Vec<ScreenText> {
     pieces
         .iter()
         .filter(|piece| {
             piece.root == root
+                && piece.panel == panel
                 && piece.glyph > 0.0
                 && piece.top == rect.top
                 && rect.low <= piece.row

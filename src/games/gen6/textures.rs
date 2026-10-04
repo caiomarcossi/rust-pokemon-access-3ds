@@ -40,7 +40,7 @@ use crate::games::common::garc::{GARC_MAGIC, garc_variants};
 use crate::games::common::layout_file::{TEXTURE, darc_entries};
 use crate::games::common::lyt;
 use crate::games::gen6::archives::GameText;
-use crate::py::{self, Error, Kind, Result};
+use crate::py::{self, Kind, Result};
 
 /// Bits a pixel by the GPU's texture format, the number a material keeps (`lyt.MATERIAL_FORMAT`):
 /// RGBA8 0, RGB8, RGBA5551, RGB565, RGBA4, IA8, HILO8, I8, A8, IA4, I4, A4, ETC1, ETC1A4 0xD.
@@ -252,9 +252,7 @@ pub fn named_textures(blob: &[u8], depth: i64, found: &mut dyn FnMut(&str, &[u8]
             let data = py::slice(blob, start, start + u32(blob, start + DARC_SIZE)?);
             let files = match darc_files(data) {
                 Ok(files) => files,
-                Err(error) if error.is(Kind::IndexError) || error.is(Kind::ValueError) => {
-                    Vec::new()
-                }
+                Err(error) if error.is(Kind::StructError) => Vec::new(),
                 Err(error) => return Err(error),
             };
             for (name, file) in files {
@@ -314,7 +312,7 @@ pub fn render(index: &IndexMap<String, String>, title: &str, rom: &str) -> Strin
 
 /// The index kept at `path`, or empty where there is none yet.
 pub fn load(path: &Path) -> Result<IndexMap<String, String>> {
-    Ok(toml::strings(toml::read(path)?.get(SECTION)))
+    Ok(toml::strings(toml::read(path).get(SECTION)))
 }
 
 /// Build the index and keep it at `path`: what the thread started for it runs.
@@ -388,18 +386,10 @@ pub fn said(textures: &[impl AsRef<str>], text: &GameText) -> Result<Option<Stri
         } else {
             continue;
         }
-        if index < words.len() as i64 {
-            let at = if index < 0 {
-                index + words.len() as i64
-            } else {
-                index
-            };
-            let Some(word) = usize::try_from(at).ok().and_then(|at| words.get(at)) else {
-                return Err(Error::index("tuple index out of range"));
-            };
-            if !word.is_empty() {
-                return Ok(Some(word.clone()));
-            }
+        if let Some(word) = usize::try_from(index).ok().and_then(|at| words.get(at))
+            && !word.is_empty()
+        {
+            return Ok(Some(word.clone()));
         }
     }
     Ok(None)

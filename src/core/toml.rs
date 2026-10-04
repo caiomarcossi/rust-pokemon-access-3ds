@@ -30,23 +30,20 @@ pub const ESCAPES: [(char, &str); 7] = [
 ];
 
 /// A TOML file as its top-level tables, or empty when there is nothing readable there.
-///
-/// Python's `tomllib.load` decodes the bytes itself and a file that is not UTF-8 raises
-/// `UnicodeDecodeError` out of it, past the `except` below (a `ValueError`, not a
-/// `TOMLDecodeError`): ported as it is.
-pub fn read(path: &Path) -> Result<IndexMap<String, Value>> {
+pub fn read(path: &Path) -> IndexMap<String, Value> {
     let Ok(bytes) = std::fs::read(path) else {
-        return Ok(IndexMap::new());
+        return IndexMap::new();
     };
-    let text = String::from_utf8(bytes)
-        .map_err(|error| decode_error(error.as_bytes(), error.utf8_error()))?;
+    let Ok(text) = String::from_utf8(bytes) else {
+        return IndexMap::new();
+    };
     // `tomllib` takes U+FEFF for an invalid statement where the `toml` crate skips it.
     if text.starts_with('\u{feff}') {
-        return Ok(IndexMap::new());
+        return IndexMap::new();
     }
     match text.parse::<toml::Table>() {
-        Ok(loaded) => Ok(table(Some(&Value::Table(loaded)))),
-        Err(_) => Ok(IndexMap::new()),
+        Ok(loaded) => table(Some(&Value::Table(loaded))),
+        Err(_) => IndexMap::new(),
     }
 }
 

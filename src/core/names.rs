@@ -27,9 +27,7 @@
 //! The player's names live in `names/<language>/<rom>.toml` under their own folder, laid out the same
 //! way as the shipped table beside the game's code: **TOML, per language, one file a ROM**
 //! (ADR-0031). A name is a word in a language, so English names for a ROM played in French belong to
-//! neither. The file opens with a comment saying which game and which language it is for, because
-//! `sango-1` says nothing to somebody who did not choose it, and sharing names is a matter of sending
-//! the file to somebody who then has to know what they have been sent.
+//! neither.
 //!
 //! The file opens with a comment saying which game, which ROM and which language it is for, because
 //! `sango-1` says nothing to somebody who did not choose it and sharing names is a matter of sending
@@ -114,12 +112,10 @@ impl Names {
             .map(|section| (section.to_string(), IndexMap::new()))
             .collect();
         if let Some(mine_path) = mine_path {
+            let found = toml::read(mine_path);
             mine = SECTIONS
                 .iter()
-                .map(|section| Ok((section, toml::read(mine_path)?)))
-                .collect::<Result<Vec<_>>>()?
-                .into_iter()
-                .map(|(section, found)| (section.to_string(), toml::strings(found.get(*section))))
+                .map(|section| (section.to_string(), toml::strings(found.get(*section))))
                 .collect();
         }
         Ok(Names {
@@ -150,7 +146,7 @@ impl Names {
         title: &str,
     ) -> Result<Names> {
         let shipped =
-            toml::strings(toml::read(&data.join(language).join("sprites.toml"))?.get(SPRITES));
+            toml::strings(toml::read(&data.join(language).join("sprites.toml")).get(SPRITES));
         let mine = home.map(|home| {
             home.join("names")
                 .join(language)

@@ -19,6 +19,7 @@ use crate::games::common::cursor::{CursorItem, CursorReader};
 use crate::games::common::layout_file::LayoutFiles;
 use crate::games::common::lyt;
 use crate::games::common::screen::{Pictures, ScreenText, join};
+use crate::games::sm::lyt::SHAPE as SUN_SHAPE;
 
 const BASE: i64 = 0x08200000;
 /// The root of the menu layout the labels are in.
@@ -39,11 +40,16 @@ fn put(memory: &FakeMemory, address: i64, values: &[f64]) {
 
 /// `memory.write(pane + lyt.NAME, name.encode("ascii").ljust(lyt.NAME_SIZE, b"\0"))`.
 fn write_name(memory: &FakeMemory, pane: i64, name: &str) {
+    write_name_in(memory, pane, name, &lyt::ORAS);
+}
+
+/// `write_name` where `shape` keeps a pane's name.
+fn write_name_in(memory: &FakeMemory, pane: i64, name: &str, shape: &lyt::PaneShape) {
     let mut bytes = name.as_bytes().to_vec();
     if (bytes.len() as i64) < lyt::NAME_SIZE {
         bytes.resize(lyt::NAME_SIZE as usize, 0);
     }
-    memory.write(pane + lyt::NAME, &bytes);
+    memory.write(pane + shape.name, &bytes);
 }
 
 /// `ClassNames(memory, CODE)`.
@@ -1951,6 +1957,7 @@ type Entry = (String, i64, &'static [u8], i64);
 /// mark's touch area beside its picture, a lone button's, and the pointer, `cursol01.bclim` in a
 /// plain pane of its own, resting exactly on a touch area.
 struct BoxGrid {
+    shape: lyt::PaneShape,
     memory: Rc<FakeMemory>,
     fake: FakeLayouts,
     root: i64,
@@ -1964,21 +1971,23 @@ struct BoxGrid {
 
 impl BoxGrid {
     fn new() -> BoxGrid {
-        BoxGrid::with(false)
+        BoxGrid::with(false, lyt::ORAS)
     }
 
     /// `bar` adds the bottom bar many screens share, `touch_bar_lower`, holding a button
     /// `change_box.bclim` where the Box's own layout leaves an empty pane (spike 143, movie12).
-    fn with(bar: bool) -> BoxGrid {
+    /// `shape` lays the panes out as that game's NintendoWare does.
+    fn with(bar: bool, shape: lyt::PaneShape) -> BoxGrid {
         let memory = FakeMemory::new();
         let classes = FakeClasses::new(memory.clone());
         let picture = classes.add(lyt::PICTURE_CLASS);
         let bounding = classes.add(lyt::BOUNDING_CLASS);
-        let fake = FakeLayouts::new(&memory, &classes);
+        let fake = FakeLayouts::with_shape(&memory, &classes, shape);
         let (work, root) = fake.screen_with(GRID, false, false);
         fake.project(work, 320.0);
         let reader = reader_of(&fake, &memory);
         let mut grid = BoxGrid {
+            shape,
             memory,
             fake,
             root,
@@ -2107,7 +2116,7 @@ impl BoxGrid {
             30.0,
         );
         for (name, pane, _kind, _material) in &grid.names {
-            write_name(&grid.memory, *pane, name);
+            write_name_in(&grid.memory, *pane, name, &grid.shape);
         }
         let mut bar_walked: Vec<Entry> = Vec::new();
         if bar {
@@ -2141,7 +2150,7 @@ impl BoxGrid {
                 30.0,
             );
             for (name, pane, _kind, _material) in &grid.names {
-                write_name(&grid.memory, *pane, name);
+                write_name_in(&grid.memory, *pane, name, &grid.shape);
             }
             bar_walked = grid.walked();
             grid.names = grid_names;
@@ -2208,11 +2217,11 @@ impl BoxGrid {
         let pane = self.at;
         self.at += 0x200;
         self.fake.pane_with_vtable(pane, parent, vtable);
-        put(&self.memory, pane + lyt::X, &[x]);
-        put(&self.memory, pane + lyt::Y, &[y]);
-        put(&self.memory, pane + lyt::WIDTH, &[width, height]);
-        put(&self.memory, pane + lyt::SCALE_X, &[1.0]);
-        put(&self.memory, pane + lyt::SCALE_Y, &[1.0]);
+        put(&self.memory, pane + self.shape.x, &[x]);
+        put(&self.memory, pane + self.shape.y, &[y]);
+        put(&self.memory, pane + self.shape.width, &[width, height]);
+        put(&self.memory, pane + self.shape.scale_x, &[1.0]);
+        put(&self.memory, pane + self.shape.scale_y, &[1.0]);
         self.names.push((name.to_string(), pane, kind, material));
         pane
     }
@@ -2247,8 +2256,8 @@ impl BoxGrid {
 
     /// Without `words`, the Box's words are all off screen, as under its box list.
     fn rest_with(&mut self, x: f64, y: f64, words: bool) -> Vec<(Vec<String>, bool)> {
-        put(&self.memory, self.cursor + lyt::X, &[x]);
-        put(&self.memory, self.cursor + lyt::Y, &[y]);
+        put(&self.memory, self.cursor + self.shape.x, &[x]);
+        put(&self.memory, self.cursor + self.shape.y, &[y]);
         let mut heard: Vec<(Vec<String>, bool)> = Vec::new();
         for _ in 0..2 {
             self.fake.layouts.refresh();
@@ -2267,6 +2276,15 @@ impl BoxGrid {
 fn test_a_party_slot_is_said_by_its_number() {
     assert_eq!(
         BoxGrid::new().rest(80.0, 55.0),
+        said(&[(&["Party 1"], true)])
+    );
+}
+
+/// Sun keeps a pane's place, size and name elsewhere than ORAS (spike 112).
+#[test]
+fn test_a_slot_is_read_through_its_game_s_pane_shape() {
+    assert_eq!(
+        BoxGrid::with(false, SUN_SHAPE).rest(80.0, 55.0),
         said(&[(&["Party 1"], true)])
     );
 }
@@ -2433,7 +2451,7 @@ fn test_a_mark_is_said_by_its_sign_and_whether_it_is_set() {
 /// layout many screens share, where the Box's own leaves an empty pane (spike 143, movie12).
 #[test]
 fn test_the_bottom_bars_button_under_the_pointer_is_said_by_its_picture() {
-    let mut r#box = BoxGrid::with(true);
+    let mut r#box = BoxGrid::with(true, lyt::ORAS);
     r#box.rest(80.0, 55.0);
     assert_eq!(
         r#box.rest(-110.0, -105.0),
@@ -2447,7 +2465,7 @@ fn test_the_bottom_bars_button_under_the_pointer_is_said_by_its_picture() {
 /// 143).
 #[test]
 fn test_with_the_boxs_words_hidden_its_pointer_says_only_another_layouts_button() {
-    let mut r#box = BoxGrid::with(true);
+    let mut r#box = BoxGrid::with(true, lyt::ORAS);
     r#box.rest(80.0, 55.0);
     assert_eq!(r#box.rest_with(-100.0, 55.0, false), said(&[]));
     assert_eq!(
@@ -2595,6 +2613,22 @@ fn test_a_cursor_picture_beside_the_words_moving_says_the_row_it_lands_on() {
     confirm.heard();
     confirm.point(-10.0);
     assert_eq!(confirm.heard(), said(&[(&["No"], false)]));
+}
+
+/// The Mart's count draws arrows above and below it over the list behind, and taken for
+/// pointers they said the list's prices every poll as they bobbed (omega_ruby_shop.ctm).
+#[test]
+fn test_a_cursor_picture_points_at_no_words_of_another_panel() {
+    let mut confirm = Confirm::new();
+    confirm.pieces = confirm
+        .pieces
+        .iter()
+        .map(|piece| ScreenText {
+            panel: confirm.root,
+            ..piece.clone()
+        })
+        .collect();
+    assert_eq!(confirm.heard(), said(&[]));
 }
 
 #[test]

@@ -131,7 +131,6 @@ pub struct Layouts {
     /// Root -> each pane under it -> its children in order, as last walked.
     children: RefCell<IndexMap<i64, IndexMap<i64, Vec<i64>>>>,
     /// Root -> the track its tree was last walked at.
-    // (In the Python this docstring stands after `settling`'s, though it says what `walked` is.)
     walked: RefCell<IndexMap<i64, i64>>,
     /// Root -> screen polls left to walk its tree again, for layouts just taken in.
     settling: RefCell<IndexMap<i64, i64>>,

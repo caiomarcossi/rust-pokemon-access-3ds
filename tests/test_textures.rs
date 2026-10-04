@@ -390,6 +390,26 @@ fn test_a_type_icon_is_said_as_the_game_names_the_type_by_its_number() {
 }
 
 #[test]
+fn test_a_condition_numbered_zero_is_no_condition() {
+    assert_eq!(
+        textures::said(&["sick_icon_00_x"], &english()).unwrap(),
+        None
+    );
+    assert_eq!(
+        textures::said(&["sick_icon_00_x"], &GameText::new(Vec::new(), Vec::new())).unwrap(),
+        None
+    );
+}
+
+#[test]
+fn test_a_darc_cut_short_holds_no_textures() {
+    let blob = [textures::DARC, textures::DARC_HEAD, &[0; 8]].concat();
+    let mut found: Vec<String> = Vec::new();
+    textures::named_textures(&blob, 0, &mut |name, _| found.push(name.to_string())).unwrap();
+    assert!(found.is_empty());
+}
+
+#[test]
 fn test_a_move_category_and_a_status_condition_are_said_in_the_games_words() {
     let said = |texture: &str| textures::said(&[texture], &english()).unwrap();
     assert_eq!(

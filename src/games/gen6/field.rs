@@ -26,9 +26,10 @@
 //! loaded (`rail`), and not at all off them.
 //!
 //! ```text
-//! trigger   0x18: u16 script, ?, work, way, 0, 0, x, z, width, height, 0, 0; the work
-//!           probably the value that arms it, 0 for none, and the way probably the way it
-//!           is walked onto to fire, 5 north, 6 south, 7 west, 8 east, 0 any (spike 132)
+//! trigger   0x18: u16 script, value, work, way, 0, 0, x, z, width, height, 0, 0; armed
+//!           while the work holds the value, 0 for always (spike 163), and the way probably
+//!           the way it is walked onto to fire, 5 north, 6 south, 7 west, 8 east, 0 any
+//!           (spike 132)
 //! area      0x18: the same shape as a trigger (six on Route 102, none in Littleroot)
 //! ```
 //!
@@ -1371,7 +1372,7 @@ impl FieldReader {
 
     /// The zone's triggers `Game.triggers` knows as something to walk to: Mauville Gym's switches,
     /// and the way between its two rooms, which share no floor (spike 146); Lavaridge Gym's
-    /// trapdoors and geysers (spike 157).
+    /// trapdoors and geysers (spike 157); Mossdeep Gym's lifts and teleporter (spike 163).
     fn listed_triggers(&self, data: &ZoneData, zone: i64) -> Result<Vec<Interactable>> {
         let home = if self.triggers.is_empty() {
             None
@@ -2236,9 +2237,10 @@ impl FieldReader {
             }
             if in_slopes(kind_at(patch[0])?) {
                 let (first, size) = spread(&patch);
+                // The box's corner is not one of an L-shaped patch's cells: its kind is the patch's.
                 out.push(Interactable {
                     size,
-                    code: kind_at(first)?,
+                    code: kind_at(patch[0])?,
                     source: place_source(BIKE_SOURCE, cell_number(first))?,
                     home: Some(zone),
                     ..Interactable::new(BIKE, SLOPE, first)

@@ -180,17 +180,11 @@ pub fn qt_code(name: &str) -> Result<Option<i64>> {
         return Ok(None);
     };
     if py::is_alpha(only) {
+        // Some letters have no single capital ("ß" is "SS"); Qt numbers those by the letter itself.
         let upper: Vec<char> = only.to_uppercase().collect();
-        if upper.len() != 1 {
-            return Err(Error::new(
-                Kind::TypeError,
-                format!(
-                    "ord() expected a character, but string of length {} found",
-                    upper.len()
-                ),
-            ));
-        }
-        return Ok(Some(i64::from(upper[0] as u32)));
+        return Ok(Some(i64::from(
+            if upper.len() == 1 { upper[0] } else { only } as u32,
+        )));
     }
     if py::is_digit(only) || CHARACTERS.contains(&key.as_str()) {
         return Ok(Some(i64::from(only as u32)));
@@ -346,7 +340,9 @@ pub fn keyboard_param(code: i64) -> String {
 /// The key a binding is on, or None when it is not on the keyboard at all.
 pub fn keyboard_code(params: &IndexMap<String, String>) -> Result<Option<i64>> {
     let code = params.get("code").map(String::as_str).unwrap_or("");
-    if params.get("engine").map(String::as_str) == Some(KEYBOARD) && py::isdigit(code) {
+    // isdecimal, not isdigit: "²" is a digit that `int` refuses.
+    let decimal = !code.is_empty() && code.chars().all(py::is_decimal);
+    if params.get("engine").map(String::as_str) == Some(KEYBOARD) && decimal {
         Ok(Some(py::int_base10(code)?))
     } else {
         Ok(None)
@@ -658,21 +654,21 @@ pub fn save(
 }
 
 /// The emulator's config as it is on disk, or "" when it cannot be read.
-pub fn read_config(config: &Path, notes: &mut Vec<String>) -> Result<String> {
+pub fn read_config(config: &Path, notes: &mut Vec<String>) -> String {
     // newline="" both ways, or Python quietly rewrites a CRLF config as LF on the way in and
     // hands the whole file back changed on the way out.
-    match std::fs::read(config) {
-        Ok(bytes) => String::from_utf8(bytes)
-            .map_err(|error| toml::decode_error(error.as_bytes(), error.utf8_error())),
-        Err(error) => {
-            notes.push(format!(
-                "{} could not be read: {}",
-                py::path_str(config),
-                os_error(&error, config, true)
-            ));
-            Ok(String::new())
-        }
-    }
+    let error = match std::fs::read(config) {
+        Ok(bytes) => match String::from_utf8(bytes) {
+            Ok(text) => return text,
+            Err(error) => toml::decode_error(error.as_bytes(), error.utf8_error()).message,
+        },
+        Err(error) => os_error(&error, config, true),
+    };
+    notes.push(format!(
+        "{} could not be read: {error}",
+        py::path_str(config)
+    ));
+    String::new()
 }
 
 fn patch_button(
@@ -860,11 +856,13 @@ pub fn render(
                 None => format!("#   {name} = ?"),
             });
         }
-        let scale = on.get(SCALE).map(String::as_str).unwrap_or("0.500000");
-        lines.push(format!(
-            "#   {SCALE} = {}",
-            py::format_g(py::float_of(scale)?)
-        ));
+        let scale = match py::float_of(on.get(SCALE).map(String::as_str).unwrap_or("0.5")) {
+            Ok(scale) => py::format_g(scale),
+            // Azahar's file is hand-editable too
+            Err(error) if error.is(Kind::ValueError) => "?".to_string(),
+            Err(error) => return Err(error),
+        };
+        lines.push(format!("#   {SCALE} = {scale}"));
     }
     lines.push("".into());
     Ok(lines.join("\n"))
@@ -1108,7 +1106,7 @@ pub fn prepare(
         Some(config) => config.to_path_buf(),
     };
     let mut notes: Vec<String> = Vec::new();
-    let text = read_config(&config, &mut notes)?;
+    let text = read_config(&config, &mut notes);
     let mut emulator = emulator_keys(&text)?;
 
     let mut read: Option<Bindings> = None;
@@ -1152,7 +1150,7 @@ pub fn prepare(
             }
         }
     } else {
-        let loaded = toml::read(&path)?;
+        let loaded = toml::read(&path);
         if !loaded.is_empty() {
             read = read_keys(&path, &loaded, defaults, &mut notes);
             wanted = read_emulator(&path, &loaded, &mut notes);

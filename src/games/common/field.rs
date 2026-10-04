@@ -40,8 +40,17 @@ pub const BLOCKED: i64 = 0x1;
 /// (omega_ruby_surf.ctm, spike 136). Across every chunk in both ROMs the bit is set on every word
 /// of nine kinds and no other: the sea `0x3d`, `0x41` in 3-by-3 patches inside it (Dive's, by the
 /// look), `0x42` between the sea and walls, the four `0x94` to `0x97` (currents, one a way, as
-/// ledges are), and `0x3f` and `0x40`, which are blocked as well. X has `0x3d`, `0x3f` and `0x40`.
+/// ledges are), and `0x3f` and `0x40`, which are blocked as well (`SHORE`). X has `0x3d`, `0x3f`
+/// and `0x40`.
 pub const WATER: i64 = 0x2;
+
+/// The kind of the strip of shore between land and the sea, one cell wide: water and blocked.
+/// Surf jumps the player over it, never onto it, getting on the water and off: on Route 122 from
+/// (22, 8) to (22, 10) over (22, 9), and from (54, 58) to (54, 56) over (54, 57), and P walled the
+/// water off at both (omega_ruby_surf3.ctm, spike 162). Of its 1,528 cells in ORAS's chunks,
+/// nearly all have land on one side and the sea on the other. `0x3f`, the other blocked water,
+/// has water on both sides and no land, and is not read.
+pub const SHORE: i64 = 0x40;
 
 pub const CUT: i64 = 15;
 pub const SURF: i64 = 57;
@@ -327,7 +336,7 @@ pub struct Interactable {
     pub category: String,
     /// What it is, in pa3ds's own words: `door`, `sign`, `PC`, `person`, `item ball`, `edge`,
     /// `berry spot`, `ash pile`, `hidden Pokémon`, `barrier`, `switch`, `passage`, `trapdoor`,
-    /// `geyser`, `slope`, `bumpy slope`, `rail`.
+    /// `geyser`, `lift`, `teleporter`, `slope`, `bumpy slope`, `rail`.
     pub kind: String,
     pub cell: (i64, i64),
     pub size: (i64, i64),
@@ -856,6 +865,20 @@ impl Ground {
         }
         match self.chunk(cell)? {
             Some(chunk) => chunk.water(cell),
+            None => Ok(false),
+        }
+    }
+
+    /// Whether the cell is shore the ground jumps over, getting on the water or off it: only
+    /// a ground to `surf` does (`SHORE`).
+    pub fn shore(&self, cell: Cell) -> Result<bool> {
+        let chunk = if self.corridor.is_some() || !self.surf {
+            None
+        } else {
+            self.chunk(cell)?
+        };
+        match chunk {
+            Some(chunk) => Ok(chunk.kind(cell)? == SHORE),
             None => Ok(false),
         }
     }

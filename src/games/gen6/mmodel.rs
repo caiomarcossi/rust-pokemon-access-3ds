@@ -56,6 +56,8 @@ pub const CLASSES: [&str; 2] = [CLASS, "N5field6mmodel13MoveModelBaseE"];
 pub const IN_USE: i64 = 0x04;
 pub const RIDING: i64 = 0x06;
 pub const BIKE: i64 = 0x20;
+pub const MOUNT: i64 = 0x07;
+pub const SURFING: i64 = 0x10;
 pub const ZONE: i64 = 0x0C;
 pub const CHARACTER: i64 = 0x10;
 pub const CELL_X: i64 = 0x94;
@@ -148,9 +150,11 @@ pub fn footprint(head: &[u8], cell: (i64, i64)) -> Result<((i64, i64), (i64, i64
 /// Whether the player is riding the bike. In Jagged Pass +0x06 read 0x01 on foot and 0x21
 /// from the moment the player got on to the moment they got off, twice, the pictures showing
 /// them riding between; +0x07 went 0 to 3 and +0xa2c 1 to 2 with it, and nothing in the
-/// player's work changed (omega_ruby_bike.ctm, spike 158).
+/// player's work changed (omega_ruby_bike.ctm, spike 158). Surfing sets the same bit, and
+/// +0x07 to 0x13: on Route 122 the log said "on the bike" from the moment the player went onto
+/// the water to the moment they came off it (omega_ruby_surf3.ctm, spike 162).
 pub fn on_bike(head: &[u8]) -> Result<bool> {
-    Ok(byte(head, RIDING)? & BIKE != 0)
+    Ok(byte(head, RIDING)? & BIKE != 0 && byte(head, MOUNT)? & SURFING == 0)
 }
 
 /// Which zone the slot was built in.

@@ -47,6 +47,8 @@ const SOUTH_LEDGE: i64 = 0x75020021;
 const BUMPY: i64 = 0x6F000021;
 /// Route 109's sea (omega_ruby_surf.ctm, spike 136).
 const SEA: i64 = 0x3D1A0006;
+/// Route 122's strip of shore, jumped over getting on the water and off (spike 162).
+const SHORE: i64 = 0x40180023;
 /// Jagged Pass's sandy slopes, ridden up north on the Mach Bike (omega_ruby_bike.ctm, spike 158).
 const SOUTH_SLOPE: i64 = 0x6C000020;
 
@@ -65,6 +67,7 @@ struct FakeField {
     slopes: HashSet<Cell>,
     /// Cells of the Acro Bike's bumpy slopes, each hopped up north.
     bumpy: RefCell<HashSet<Cell>>,
+    shore: RefCell<HashSet<Cell>>,
     /// A floor's height -> the blocked cells its deck opens, walked at that height alone. A
     /// list, since a float is no key in Rust.
     decks: RefCell<Vec<(f64, HashSet<Cell>)>>,
@@ -87,6 +90,7 @@ impl FakeField {
             sea: sea.iter().copied().collect(),
             slopes: slopes.iter().copied().collect(),
             bumpy: RefCell::new(HashSet::new()),
+            shore: RefCell::new(HashSet::new()),
             decks: RefCell::new(Vec::new()),
             visit: Slot::new(Some((0x08D209B8, 0x6))),
             edit: RefCell::new(None),
@@ -135,6 +139,7 @@ impl FieldSource for FakeField {
         };
         let blocked = self.blocked.borrow();
         let bumpy = self.bumpy.borrow();
+        let shore = self.shore.borrow();
         let words: Vec<i64> = cells
             .iter()
             .map(|cell| {
@@ -146,6 +151,8 @@ impl FieldSource for FakeField {
                     SOUTH_SLOPE
                 } else if bumpy.contains(cell) {
                     BUMPY
+                } else if shore.contains(cell) {
+                    SHORE
                 } else if blocked.contains(cell) && !opened.contains(cell) {
                     BLOCKED
                 } else {
@@ -1079,6 +1086,48 @@ fn test_p_from_the_water_crosses_it_without_saying_so() {
         ..on(water)
     });
     rig.press(CATEGORY_PREVIOUS);
+    rig.press(PATHFIND);
+    assert_eq!(last(&rig.backend), "2 south");
+}
+
+/// Route 122: the shore along the water is blocked, and Surf jumps the player over it, from
+/// (22, 8) to (22, 10) and off from (54, 58) to (54, 56); P walled the water off at both
+/// (omega_ruby_surf3.ctm, spike 162). Shift and P jumps it both ways, saying the
+/// jump with the side it lands on, and P from the water lands.
+#[test]
+fn test_shift_p_jumps_the_shore_onto_the_water_and_off_it() {
+    let here = street();
+    let across = Field {
+        interactables: here.interactables.clone(),
+        ..Field::new(here.zone, (100, 175))
+    };
+    let sea: Vec<Cell> = cells(80..120, 177);
+    let mut rig = navigator(Want {
+        blocked: house_front(),
+        sea: sea.clone(),
+        ..on(across)
+    });
+    let shore: HashSet<Cell> = (80..120)
+        .flat_map(|x| [176, 178].into_iter().map(move |z| (x, z)))
+        .collect();
+    *rig.field.shore.borrow_mut() = shore.clone();
+    rig.press(CATEGORY_PREVIOUS);
+    rig.press(PATHFIND);
+    let way = path_of(&guidance(&rig));
+    assert!(
+        !way.iter()
+            .any(|cell| sea.contains(cell) || shore.contains(cell))
+    );
+    rig.press_key("shift+p");
+    assert_eq!(last(&rig.backend), "Surf 2 south, 2 south");
+    step(&mut rig, &[(100, 177)]);
+    assert_eq!(last(&rig.backend), "2 south");
+    step(&mut rig, &[(100, 179)]);
+    assert_eq!(last(&rig.backend), "person, 1 south");
+    *rig.field.r#where.borrow_mut() = Some(Field {
+        interactables: here.interactables.clone(),
+        ..Field::new(here.zone, (100, 177))
+    });
     rig.press(PATHFIND);
     assert_eq!(last(&rig.backend), "2 south");
 }

@@ -11,9 +11,9 @@
 //! longer that saves three turns is the one taken. A player already walking one way turns if the
 //! path starts another way, so going on straight costs nothing. A goal can ask to be reached facing
 //! one way — the way to a door ends facing the door — and that settles a tie between two ways and
-//! no more (`FACE`). A ledge is jumped down, one way only, and never climbed. A step can carry a
-//! toll on top of its price, as going onto water to surf does, and a leg a word to say it by: "Surf
-//! 12 south".
+//! no more (`FACE`). A ledge is jumped down, one way only, and never climbed; a shore is jumped
+//! either way (`over`). A step can carry a toll on top of its price, as going onto water to surf
+//! does, and a leg a word to say it by: "Surf 12 south".
 
 use std::cell::RefCell;
 use std::cmp::{Ordering, Reverse};
@@ -165,6 +165,7 @@ pub struct Options<'a> {
     pub joined: Option<&'a dyn Fn(Cell, Cell) -> Result<bool>>,
     pub turns: Turns,
     pub through: Option<&'a dyn Fn(&[i64], Cell, Cell) -> Result<Option<Turns>>>,
+    pub over: Option<&'a dyn Fn(Cell) -> Result<bool>>,
 }
 
 /// What `functools.cache` makes of a callable: asked once for each argument. A call that raises
@@ -225,7 +226,9 @@ impl Ord for Entry<'_> {
 /// `ledge` says which way a cell goes down, or None. A cell that cannot be walked is a ledge,
 /// crossed that way only, from the cell before it to the cell after, which must be walkable,
 /// and never stood on; it is in the path all the same, so each cell is a step from the last. A
-/// cell that can is a slope, stepped onto, along and off only the way it goes down.
+/// cell that can is a slope, stepped onto, along and off only the way it goes down. `over` says
+/// which cells that cannot be walked are crossed as a ledge is, but either way: the strip of
+/// shore Surf jumps the player over, getting on the water and off it.
 ///
 /// `toll` is what a move from one cell to the next costs on top of its steps and turns, and
 /// `joined` whether a step between two cells side by side can be taken at all: one off a
@@ -254,6 +257,7 @@ pub fn find(
         joined,
         turns,
         through,
+        over,
     } = options;
     if goals.is_empty() {
         return Ok(None);
@@ -264,12 +268,19 @@ pub fn find(
     // and a search through Fortree Gym's doors takes each step once for every way they stand, so
     // each is worked out once.
     let down_cache: Cached<Cell, Option<&'static str>> = Cached::new();
+    let over_cache: Cached<Cell, bool> = Cached::new();
     let toll_cache: Cached<(Cell, Cell), i64> = Cached::new();
     let joined_cache: Cached<(Cell, Cell), bool> = Cached::new();
     let down = |cell: Cell| {
         down_cache.get(cell, || match ledge {
             Some(ledge) => ledge(cell),
             None => Ok(None),
+        })
+    };
+    let over = |cell: Cell| {
+        over_cache.get(cell, || match over {
+            Some(over) => over(cell),
+            None => Ok(false),
         })
     };
     let toll = |cell: Cell, step: Cell| {
@@ -351,7 +362,7 @@ pub fn find(
             let mut steps = 1;
             let unfit = |way: Option<&str>| way.is_some_and(|way| way != direction);
             if !can_walk(step)? {
-                if !r#box.holds(step) || down(step)? != Some(direction) {
+                if !r#box.holds(step) || (down(step)? != Some(direction) && !over(step)?) {
                     continue;
                 }
                 step = (step.0 + dx, step.1 + dz);

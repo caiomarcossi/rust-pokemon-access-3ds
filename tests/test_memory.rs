@@ -1,5 +1,6 @@
 //! RpcMemory tests, through the fake emulator.
 
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -7,7 +8,8 @@ use indexmap::IndexMap;
 
 use super::fake_emulator::FakeEmulator;
 use crate::core::memory::{Cache, ExactCache, Memory, PageCache, RpcMemory, phase};
-use crate::core::rpc::{MAX_READ, Rpc, UdpRpc};
+use crate::core::rpc::{MAX_READ, Process, Rpc, UdpRpc};
+use crate::py::{Error, Kind, Result};
 
 const M: usize = MAX_READ as usize;
 
@@ -247,4 +249,64 @@ fn test_a_null_pointer_reads_as_zeros_and_is_never_fetched_ahead() {
     }
     assert_eq!(RpcMemory::new(rpc).read(0, 4).unwrap(), [0; 4]);
     assert_eq!(emu.reads(), 0);
+}
+
+/// An emulator answering every batch of reads but those sent while `stalled`.
+struct Stalling {
+    stalled: Cell<bool>,
+    answered: Cell<i64>,
+}
+
+impl Rpc for Stalling {
+    fn read_many(&self, addresses: &[i64], size: i64) -> Result<IndexMap<i64, Vec<u8>>> {
+        if self.stalled.get() {
+            return Err(Error::new(Kind::RpcError, "stalled"));
+        }
+        self.answered.set(self.answered.get() + 1);
+        Ok(addresses
+            .iter()
+            .map(|&address| (address, vec![0; size as usize]))
+            .collect())
+    }
+
+    fn read(&self, _address: i64, _size: i64) -> Result<Vec<u8>> {
+        unreachable!("the Python's Stalling has no `read`")
+    }
+
+    fn read_each(&self, _reads: &[(i64, i64)]) -> Result<IndexMap<i64, Vec<u8>>> {
+        unreachable!("the Python's Stalling has no `read_each`")
+    }
+
+    fn reply_seconds(&self) -> f64 {
+        unreachable!("the Python's Stalling has no `reply_seconds`")
+    }
+
+    fn unsure(&self) -> bool {
+        unreachable!("the Python's Stalling has no `unsure`")
+    }
+
+    fn confirm(&self) -> Result<bool> {
+        unreachable!("the Python's Stalling has no `confirm`")
+    }
+
+    fn attach(&self) -> Result<Process> {
+        unreachable!("the Python's Stalling has no `attach`")
+    }
+}
+
+#[test]
+fn test_a_phase_the_emulator_stalls_as_it_starts_leaves_nothing_cached() {
+    let rpc = Rc::new(Stalling {
+        stalled: Cell::new(false),
+        answered: Cell::new(0),
+    });
+    let cache = PageCache::new(rpc.clone());
+    phase(&cache, "screen", || cache.read(0x08001000, 4)).unwrap();
+    rpc.stalled.set(true);
+    let error = phase(&cache, "screen", || Ok(())).unwrap_err();
+    assert!(error.is(Kind::RpcError));
+    rpc.stalled.set(false);
+    cache.read(0x08001000, 4).unwrap();
+    cache.read(0x08001000, 4).unwrap();
+    assert_eq!(rpc.answered.get(), 3);
 }

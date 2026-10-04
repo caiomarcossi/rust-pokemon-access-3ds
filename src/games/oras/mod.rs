@@ -283,10 +283,13 @@ pub const WAY_OUT: i64 = 0x2A71;
 pub const BASE_PC: i64 = 0x2A72;
 pub const BASE_FLAG: i64 = 0x2A73;
 pub const LAVARIDGE_GYM: i64 = 0x1AD;
+pub const MOSSDEEP_GYM: i64 = 0x1BB;
 pub const SWITCH: (&str, &str) = ("signs", "switch");
 pub const PASSAGE: (&str, &str) = ("exits", "passage");
 pub const TRAPDOOR: (&str, &str) = ("exits", "trapdoor");
 pub const GEYSER: (&str, &str) = ("exits", "geyser");
+pub const LIFT: (&str, &str) = ("exits", "lift");
+pub const TELEPORTER: (&str, &str) = ("exits", "teleporter");
 
 /// Mauville Gym's triggers, by their scripts (spike 146): its five floor switches, each one cell,
 /// the two by the entrance at (58, 38) and (66, 38), the three by Wattson at (5, 40), (13, 36) and
@@ -302,6 +305,15 @@ pub const GEYSER: (&str, &str) = ("exits", "geyser");
 /// over the geyser in its place in the other grid. The player stepped on the trapdoor at (21, 53),
 /// came down at (96, 50), and rode the geyser at (102, 50) up to (30, 53)
 /// (omega_ruby_fire-gym.ctm); that the rest pair the same way is read off the grids, not seen.
+///
+/// Mossdeep Gym's 11, each one cell (spike 163): seven platforms joined only by tracks of light, and
+/// a **lift** at the edge of each platform where a track starts, which carries the player along it
+/// to another platform. Each lift's script, 5 to 0xe, has the Gym's module ride the track of its
+/// number, 0 to 9, so all ten are lifts though only the first was ridden: from the entrance's at
+/// (19, 32) the player was carried 22 cells north and up to Liza and Tate. The **teleporter** beside
+/// them at (21, 6), script 0xf, put the player back at the entrance at (19, 35)
+/// (omega_ruby_psychic-gym.ctm). The lifts on the four middle platforms are armed by their
+/// platform's switch, and the teleporter once all four are pressed; the game names none of them.
 pub fn triggers() -> &'static IndexMap<(i64, i64), (String, String)> {
     static TRIGGERS: OnceLock<IndexMap<(i64, i64), (String, String)>> = OnceLock::new();
     TRIGGERS.get_or_init(|| {
@@ -318,6 +330,10 @@ pub fn triggers() -> &'static IndexMap<(i64, i64), (String, String)> {
         for script in 0x10..0x1C {
             out.insert((LAVARIDGE_GYM, script), owned(GEYSER));
         }
+        for script in 0x5..0xF {
+            out.insert((MOSSDEEP_GYM, script), owned(LIFT));
+        }
+        out.insert((MOSSDEEP_GYM, 0xF), owned(TELEPORTER));
         for &zone in secret_bases_zones() {
             out.insert((zone, WAY_OUT), owned(("exits", "way out")));
         }
@@ -347,7 +363,10 @@ pub const CRACKED_BOULDER: i64 = 0x200C;
 /// in 13 zones, none with a script of its own.
 pub const BIG_BOULDER: i64 = 0x2009;
 
-/// A Secret Base's PC, called what the game calls a PC, and its flag (spike 154).
+/// A Secret Base's PC, called what the game calls a PC, and its flag (spike 154). Mossdeep Gym's
+/// four switches, one on each middle platform at (11, 25), (28, 27), (32, 13) and (6, 13), pressed by
+/// facing them (spike 163): each sets a work value of its own to 1, which arms the lifts on its
+/// platform, and the entrance's lift goes to Liza and Tate once all four are set.
 pub fn furniture() -> &'static IndexMap<(i64, i64), String> {
     static FURNITURE: OnceLock<IndexMap<(i64, i64), String>> = OnceLock::new();
     FURNITURE.get_or_init(|| {
@@ -362,6 +381,9 @@ pub fn furniture() -> &'static IndexMap<(i64, i64), String> {
         }
         for &zone in secret_bases_zones() {
             out.insert((zone, BASE_FLAG), FLAG.to_string());
+        }
+        for script in 0x1..0x5 {
+            out.insert((MOSSDEEP_GYM, script), SWITCH.1.to_string());
         }
         out
     })

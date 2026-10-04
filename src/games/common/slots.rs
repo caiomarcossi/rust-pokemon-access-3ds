@@ -279,7 +279,7 @@ fn mark_of(
             if let Some(sign) = mark(texture) {
                 let alpha = *layouts
                     .pane(pane)?
-                    .get(lyt::ALPHA as usize)
+                    .get(layouts.shape.alpha as usize)
                     .ok_or_else(|| Error::index("index out of range"))?;
                 return Ok(Some(format!(
                     "{sign}, {}",
@@ -319,12 +319,15 @@ fn shown(layouts: &Layouts, pane: i64) -> Result<bool> {
 
 fn place(layouts: &Layouts, pane: i64) -> Result<(f64, f64)> {
     let head = layouts.pane(pane)?;
-    Ok((f32(&head, lyt::X)?, f32(&head, lyt::Y)?))
+    Ok((f32(&head, layouts.shape.x)?, f32(&head, layouts.shape.y)?))
 }
 
 fn size(layouts: &Layouts, pane: i64) -> Result<(f64, f64)> {
     let head = layouts.pane(pane)?;
-    Ok((f32(&head, lyt::WIDTH)?, f32(&head, lyt::HEIGHT)?))
+    Ok((
+        f32(&head, layouts.shape.width)?,
+        f32(&head, layouts.shape.height)?,
+    ))
 }
 
 fn on(a: (f64, f64), b: (f64, f64)) -> bool {
@@ -332,8 +335,7 @@ fn on(a: (f64, f64), b: (f64, f64)) -> bool {
 }
 
 fn name(layouts: &Layouts, pane: i64) -> Result<String> {
-    let head = layouts.pane(pane)?;
-    let raw = py::slice(&head, lyt::NAME, lyt::NAME + lyt::NAME_SIZE);
+    let raw = layouts.name(pane)?;
     let end = raw.iter().position(|&byte| byte == 0).unwrap_or(raw.len());
     Ok(py::decode_ascii(&raw[..end]))
 }

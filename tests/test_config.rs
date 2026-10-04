@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::core::config::{self, Navigation, Table, Ui, Value};
+use crate::core::config::{self, General, Navigation, Table, Ui, Value};
 
 /// pytest's `tmp_path`: a folder of this test's own, gone when the test is.
 struct TmpPath(PathBuf);
@@ -216,4 +216,33 @@ fn test_a_line_taken_out_of_azahar_s_table_leaves_that_setting_alone() {
     let after = read(&ini);
     assert!(after.contains("use_vsync=false"));
     assert!(after.contains("graphics_api=1\r\n"));
+}
+
+#[test]
+fn test_a_name_every_table_has_and_no_setting_is_logged() {
+    let tmp_path = TmpPath::new();
+    let home = tmp_path.join("home");
+    fs::create_dir(&home).unwrap();
+    fs::write(home.join("config.toml"), "[pa3ds]\n__doc__ = \"x\"\n").unwrap();
+    let settings = prepare(&home, &tmp_path.join("none.ini"), false);
+    assert_eq!(settings.general, General::default());
+    assert!(settings.notes.iter().any(|note| note.contains("__doc__")));
+}
+
+#[test]
+fn test_files_that_are_not_utf_8_read_as_nothing() {
+    let tmp_path = TmpPath::new();
+    let home = tmp_path.join("home");
+    fs::create_dir(&home).unwrap();
+    fs::write(home.join("config.toml"), b"[pa3ds]\nkeys = false # \xff\n").unwrap();
+    let ini = tmp_path.join("qt-config.ini");
+    fs::write(&ini, b"enable_rpc_server=\xff\n").unwrap();
+    let settings = config::prepare(Some(&home), Some(&ini), false, false).unwrap();
+    assert_eq!(settings.general, General::default());
+    assert!(
+        settings
+            .notes
+            .iter()
+            .any(|note| note.contains("could not be read"))
+    );
 }

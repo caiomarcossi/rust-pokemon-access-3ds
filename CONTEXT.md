@@ -208,8 +208,10 @@ rows drawn like it, its parent's children of its class, x and size; over rows ea
 of its own, as the Box's menu is, its item is held until it has read the same for two polls, since
 it glides through the rows between (spike 127). A named window owns its layout whole, as any menu's
 cursor does. A named picture over no words points at them from beside, unless it has been over
-words: the item is the words on its row, to its right, as in the Poké Mart's boxes of choices,
-which draw `cursor.bclim` left of Buy, Sell and No thanks, and of a purchase's Yes and No (spike 98).
+words: the item is the words of its own panel on its row, to its right, as in the Poké Mart's boxes
+of choices, which draw `cursor.bclim` left of Buy, Sell and No thanks, and of a purchase's Yes and
+No (spike 98). The arrows above and below the Mart's count of what to buy, `shop_mark_cursor.bclim`,
+stand over the list behind it and so point at nothing (omega_ruby_shop.ctm, 2026-10-04).
 A named cursor is followed in its layout while the layout lasts, its words all hidden or not: under
 the Box's box list it says only another layout's button it rests on (spike 143).
 A named picture holding words of its own says those: the Bag's `select_bar.bclim`, the plate
@@ -496,7 +498,9 @@ trigger over plain floor, known a game at a time by its script, as Dewford Gym's
 (spike 132). A turn costs as much as a step. **Water** is a wall to P, unless the player is on it
 already; **Shift and P** finds the way **with HMs**, across water too, going onto it costing five
 steps more than a step, and says each leg on the water with the game's word for the move:
-"3 south, Surf 33 south" (spike 136). A **bush**, the thing Cut clears, and a **cracked boulder**,
+"3 south, Surf 33 south" (spike 136). The **shore**, the strip of blocked water between land and
+the sea, is jumped over either way as a ledge is jumped, getting on the water and off it, and the
+jump is said with the side it lands on (spike 162). A **bush**, the thing Cut clears, and a **cracked boulder**,
 the rock Rock Smash breaks, stand in the way of P as anything standing does, and Shift and P goes
 through them at the same five steps' cost, "Cut 1 east, 2 east", the three of Rusturf Tunnel's
 rocks with a script of their own too, the only way through it to Verdanturf Town (spike 137). A
@@ -581,6 +585,17 @@ through the trapdoor over it. Twelve of each, every one a one-cell trigger the g
 nowhere, so both words are pa3ds's. Listed under **exits**, walked onto when one is the goal and
 walked round otherwise (spike 157).
 
+**Lift** — a pad at the edge of one of Mossdeep Gym's platforms, where a track of light starts:
+stepped on, it carries the player along the track to another platform. The Gym is seven
+platforms with no floor between them, joined only by the tracks, and has ten lifts, each a
+one-cell trigger whose script has the Gym's module ride the track of its number. A
+**teleporter** is the pad beside Liza and Tate that puts the player back at the entrance. Each of
+the four middle platforms has a **switch**, pressed by facing it, which arms the lifts on its own
+platform; once all four are pressed, the entrance's lift goes to the leaders and the teleporter
+is armed. The game names none of them, so the words are pa3ds's. Lifts and the teleporter are
+listed under **exits**, walked onto when one is the goal and walked round otherwise, and the
+switches under **signs** (spike 163).
+
 **Dowsing Machine** — the key item the player holds out on the field to find hidden items, drawn
 in their hands, not on the bottom screen. Its two **lights** come on only while the player faces a
 hidden item near enough, coloured by how near: blue, green, yellow, and red with the item in the
@@ -655,7 +670,8 @@ four kinds, one a way it drops: `0x74` north, `0x75` south, `0x73` west, `0x72` 
 126). A **slope**, the sand the Mach Bike rides up, is open but walked down only on foot, four
 kinds a way it goes down, as ledges are: `0x69` east (Granite Cave 1F), `0x6a` west, `0x6b`
 north and `0x6c` south (Jagged Pass), read off the ground's mesh (spike 158). **Bit 1 is set on water**, the sea `0x3d` and eight
-other kinds, where the blocked bit is clear and only a player surfing goes (spike 136). Which of
+other kinds, where the blocked bit is clear and only a player surfing goes (spike 136), but for
+the **shore** `0x40` along the sea's edge, blocked as well, which Surf jumps (spike 162). Which of
 the other bits is tall grass is unread, so pathfinding goes through it. The game loads the
 quarter of the map round the player; the field map lists every chunk's file in the ROM's map
 chunks, and pathfinding reads the rest of the matrix from there, a chunk once. A cell neither

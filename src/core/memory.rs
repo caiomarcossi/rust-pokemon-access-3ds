@@ -248,7 +248,8 @@ impl Cache for PageCache {
             state.phases.push(BTreeSet::new());
             state.used.get(name).cloned().unwrap_or_default()
         };
-        self.fetch(&used, false)
+        // The Python fetches inside the phase's `try`, so a fetch that raises still ends it.
+        self.fetch(&used, false).inspect_err(|_| self.end(name))
     }
 
     fn end(&self, name: &str) {

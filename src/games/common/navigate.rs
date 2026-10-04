@@ -841,6 +841,15 @@ impl Navigator {
         for i in ground.pushes(&path)? {
             pushed.insert((path[i as usize - 1], path[i as usize]));
         }
+
+        let lands = |cell: Cell, step: Cell| -> Result<Cell> {
+            // The jump over the shore is one move, said with the side it lands on: "Surf 30
+            // east, 2 north", not "Surf 30 east, Surf 1 north, 1 north".
+            if !ground.shore(step)? {
+                return Ok(step);
+            }
+            Ok((2 * step.0 - cell.0, 2 * step.1 - cell.1))
+        };
         let how = |cell: Cell, step: Cell| -> Result<String> {
             if pushed.contains(&(cell, step)) {
                 return Ok(PUSH.to_string());
@@ -855,7 +864,7 @@ impl Navigator {
                     .cloned()
                     .ok_or_else(|| Error::key(clear.to_string()));
             }
-            if !surfing && ground.water(step)? {
+            if !surfing && ground.water(lands(cell, step)?)? {
                 return self
                     .moves
                     .get(&SURF)
@@ -965,7 +974,7 @@ impl Navigator {
             return Ok(());
         }
         // A chunk loaded since the path was found can show a wall where nothing was known. A
-        // ledge on the way is not one: it is jumped.
+        // ledge on the way is not one, nor the shore: they are jumped.
         let (hm, height) = {
             let guidance = guidance.borrow();
             (guidance.hm, guidance.height)
@@ -973,7 +982,7 @@ impl Navigator {
         let ground = self.ground(r#where, hm, height)?;
         let mut all = true;
         for &cell in py::slice_from(&guidance.borrow().path, at + 1) {
-            if !(ground.open(cell)? || ground.ledge(cell)?.is_some()) {
+            if !(ground.open(cell)? || ground.ledge(cell)?.is_some() || ground.shore(cell)?) {
                 all = false;
                 break;
             }
@@ -1289,8 +1298,8 @@ fn ends_short(
     Ok(!goals.contains_key(end))
 }
 
-/// `pathfind.find(...)` over `ground` with `**_doors(ground)`, which each of Python's three
-/// calls spells out in full.
+/// `pathfind.find(...)` over `ground` with `over=ground.shore` and `**_doors(ground)`, which each
+/// of Python's three calls spells out in full.
 fn search(
     ground: &Ground,
     start: Cell,
@@ -1303,6 +1312,7 @@ fn search(
     let ledge = |cell: Cell| ground.ledge(cell);
     let toll = |cell: Cell, step: Cell| ground.toll(cell, step);
     let joined = |cell: Cell, step: Cell| Ok(ground.joined(cell, step));
+    let over = |cell: Cell| ground.shore(cell);
     let (turns, crossings) = doors(ground);
     let through = |turns: &[i64], cell: Cell, step: Cell| {
         ground.through(turns, cell, step, crossings.as_deref())
@@ -1324,6 +1334,7 @@ fn search(
             } else {
                 None
             },
+            over: Some(&over),
         },
     )
 }

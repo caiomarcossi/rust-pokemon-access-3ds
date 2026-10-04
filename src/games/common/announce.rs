@@ -506,6 +506,10 @@ impl ScreenAnnouncer {
         }
         if let Some(roots) = roots {
             self.menus.retain(|root| roots.contains(root));
+            self.detail_panels.retain(|_cursor, panels| {
+                panels.retain(|panel| roots.contains(&panel.0));
+                !panels.is_empty()
+            });
         }
 
         for item in items {

@@ -27,7 +27,7 @@ use indexmap::IndexMap;
 
 use crate::core::keyfile;
 use crate::core::toml;
-use crate::py::{self, Error, Kind, Result};
+use crate::py::{self, Error, Result};
 
 pub const FILE_NAME: &str = "config.toml";
 pub const EMULATOR_SECTION: &str = "azahar";
@@ -43,8 +43,6 @@ pub enum Value {
 /// What a settings table is made of, as far as reading it by name goes: Python's `dataclasses`
 /// and `getattr` and `replace`, which Rust has no way to do without being told the fields.
 pub trait Table: Default {
-    /// The class's name, which Python's errors name it by.
-    const CLASS: &'static str;
     /// `dataclasses.fields(self)` with each field's value, in the order they are declared.
     fn fields(&self) -> Vec<(&'static str, Value)>;
     /// `dataclasses.replace(self, **{setting: value})`, for a value that `_same_kind` accepted.
@@ -68,8 +66,6 @@ impl Default for General {
 }
 
 impl Table for General {
-    const CLASS: &'static str = "General";
-
     fn fields(&self) -> Vec<(&'static str, Value)> {
         vec![
             ("keys", Value::Bool(self.keys)),
@@ -96,8 +92,6 @@ pub struct Ui {
 }
 
 impl Table for Ui {
-    const CLASS: &'static str = "Ui";
-
     fn fields(&self) -> Vec<(&'static str, Value)> {
         vec![
             ("pauses", Value::Bool(self.pauses)),
@@ -135,8 +129,6 @@ impl Default for Navigation {
 }
 
 impl Table for Navigation {
-    const CLASS: &'static str = "Navigation";
-
     fn fields(&self) -> Vec<(&'static str, Value)> {
         vec![
             ("positions", Value::Bool(self.positions)),
@@ -446,53 +438,6 @@ fn datetime_repr(value: &::toml::value::Datetime) -> String {
     }
 }
 
-/// What `getattr` gives for a name every dataclass has besides its fields: only the kind of the
-/// thing matters, to `_same_kind`.
-enum Attribute {
-    Int,
-    Str,
-    Dict,
-    Other,
-}
-
-/// `dir(kind())` less the fields, which is the same for the three tables.
-const ATTRIBUTES: [(&str, Attribute); 34] = [
-    ("__annotations__", Attribute::Dict),
-    ("__class__", Attribute::Other),
-    ("__dataclass_fields__", Attribute::Dict),
-    ("__dataclass_params__", Attribute::Other),
-    ("__delattr__", Attribute::Other),
-    ("__dir__", Attribute::Other),
-    ("__doc__", Attribute::Str),
-    ("__eq__", Attribute::Other),
-    ("__firstlineno__", Attribute::Int),
-    ("__format__", Attribute::Other),
-    ("__ge__", Attribute::Other),
-    ("__getattribute__", Attribute::Other),
-    ("__getstate__", Attribute::Other),
-    ("__gt__", Attribute::Other),
-    ("__hash__", Attribute::Other),
-    ("__init__", Attribute::Other),
-    ("__init_subclass__", Attribute::Other),
-    ("__le__", Attribute::Other),
-    ("__lt__", Attribute::Other),
-    ("__match_args__", Attribute::Other),
-    ("__module__", Attribute::Str),
-    ("__ne__", Attribute::Other),
-    ("__new__", Attribute::Other),
-    ("__reduce__", Attribute::Other),
-    ("__reduce_ex__", Attribute::Other),
-    ("__replace__", Attribute::Other),
-    ("__repr__", Attribute::Other),
-    ("__setattr__", Attribute::Other),
-    ("__setstate__", Attribute::Other),
-    ("__sizeof__", Attribute::Other),
-    ("__slots__", Attribute::Other),
-    ("__static_attributes__", Attribute::Other),
-    ("__str__", Attribute::Other),
-    ("__subclasshook__", Attribute::Other),
-];
-
 /// One table's settings: what the file says where it is the right kind, and the defaults for
 /// the rest. A table under this one (`[pa3ds.ui]` under `[pa3ds]`) is its own business.
 fn table<T: Table>(
@@ -500,41 +445,16 @@ fn table<T: Table>(
     name: &str,
     path: &Path,
     notes: &mut Vec<String>,
-) -> Result<T> {
+) -> T {
     let mut defaults = T::default();
+    // The fields, not `hasattr`: `__doc__ = "x"` is an attribute of every table and no setting.
     let fields = defaults.fields();
     let mut kept: Vec<(&str, Value)> = Vec::new();
-    let mut unexpected: Option<&str> = None;
     for (setting, value) in found {
         if TABLES.contains(&format!("{name}.{setting}").as_str()) {
             continue;
         }
-        let default = fields.iter().find(|(field, _)| *field == setting.as_str());
-        let attribute = ATTRIBUTES
-            .iter()
-            .find(|(held, _)| *held == setting.as_str());
-        match default {
-            // `hasattr` is true of the names every dataclass has as well as of its fields, and
-            // `getattr` then hands back something that is not a setting.
-            None if attribute.is_some() => {
-                let same = matches!(
-                    (attribute.map(|(_, held)| held), value),
-                    (
-                        Some(Attribute::Int),
-                        ::toml::Value::Integer(_) | ::toml::Value::Float(_)
-                    ) | (Some(Attribute::Str), ::toml::Value::String(_))
-                        | (Some(Attribute::Dict), ::toml::Value::Table(_))
-                );
-                if same {
-                    unexpected.get_or_insert(setting);
-                } else {
-                    notes.push(format!(
-                        "{}: [{name}] {setting} = {} is not a setting it can take",
-                        py::path_str(path),
-                        repr_of(value)
-                    ));
-                }
-            }
+        match fields.iter().find(|(field, _)| *field == setting.as_str()) {
             None => notes.push(format!(
                 "{}: [{name}] has no setting called {}",
                 py::path_str(path),
@@ -550,20 +470,10 @@ fn table<T: Table>(
             },
         }
     }
-    if let Some(setting) = unexpected {
-        return Err(Error::new(
-            Kind::TypeError,
-            format!(
-                "{}.__init__() got an unexpected keyword argument {}",
-                T::CLASS,
-                py::repr(setting)
-            ),
-        ));
-    }
     for (setting, value) in kept {
         defaults.set(setting, value);
     }
-    Ok(defaults)
+    defaults
 }
 
 /// Read the settings file, writing it the first time, and patch Azahar's settings.
@@ -600,7 +510,7 @@ pub fn prepare(
         }
         loaded.insert(EMULATOR_SECTION.to_string(), ::toml::Value::Table(shipped));
     } else {
-        loaded = toml::read(&path)?;
+        loaded = toml::read(&path);
         if loaded.is_empty() {
             notes.push(format!(
                 "{} could not be read, using the default settings",
@@ -619,7 +529,7 @@ pub fn prepare(
     }
 
     let ours = toml::table(loaded.get("pa3ds"));
-    let mut general: General = table(&ours, "pa3ds", &path, &mut notes)?;
+    let mut general: General = table(&ours, "pa3ds", &path, &mut notes);
     // `not general.poll_rate > 0` is also true of a NaN, which no comparison orders.
     if general.poll_rate.is_nan() || general.poll_rate <= 0.0 {
         let rate = General::default().poll_rate;
@@ -630,13 +540,13 @@ pub fn prepare(
         ));
         general.poll_rate = rate;
     }
-    let ui: Ui = table(&toml::table(ours.get("ui")), "pa3ds.ui", &path, &mut notes)?;
+    let ui: Ui = table(&toml::table(ours.get("ui")), "pa3ds.ui", &path, &mut notes);
     let navigation: Navigation = table(
         &toml::table(ours.get("navigation")),
         "pa3ds.navigation",
         &path,
         &mut notes,
-    )?;
+    );
 
     let mut wanted: IndexMap<String, Value> = IndexMap::new();
     for (name, value) in toml::table(loaded.get(EMULATOR_SECTION)) {
@@ -657,7 +567,7 @@ pub fn prepare(
         Some(emulator) => emulator.to_path_buf(),
     };
     if !wanted.is_empty() {
-        let text = keyfile::read_config(&config, &mut notes)?;
+        let text = keyfile::read_config(&config, &mut notes);
         if !text.is_empty() {
             let (patched, changed) = keyfile::patch_settings(&text, &wanted);
             notes.extend(changed);

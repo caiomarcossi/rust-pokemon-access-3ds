@@ -41,6 +41,7 @@ pub const MAX_FILE: i64 = 0x400000;
 pub const ARCHIVE_MAGIC: &[u8] = b"darc";
 pub const ARCHIVE_HEADER: i64 = 0x1C;
 pub const ARCHIVE_SIZE: i64 = 0x0C;
+/// The biggest archive believed; this only rejects a read of something that is not one.
 pub const MAX_ARCHIVE: i64 = 0x400000;
 pub const TEXTURE: &str = ".bclim";
 pub const DARC_TABLE: i64 = 0x10;
@@ -49,8 +50,6 @@ pub const DARC_TABLE: i64 = 0x10;
 pub const DARC_ENTRY: i64 = 12;
 /// The bit of an entry's name offset that makes it a directory.
 pub const DIRECTORY: i64 = 0x01000000;
-// The biggest archive believed; this only rejects a read of something that is not one.
-// (In the Python this docstring stands after `DIRECTORY`, though it says what `MAX_ARCHIVE` is.)
 
 pub const PANE_SECTIONS: [&[u8]; 6] = [b"pan1", b"pic1", b"txt1", b"wnd1", b"bnd1", b"prt1"];
 pub const PANE_NAME: i64 = 0x0C;
