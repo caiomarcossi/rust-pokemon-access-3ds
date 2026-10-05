@@ -378,3 +378,29 @@ other had been read in between. The replay said exactly the same, so the movie r
 - **The first read of the first sign was heard after its box had closed.** The sign builds a new
   message window, and the next sweep for windows, up to 2 s later, is what finds it. That is the
   delay the user hears on a first line, and it is in spike 59.
+
+## Spikes 168 and 169 — the reads that crashed Azahar after Groudon's capture
+
+2026-10-04 and 2026-10-05, Khai's, on his omega_ruby_legend.ctm (`spikes/168_dead_windows.py`,
+`169_crash_reads.py`).
+
+- **Azahar crashed three times in twelve minutes after Groudon's capture, each with pa3ds reading
+  and never without it**: as the scene after the capture panned to Lilycove City, during the
+  capture, and two seconds after pa3ds started in Sootopolis City (zone 0x1c7), where the same
+  Azahar had run four minutes without it. Each was an access violation at another offset of
+  azahar.exe (0x752b50, 0x7960b0, 0xe19bd0).
+- **The dialogue reader went on reading the battle's message window after the battle** (spike
+  169, every read into the linear heap and video memory logged with the reader making it): the
+  window, in the heap, was intact, and through it the reader read the battle's line objects in the
+  linear heap, memory the cutscene had taken for its graphics. Reading memory the GPU caches is
+  the race of azahar-emu/azahar#2619 (spike 149). With the dialogue reader's reads there sent
+  nowhere, the replay went through the cutscene.
+- **A freed window keeps its class's vtable**, so the class check passed it, and reading its line
+  objects to see whether they are still TextBoxes is the read that crashes. In memory safe to read,
+  the SDK's block header 0x30 before the window (spike 110) reads 'UD' while the window lives and
+  something else once it is freed (spike 168).
+- **Built** (`dialogue.Shapes.block`, `DialogueReader.forget_hosts`): a window whose block header
+  no longer reads 'UD' is not read, nor its lines; and the TextBoxes the reader watches are
+  forgotten as an app ends, since a battle's or the Pokédex's go with it into memory the next app
+  may give the GPU. The fork rebased onto azahar-emu/azahar#2631 no longer crashes on such reads
+  (tools-and-rig.md), but players' Azahar does until a release carries the fix.

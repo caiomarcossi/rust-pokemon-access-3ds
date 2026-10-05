@@ -144,6 +144,23 @@ fn test_attach_selects_the_only_process() {
     assert_eq!(rpc.selected_process().unwrap(), Some(11));
 }
 
+/// Azahar's RPC went from version 1 to 2 (azahar-emu/azahar#2631), and each answers the
+/// other's packets with nothing: players' Azahar speaks 1, the rig's fork 2.
+#[test]
+fn test_attach_speaks_the_emulators_protocol_version() {
+    for version in [1, 2] {
+        let emu = FakeEmulator::with_version(page(0x0800_0000, b"hi"), sango(), 0, 0, version);
+        let rpc = rpc(&emu);
+        rpc.attach().unwrap();
+        assert_eq!(emu.selected(), 11, "version {version}");
+        assert_eq!(
+            rpc.read(0x0800_0000, 2).unwrap(),
+            b"hi",
+            "version {version}"
+        );
+    }
+}
+
 #[test]
 fn test_attach_refuses_to_guess_between_several_processes() {
     let two = vec![(11, 1, "sango-1".to_string()), (12, 2, "other".to_string())];

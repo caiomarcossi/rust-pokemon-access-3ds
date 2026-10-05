@@ -13,8 +13,8 @@ use crate::core::names::Names;
 use crate::core::pathfind::{self, Cell, nearest};
 use crate::core::speech::{Backend, Category, Speech, default_interrupts};
 use crate::games::common::field::{
-    BLOCKED, CHUNK, CUT, Chunk, FURNITURE_SOURCE, Field, Ground, Interactable, Of, ROCK_SMASH,
-    RotatingDoor, STRENGTH, SURF, WARP_SOURCE, place_source,
+    BLOCKED, CHUNK, CUT, Chunk, FURNITURE_SOURCE, Field, Floor, Ground, IceRoom, Interactable, Of,
+    ROCK_SMASH, RotatingDoor, STRENGTH, SURF, WARP_SOURCE, place_source,
 };
 use crate::games::common::navigate::{
     CATEGORY_NEXT, CATEGORY_PREVIOUS, DEFAULT_BINDINGS, DIRECTION, EAST, ENEMY_SIDE, FieldSource,
@@ -71,6 +71,13 @@ struct FakeField {
     /// A floor's height -> the blocked cells its deck opens, walked at that height alone. A
     /// list, since a float is no key in Rust.
     decks: RefCell<Vec<(f64, HashSet<Cell>)>>,
+    surfaces: RefCell<IndexMap<Cell, Rc<HashSet<Cell>>>>,
+    /// A stacked ground's cells, each with its lower floor's height and its upper's, None where
+    /// that floor is closed; no cell, and the ground is not stacked.
+    floors: RefCell<IndexMap<Cell, (Option<f64>, Option<f64>)>>,
+    /// The player's height on a stacked ground.
+    level: Slot<Option<f64>>,
+    ice: RefCell<Vec<IceRoom>>,
     visit: Slot<Option<(i64, i64)>>,
     edit: RefCell<Option<Edit>>,
 }
@@ -92,6 +99,10 @@ impl FakeField {
             bumpy: RefCell::new(HashSet::new()),
             shore: RefCell::new(HashSet::new()),
             decks: RefCell::new(Vec::new()),
+            surfaces: RefCell::new(IndexMap::new()),
+            floors: RefCell::new(IndexMap::new()),
+            level: Slot::new(None),
+            ice: RefCell::new(Vec::new()),
             visit: Slot::new(Some((0x08D209B8, 0x6))),
             edit: RefCell::new(None),
         }
@@ -160,6 +171,45 @@ impl FieldSource for FakeField {
                 }
             })
             .collect();
+        let floors = self.floors.borrow();
+        if !floors.is_empty() {
+            let one = |cell: &Cell, k: usize| {
+                let (lower, upper) = floors.get(cell).copied().unwrap_or((None, None));
+                if k == 0 { lower } else { upper }
+            };
+            let stack: Vec<Floor> = (0..2)
+                .map(|k| Floor {
+                    words: cells
+                        .iter()
+                        .map(|cell| if one(cell, k).is_some() { 0 } else { BLOCKED })
+                        .collect(),
+                    heights: cells.iter().map(|cell| one(cell, k)).collect(),
+                })
+                .collect();
+            let words: Vec<i64> = cells
+                .iter()
+                .map(|cell| {
+                    if floors.contains_key(cell) {
+                        0
+                    } else {
+                        BLOCKED
+                    }
+                })
+                .collect();
+            let mut ground = Ground::of(
+                r#where,
+                Of {
+                    chunks: vec![Rc::new(Chunk {
+                        floors: stack,
+                        ..Chunk::new(origin, words)
+                    })],
+                    ..Of::default()
+                },
+            );
+            ground.stacked = true;
+            ground.level = self.level.get();
+            return Ok(ground);
+        }
         let mut ground = Ground::of(
             r#where,
             Of {
@@ -168,6 +218,7 @@ impl FieldSource for FakeField {
                 ..Of::default()
             },
         );
+        ground.ice = self.ice.borrow().clone();
         ground.decks = decks
             .iter()
             .map(|(known, _)| *known)
@@ -177,6 +228,7 @@ impl FieldSource for FakeField {
             .iter()
             .map(|&cell| (cell, pathfind::NORTH))
             .collect::<IndexMap<_, _>>();
+        ground.surfaces = self.surfaces.borrow().clone();
         let edit = self.edit.borrow().clone();
         Ok(match edit {
             Some(edit) => edit(ground),
@@ -1417,6 +1469,51 @@ fn test_with_no_way_there_p_goes_as_near_as_it_can_and_says_it_can_t_continue() 
     assert!(!rig.nav.guiding());
 }
 
+/// Spike 165: under Route 126 the player's light rose into a pond, and the way into Sootopolis
+/// City is in a pocket of its own. P goes to the light in theirs whose sea above reaches a dive
+/// spot over the thing's pocket, and says that spot from there.
+#[test]
+fn test_under_the_water_p_goes_to_the_light_whose_sea_reaches_the_things_pocket() {
+    let wall: Vec<Cell> = (80..101)
+        .flat_map(|x| (160..200).map(move |z| (x, z)))
+        .filter(|&(x, z)| x == 80 || x == 100 || z == 160 || z == 199)
+        .collect();
+    let (pond, sea, theirs) = ((85, 168), (90, 170), (110, 175));
+    let under = Field {
+        interactables: vec![Interactable {
+            size: (5, 1),
+            zone: Some(0x4C),
+            source: 0,
+            ..Interactable::new("exits", "entrance", (115, 180))
+        }],
+        ..Field::new(0x42, (85, 170))
+    };
+    let open: Vec<Cell> = (80..120)
+        .flat_map(|x| (160..200).map(move |z| (x, z)))
+        .filter(|cell| !wall.contains(cell))
+        .collect();
+    let mut rig = navigator(Want {
+        blocked: wall,
+        sea: open,
+        ..on(under)
+    });
+    *rig.field.surfaces.borrow_mut() = IndexMap::from([
+        (pond, Rc::new(HashSet::from([pond]))),
+        (sea, Rc::new(HashSet::from([sea, theirs]))),
+        (theirs, Rc::new(HashSet::from([sea, theirs]))),
+    ]);
+    rig.press(PATHFIND);
+    assert_eq!(
+        said(&rig.backend),
+        ["5 east, then can't continue, surface and go to the dive spot 20 east 5 south"]
+    );
+    step(&mut rig, &cells(86..91, 170));
+    assert_eq!(
+        last(&rig.backend),
+        "can't continue, surface and go to the dive spot 20 east 5 south, entrance, 25 east 10 south"
+    );
+}
+
 /// Spike 159: from the foot of Route 119 the way north crosses a bridge high over the path,
 /// and its decks walked at the player's height cut it. The way found at the bridge's height is
 /// followed on that ground: at the player's own the bridge is a wall, and every step would
@@ -1447,6 +1544,121 @@ fn test_where_no_way_is_found_at_the_players_height_the_decks_are_walked_at_anot
     );
     let way = guidance(&rig);
     assert!(way.is_some() && way.unwrap().borrow().height == Some(99.0));
+}
+
+/// Spike 167: Sootopolis Gym's lower floor lies under the corridor to its way out, and a stair
+/// climbs from it to the entrance's room. From the lower floor P led the player to the cell
+/// under the way out, and on the corridor the Lass pacing below stood in the player's way.
+#[test]
+fn test_floor_over_floor_each_is_walked_as_itself_and_joined_by_the_stairs() {
+    let way_out = Interactable {
+        zone: Some(0x14),
+        source: place_source(WARP_SOURCE, 0).unwrap(),
+        height: Some(198.0),
+        ..Interactable::new("exits", "way out", (100, 183))
+    };
+    let lass = Interactable {
+        source: 0x08D269E8,
+        move_model: true,
+        height: Some(-18.0),
+        ..Interactable::new("people", "person", (100, 172))
+    };
+    let mut rig = navigator(Want {
+        exits: true,
+        ..on(Field {
+            interactables: vec![way_out, lass],
+            ..Field::new(0x1BC, (100, 175))
+        })
+    });
+    {
+        let mut floors = rig.field.floors.borrow_mut();
+        for x in 96..101 {
+            floors.insert((x, 170), (None, Some(198.0)));
+            floors.insert((x, 182), (Some(if x == 96 { -9.0 } else { -18.0 }), None));
+        }
+        for z in 171..182 {
+            floors.insert((96, z), (Some(189.0 - 18.0 * (z - 171) as f64), None));
+        }
+        for z in 171..183 {
+            floors.insert((100, z), (Some(-18.0), Some(198.0)));
+        }
+        floors.insert((100, 183), (None, Some(198.0)));
+    }
+    rig.field.level.set(Some(-18.0));
+    rig.press(PATHFIND);
+    assert_eq!(
+        said(&rig.backend),
+        ["7 south, 4 west, 12 north, 4 east, 13 south"]
+    );
+    walk_to(&rig, (100, 171));
+    rig.field.level.set(Some(198.0));
+    rig.press(PATHFIND);
+    assert_eq!(last(&rig.backend), "12 south");
+}
+
+/// Spike 167: each of Sootopolis Gym's corridors up to Wallace is shut until the room of thin ice
+/// below it is cleared, by stepping on every tile once and last on an exit, and P to him stopped
+/// at the shut corridor. The way goes over the ice instead, round the floor in its middle that is
+/// no ice, and says the room is cleared where it ends.
+#[test]
+fn test_a_way_shut_beyond_thin_ice_goes_over_every_tile_and_clears_it() {
+    let sign = Interactable {
+        source: place_source(FURNITURE_SOURCE, 0).unwrap(),
+        ..Interactable::new("signs", "sign", (96, 165))
+    };
+    let mut ways: HashSet<Cell> = (95..98)
+        .flat_map(|x| (170..173).map(move |z| (x, z)))
+        .collect();
+    ways.extend([
+        (95, 173),
+        (95, 174),
+        (95, 175),
+        (96, 169),
+        (96, 168),
+        (96, 166),
+    ]);
+    let walls: Vec<Cell> = (80..120)
+        .flat_map(|x| (160..200).map(move |z| (x, z)))
+        .filter(|cell| !ways.contains(cell))
+        .collect();
+    let mut rig = navigator(Want {
+        blocked: walls,
+        ..on(Field {
+            interactables: vec![sign],
+            ..Field::new(0x1BC, (95, 175))
+        })
+    });
+    *rig.field.ice.borrow_mut() = vec![IceRoom::new(
+        (95, 170),
+        (3, 3),
+        254.0,
+        vec![0, 0, 0, 0, 2, 0, 0, 0, 0],
+        vec![(95, 170), (96, 170), (97, 170)],
+    )];
+    rig.press(CATEGORY_NEXT);
+    rig.backend.spoken.borrow_mut().clear();
+    rig.press(PATHFIND);
+    assert_eq!(
+        said(&rig.backend),
+        ["3 north, 2 east, 1 north, 2 west, 1 north, 2 east, and the ice is cleared"]
+    );
+    step(
+        &mut rig,
+        &[
+            (95, 174),
+            (95, 173),
+            (95, 172),
+            (96, 172),
+            (97, 172),
+            (97, 171),
+            (96, 171),
+            (95, 171),
+            (95, 170),
+            (96, 170),
+            (97, 170),
+        ],
+    );
+    assert_eq!(last(&rig.backend), "ice cleared, sign, 1 west 5 north");
 }
 
 /// Spike 160: Fortree City's invisible Kecleon stands in the one way to the Gym, and the way as

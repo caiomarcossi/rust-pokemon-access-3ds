@@ -9,6 +9,10 @@
 //! data    up to MAX_READ bytes
 //! ```
 //!
+//! Azahar has spoken two versions of it, and answers a packet of the other with an empty reply:
+//! 1 until azahar-emu/azahar#2631 (merged 2026-10-04), 2 since, which also runs every request on the
+//! emulation thread and answers none while emulation is paused. `processes` finds which by asking.
+//!
 //! Per-read size is capped at MAX_READ and round-trip latency is flat in size, so a read should
 //! always ask for the full page: packet count is the cost, not bytes. `read_many` pipelines a
 //! whole batch and matches replies by the header id, which is roughly three times faster per read
@@ -26,7 +30,8 @@ pub const HEADER_SIZE: usize = 16;
 pub const ARGS_SIZE: usize = 8;
 pub const PROCESS_INFO_SIZE: usize = 20;
 
-pub const PROTOCOL_VERSION: u32 = 1;
+/// The versions the client speaks, the one tried first first.
+pub const PROTOCOL_VERSIONS: [u32; 2] = [2, 1];
 /// Largest payload the server will return in one packet.
 pub const MAX_READ: i64 = 1024;
 pub const DEFAULT_HOST: &str = "127.0.0.1";
@@ -131,6 +136,7 @@ pub struct UdpRpc {
     addr: SocketAddr,
     window: usize,
     reply_seconds: Cell<f64>,
+    version: Cell<u32>,
     next_id: Cell<u32>,
     pid: Cell<Option<i64>>,
     stalled: Cell<bool>,
@@ -165,6 +171,7 @@ impl UdpRpc {
             addr,
             window,
             reply_seconds: Cell::new(0.0),
+            version: Cell::new(PROTOCOL_VERSIONS[0]),
             next_id: Cell::new(1),
             pid: Cell::new(None),
             stalled: Cell::new(false),
@@ -186,7 +193,7 @@ impl UdpRpc {
         self.next_id.set(request_id.wrapping_add(1));
         let mut packet = Vec::with_capacity(HEADER_SIZE + payload.len());
         for word in [
-            PROTOCOL_VERSION,
+            self.version.get(),
             request_id,
             packet_type as u32,
             payload.len() as u32,
@@ -248,7 +255,17 @@ impl UdpRpc {
     // -- processes --------------------------------------------------------------
 
     pub fn processes(&self) -> Result<Vec<Process>> {
-        let data = self.call(PacketType::ProcessList, &args(0, MAX_PROCESSES)?)?;
+        let mut data = self.call(PacketType::ProcessList, &args(0, MAX_PROCESSES)?)?;
+        if data.is_empty() {
+            // A list holds its count even when empty: nothing at all is a server of the other
+            // version refusing the packet. Every exchange after this speaks its version.
+            let other = PROTOCOL_VERSIONS
+                .into_iter()
+                .find(|&v| v != self.version.get())
+                .expect("two versions");
+            self.version.set(other);
+            data = self.call(PacketType::ProcessList, &args(0, MAX_PROCESSES)?)?;
+        }
         if data.len() < 4 {
             return Err(Error::new(Kind::RpcError, "process list reply too short"));
         }

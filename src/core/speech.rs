@@ -159,7 +159,9 @@ pub fn screen_reader() -> Result<(Rc<dyn Backend>, String)> {
     let context: &'static prismer::Prism = Box::leak(Box::new(
         prismer::Prism::new().map_err(|error| failed("could not start", error))?,
     ));
-    let backend = context.acquire_best().map_err(|error| failed("found no backend", error))?;
+    let backend = context
+        .acquire_best()
+        .map_err(|error| failed("found no backend", error))?;
     let name = backend.name();
     Ok((Rc::new(Prism(backend)), name))
 }

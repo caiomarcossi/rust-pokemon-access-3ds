@@ -1,10 +1,13 @@
 //! Dialogue reader tests, against a fake message window laid out as spikes 8 to 14 read it.
 
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 
 use super::fake_layouts::FakeLayouts;
 use super::fake_memory::{CODE, FakeClasses, FakeMemory};
+use crate::core::heaps::IN_USE;
+use crate::core::memory::Memory;
 use crate::core::rtti::ClassNames;
 use crate::games::common::dialogue::{AWAY_POLLS, DialogueReader, PageShown, Shown, TextWritten};
 use crate::games::common::{lyt, msgwin};
@@ -21,6 +24,8 @@ const BUFFER: i64 = 0x08003000;
 const MESSAGE: i64 = 0x08004000;
 const BOXES: [i64; 2] = [0x08010000, 0x08011000];
 const TYPED: [i64; 2] = [0x08020000, 0x08021000];
+/// The SDK's block header, in front of every window.
+const BLOCK: i64 = 0x30;
 /// A tag processor that belongs to no window, as the options screen's own does.
 const SCREEN_TAG: i64 = 0x00630D80;
 
@@ -83,6 +88,9 @@ impl Scene {
         let window_class = classes.add("N5print6MsgWinE");
         memory.u32(OTHER_WINDOW, &[window_class]);
         memory.u32(WINDOW, &[window_class]);
+        for window in [WINDOW, OTHER_WINDOW] {
+            memory.u16(window - BLOCK, IN_USE);
+        }
         memory.u32(WINDOW + msgwin::LINES, &[RECORDS]);
         memory.u32(WINDOW + msgwin::MESSAGE, &[BUFFER]);
         // The count is one byte, and a live window sets the byte after it.
@@ -619,6 +627,7 @@ fn test_a_window_no_longer_tracked_is_not_read() {
 fn other_window(scene: &Scene, address: i64, text: &str) {
     let (buffer, message) = (address + 0x200, address + 0x400);
     scene.memory.u32(address, &[scene.window_class]);
+    scene.memory.u16(address - BLOCK, IN_USE);
     scene.memory.u32(address + msgwin::LINES, &[RECORDS]);
     scene.memory.u32(address + msgwin::MESSAGE, &[buffer]);
     scene.memory.write(address + msgwin::LINE_COUNT, &[2, 1]);
@@ -824,4 +833,64 @@ fn test_a_window_whose_memory_now_holds_something_else_is_not_read() {
     scene.memory.u32(WINDOW, &[scene.textbox]);
     scene.r#type(0, "Hello.");
     assert_eq!(scene.said(), texts(&[]));
+}
+
+/// `scene.memory.read` patched to note each address read.
+struct Recording {
+    memory: Rc<FakeMemory>,
+    read: RefCell<Vec<i64>>,
+}
+
+impl Memory for Recording {
+    fn read(&self, address: i64, size: i64) -> crate::py::Result<Vec<u8>> {
+        self.read.borrow_mut().push(address);
+        self.memory.read(address, size)
+    }
+}
+
+/// A freed window keeps a window's vtable, and its lines may be memory the GPU has taken:
+/// reading them crashed Azahar after Groudon's capture (spikes 168 and 169). The field's box keeps
+/// its lines for the next window, so they stay watched until the app ends.
+#[test]
+fn test_a_freed_window_is_not_read_and_its_lines_only_until_its_app_ends() {
+    let mut scene = Scene::new(false);
+    // Rust cannot patch a method in place: the reader reads through a recording memory from the
+    // start instead, and the test looks only at what it read after the patch would have been made.
+    let memory = Rc::new(Recording {
+        memory: scene.memory.clone(),
+        read: RefCell::new(Vec::new()),
+    });
+    scene.reader = DialogueReader::new(
+        memory.clone(),
+        Rc::new(ClassNames::new(memory.clone(), CODE)),
+        None,
+    );
+    scene.reader.track(&[WINDOW], false);
+    scene.message("Hello.");
+    scene.r#type(0, "Hello.");
+    assert_eq!(scene.said(), texts(&["Hello."]));
+    scene.memory.u16(WINDOW - BLOCK, 0x4652); // 'FR'
+    scene.message("Goodbye.");
+    scene.r#type(0, "Goodbye.");
+    memory.read.borrow_mut().clear();
+    assert_eq!(scene.said(), texts(&[]));
+    let read = memory.read.borrow().clone();
+    assert!(
+        !read
+            .iter()
+            .any(|&a| (RECORDS..RECORDS + 0x1000).contains(&a))
+    );
+    assert!(
+        read.iter()
+            .any(|&a| BOXES.iter().any(|&b| (b..b + 0x1000).contains(&a)))
+    );
+    scene.reader.forget_hosts();
+    memory.read.borrow_mut().clear();
+    assert_eq!(scene.said(), texts(&[]));
+    let read = memory.read.borrow().clone();
+    assert!(
+        !read
+            .iter()
+            .any(|&a| BOXES.iter().any(|&b| (b..b + 0x1000).contains(&a)))
+    );
 }

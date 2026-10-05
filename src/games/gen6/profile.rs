@@ -44,10 +44,11 @@ use crate::games::gen6::field::{
 use crate::games::gen6::game::Game;
 use crate::games::gen6::habitat::HabitatReader;
 use crate::games::gen6::lists::{CONTROLLER_CLASS, ListReader};
+use crate::games::gen6::sky::{Place, SkySource};
 use crate::games::gen6::speaker::SpeakerReader;
 use crate::games::gen6::textures::Index;
-use crate::games::gen6::{camera, gflheap, mapblock, talk};
-use crate::py::{Error, Log, PySet, Result};
+use crate::games::gen6::{camera, gflheap, mapblock, sky, talk};
+use crate::py::{self, Error, Log, PySet, Result};
 
 /// What the heap is swept for: message windows, list controllers, the device manager a choice box
 /// holds, layout works through their DrawInfo, the battlers' names and HP gauges, the map's move
@@ -111,7 +112,9 @@ pub struct Gen6Profile {
     place: Cell<Option<i64>>,
     pub layouts: Rc<Layouts>,
     /// Which screen the game is running, and the moment another starts (spike 99).
-    pub apps: RefCell<RunningApp>,
+    ///
+    /// Shared with the sky source's `soaring`, which the Python hands as a bound method.
+    pub apps: Rc<RefCell<RunningApp>>,
     pub dialogue: RefCell<DialogueReader>,
     pub lists: RefCell<ListReader>,
     pub choices: RefCell<ChoiceReader>,
@@ -177,6 +180,12 @@ pub struct Gen6Profile {
     managers: RefCell<PySet>,
     /// The cell the Secret Base's decorating cursor was last said on, and what was there.
     decorating: RefCell<Option<((i64, i64), String)>>,
+    /// The sky's places, where the game has any (`GameText.sky`).
+    sky: Rc<Vec<Place>>,
+    /// The heading the player soared with at the last poll, and the compass point last said
+    /// for it: said again once a turn stops on another.
+    heading: Cell<Option<f64>>,
+    facing: RefCell<Option<String>>,
 }
 
 /// `FieldReader` is what a `Navigator` reads the map through in the gen 6 games.
@@ -220,7 +229,7 @@ impl Gen6Profile {
         let memory: Rc<dyn Memory> = cache.clone();
         let named = named.unwrap_or_else(|| Rc::new(Names::empty()));
         let layouts = Rc::new(Layouts::new(memory.clone(), names.clone(), lyt::ORAS));
-        let apps = RunningApp::new(memory.clone(), names.clone());
+        let apps = Rc::new(RefCell::new(RunningApp::new(memory.clone(), names.clone())));
         let dialogue = DialogueReader::new(memory.clone(), names.clone(), Some(layouts.clone()));
         let lists = ListReader::new(memory.clone(), names.clone());
         let choices = ChoiceReader::new(memory.clone(), names.clone());
@@ -268,6 +277,8 @@ impl Gen6Profile {
         let ash = game.ash.map(|make| make(memory.clone()));
         // Fortree Gym's doors are built by the Gym's own module as it starts (spike 161).
         let doors = game.doors.map(|make| make(memory.clone()));
+        // Sootopolis Gym's thin ice is kept by the Gym's own module, a byte a tile (spike 167).
+        let ice = game.ice.map(|make| make(memory.clone()));
         let words = match text.as_ref().and_then(|text| text.pc.clone()) {
             Some(pc) if !pc.is_empty() => IndexMap::from([(PC_TILE, pc)]),
             _ => IndexMap::new(),
@@ -301,9 +312,13 @@ impl Gen6Profile {
                     Rc::new(move |file: i64| chunks.heights(file))
                         as crate::games::gen6::field::FarHeights
                 }),
-                far_floors: chunks_of.map(|chunks| {
+                far_floors: chunks_of.clone().map(|chunks| {
                     Rc::new(move |file: i64| chunks.floors(file))
                         as crate::games::gen6::field::FarFloors
+                }),
+                matrices: chunks_of.map(|chunks| {
+                    Rc::new(move |number: i64| chunks.matrix(number))
+                        as crate::games::gen6::field::FarMatrices
                 }),
                 clears: game.clears.clone(),
                 berries: text
@@ -320,6 +335,9 @@ impl Gen6Profile {
                     .unwrap_or_default(),
                 ash: ash.clone(),
                 doors: doors.clone(),
+                blocker: game.blocker,
+                stairs: game.stairs.clone(),
+                ice: ice.clone(),
                 ..FieldOptions::default()
             },
         );
@@ -337,6 +355,9 @@ impl Gen6Profile {
         if let Some(doors) = &doors {
             classes.extend(doors.classes().into_iter().map(String::from));
         }
+        if let Some(ice) = &ice {
+            classes.extend(ice.classes().into_iter().map(String::from));
+        }
         // The navigator says what it finds by the name it has been given, and renames it on a
         // key: the player standing in front of a sign is the only one who can name it.
         let ui = ui.unwrap_or_default();
@@ -347,8 +368,24 @@ impl Gen6Profile {
             false,
         )));
         let field = Rc::new(RefCell::new(field));
+        // Soaring on Latios, the keys walk the sky's places instead, which the field's stale
+        // lists know nothing of (spike 166).
+        let known: Rc<Vec<Place>> = Rc::new(
+            text.as_ref()
+                .map(|text| text.sky.clone())
+                .unwrap_or_default(),
+        );
+        let soaring: Rc<dyn Fn() -> Option<i64>> = {
+            let (apps, known) = (apps.clone(), known.clone());
+            Rc::new(move || soaring_of(&apps, &known))
+        };
         let navigator = Navigator::new(
-            field.borrow().clone() as Rc<dyn FieldSource>,
+            Rc::new(SkySource::new(
+                memory.clone(),
+                field.borrow().clone() as Rc<dyn FieldSource>,
+                soaring,
+                known.to_vec(),
+            )),
             speech.clone(),
             log.clone(),
             NavigatorOptions {
@@ -402,7 +439,7 @@ impl Gen6Profile {
             text,
             place: Cell::new(None),
             layouts,
-            apps: RefCell::new(apps),
+            apps,
             dialogue: RefCell::new(dialogue),
             lists: RefCell::new(lists),
             choices: RefCell::new(choices),
@@ -434,6 +471,9 @@ impl Gen6Profile {
             speaker_wanted: Cell::new(false),
             managers: RefCell::new(PySet::new()),
             decorating: RefCell::new(None),
+            sky: known,
+            heading: Cell::new(None),
+            facing: RefCell::new(None),
         }
     }
 
@@ -545,11 +585,15 @@ impl Gen6Profile {
             return Ok(false);
         };
         (self.log)(&format!("app: {}", demangle(&started)));
+        self.dialogue.borrow_mut().forget_hosts();
         // A battle's sides are said again on a key only while it lasts.
         self.announcements.borrow_mut().forget_sides();
         if started == BATTLE {
             self.battle.borrow_mut().begin();
         }
+        // Each flight says the way the player faces as it settles, the first included.
+        self.heading.set(None);
+        *self.facing.borrow_mut() = None;
         Ok(true)
     }
 
@@ -755,6 +799,9 @@ impl Gen6Profile {
     /// The listing reads every model in the pool, so it is made only on a change of zone and
     /// after each sweep, not every poll.
     pub fn poll_field(&self) -> Result<()> {
+        if self.soaring().is_some() {
+            return self.poll_sky();
+        }
         let field = self.field();
         // `None` is the Python's `return` from inside the `with`.
         let polled = phase(&*self.memory, "field", || -> Result<Option<Field>> {
@@ -861,6 +908,43 @@ impl Gen6Profile {
         };
         for line in describe(&at, Some(&called), Some(&leads)) {
             (self.log)(&format!("field {}", line?));
+        }
+        Ok(())
+    }
+
+    /// The sky's process while the player soars on Latios and its places are known, else None.
+    fn soaring(&self) -> Option<i64> {
+        soaring_of(&self.apps, &self.sky)
+    }
+
+    /// Say the compass point the player faces once a turn stops on another, as the bottom
+    /// screen's arrow shows it: one small read a field poll while soaring.
+    fn poll_sky(&self) -> Result<()> {
+        let Some(process) = self.soaring() else {
+            return Ok(());
+        };
+        let flight = phase(&*self.memory, "sky", || sky::read(&*self.memory, process))?;
+        let Some(flight) = flight else {
+            return Ok(());
+        };
+        let was = self.heading.replace(Some(flight.heading));
+        let Some(was) = was else {
+            return Ok(());
+        };
+        if (flight.heading - was).abs() > sky::STILL {
+            return Ok(());
+        }
+        let word = sky::facing(flight.heading)?;
+        if self.facing.borrow().as_deref() != Some(word) {
+            *self.facing.borrow_mut() = Some(word.to_string());
+            (self.log)(&format!(
+                "sky: facing {word} at ({}, {}) height {}",
+                py::fixed(flight.x, 0),
+                py::fixed(flight.z, 0),
+                py::fixed(flight.height, 0)
+            ));
+            self.speech
+                .say(&format!("facing {word}"), Category::Guidance);
         }
         Ok(())
     }
@@ -976,6 +1060,13 @@ impl Gen6Profile {
         }
         Ok(())
     }
+}
+
+/// `Gen6Profile._soaring`, which the sky source is handed as a callable of its own.
+fn soaring_of(apps: &RefCell<RunningApp>, known: &[Place]) -> Option<i64> {
+    let apps = apps.borrow();
+    let running = apps.running.as_deref() == Some(sky::APP) && !known.is_empty();
+    if running { apps.process } else { None }
 }
 
 /// `speaker.name_for`, as the `Speaker` that `Announcements` asks who is showing a window.

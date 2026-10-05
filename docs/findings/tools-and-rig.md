@@ -36,7 +36,8 @@ the order they were done, because a later one often corrects an earlier one — 
 2026-09-10, measured against ORAS running from a save in Littleroot:
 
 - Wire format, from `src/core/rpc/packet.h`: a 16-byte little-endian header of
-  `version, id, packet_type, data_size` followed by up to 1024 bytes. `CURRENT_VERSION` is 1.
+  `version, id, packet_type, data_size` followed by up to 1024 bytes. `CURRENT_VERSION` is 1
+  (2 since azahar-emu/azahar#2631, below).
   `ReadMemory` (1) takes `<u32 addr, u32 size>`; `ProcessList` (3) takes `<u32 start, u32 max>` and
   returns `<u32 count>` plus 20-byte `ProcessInfo` records of `<u32 pid, u64 title_id, char[8]>`;
   `SetGetProcess` (4) takes `<u32 op, u32 pid>` and returns the selected pid when `op == 0`.
@@ -111,6 +112,22 @@ the order they were done, because a later one often corrects an earlier one — 
   deleted since), survived 10 in 10, about 375 passes each in 60 s. On Orion's own Azahar
   2126.1.1 the proof of concept crashed it in 3 s, before its first pass. The issue's text and
   attachment are in `user/azahar-issue/`.
+  **Fixed upstream by azahar-emu/azahar#2631** (merged 2026-10-04): built with
+  `ENABLE_SCRIPTING_SYNC`, on by default, the server hands every request that touches the emulated
+  system to the emulation thread, which serves them between CPU slices and while the frame limiter
+  waits, so no read runs beside the GPU's commands. The fork, rebased onto it (2026-10-05), survived
+  10 trials of 10: the proof of concept, made to speak version 2, read all of VRAM beside movie4
+  from frame zero for 60 s (the old fork crashed in the logos every movie opens with), 184 to 197
+  passes a trial, about half fix A's, since every read now waits its turn on the emulation thread: a
+  read costs about 94 us in turn and 29 us pipelined with movie4 running, where spike 2 measured 73
+  and 24. Players' Azahar keeps the race until a release carries the fix, so the 4 KB image cap
+  stays. The same change made the protocol **version 2**, and a server of either version answers a
+  packet of the other with an empty reply; `Rpc.processes` asks with 2 and then with 1. Version 2
+  also raises the read cap to 32 KiB, which pa3ds does not use, since version 1 refuses it, and
+  **answers nothing while emulation is paused**: the emulation thread waits for the resume without
+  serving requests, and pa3ds logs that the emulator stopped answering until it does. The GDB stub,
+  which upstream reworked in the same change, still serves pa3ds's watchpoints: the party menu's
+  draw order, read through read watchpoints on movie22, came out read for read as on 2026-10-03.
 - **Physical FCRAM is not visible through the RPC.** `0x20000000` and `0x28000000` read as zeros.
   Reads go through the selected process's virtual address space. Probing 1 KiB at every MiB
   boundary found 41 MiB non-zero across 15 ranges: code at `0x00100000-0x00900000`, heap from

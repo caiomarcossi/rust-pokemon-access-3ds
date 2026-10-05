@@ -13,11 +13,11 @@ use crate::core::memory::{Cache, Memory};
 use crate::core::names::Names;
 use crate::core::rtti::ClassNames;
 use crate::core::speech::Speech;
-use crate::games::common::field::WARP_SOURCE;
+use crate::games::common::field::{TOWNS, WARP_SOURCE};
 use crate::games::gen6::archives::GameText;
-use crate::games::gen6::gflheap;
 use crate::games::gen6::mmodel::PLAYER_INDEX;
 use crate::games::gen6::profile::{Gen6Profile, Options};
+use crate::games::gen6::{gflheap, sky};
 use crate::games::oras::hidden::PLAYER_WORK_CLASS;
 use crate::games::{oras, xy};
 use crate::py::{Log, Result};
@@ -291,4 +291,46 @@ fn test_every_gen_6_game_sweeps_for_its_heaps_and_only_oras_for_the_dexnav() {
     assert!(has(&oras, PLAYER_WORK_CLASS) && !has(&x, PLAYER_WORK_CLASS));
     let distinct: std::collections::HashSet<&String> = oras.iter().collect();
     assert_eq!(distinct.len(), oras.len());
+}
+
+/// As the bottom screen's arrow shows it, and not while the player is still turning
+/// (spike 166).
+#[test]
+fn test_soaring_the_way_the_player_faces_is_said_once_a_turn_stops() {
+    let town = Town::new();
+    let littleroot = sky::Place::new(
+        "Littleroot Town",
+        TOWNS,
+        0x6,
+        vec![(-4000.0, 8000.0, -2000.0, 10000.0)],
+    );
+    let text = GameText {
+        sky: vec![littleroot],
+        ..GameText::new(places(), trainers())
+    };
+    let (made, backend) = profile(&town, Some(text), None, no_log());
+    let (process, camera) = (0x08C65224, 0x0823C960);
+    {
+        let mut apps = made.apps.borrow_mut();
+        apps.running = Some(sky::APP.to_string());
+        apps.process = Some(process);
+    }
+    town.memory.u32(process + sky::CAMERA, &[camera]);
+    let located: Vec<u8> = [-3000.0f32, 1900.0, 9000.0]
+        .iter()
+        .flat_map(|value| value.to_le_bytes())
+        .collect();
+    town.memory.write(camera + sky::X, &located);
+
+    let heading = |radians: f64| {
+        town.memory
+            .write(camera + sky::HEADING, &(radians as f32).to_le_bytes());
+        made.poll_field().unwrap();
+    };
+    heading(std::f64::consts::PI);
+    heading(std::f64::consts::PI);
+    heading(2.0);
+    heading(std::f64::consts::PI / 2.0);
+    heading(std::f64::consts::PI / 2.0);
+    assert_eq!(backend.spoken(), ["facing north", "facing east"]);
 }

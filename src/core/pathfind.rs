@@ -45,6 +45,9 @@ pub const FORWARD: &str = "forward";
 pub const STEP: i64 = 2;
 /// What a turn costs: a step's worth.
 pub const TURN: i64 = 2;
+/// How many cells `cover` tries before giving up, about half a second: Sootopolis Gym's biggest
+/// room of thin ice, 78 tiles round three blocks of floor, is crossed in a few hundred.
+pub const COVER_LIMIT: i64 = 20_000;
 /// What arriving facing another way than the goal asks costs: half a step, less than anything
 /// else can differ by, so it only chooses between ways that are otherwise the same.
 pub const FACE: i64 = 1;
@@ -166,6 +169,7 @@ pub struct Options<'a> {
     pub turns: Turns,
     pub through: Option<&'a dyn Fn(&[i64], Cell, Cell) -> Result<Option<Turns>>>,
     pub over: Option<&'a dyn Fn(Cell) -> Result<bool>>,
+    pub arrives: Option<&'a dyn Fn(Cell, &[i64]) -> Result<bool>>,
 }
 
 /// What `functools.cache` makes of a callable: asked once for each argument. A call that raises
@@ -237,7 +241,10 @@ impl Ord for Entry<'_> {
 /// `through` is what a step does to `turns`, the state of what the player's steps turn: the
 /// turns after it, or None where it cannot be taken. Fortree Gym's doors turn as an arm is
 /// walked into, and whether the next can be depends on how each has turned, so the search is
-/// over every way they can be turned on the way as well.
+/// over every way they can be turned on the way as well. Which floor the player is on is such
+/// a state too, where one floor lies over another, and `arrives` says whether a cell stood on
+/// with `turns` is on the goals' floor: a goal is reached only there, not on the floor above
+/// it, and with `closest` the nearest cell on it comes before any nearer on another.
 ///
 /// A* over (cell, heading), since a turn has a price and the same cell entered two ways is two
 /// different places to go on from. The estimate is the distance to the goals' box, which never
@@ -258,6 +265,7 @@ pub fn find(
         turns,
         through,
         over,
+        arrives,
     } = options;
     if goals.is_empty() {
         return Ok(None);
@@ -296,6 +304,13 @@ pub fn find(
         })
     };
 
+    let arrives = |cell: Cell, turns: &[i64]| -> Result<bool> {
+        match arrives {
+            Some(arrives) => arrives(cell, turns),
+            None => Ok(true),
+        }
+    };
+
     let estimate = |cell: Cell| -> i64 {
         STEP * ((reach.west - cell.0).max(0).max(cell.0 - reach.east)
             + (reach.north - cell.1).max(0).max(cell.1 - reach.south))
@@ -321,9 +336,10 @@ pub fn find(
         state: first.clone(),
     });
     order += 1;
-    // Nearest the goals' box first, then cheapest: the box is the goals for an edge's gap or
-    // a cell beside a thing, which is what a way that falls short is walked to.
-    let mut nearest = (estimate(start), 0, first);
+    // On the goals' floor first, then nearest the goals' box, then cheapest: the box is the
+    // goals for an edge's gap or a cell beside a thing, which is what a way that falls short is
+    // walked to, and the floor under a thing is not beside it.
+    let mut nearest = (!arrives(start, turns)?, estimate(start), 0, first);
     while let Some(Entry { state, .. }) = frontier.pop() {
         if state == ARRIVED {
             return Ok(Some(back(&came, &came[&ARRIVED])));
@@ -336,11 +352,13 @@ pub fn find(
         let cost = spent[&state];
         // `min` keeps the first of equals, so a later state replaces it only by being less,
         // and between equal estimates and costs the states themselves are compared, as tuples.
-        let candidate = (estimate(cell), cost, state.clone());
+        let candidate = (!arrives(cell, turned)?, estimate(cell), cost, state.clone());
         if candidate < nearest {
             nearest = candidate;
         }
-        if let Some(&face) = goals.get(&cell) {
+        if let Some(&face) = goals.get(&cell)
+            && arrives(cell, turned)?
+        {
             let arrived = cost
                 + if face.is_some_and(|way| way != going) {
                     FACE
@@ -402,10 +420,205 @@ pub fn find(
         }
     }
     Ok(if *closest {
-        Some(back(&came, &nearest.2))
+        Some(back(&came, &nearest.3))
     } else {
         None
     })
+}
+
+/// A way from `start` that steps on every cell of `once` exactly once and ends on one of
+/// `ends`, crossing `free` cells as often as it likes, both ends included; None where there is
+/// none, or where `COVER_LIMIT` cells have been tried without finding one. Thin ice, which cracks
+/// under a step and gives way under the next, is crossed so, solid floor among it free.
+///
+/// A search in depth, the next cell taken first where it is furthest from `ends`, then where it
+/// has the fewest ways on (Warnsdorff's rule), and turned back where what is left can no longer
+/// be walked in one go: a cell of `once` with no way in, cut off from the player, or a second
+/// with only one way, which only the last can have. By Warnsdorff's rule alone the Gym's top
+/// room was not crossed in 400,000 cells tried; furthest first, every room is crossed from
+/// every way onto it in a few hundred (spike 167).
+pub fn cover(
+    start: Cell,
+    once: impl IntoIterator<Item = Cell>,
+    free: impl IntoIterator<Item = Cell>,
+    ends: impl IntoIterator<Item = Cell>,
+) -> Option<Vec<Cell>> {
+    cover_with(start, once, free, ends, COVER_LIMIT)
+}
+
+/// `cover(start, once, free, ends, limit)`.
+pub fn cover_with(
+    start: Cell,
+    once: impl IntoIterator<Item = Cell>,
+    free: impl IntoIterator<Item = Cell>,
+    ends: impl IntoIterator<Item = Cell>,
+    limit: i64,
+) -> Option<Vec<Cell>> {
+    let mut search = Cover {
+        left: once.into_iter().collect(),
+        free: free.into_iter().collect(),
+        ends: ends.into_iter().collect(),
+        tried: 0,
+        limit,
+    };
+    search.left.remove(&start);
+    let found = search.walk(start);
+    found.map(|found| {
+        let mut path = vec![start];
+        path.extend(found);
+        path
+    })
+}
+
+/// `cover`'s sets and its count of the cells tried, which Python's nested functions share. The
+/// sets are only tested and counted, never iterated into an answer, so a hash set's order is
+/// never seen.
+struct Cover {
+    left: HashSet<Cell>,
+    free: HashSet<Cell>,
+    ends: HashSet<Cell>,
+    tried: i64,
+    limit: i64,
+}
+
+impl Cover {
+    fn beside(cell: Cell) -> Vec<Cell> {
+        STEPS
+            .iter()
+            .map(|&(_, (dx, dz))| (cell.0 + dx, cell.1 + dz))
+            .collect()
+    }
+
+    fn away(&self, cell: Cell) -> i64 {
+        self.ends
+            .iter()
+            .map(|end| (cell.0 - end.0).abs() + (cell.1 - end.1).abs())
+            .min()
+            .unwrap_or(0)
+    }
+
+    /// The free cells walked to from `cell` through free cells alone, each with the cell before
+    /// it, in the order they were reached.
+    fn reach(&self, cell: Cell) -> IndexMap<Cell, Option<Cell>> {
+        let mut came: IndexMap<Cell, Option<Cell>> = IndexMap::from([(cell, None)]);
+        let mut queue = vec![cell];
+        let mut at = 0;
+        while at < queue.len() {
+            let here = queue[at];
+            at += 1;
+            for near in Cover::beside(here) {
+                if self.free.contains(&near) && !came.contains_key(&near) {
+                    came.insert(near, Some(here));
+                    queue.push(near);
+                }
+            }
+        }
+        came
+    }
+
+    /// The ways into and out of a cell still to step on: one for each such cell beside it, two
+    /// for free floor beside it, which is entered and left as often as needed, and one for the
+    /// player beside it.
+    fn links(&self, cell: Cell, near_player: &HashSet<Cell>) -> i64 {
+        let around = Cover::beside(cell);
+        around
+            .iter()
+            .filter(|near| self.left.contains(near))
+            .count() as i64
+            + 2 * around.iter().any(|near| self.free.contains(near)) as i64
+            + around.iter().any(|near| near_player.contains(near)) as i64
+    }
+
+    fn stuck(&self, near_player: &HashSet<Cell>) -> bool {
+        let ways: Vec<(Cell, i64)> = self
+            .left
+            .iter()
+            .map(|&cell| (cell, self.links(cell, near_player)))
+            .collect();
+        if ways.iter().any(|&(_, count)| count == 0) {
+            return true;
+        }
+        let ends_here: Vec<Cell> = ways
+            .iter()
+            .filter(|&&(cell, count)| {
+                count == 1
+                    && !Cover::beside(cell)
+                        .iter()
+                        .any(|near| near_player.contains(near))
+            })
+            .map(|&(cell, _)| cell)
+            .collect();
+        if ends_here.len() > 1 || (!ends_here.is_empty() && !self.ends.contains(&ends_here[0])) {
+            return true;
+        }
+        let mut seen: HashSet<Cell> = near_player.clone();
+        let mut queue: Vec<Cell> = seen.iter().copied().collect();
+        let mut at = 0;
+        while at < queue.len() {
+            let here = queue[at];
+            at += 1;
+            for near in Cover::beside(here) {
+                if (self.left.contains(&near) || self.free.contains(&near)) && !seen.contains(&near)
+                {
+                    seen.insert(near);
+                    queue.push(near);
+                }
+            }
+        }
+        !self.left.is_subset(&seen)
+    }
+
+    fn walk(&mut self, cell: Cell) -> Option<Vec<Cell>> {
+        if self.left.is_empty() {
+            return if self.ends.contains(&cell) {
+                Some(Vec::new())
+            } else {
+                None
+            };
+        }
+        self.tried += 1;
+        if self.tried > self.limit {
+            return None;
+        }
+        let came = self.reach(cell);
+        if self.stuck(&came.keys().copied().collect()) {
+            return None;
+        }
+        let mut options: IndexMap<Cell, Vec<Cell>> = IndexMap::new();
+        for &here in came.keys() {
+            for near in Cover::beside(here) {
+                if self.left.contains(&near) && !options.contains_key(&near) {
+                    let mut route = vec![near];
+                    let mut back = Some(here);
+                    while let Some(at) = back
+                        && at != cell
+                    {
+                        route.push(at);
+                        back = came[&at];
+                    }
+                    route.reverse();
+                    options.insert(near, route);
+                }
+            }
+        }
+        let none = HashSet::new();
+        let mut order: Vec<(i64, i64, Cell)> = options
+            .keys()
+            .map(|&near| (-self.away(near), self.links(near, &none), near))
+            .collect();
+        order.sort();
+        for (_, _, step) in order {
+            self.left.remove(&step);
+            let rest = self.walk(step);
+            self.left.insert(step);
+            if let Some(rest) = rest {
+                let mut way = options[&step].clone();
+                way.extend(rest);
+                return Some(way);
+            }
+        }
+        None
+    }
 }
 
 fn back(came: &HashMap<State, State>, state: &State) -> Vec<Cell> {

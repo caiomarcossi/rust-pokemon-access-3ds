@@ -12,7 +12,7 @@
 //!   matrix has no zone (gen 6's `Grid`), or a rail's corridor instead (X's Lumiose, `gen6.rail`).
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::rc::Rc;
 
@@ -38,10 +38,10 @@ pub const BLOCKED: i64 = 0x1;
 /// The bit of a cell's word that is set on water, where the blocked bit is clear and only a player
 /// surfing goes. Route 109's sea is `0x3d1a0006`, and the player could not walk onto it
 /// (omega_ruby_surf.ctm, spike 136). Across every chunk in both ROMs the bit is set on every word
-/// of nine kinds and no other: the sea `0x3d`, `0x41` in 3-by-3 patches inside it (Dive's, by the
-/// look), `0x42` between the sea and walls, the four `0x94` to `0x97` (currents, one a way, as
-/// ledges are), and `0x3f` and `0x40`, which are blocked as well (`SHORE`). X has `0x3d`, `0x3f`
-/// and `0x40`.
+/// of nine kinds and no other: the sea `0x3d`, the deep water Dive goes down through (`DIVE`),
+/// `0x42` between the sea and walls, the four `0x94` to `0x97` (currents, one a way, as ledges
+/// are), and `0x3f` and `0x40`, which are blocked as well (`SHORE`). X has `0x3d`, `0x3f` and
+/// `0x40`.
 pub const WATER: i64 = 0x2;
 
 /// The kind of the strip of shore between land and the sea, one cell wide: water and blocked.
@@ -51,6 +51,14 @@ pub const WATER: i64 = 0x2;
 /// nearly all have land on one side and the sea on the other. `0x3f`, the other blocked water,
 /// has water on both sides and no land, and is not read.
 pub const SHORE: i64 = 0x40;
+
+/// The kind of the deep water a player surfing dives through, drawn darker than the sea round it.
+/// The executable tests the cell under the player for it alone while they are on the water
+/// (`0x003d3454`). Route 128 has three patches of it in its own zone, 3-by-3 squares at (307, 175)
+/// and (339, 175) and a band of 296 cells running diagonally through a 37-by-36 box from (296,
+/// 160), and the player sat on its edge at (314, 166) (omega_ruby_route-128-dive.ctm, spike 164).
+/// Across ORAS's chunks, 45 of its patches are 3-by-3 squares and the rest are bands and blobs.
+pub const DIVE: i64 = 0x41;
 
 pub const CUT: i64 = 15;
 pub const SURF: i64 = 57;
@@ -67,6 +75,15 @@ pub const BOARD: i64 = 10;
 
 /// Where a cell's kind sits in its word: the top byte.
 pub const KIND_SHIFT: i64 = 24;
+
+/// The floor a cell of a chunk with one floor is on, and one with floors where which is not
+/// asked: whichever is open (`Ground.floor`).
+pub const ANY_FLOOR: i64 = -1;
+
+/// How far apart two floors may be where they meet and still be walked between, a cell's worth
+/// of world units. Where a deck's cell touches the ground's in ORAS's chunks the two are 0 to 14
+/// apart where they join, and 54 or more where the deck stands over lower ground (spike 156).
+pub const CLIMB: f64 = 18.0;
 
 /// A ledge's kind -> the way it is jumped down (spike 126). The game's own function at
 /// `0x00402e74` turns these kinds into 0, 1, 2 and 3, the engine's north, south, west and east as a
@@ -269,6 +286,16 @@ pub const ASH_SOURCE: i64 = 7 << 32;
 /// A slope's or a rail end's source: `BIKE_SOURCE | x << 12 | z`, its first cell.
 pub const BIKE_SOURCE: i64 = 8 << 32;
 
+/// A dive spot's source: `DIVE_SOURCE | x << 12 | z`, its patch's first cell.
+pub const DIVE_SOURCE: i64 = 9 << 32;
+
+/// A stair's source between two floors of a chunk: `STAIRS_SOURCE | x << 12 | z`, its first
+/// cell.
+pub const STAIRS_SOURCE: i64 = 10 << 32;
+
+/// A place on the sky's map: `SKY_SOURCE | index` in the list of them (`gen6.sky`, spike 166).
+pub const SKY_SOURCE: i64 = 11 << 32;
+
 /// A place's `source` from its kind's tag and its own number. The number must leave the tag's
 /// bits clear, and no u16 the game holds can reach them, so one that does is a new encoding
 /// written wider than the tag allows for: a programmer's error, refused here rather than keyed as
@@ -323,20 +350,31 @@ pub const ASH: &str = "ash";
 /// them to record them (the user, 2026-10-03).
 pub const BIKE: &str = "bike";
 
+pub const TOWNS: &str = "towns";
+pub const ROUTES: &str = "routes";
+pub const LANDMARKS: &str = "landmarks";
+/// The places on the sky's map, soaring on Latios: its towns and cities, its routes over land
+/// and sea, everything else always there, caves and islands, as the game's own table groups them,
+/// and the mirage spots it shows today (spike 166). Nothing on the field is in them.
+pub const MIRAGE: &str = "mirage spots";
+pub const SKY: [&str; 4] = [TOWNS, ROUTES, LANDMARKS, MIRAGE];
+
 /// In the order they are walked and logged.
-pub const CATEGORIES: [&str; 8] = [
-    "exits", "signs", "people", "items", BERRIES, ASH, BIKE, POKEMON,
+pub const CATEGORIES: [&str; 12] = [
+    "exits", "signs", "people", "items", BERRIES, ASH, BIKE, POKEMON, SKY[0], SKY[1], SKY[2],
+    SKY[3],
 ];
 
 /// One thing worth walking to, in the player's cells.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Interactable {
     /// One of `CATEGORIES`: `exits`, `signs`, `people`, `items`, `berries`, `ash`, `bike` or
-    /// `pokémon`.
+    /// `pokémon`, or in the sky `towns`, `routes`, `landmarks` or `mirage spots`.
     pub category: String,
     /// What it is, in pa3ds's own words: `door`, `sign`, `PC`, `person`, `item ball`, `edge`,
     /// `berry spot`, `ash pile`, `hidden Pokémon`, `barrier`, `switch`, `passage`, `trapdoor`,
-    /// `geyser`, `lift`, `teleporter`, `slope`, `bumpy slope`, `rail`.
+    /// `geyser`, `lift`, `teleporter`, `dive spot`, `stairs`, `slope`, `bumpy slope`, `rail`, a
+    /// `flock` in the sky; or in the sky, the game's own name for a place.
     pub kind: String,
     pub cell: (i64, i64),
     pub size: (i64, i64),
@@ -361,6 +399,11 @@ pub struct Interactable {
     /// or on Lumiose's streets another zone of the same street (spike 107). A place is named by
     /// it, and told apart by it from the same slot of the other zone.
     pub home: Option<i64>,
+    /// How high in the world it stands, where the game says: a move model's, a warp's, a
+    /// trigger's, a stair's top. It says which floor of a chunk with a deck the thing is on:
+    /// Sootopolis Gym's lower floor lies under its rooms, and P led the player to a Beauty down
+    /// there by the room over her head (spike 167).
+    pub height: Option<f64>,
 }
 
 impl Interactable {
@@ -377,6 +420,7 @@ impl Interactable {
             source: 0,
             move_model: false,
             home: None,
+            height: None,
         }
     }
 
@@ -407,7 +451,9 @@ impl Interactable {
     /// game names the species itself once the DexNav has registered it — so a name here would be
     /// a key that never matches again and would replace something the game says.
     pub fn naming(&self, zone: i64) -> Option<(&'static str, i64, i64)> {
-        if self.category == POKEMON {
+        // The sky's places are named by the game itself, and a name of ours never replaces the
+        // game's (ADR-0023).
+        if self.category == POKEMON || SKY.contains(&self.category.as_str()) {
             return None;
         }
         if self.move_model {
@@ -465,6 +511,31 @@ pub struct Field {
     pub bearing: Option<f64>,
     /// Whether the player is riding the Mach Bike, which rides up a sandy slope (spike 158).
     pub on_bike: bool,
+    /// How far direction mode looks, in this map's steps each way, where not the field's ten
+    /// cells: the sky's places are far apart (`gen6.sky.REACH`).
+    pub reach: Option<i64>,
+    /// While the player is soaring, the places listed in their own frame (`gen6.sky`): the turn
+    /// to face a thing and how far it is then, which P says, since there is no ground to find a way
+    /// over.
+    pub steer: Option<Steer>,
+}
+
+/// `Callable[[Interactable], str]`, a `Field.steer`. It can raise, as the Python's reads a table by
+/// a number and rounds floats. Two fields are equal when they hold the same function, as
+/// Python compares callables.
+#[derive(Clone)]
+pub struct Steer(pub Rc<dyn Fn(&Interactable) -> Result<String>>);
+
+impl fmt::Debug for Steer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Steer(..)")
+    }
+}
+
+impl PartialEq for Steer {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
+    }
 }
 
 impl Field {
@@ -500,6 +571,69 @@ fn anticlockwise_index(way: &str) -> Result<i64> {
     match ANTICLOCKWISE.iter().position(|&known| known == way) {
         Some(at) => Ok(at as i64),
         None => Err(Error::value("tuple.index(x): x not in tuple")),
+    }
+}
+
+/// What a cell of a room of thin ice is: a tile not yet walked onto, a tile that gives way under
+/// the next step onto it, or floor that is no ice at all.
+pub const WHOLE: i64 = 0;
+pub const CRACKED: i64 = 1;
+pub const SOLID: i64 = 2;
+
+/// One of Sootopolis Gym's rooms of thin ice, as the Gym's module keeps it (spike 167). A tile
+/// walked onto cracks, and stepping onto a cracked one drops the player to the floor below and
+/// makes the room whole again. The room is cleared once every tile is cracked with the player on
+/// one of its exits, and its ice is safe from then on.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IceRoom {
+    /// The north-west cell.
+    pub corner: Cell,
+    pub size: (i64, i64),
+    /// How high its floor is, which says the floor of the Gym's chunks it is on.
+    pub height: f64,
+    /// `WHOLE`, `CRACKED` or `SOLID` a cell, row by row from the corner.
+    pub states: Vec<i64>,
+    /// The cells it is left by, onto the corridor up from it: the last tile cracked is one.
+    pub exits: Vec<Cell>,
+    pub cleared: bool,
+}
+
+impl IceRoom {
+    /// A room not yet cleared; `cleared` is set with `..IceRoom::new(...)`.
+    pub fn new(
+        corner: Cell,
+        size: (i64, i64),
+        height: f64,
+        states: Vec<i64>,
+        exits: Vec<Cell>,
+    ) -> Self {
+        IceRoom {
+            corner,
+            size,
+            height,
+            states,
+            exits,
+            cleared: false,
+        }
+    }
+
+    /// Each cell of the room with what it is.
+    pub fn cells(&self) -> IndexMap<Cell, i64> {
+        let wide = self.size.0;
+        self.states
+            .iter()
+            .enumerate()
+            .map(|(i, &state)| {
+                let i = i as i64;
+                (
+                    (
+                        self.corner.0 + py::modulo(i, wide),
+                        self.corner.1 + py::floordiv(i, wide),
+                    ),
+                    state,
+                )
+            })
+            .collect()
     }
 }
 
@@ -714,6 +848,34 @@ pub struct Ground {
     /// Fortree Gym's rotating doors, as they stand now: walked through by turning them, a step
     /// into an arm turning its door (`through`, spike 161).
     pub doors: Vec<RotatingDoor>,
+    /// Sootopolis Gym's rooms of thin ice, as they are now, their cracked tiles in `standing`
+    /// on their floor (spike 167).
+    pub ice: Vec<IceRoom>,
+    /// Under the water, each cell of deep water the player rises to the surface through, with
+    /// every one the sea above joins it to, itself among them: the sea has a dive spot over each,
+    /// the two matrices the same cells a fixed way apart, so a dive spot is the same bearing from
+    /// the player above the water as below. Under Route 126 rock walls the water into pockets, and
+    /// the way into Sootopolis City is reached only by diving at a spot over its own pocket; the
+    /// player's own light rises into a pond walled off from the sea, and the light that reaches
+    /// the sea is the other in their pocket, 47 east 4 north (spike 165). None above the water.
+    ///
+    /// A `frozenset` is a `HashSet` in an `Rc`, which the cells of one pocket share: it is only
+    /// intersected and tested, so its order is never seen.
+    pub surfaces: IndexMap<Cell, Rc<HashSet<Cell>>>,
+    /// Whether a chunk with a deck is walked a floor at a time, the floor a step is on part of
+    /// where a search stands (`climb`): its `chunks` keep their floors, each cell open where any
+    /// floor is. Sootopolis Gym's lower floor lies under its rooms, joined to the entrance's room
+    /// by a stair at each side; walked on one floor a cell, the Lass pacing below stood in the
+    /// corridor above her, and P led the player from the lower floor to the cell under the way
+    /// out (spike 167).
+    pub stacked: bool,
+    /// The player's height on a stacked ground, which says the floor they start on.
+    pub level: Option<f64>,
+    /// How high each thing in a cell of `standing` stands, None where not known: on a stacked
+    /// ground it stands on its cell's floor nearest that, and in nobody's way on the others. In
+    /// Sootopolis Gym a Beauty stands in the lower floor's corridor under an invisible blocker in
+    /// the corridor above (spike 167).
+    pub heights: IndexMap<Cell, Vec<Option<f64>>>,
     /// The heights of the map's floors other than the player's, nearest theirs first, at which
     /// the ground can be walked instead (`FieldSource.ground`). A chunk with a deck is walked on
     /// the floor nearest one height, and from the foot of Route 119 that kept the way under its
@@ -739,6 +901,11 @@ impl Default for Ground {
             cliffs: IndexSet::new(),
             hops: IndexMap::new(),
             doors: Vec::new(),
+            ice: Vec::new(),
+            surfaces: IndexMap::new(),
+            stacked: false,
+            level: None,
+            heights: IndexMap::new(),
             decks: Vec::new(),
         }
     }
@@ -763,6 +930,11 @@ impl fmt::Debug for Ground {
             .field("cliffs", &self.cliffs)
             .field("hops", &self.hops)
             .field("doors", &self.doors)
+            .field("ice", &self.ice)
+            .field("surfaces", &self.surfaces)
+            .field("stacked", &self.stacked)
+            .field("level", &self.level)
+            .field("heights", &self.heights)
             .field("decks", &self.decks)
             .finish()
     }
@@ -778,7 +950,7 @@ pub struct Of {
     pub belts: IndexMap<Cell, &'static str>,
     pub far: Option<Far>,
     pub clears: IndexMap<i64, i64>,
-    pub solid: Vec<Cell>,
+    pub solid: IndexMap<Cell, Option<f64>>,
 }
 
 impl Ground {
@@ -789,8 +961,9 @@ impl Ground {
     /// of its own or not: three of Rusturf Tunnel's ten rocks
     /// have a sign under them and a script, and are the rocks Rock Smash breaks to join the
     /// tunnel's halves, the only way through it to Verdanturf Town (spike 137). `solid` is
-    /// cells something stands in that is not listed: a Secret Base's desks and chairs, which the
-    /// cell table has as open floor (spike 154).
+    /// cells something stands in that is not listed, with how high it stands where known: a
+    /// Secret Base's desks and chairs, which the cell table has as open floor (spike 154), and
+    /// the game's invisible blockers (spike 167).
     pub fn of(r#where: &Field, of: Of) -> Ground {
         let Of {
             chunks,
@@ -801,10 +974,21 @@ impl Ground {
             clears,
             solid,
         } = of;
-        let mut standing: IndexSet<Cell> = solid.into_iter().collect();
-        for item in &r#where.interactables {
-            if item.move_model {
-                standing.extend(item.cells());
+        let models: Vec<&Interactable> = r#where
+            .interactables
+            .iter()
+            .filter(|item| item.move_model)
+            .collect();
+        let mut standing: IndexSet<Cell> = solid.keys().copied().collect();
+        for item in &models {
+            standing.extend(item.cells());
+        }
+        let mut heights: IndexMap<Cell, Vec<Option<f64>>> = IndexMap::new();
+        let from_models = models.iter().map(|item| (item.cells(), item.height));
+        let from_solid = solid.iter().map(|(&cell, &height)| (vec![cell], height));
+        for (cells, height) in from_models.chain(from_solid) {
+            for cell in cells {
+                heights.entry(cell).or_default().push(height);
             }
         }
         let mut stepped: IndexSet<Cell> = IndexSet::new();
@@ -835,12 +1019,20 @@ impl Ground {
             belts,
             far,
             cleared,
+            heights,
             ..Ground::default()
         }
     }
 
-    /// Whether the player can stand in the cell.
+    /// Whether the player can stand in the cell: on a stacked ground, on any floor of it
+    /// (`open_at` with no height).
     pub fn open(&self, cell: Cell) -> Result<bool> {
+        self.open_at(cell, None)
+    }
+
+    /// Whether the player can stand in the cell: on a stacked ground, on any floor of it, or on
+    /// its floor at `height` where one is given (`floor_at`).
+    pub fn open_at(&self, cell: Cell, height: Option<f64>) -> Result<bool> {
         if let Some(corridor) = &self.corridor {
             return Ok(!self.standing.contains(&cell) && corridor.open(cell)?);
         }
@@ -849,13 +1041,183 @@ impl Ground {
         {
             return Ok(false);
         }
-        if self.standing.contains(&cell) && !(self.hm && self.cleared.contains_key(&cell)) {
+        let floors = self.floors(cell)?;
+        if !floors.is_empty() {
+            let Some(aim) = self.floor_at(cell, height)? else {
+                return Ok(false);
+            };
+            let mut all = true;
+            for &(k, _) in &floors {
+                if (aim == ANY_FLOOR || aim == k) && !self.stands(cell, k)? {
+                    all = false;
+                    break;
+                }
+            }
+            if all {
+                return Ok(false);
+            }
+        } else if self.stands(cell, ANY_FLOOR)? {
             return Ok(false);
         }
         let Some(chunk) = self.chunk(cell)? else {
             return Ok(true);
         };
         Ok(chunk.walkable(cell)? && (self.surf || !chunk.water(cell)?))
+    }
+
+    /// On a stacked ground, each floor open in the cell, by its place among its chunk's floors,
+    /// with its height there; none where the ground is not stacked or the chunk has one floor.
+    pub fn floors(&self, cell: Cell) -> Result<Vec<(i64, Option<f64>)>> {
+        let chunk = if self.stacked {
+            self.chunk(cell)?
+        } else {
+            None
+        };
+        let Some(chunk) = chunk else {
+            return Ok(Vec::new());
+        };
+        if chunk.floors.is_empty() {
+            return Ok(Vec::new());
+        }
+        let i = (cell.1 - chunk.origin.1) * CHUNK + cell.0 - chunk.origin.0;
+        let mut out = Vec::new();
+        for (k, floor) in chunk.floors.iter().enumerate() {
+            let word = usize::try_from(i)
+                .ok()
+                .and_then(|i| floor.words.get(i))
+                .ok_or_else(|| Error::index("tuple index out of range"))?;
+            if word & BLOCKED == 0 {
+                let height = usize::try_from(i)
+                    .ok()
+                    .and_then(|i| floor.heights.get(i))
+                    .ok_or_else(|| Error::index("tuple index out of range"))?;
+                out.push((k as i64, *height));
+            }
+        }
+        Ok(out)
+    }
+
+    /// The cell's open floor nearest `height`, or `ANY_FLOOR` where there is none to choose: no
+    /// height, or no floors (`floors`).
+    pub fn floor(&self, cell: Cell, height: Option<f64>) -> Result<i64> {
+        let floors = self.floors(cell)?;
+        let Some(height) = height.filter(|_| !floors.is_empty()) else {
+            return Ok(ANY_FLOOR);
+        };
+        let mut best: Option<(f64, i64)> = None;
+        for &(k, there) in &floors {
+            let away = match there {
+                None => f64::INFINITY,
+                Some(there) => (there - height).abs(),
+            };
+            if best.is_none_or(|(least, _)| away < least) {
+                best = Some((away, k));
+            }
+        }
+        Ok(best.expect("a cell with floors has one nearest").1)
+    }
+
+    /// The cell's floor a thing standing at `height` is reached on there (`floor`), or None
+    /// where it is further from `height` than a stair's step down from beside the thing,
+    /// `2 * CLIMB`, or has no height there. Sootopolis Gym's guide stands by a statue on the
+    /// floor over its lower one, and beside him, where the statue is, the lower floor alone is
+    /// open, 200 below him (spike 167).
+    pub fn floor_at(&self, cell: Cell, height: Option<f64>) -> Result<Option<i64>> {
+        let k = self.floor(cell, height)?;
+        let Some(height) = height.filter(|_| k != ANY_FLOOR) else {
+            return Ok(Some(k));
+        };
+        let there = self
+            .floors(cell)?
+            .into_iter()
+            .find(|&(floor, _)| floor == k)
+            .ok_or_else(|| Error::key(k.to_string()))?
+            .1;
+        Ok(there
+            .is_some_and(|there| (there - height).abs() <= 2.0 * CLIMB)
+            .then_some(k))
+    }
+
+    /// Whether something stands in the cell on `floor`: on every floor of it, where how high it
+    /// stands is not known, and on any where `floor` is `ANY_FLOOR`.
+    pub fn stands(&self, cell: Cell, floor: i64) -> Result<bool> {
+        if !self.standing.contains(&cell) || (self.hm && self.cleared.contains_key(&cell)) {
+            return Ok(false);
+        }
+        if floor == ANY_FLOOR {
+            return Ok(true);
+        }
+        let none = [None];
+        let heights = match self.heights.get(&cell) {
+            Some(heights) => heights.as_slice(),
+            None => &none,
+        };
+        for &height in heights {
+            if height.is_none() {
+                return Ok(true);
+            }
+            let on = self.floor(cell, height)?;
+            if on == ANY_FLOOR || on == floor {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    /// The floor a step from `cell`, walked on `floor`, lands on at `step`: of its open floors
+    /// nobody stands on, the nearest the height left, the same floor first; None where there is
+    /// none and the step is not taken, and `ANY_FLOOR` where `step` has no floors to choose
+    /// between. Another floor is stepped onto only within `CLIMB`; along one floor a step is
+    /// taken as on any ground, a drop being a cliff: each of Sootopolis Gym's two stairs climbs
+    /// its lower floor 18 or 19 a cell to 189, and steps across onto the entrance's room at 198
+    /// (spike 167), and on Route 119 the way north goes on along the bridge at 99 where the path
+    /// under it has dropped to 50 (spike 159). Where either cell has no height, no step goes onto
+    /// another floor: the lower floor's table has the Gym's pool's edges open with no floor under
+    /// them, and P stepped off one onto the room above.
+    pub fn climb(&self, floor: i64, cell: Cell, step: Cell) -> Result<Option<i64>> {
+        let there = self.floors(step)?;
+        if there.is_empty() {
+            return Ok(Some(ANY_FLOOR));
+        }
+        let here = self
+            .floors(cell)?
+            .into_iter()
+            .find(|&(k, _)| k == floor)
+            .and_then(|(_, height)| height);
+        let mut best: Option<i64> = None;
+        let mut off = (f64::INFINITY, true);
+        for (k, height) in there {
+            let away;
+            if let (Some(here), Some(height)) = (here, height) {
+                away = (height - here).abs();
+                if away > CLIMB && k != floor {
+                    continue;
+                }
+            } else if k == floor || floor == ANY_FLOOR {
+                away = 0.0;
+            } else {
+                continue;
+            }
+            if (away, k != floor) < off && !self.stands(step, k)? {
+                best = Some(k);
+                off = (away, k != floor);
+            }
+        }
+        Ok(best)
+    }
+
+    /// The floor each cell of `path` is walked on, from the player's (`climb`): `ANY_FLOOR` all
+    /// along off a stacked ground.
+    pub fn walked(&self, path: &[Cell]) -> Result<Vec<i64>> {
+        let first = path
+            .first()
+            .ok_or_else(|| Error::index("tuple index out of range"))?;
+        let mut floors = vec![self.floor(*first, self.level)?];
+        for pair in path.windows(2) {
+            let on = self.climb(floors[floors.len() - 1], pair[0], pair[1])?;
+            floors.push(on.unwrap_or(ANY_FLOOR));
+        }
+        Ok(floors)
     }
 
     /// Whether the cell is water, as far as a loaded chunk or the ROM's says.
@@ -1068,7 +1430,12 @@ impl Ground {
 
     /// Whether a path may go through the cell on its way somewhere else.
     pub fn passable(&self, cell: Cell) -> Result<bool> {
-        Ok(!self.stepped.contains(&cell) && self.open(cell)?)
+        self.passable_at(cell, None)
+    }
+
+    /// Whether a path may go through the cell on its way somewhere else (`open_at`).
+    pub fn passable_at(&self, cell: Cell, height: Option<f64>) -> Result<bool> {
+        Ok(!self.stepped.contains(&cell) && self.open_at(cell, height)?)
     }
 
     /// Where a path to `item` ends, each with the way to face there, or None for any way.
@@ -1077,13 +1444,14 @@ impl Ground {
     /// of a building. A thing that is solid all over — a door, a sign, a person, a PC — is
     /// walked up to, to an open cell beside it, facing it, since that is where the player
     /// presses A or walks in from (the user, 2026-09-24); or across a counter from it, as the
-    /// Nurse and a Poké Mart's clerk are talked to (`COUNTER`).
+    /// Nurse and a Poké Mart's clerk are talked to (`COUNTER`). On a stacked ground each is on
+    /// the thing's own floor, which a search must reach it on (`floor`).
     pub fn goals(&self, item: &Interactable) -> Result<IndexMap<Cell, Option<&'static str>>> {
         let cells = item.cells();
         // A bush or a rock is walked up to and cleared from there, with HMs or not.
         let mut onto: IndexMap<Cell, Option<&'static str>> = IndexMap::new();
         for &cell in &cells {
-            if self.open(cell)? && !self.cleared.contains_key(&cell) {
+            if self.open_at(cell, item.height)? && !self.cleared.contains_key(&cell) {
                 onto.insert(cell, None);
             }
         }
@@ -1095,7 +1463,7 @@ impl Ground {
             for &cell in &cells {
                 for (direction, (dx, dz)) in pathfind::STEPS {
                     let near = (cell.0 - dx * out, cell.1 - dz * out);
-                    if !cells.contains(&near) && self.passable(near)? {
+                    if !cells.contains(&near) && self.passable_at(near, item.height)? {
                         beside.insert(near, Some(direction));
                     } else if out == 1 && self.counter(near)? {
                         let across = (near.0 - dx, near.1 - dz);

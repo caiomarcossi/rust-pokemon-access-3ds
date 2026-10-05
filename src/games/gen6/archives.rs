@@ -49,6 +49,7 @@ use crate::core::rom::{Rom, lz11};
 use crate::games::common::field::{CUT, Floor, ROCK_SMASH, STRENGTH, SURF};
 use crate::games::common::garc::{garc_files, garc_spans, message_lines, plain};
 use crate::games::gen6::field as gen6_field;
+use crate::games::gen6::sky::{Place, places as sky_places};
 use crate::games::gen6::{mapblock, plates, rail};
 use crate::py::{self, Error, Kind, Result};
 
@@ -197,6 +198,9 @@ pub struct RomLayout {
     /// under, whose cell tables P's ground reads where the game has not loaded them (`MapChunks`);
     /// None where they are not read.
     pub map_chunks: Option<String>,
+    /// The matrices' files, by the number a zone-table row's +0x04 gives (`MapChunks.matrix`);
+    /// None where they are not read.
+    pub matrices: Option<String>,
     /// The field's DLL, whose table lists every berry spot (`berry_spots`); None in a game
     /// whose berry spots are not read.
     pub berries: Option<String>,
@@ -227,6 +231,9 @@ pub struct RomLayout {
     /// The same file and the Acro Bike's line, which a hop up a bumpy slope is said with; None in
     /// a game without bumpy slopes.
     pub acro: Option<(i64, i64)>,
+    /// The archive whose first file is the sky's map of places, soaring on Latios
+    /// (`sky.places`); None in a game without soaring.
+    pub sky: Option<String>,
 }
 
 impl RomLayout {
@@ -268,6 +275,7 @@ impl RomLayout {
             street_names: None,
             moves: None,
             map_chunks: None,
+            matrices: None,
             berries: None,
             textures: Vec::new(),
             languages: None,
@@ -278,6 +286,7 @@ impl RomLayout {
             decorations: None,
             bike: None,
             acro: None,
+            sky: None,
         }
     }
 }
@@ -449,16 +458,70 @@ type Loaded = (Option<Vec<i64>>, Vec<Floor>, Option<Vec<Option<f64>>>);
 pub struct MapChunks {
     path: PathBuf,
     archive: String,
+    matrices: Option<String>,
     read: RefCell<HashMap<i64, Loaded>>,
+    matrix: RefCell<HashMap<i64, Option<(i64, Vec<i64>)>>>,
 }
 
 impl MapChunks {
+    /// `MapChunks(path, archive)`: the common call, with no matrices to read.
     pub fn new(path: &Path, archive: &str) -> Self {
+        MapChunks::with_matrices(path, archive, None)
+    }
+
+    pub fn with_matrices(path: &Path, archive: &str, matrices: Option<&str>) -> Self {
         MapChunks {
             path: path.to_path_buf(),
             archive: archive.to_string(),
+            matrices: matrices.map(String::from),
             read: RefCell::new(HashMap::new()),
+            matrix: RefCell::new(HashMap::new()),
         }
+    }
+
+    /// A matrix's width in chunks and each chunk's file, row by row, as its field map lists
+    /// them, or None where the ROM has no such matrix or cannot be read: magic `MM`, a u16
+    /// count of sections and a u32 offset a section, the first section a u16 0 or 1, a u16 0,
+    /// u16 width and height in chunks, then the files. Under Route 126 it is 3 by 3, files
+    /// 251 to 259, as the field map in RAM has them (spike 165).
+    pub fn matrix(&self, number: i64) -> Result<Option<(i64, Vec<i64>)>> {
+        if !self.matrix.borrow().contains_key(&number) {
+            self.matrix.borrow_mut().insert(number, None);
+            match self.read_matrix(number) {
+                Ok(Some(found)) => {
+                    self.matrix.borrow_mut().insert(number, Some(found));
+                }
+                Ok(None) => {}
+                Err(error)
+                    if error.is(Kind::RomError)
+                        || error.is(Kind::OsError)
+                        || error.is(Kind::ValueError)
+                        || error.is(Kind::IndexError)
+                        || error.is(Kind::StructError) => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(self.matrix.borrow()[&number].clone())
+    }
+
+    fn read_matrix(&self, number: i64) -> Result<Option<(i64, Vec<i64>)>> {
+        let matrices = self.matrices.as_deref().unwrap_or("");
+        let data = {
+            let rom = Rom::new(&self.path)?;
+            let (start, spans) = garc_spans(&rom, matrices)?;
+            let (at, end) = *item(&spans, number)?;
+            rom.read_part(matrices, start + at, end - at)?
+        };
+        let first = u32(&data, 4)?;
+        let (wide, tall) = (u16(&data, first + 4)?, u16(&data, first + 6)?);
+        if py::slice(&data, 0, 2) == b"MM" && wide != 0 {
+            let mut files = Vec::new();
+            for i in 0..wide * tall {
+                files.push(u16(&data, first + 8 + 2 * i)?);
+            }
+            return Ok(Some((wide, files)));
+        }
+        Ok(None)
     }
 
     /// One chunk file's cell table, or None where the ROM has no such file, it is not a
@@ -614,6 +677,8 @@ pub struct GameText {
     pub bike: Option<String>,
     /// What the game calls the Acro Bike (`RomLayout.acro`), or None.
     pub acro: Option<String>,
+    /// Every place always on the sky's map, by what the game calls it (`RomLayout.sky`).
+    pub sky: Vec<Place>,
 }
 
 impl PartialEq for GameText {
@@ -636,6 +701,7 @@ impl PartialEq for GameText {
             && self.decorations == other.decorations
             && self.bike == other.bike
             && self.acro == other.acro
+            && self.sky == other.sky
     }
 }
 
@@ -664,6 +730,7 @@ impl Default for GameText {
             decorations: Vec::new(),
             bike: None,
             acro: None,
+            sky: Vec::new(),
         }
     }
 }
@@ -878,7 +945,13 @@ impl GameText {
                 .map_chunks
                 .as_ref()
                 .filter(|chunks| !chunks.is_empty())
-                .map(|chunks| Rc::new(MapChunks::new(&rom.path, chunks))),
+                .map(|chunks| {
+                    Rc::new(MapChunks::with_matrices(
+                        &rom.path,
+                        chunks,
+                        layout.matrices.as_deref(),
+                    ))
+                }),
             berries,
             languages,
             types,
@@ -897,6 +970,7 @@ impl GameText {
                 .into_iter()
                 .next()
                 .filter(|line| !line.is_empty()),
+            sky: sky(rom, layout, &table, &places)?,
         };
         if layout.protagonists && !text.protagonists_hold() {
             return Err(Error::new(
@@ -1257,6 +1331,23 @@ pub fn map_places(
     Ok(out)
 }
 
+/// What the game calls a zone's place, by the zone table's row for it, or None.
+fn place_of<'a>(table: &'a [u8], places: &'a [String]) -> impl Fn(i64) -> Option<String> + 'a {
+    let size = gen6_field::INFO_SIZE;
+
+    move |zone: i64| -> Option<String> {
+        if (zone + 1) * size > table.len() as i64 {
+            return None;
+        }
+        let index = (u16(table, zone * size + gen6_field::INFO_NAME).ok()?) & gen6_field::NAME_MASK;
+        if 0 < index && index < places.len() as i64 && !places[index as usize].is_empty() {
+            Some(places[index as usize].clone())
+        } else {
+            None
+        }
+    }
+}
+
 /// `map_places` out of the ROM, or none where the game's map is not read.
 fn map_places_of(
     rom: &Rom,
@@ -1267,19 +1358,7 @@ fn map_places_of(
     let (Some((archive, file, pane_at)), Some(towns)) = (&layout.map_panes, &layout.towns) else {
         return Ok(IndexMap::new());
     };
-    let size = gen6_field::INFO_SIZE;
-
-    let place = |zone: i64| -> Option<String> {
-        if (zone + 1) * size > table.len() as i64 {
-            return None;
-        }
-        let index = (u16(table, zone * size + gen6_field::INFO_NAME).ok()?) & gen6_field::NAME_MASK;
-        if 0 < index && index < places.len() as i64 && !places[index as usize].is_empty() {
-            Some(places[index as usize].clone())
-        } else {
-            None
-        }
-    };
+    let place = place_of(table, places);
 
     let loaded = (|| -> Result<IndexMap<String, String>> {
         let map_files = garc_files(&rom.read(archive)?)?;
@@ -1301,6 +1380,29 @@ fn map_places_of(
                 || error.is(Kind::StructError) =>
         {
             Ok(IndexMap::new())
+        }
+        Err(error) => Err(error),
+    }
+}
+
+/// `sky.places` out of the ROM, or none where the game has no sky or its file is not read.
+fn sky(rom: &Rom, layout: &RomLayout, table: &[u8], places: &[String]) -> Result<Vec<Place>> {
+    let Some(archive) = &layout.sky else {
+        return Ok(Vec::new());
+    };
+    let place = place_of(table, places);
+    let loaded = (|| -> Result<Vec<Place>> {
+        let files = garc_files(&rom.read(archive)?)?;
+        sky_places(item(&files, 0)?, &place)
+    })();
+    match loaded {
+        Ok(places) => Ok(places),
+        Err(error)
+            if error.is(Kind::RomError)
+                || error.is(Kind::IndexError)
+                || error.is(Kind::StructError) =>
+        {
+            Ok(Vec::new())
         }
         Err(error) => Err(error),
     }

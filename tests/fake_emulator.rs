@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use crate::core::rpc::{HEADER_SIZE, MAX_READ, PROTOCOL_VERSION, PacketType};
+use crate::core::rpc::{HEADER_SIZE, MAX_READ, PROTOCOL_VERSIONS, PacketType};
 
 pub const NO_PROCESS: u32 = 0xFFFF_FFFF;
 
@@ -23,6 +23,8 @@ struct State {
     unselected_reads: i64,
     drop: i64,
     drop_every: i64,
+    /// The protocol version served; a packet of any other is answered with nothing.
+    version: u32,
 }
 
 /// Serves `memory` page by page. Addresses with no data read back as zeros.
@@ -51,6 +53,23 @@ impl FakeEmulator {
         drop_first: i64,
         drop_every: i64,
     ) -> Self {
+        FakeEmulator::with_version(
+            memory,
+            processes,
+            drop_first,
+            drop_every,
+            PROTOCOL_VERSIONS[0],
+        )
+    }
+
+    /// `with`, serving protocol `version`.
+    pub fn with_version(
+        memory: HashMap<i64, Vec<u8>>,
+        processes: Vec<(u32, u64, String)>,
+        drop_first: i64,
+        drop_every: i64,
+        version: u32,
+    ) -> Self {
         let sock = UdpSocket::bind("127.0.0.1:0").expect("bind");
         sock.set_read_timeout(Some(Duration::from_millis(200)))
             .expect("timeout");
@@ -63,6 +82,7 @@ impl FakeEmulator {
             unselected_reads: 0,
             drop: drop_first,
             drop_every,
+            version,
         }));
         let stop = Arc::new(AtomicBool::new(false));
         let thread = {
@@ -151,7 +171,8 @@ fn serve(sock: &UdpSocket, state: &Mutex<State>, stop: &AtomicBool) {
             continue;
         };
         let word = |at: usize| u32::from_le_bytes(raw[at..at + 4].try_into().unwrap());
-        let (request_id, packet_type, size) = (word(4), word(8), word(12) as usize);
+        let (version, request_id, packet_type, size) =
+            (word(0), word(4), word(8), word(12) as usize);
         let payload = &raw[HEADER_SIZE..(HEADER_SIZE + size).min(got)];
         let (arg1, arg2) = if payload.len() >= 8 {
             (
@@ -164,7 +185,8 @@ fn serve(sock: &UdpSocket, state: &Mutex<State>, stop: &AtomicBool) {
         let mut reply = Vec::new();
         {
             let mut s = state.lock().unwrap();
-            if packet_type == PacketType::ReadMemory as u32 {
+            if version != s.version {
+            } else if packet_type == PacketType::ReadMemory as u32 {
                 s.reads += 1;
                 if s.drop > 0 {
                     s.drop -= 1;
@@ -198,12 +220,7 @@ fn serve(sock: &UdpSocket, state: &Mutex<State>, stop: &AtomicBool) {
             }
         }
         let mut packet = Vec::with_capacity(HEADER_SIZE + reply.len());
-        for w in [
-            PROTOCOL_VERSION,
-            request_id,
-            packet_type,
-            reply.len() as u32,
-        ] {
+        for w in [version, request_id, packet_type, reply.len() as u32] {
             packet.extend_from_slice(&w.to_le_bytes());
         }
         packet.extend_from_slice(&reply);

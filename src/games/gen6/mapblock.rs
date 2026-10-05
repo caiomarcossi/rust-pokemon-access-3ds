@@ -37,8 +37,11 @@
 
 use std::collections::HashSet;
 
+use indexmap::IndexMap;
+
 use crate::core::binary::{f32, u16, u32};
 use crate::core::memory::Memory;
+pub use crate::games::common::field::CLIMB;
 use crate::games::common::field::{BLOCKED, CHUNK, Chunk, Floor};
 use crate::py::{self, Result};
 
@@ -68,10 +71,6 @@ pub const MESH: i64 = 2;
 /// An ORAS chunk's sections with its ground alone: one with more floors has each one's cell
 /// table from here, then each one's mesh in the same order.
 pub const ONE_FLOOR: i64 = 7;
-/// How far apart two floors may be where they meet and still be walked between, a cell's worth
-/// of world units. Where a deck's cell touches the ground's in ORAS's chunks the two are 0 to 14
-/// apart where they join, and 54 or more where the deck stands over lower ground (spike 156).
-pub const CLIMB: f64 = 18.0;
 /// How far apart two open cells side by side of one floor must be to be a drop, not walked
 /// between: across ORAS's chunks of one floor, the ground's mesh steps no more than a cell's height
 /// between open neighbours but in eight files, where it drops 40 to 200, as Fortree City's
@@ -312,6 +311,51 @@ pub fn flat(chunk: &Chunk, height: Option<f64>) -> Chunk {
             .collect(),
         ..Chunk::new(chunk.origin, words)
     }
+}
+
+/// The ground's cells a floor over it is walked onto from, with the ground's height there: open
+/// on the ground alone, beside a cell open on another floor alone within `CLIMB` of it. Where
+/// Sootopolis Gym's two stairs climb from its lower floor to 189, beside the entrance's room at
+/// 198 (spike 167).
+pub fn joins(chunk: &Chunk) -> IndexMap<(i64, i64), f64> {
+    let mut out: IndexMap<(i64, i64), f64> = IndexMap::new();
+    let Some((ground, decks)) = chunk.floors.split_first() else {
+        return out;
+    };
+    for i in 0..CHUNK * CHUNK {
+        let Some(here) = ground.heights[i as usize] else {
+            continue;
+        };
+        if ground.words[i as usize] & BLOCKED != 0
+            || decks
+                .iter()
+                .any(|deck| deck.words[i as usize] & BLOCKED == 0)
+        {
+            continue;
+        }
+        let (x, z) = (i % CHUNK, i / CHUNK);
+        let beside: Vec<i64> = [
+            (i - 1, x > 0),
+            (i + 1, x + 1 < CHUNK),
+            (i - CHUNK, z > 0),
+            (i + CHUNK, z + 1 < CHUNK),
+        ]
+        .into_iter()
+        .filter(|&(_, inside)| inside)
+        .map(|(j, _)| j)
+        .collect();
+        let near = beside.iter().any(|&j| {
+            decks.iter().any(|deck| {
+                ground.words[j as usize] & BLOCKED != 0
+                    && deck.words[j as usize] & BLOCKED == 0
+                    && deck.heights[j as usize].is_some_and(|there| (there - here).abs() <= CLIMB)
+            })
+        });
+        if near {
+            out.insert((chunk.origin.0 + x, chunk.origin.1 + z), here);
+        }
+    }
+    out
 }
 
 /// The height of a `coll` mesh over each cell's centre, row by row as a cell table is, None

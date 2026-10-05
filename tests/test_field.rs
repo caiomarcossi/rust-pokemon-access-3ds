@@ -25,11 +25,12 @@ use crate::games::gen6::field::{
     ASKS, ENTITY_HEADER, FURNITURE, FieldReader, INFO_KIND, INFO_MATRIX, INFO_NAME, INFO_PARENT,
     INFO_SIZE, MAP_BLOCK_SIZE, MAP_CHUNK_FILES, MAP_CHUNKS_TALL, MAP_CHUNKS_WIDE, MAP_GRID,
     MAP_KIND, MAP_MARK, MOVE_MODEL_CLASS, NO_CHUNK_FILE, NPC, Options, PROP_MODEL,
-    SecretBaseReader, TABLE_ASKS, TABLE_EVERY, WARP, WARP_DOOR, npc_trainers, zone_header,
+    SecretBaseReader, TABLE_ASKS, TABLE_EVERY, UNDERWATER, WARP, WARP_DOOR, npc_trainers,
+    zone_header,
 };
 use crate::games::gen6::{camera, mapblock, mmodel, rail};
 use crate::games::oras::hidden::{self, DexNav};
-use crate::games::oras::{self, ash, doors, secret_base};
+use crate::games::oras::{self, ash, doors, ice, secret_base};
 use crate::games::xy;
 use crate::py::{self, Error, Kind, Result};
 
@@ -1274,8 +1275,14 @@ fn test_a_gyms_switches_and_passages_are_listed_and_walked_round_unless_the_goal
         town.memory.clone(),
         Options {
             triggers: IndexMap::from([
-                ((TOWN, 0x4), ("signs".to_string(), "switch".to_string())),
-                ((TOWN, 0x9), ("exits".to_string(), "passage".to_string())),
+                (
+                    (TOWN, 0x4),
+                    ("signs".to_string(), "switch".to_string(), None),
+                ),
+                (
+                    (TOWN, 0x9),
+                    ("exits".to_string(), "passage".to_string(), None),
+                ),
             ]),
             ..Options::default()
         },
@@ -1313,6 +1320,42 @@ fn test_a_gyms_switches_and_passages_are_listed_and_walked_round_unless_the_goal
         &pathfind::Options::default(),
     )?;
     assert!(path.is_some_and(|path| path[path.len() - 1] == (91, 175)));
+    Ok(())
+}
+
+/// Spike 164: the way into Seafloor Cavern is a trigger under Route 128, seven cells wide, with no
+/// warp record behind it: listed as an exit leading to the zone its script warps to.
+#[test]
+fn test_a_trigger_into_another_place_is_an_exit_leading_there() -> Result<()> {
+    let mut town = Town::new();
+    town.memory.write(
+        FILE,
+        &zone_file(&ZoneSpec {
+            info: &town_info(),
+            triggers: &[(0x5, 90, 175, 7, None)],
+            ..ZoneSpec::default()
+        }),
+    );
+    town.reader = FieldReader::with(
+        town.memory.clone(),
+        Options {
+            triggers: IndexMap::from([(
+                (TOWN, 0x5),
+                ("exits".to_string(), "entrance".to_string(), Some(0x62)),
+            )]),
+            ..Options::default()
+        },
+    );
+    let r#where = town.r#where()?;
+    let entrance = r#where
+        .of("exits")
+        .into_iter()
+        .find(|item| item.kind == "entrance")
+        .unwrap();
+    assert_eq!(
+        (entrance.cell, entrance.size, entrance.zone),
+        ((90, 175), (7, 1), Some(0x62))
+    );
     Ok(())
 }
 
@@ -1618,11 +1661,12 @@ fn test_a_chunk_with_a_deck_is_walked_on_the_floor_at_the_players_height() -> Re
     Ok(())
 }
 
-/// Spike 159: Route 119's bridge stands 54 over the path it crosses, and from the foot of the
-/// route, the player's height walked the path and cut the bridge, the only way north. Its height
-/// is listed for P to walk the decks at instead.
+/// Spikes 159 and 167: Route 119's bridge stands over the path it crosses, and from the foot of
+/// the route, the player's height walked the path and cut the bridge, the only way north. The
+/// ground is walked a floor at a time instead: the bridge is open over the river, a step along it
+/// stays on it, and none takes the player onto it from the path far below.
 #[test]
-fn test_the_ground_lists_the_decks_heights_and_walks_them_at_one() -> Result<()> {
+fn test_a_matrix_with_a_deck_is_walked_a_floor_at_a_time() -> Result<()> {
     let town = Town::new();
     let river: HashSet<(i64, i64)> = (100..103)
         .flat_map(|x| (160..200).map(move |z| (x, z)))
@@ -1639,12 +1683,76 @@ fn test_the_ground_lists_the_decks_heights_and_walks_them_at_one() -> Result<()>
             ((96, 172), (107, 173)),
         ),
     );
+    let ground = town.reader.ground(&town.r#where()?, None)?;
+    assert!(ground.stacked && ground.decks.is_empty());
+    assert!(ground.open((100, 172))?);
+    assert_eq!(ground.floors((99, 172))?, [(0, Some(0.0)), (1, Some(99.0))]);
+    assert_eq!(ground.climb(1, (99, 172), (100, 172))?, Some(1));
+    assert_eq!(ground.climb(0, (99, 172), (100, 172))?, None);
+    Ok(())
+}
+
+/// Spike 167: each of Sootopolis Gym's two stairs climbs from its lower floor to 189, beside the
+/// entrance's room at 198 on the floor over it, and is listed at its top. Where the floor over it
+/// lies above the lower floor's own, far below, nothing is walked between them.
+#[test]
+fn test_a_stair_is_where_the_ground_meets_a_floor_over_it() {
+    let mut ground_heights: HashMap<(i64, i64), f64> = (6..10)
+        .map(|z| ((3, z), 189.0 - 18.0 * (z - 6) as f64))
+        .collect();
+    ground_heights.insert((10, 5), -18.0);
+    let deck_cells: HashMap<(i64, i64), f64> = (3..11).map(|x| ((x, 5), 198.0)).collect();
+
+    fn floor(heights: &HashMap<(i64, i64), f64>) -> Floor {
+        let cells: Vec<(i64, i64)> = (0..CHUNK * CHUNK).map(|i| (i % CHUNK, i / CHUNK)).collect();
+        Floor {
+            words: cells
+                .iter()
+                .map(|cell| {
+                    if heights.contains_key(cell) {
+                        0x20
+                    } else {
+                        0x01000021
+                    }
+                })
+                .collect(),
+            heights: cells
+                .iter()
+                .map(|cell| heights.get(cell).copied())
+                .collect(),
+        }
+    }
+
+    let (lower, upper) = (floor(&ground_heights), floor(&deck_cells));
+    let chunk = Chunk {
+        floors: vec![lower.clone(), upper],
+        ..Chunk::new((40, 0), lower.words)
+    };
+    assert_eq!(mapblock::joins(&chunk), IndexMap::from([((43, 6), 189.0)]));
+}
+
+/// Spike 167: Sootopolis Gym's invisible blockers, sprite 0x8a, rows of three across the
+/// corridors up from its rooms, were listed as nameless people. Nobody is listed there, and the
+/// cell is still in the way.
+#[test]
+fn test_the_invisible_blocker_is_nobody_and_stands_in_the_way() -> Result<()> {
+    let mut town = Town::new();
+    town.reader = FieldReader::with(
+        town.memory.clone(),
+        Options {
+            blocker: Some(oras::STOPPER),
+            ..Options::default()
+        },
+    );
+    town.model(1, TOWN, 0, oras::STOPPER, (96, 172));
     let r#where = town.r#where()?;
-    let ground = town.reader.ground(&r#where, None)?;
-    assert_eq!(ground.decks, [99.0]);
-    assert!(!ground.open((100, 172))?);
-    let over = town.reader.ground(&r#where, Some(99.0))?;
-    assert!(over.open((100, 172))? && over.decks == [0.0]);
+    assert!(
+        r#where
+            .interactables
+            .iter()
+            .all(|item| item.cell != (96, 172))
+    );
+    assert!(!town.reader.ground(&r#where, None)?.open((96, 172))?);
     Ok(())
 }
 
@@ -1900,6 +2008,111 @@ fn test_a_slope_is_one_thing_and_a_rail_is_listed_at_its_ends() -> Result<()> {
     );
     let sources: HashSet<i64> = bike.iter().map(|item| item.source).collect();
     assert_eq!(sources.len(), 5);
+    Ok(())
+}
+
+/// Spike 164: Route 128's dive spots were not listed. A patch of deep water is one exit, at its own
+/// cell nearest the player: its biggest is a diagonal band, whose box is mostly plain sea.
+#[test]
+fn test_a_dive_spot_is_an_exit_at_its_patchs_cell_nearest_the_player() -> Result<()> {
+    let mut tiles: Vec<((i64, i64), i64)> = (84..87)
+        .flat_map(|x| (165..168).map(move |z| ((x, z), 0x411A0006)))
+        .collect();
+    let mut band: IndexMap<(i64, i64), i64> = IndexMap::new();
+    for i in 0..6 {
+        band.insert((100 + i, 165 + i), 0x411A0006);
+    }
+    for i in 0..5 {
+        band.insert((101 + i, 165 + i), 0x411A0006);
+    }
+    tiles.extend(band);
+    let mut town = Town::new();
+    town.block_tiles(TOWN_BLOCK, TOWN_CHUNK, (80, 160), &border(160), &tiles);
+    let r#where = town.r#where()?;
+    let dives: Vec<Interactable> = r#where
+        .of("exits")
+        .into_iter()
+        .filter(|item| item.kind == "dive spot")
+        .collect();
+    assert_eq!(r#where.cell, (94, 172));
+    let mut seen: Vec<((i64, i64), (i64, i64))> =
+        dives.iter().map(|item| (item.cell, item.size)).collect();
+    seen.sort();
+    assert_eq!(seen, [((86, 167), (1, 1)), ((100, 165), (1, 1))]);
+    let sources: HashSet<i64> = dives.iter().map(|item| item.source).collect();
+    assert_eq!(sources.len(), 2);
+    Ok(())
+}
+
+/// Spike 165: under Route 126 the player's light rose into a pond walled off from the sea, and
+/// only their other light reached a dive spot into the way to Sootopolis City. The sea above is
+/// the zone of the same place that is not under the water, its matrix out of the ROM, laid over
+/// this one where every cell of deep water lands on deep water.
+#[test]
+fn test_under_the_water_each_light_is_joined_to_those_the_sea_above_reaches() -> Result<()> {
+    fn square(x: i64, z: i64) -> Vec<(i64, i64)> {
+        (0..3)
+            .flat_map(|dx| (0..3).map(move |dz| (x + dx, z + dz)))
+            .collect()
+    }
+
+    let lights = [square(84, 165), square(100, 180), square(110, 165)];
+    let town = Town::with(false, 5, 7);
+    let mut files = vec![NO_CHUNK_FILE; 64];
+    files[4 * 8 + 2] = 7;
+    town.memory.write(MAP + MAP_CHUNK_FILES, &le16(&files));
+    let mut under = town_info();
+    put(&mut under, INFO_KIND, &le16(&[UNDERWATER]));
+    let data = zone_file(&ZoneSpec {
+        info: &under,
+        ..ZoneSpec::default()
+    });
+    town.memory.write(FILE, &data);
+    town.memory
+        .u32(HOLDER + 8, &[0x11 | (data.len() as i64) << 8]);
+    town.memory.write(TABLE + TOWN * INFO_SIZE, &under);
+    let mut sea = vec![0u8; INFO_SIZE as usize];
+    put(&mut sea, INFO_PARENT, &le16(&[0x37, 170]));
+    put(&mut sea, INFO_MATRIX, &le16(&[28]));
+    town.memory.write(TABLE + 0x37 * INFO_SIZE, &sea);
+    let deep = 0x411A0006;
+    let tiles: Vec<((i64, i64), i64)> = lights.iter().flatten().map(|&cell| (cell, deep)).collect();
+    let below = mapblock::cells(&chunk_file_with((80, 160), &[], &tiles, 7))?
+        .expect("a chunk's cell table");
+    // The sea above is one chunk, 80 west and 160 north, with rock between the first light
+    // and the other two.
+    let rock: Vec<(i64, i64)> = (0..CHUNK).map(|z| (15, z)).collect();
+    let moved: Vec<((i64, i64), i64)> = lights
+        .iter()
+        .flatten()
+        .map(|&(x, z)| ((x - 80, z - 160), deep))
+        .collect();
+    let above =
+        mapblock::cells(&chunk_file_with((0, 0), &rock, &moved, 7))?.expect("a chunk's cell table");
+    let tables: HashMap<i64, Vec<i64>> = HashMap::from([(7, below), (8, above)]);
+    let reader = FieldReader::with(
+        town.memory.clone(),
+        Options {
+            far: Some(Rc::new(move |file| Ok(tables.get(&file).cloned()))),
+            matrices: Some(Rc::new(|number| {
+                Ok(if number == 28 {
+                    Some((1, vec![8]))
+                } else {
+                    None
+                })
+            })),
+            ..Options::default()
+        },
+    );
+    reader.track(&town.found())?;
+    let r#where = reader.poll()?.expect("the player's field");
+    let r#where = reader.interactables(&r#where)?;
+    let surfaces = reader.ground(&r#where, None)?.surfaces;
+    let set = |cells: &[(i64, i64)]| -> HashSet<(i64, i64)> { cells.iter().copied().collect() };
+    assert_eq!(*surfaces[&(85, 166)], set(&lights[0]));
+    let both = set(&[lights[1].clone(), lights[2].clone()].concat());
+    assert_eq!(*surfaces[&(101, 181)], both);
+    assert_eq!(*surfaces[&(110, 165)], both);
     Ok(())
 }
 
@@ -3028,7 +3241,7 @@ fn test_a_secret_bases_pc_flag_and_way_out_are_listed_as_what_they_are() -> Resu
             words: IndexMap::from([(PC_KIND, "パソコン".to_string())]),
             triggers: IndexMap::from([(
                 (TOWN, oras::WAY_OUT),
-                ("exits".to_string(), "way out".to_string()),
+                ("exits".to_string(), "way out".to_string(), None),
             )]),
             furniture: IndexMap::from([
                 ((TOWN, oras::BASE_PC), "PC".to_string()),
@@ -3238,5 +3451,58 @@ fn test_the_players_own_spot_is_the_saves() -> Result<()> {
     assert_eq!(bases.own()?, Some(8));
     memory.write(save + secret_base::OWN_SPOT, &0i16.to_le_bytes());
     assert_eq!(bases.own()?, None);
+    Ok(())
+}
+
+/// Spike 167: Sootopolis Gym's module, mapped whole with its sequence's vtable at +0x3310, keeps
+/// in two words of its code where the cells that are no ice are and where its data is, whose first
+/// three words point to the rooms: here the first, 5 by 5 from (16, 48) at 254, with (18, 52)
+/// cracked as the movie's first step onto the ice left it.
+#[test]
+fn test_the_ice_gyms_rooms_are_read_through_its_module() -> Result<()> {
+    let memory = FakeMemory::new();
+    let (base, sequence, data, room, states, exits, solid) = (
+        0x00838000, 0x082D376C, 0x0818EEF0, 0x0818EF10, 0x08323B40, 0x0818F000, 0x0083B020,
+    );
+    memory.u32(sequence, &[base + ice::VTABLE]);
+    memory.u32(base + ice::SOLID_AT, &[solid, data]);
+    memory.u32(solid, &vec![0; 2 * ice::NO_ICE as usize]);
+    memory.u32(data, &[room, room, room]);
+    let mut record = vec![5, 5, 16, 48];
+    record.extend(le32(&[254, 0x4046, states, exits]));
+    memory.write(room, &record);
+    memory.u32(exits, &[17, 48, 18, 48, 19, 48]);
+    memory.write(states + 4 * 5 + 2, &[1]);
+    let floors = ice::IceFloors::new(memory.clone());
+    floors.track(&Found {
+        pages: pages(&memory),
+        heap: IndexMap::from([(sequence, ice::CLASS.to_string())]),
+        partial: false,
+    })?;
+    let first = floors.rooms(ice::GYM)?.remove(0);
+    assert_eq!(
+        (
+            first.corner,
+            first.size,
+            first.height,
+            first.exits.clone(),
+            first.cleared
+        ),
+        (
+            (16, 48),
+            (5, 5),
+            254.0,
+            vec![(17, 48), (18, 48), (19, 48)],
+            false
+        )
+    );
+    let cracked: Vec<(i64, i64)> = first
+        .cells()
+        .into_iter()
+        .filter(|&(_, state)| state != 0)
+        .map(|(cell, _)| cell)
+        .collect();
+    assert_eq!(cracked, [(18, 52)]);
+    assert!(floors.rooms(0x1BB)?.is_empty());
     Ok(())
 }

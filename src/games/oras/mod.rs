@@ -11,16 +11,17 @@ use indexmap::{IndexMap, IndexSet};
 use crate::core::discovery::Found;
 use crate::core::memory::Memory;
 use crate::core::pathfind::{Cell, SOUTH};
-use crate::games::common::field::{CUT, ROCK_SMASH, RotatingDoor, STRENGTH};
+use crate::games::common::field::{CUT, IceRoom, ROCK_SMASH, RotatingDoor, STRENGTH};
 use crate::games::gen6::archives::{BOY, GIRL, RomLayout, TownFacilities};
 use crate::games::gen6::field::{
-    AshReader, DoorReader, FLAG, HiddenReader, PC_TILE, SecretBaseReader, use_tiles,
+    AshReader, DoorReader, FLAG, HiddenReader, IceReader, PC_TILE, SecretBaseReader, use_tiles,
 };
 use crate::games::gen6::game::{Data, Game};
 use crate::games::gen6::mmodel;
 use crate::games::oras::ash::AshPiles;
 use crate::games::oras::doors::RotatingDoors;
 use crate::games::oras::hidden::DexNav;
+use crate::games::oras::ice::IceFloors;
 use crate::games::oras::secret_base::{SecretBases, zones as secret_bases_zones};
 use crate::py::Result;
 
@@ -130,6 +131,9 @@ pub fn characters() -> &'static IndexMap<i64, i64> {
 /// The map chunks, a file a chunk by the number the field map lists it under: Route 109's four
 /// round the beach are files 43 to 46, each the cell table the game loads (spike 136).
 pub const MAP_CHUNKS: &str = "a/0/3/9";
+/// The matrices, a file a matrix by the number a zone-table row's +0x04 gives: Route 126's is 28, 8
+/// chunks by 8, and the water under it 31, 3 by 3 (spike 165).
+pub const MATRICES: &str = "a/0/4/0";
 /// The field's DLL, whose table lists all 90 berry spots (spike 141): Route 102's two are the
 /// first, at (155, 129) and (156, 129), where the player heard "This is where you planted the Pecha
 /// Berry!" and harvested an Oran Berry tree (omega_ruby_berry.ctm).
@@ -208,6 +212,11 @@ pub const MACH_BIKE: (i64, i64) = (114, 718);
 /// (spike 159).
 pub const ACRO_BIKE: (i64, i64) = (114, 719);
 
+/// The sky's map of places, soaring on Latios: the one file of its archive, "SLAN" in a two-letter
+/// archive of one (`gen6.sky`, spike 166). Its neighbours `a/2/5/1`, `a/2/5/3` and `a/2/5/4` are the
+/// sky's models and textures, the files the sky's process loads.
+pub const SKY_PLACES: &str = "a/2/5/2";
+
 /// Where ORAS keeps what `archives.GameText` reads.
 pub fn rom() -> &'static RomLayout {
     static ROM: OnceLock<RomLayout> = OnceLock::new();
@@ -218,6 +227,7 @@ pub fn rom() -> &'static RomLayout {
         story: crate::games::gen6::archives::owned(story_archives()),
         moves: Some(MOVE_NAMES),
         map_chunks: Some(MAP_CHUNKS.to_string()),
+        matrices: Some(MATRICES.to_string()),
         berries: Some(BERRY_SPOTS.to_string()),
         textures: TEXTURE_ARCHIVES
             .iter()
@@ -231,6 +241,7 @@ pub fn rom() -> &'static RomLayout {
         decorations: Some(DECORATION_NAMES),
         bike: Some(MACH_BIKE),
         acro: Some(ACRO_BIKE),
+        sky: Some(SKY_PLACES.to_string()),
         ..RomLayout::new(
             "ORAS",
             text_archives(),
@@ -284,12 +295,17 @@ pub const BASE_PC: i64 = 0x2A72;
 pub const BASE_FLAG: i64 = 0x2A73;
 pub const LAVARIDGE_GYM: i64 = 0x1AD;
 pub const MOSSDEEP_GYM: i64 = 0x1BB;
+pub const SOOTOPOLIS_GYM: i64 = 0x1BC;
 pub const SWITCH: (&str, &str) = ("signs", "switch");
 pub const PASSAGE: (&str, &str) = ("exits", "passage");
 pub const TRAPDOOR: (&str, &str) = ("exits", "trapdoor");
 pub const GEYSER: (&str, &str) = ("exits", "geyser");
 pub const LIFT: (&str, &str) = ("exits", "lift");
 pub const TELEPORTER: (&str, &str) = ("exits", "teleporter");
+pub const UNDERWATER_128: i64 = 0x44;
+pub const SEAFLOOR_CAVERN: i64 = 0x62;
+pub const UNDERWATER_126: i64 = 0x42;
+pub const UNDER_SOOTOPOLIS: i64 = 0x4C;
 
 /// Mauville Gym's triggers, by their scripts (spike 146): its five floor switches, each one cell,
 /// the two by the entrance at (58, 38) and (66, 38), the three by Wattson at (5, 40), (13, 36) and
@@ -314,10 +330,29 @@ pub const TELEPORTER: (&str, &str) = ("exits", "teleporter");
 /// them at (21, 6), script 0xf, put the player back at the entrance at (19, 35)
 /// (omega_ruby_psychic-gym.ctm). The lifts on the four middle platforms are armed by their
 /// platform's switch, and the teleporter once all four are pressed; the game names none of them.
-pub fn triggers() -> &'static IndexMap<(i64, i64), (String, String)> {
-    static TRIGGERS: OnceLock<IndexMap<(i64, i64), (String, String)>> = OnceLock::new();
+///
+/// The way into Seafloor Cavern, under Route 128 (spike 164): no warp record leads there from
+/// anywhere, and the underwater zone's only trigger, script 5, seven cells wide at (305, 184), is
+/// the gap in the south wall of a ring of rock, round the light under the surface's dive square at
+/// (307, 175). Its script ends in the zone's one call into Seafloor Cavern's first room, `0x62`, at
+/// (21, 35). A third item is the zone an exit leads to, said after it: "entrance to Seafloor
+/// Cavern". The player dived at (307, 190), south of the ring, swam 6 north into the gap and stood
+/// in `0x62` at (21, 35) (omega_ruby_route-128-sea-floor2.ctm); from inside the ring, diving at
+/// (307, 175), P's way stopped 5 short of the gap.
+///
+/// The way into Sootopolis City, under Route 126 (spike 165), is the same: the underwater zone's
+/// only trigger, script 2, five cells wide at (55, 95), ends in its one call into `0x4c`, the
+/// water under the city, at (20, 36), where the light into the city's lake is 3 north. `0x4c`'s
+/// only trigger, script 2, seven wide at (17, 37), leads back to (57, 96). The listing was
+/// replayed (omega_ruby_route-126-dive.ctm); neither was swum through.
+///
+/// Python's value is `tuple[str, str] | tuple[str, str, int]`: the zone is the third item, None
+/// where the tuple has two.
+pub fn triggers() -> &'static IndexMap<(i64, i64), (String, String, Option<i64>)> {
+    static TRIGGERS: OnceLock<IndexMap<(i64, i64), (String, String, Option<i64>)>> =
+        OnceLock::new();
     TRIGGERS.get_or_init(|| {
-        let owned = |(category, kind): (&str, &str)| (category.to_string(), kind.to_string());
+        let owned = |(category, kind): (&str, &str)| (category.to_string(), kind.to_string(), None);
         let mut out = IndexMap::new();
         for script in 0x4..0x9 {
             out.insert((MAUVILLE_GYM, script), owned(SWITCH));
@@ -334,6 +369,30 @@ pub fn triggers() -> &'static IndexMap<(i64, i64), (String, String)> {
             out.insert((MOSSDEEP_GYM, script), owned(LIFT));
         }
         out.insert((MOSSDEEP_GYM, 0xF), owned(TELEPORTER));
+        out.insert(
+            (UNDERWATER_128, 0x5),
+            (
+                "exits".to_string(),
+                "entrance".to_string(),
+                Some(SEAFLOOR_CAVERN),
+            ),
+        );
+        out.insert(
+            (UNDERWATER_126, 0x2),
+            (
+                "exits".to_string(),
+                "entrance".to_string(),
+                Some(UNDER_SOOTOPOLIS),
+            ),
+        );
+        out.insert(
+            (UNDER_SOOTOPOLIS, 0x2),
+            (
+                "exits".to_string(),
+                "way out".to_string(),
+                Some(UNDERWATER_126),
+            ),
+        );
         for &zone in secret_bases_zones() {
             out.insert((zone, WAY_OUT), owned(("exits", "way out")));
         }
@@ -430,16 +489,32 @@ impl DoorReader for RotatingDoors {
         self.classes.clone()
     }
 
-    fn stand_in(&self) -> i64 {
-        self.stand_in
-    }
-
     fn track(&self, found: &Found) -> Result<()> {
         RotatingDoors::track(self, found)
     }
 
     fn doors(&self, zone: i64) -> Result<Vec<RotatingDoor>> {
         RotatingDoors::doors(self, zone)
+    }
+}
+
+/// `IceFloors`, as the factory `Game.ice` holds.
+fn ice_floors(memory: Rc<dyn Memory>) -> Rc<dyn IceReader> {
+    Rc::new(IceFloors::new(memory))
+}
+
+/// `IceFloors` is an `IceReader`.
+impl IceReader for IceFloors {
+    fn classes(&self) -> Vec<&'static str> {
+        self.classes.clone()
+    }
+
+    fn track(&self, found: &Found) -> Result<()> {
+        IceFloors::track(self, found)
+    }
+
+    fn rooms(&self, zone: i64) -> Result<Vec<IceRoom>> {
+        IceFloors::rooms(self, zone)
     }
 }
 
@@ -486,6 +561,14 @@ impl SecretBaseReader for SecretBases {
     }
 }
 
+/// The sprite of the game's invisible blocker, `STOPPER` among the ROM's sprite ids, drawn as
+/// nothing: in Fortree Gym the stand-ins for its doors' arms (spike 161), and in Sootopolis Gym
+/// nine in rows of three across the corridors up from its rooms, at (17, 45), (17, 34) and (17,
+/// 23) on the floor above the lower one, which the list called nameless people (spike 167).
+/// Seafloor Cavern stands six more. Their records sit in a square off the map, (36, 70) in
+/// Sootopolis Gym, and the Gym's module sets them in place.
+pub const STOPPER: i64 = 0x8A;
+
 /// Omega Ruby and Alpha Sapphire as the gen 6 readers read them.
 pub fn game() -> &'static Game {
     static GAME: OnceLock<Game> = OnceLock::new();
@@ -504,6 +587,9 @@ pub fn game() -> &'static Game {
         secret_bases: Some(secret_bases),
         ash: Some(ash_piles),
         doors: Some(rotating_doors),
+        ice: Some(ice_floors),
+        blocker: Some(STOPPER),
+        stairs: HashSet::from([SOOTOPOLIS_GYM]),
         ..Game::new(
             "Omega Ruby and Alpha Sapphire",
             [OMEGA_RUBY, ALPHA_SAPPHIRE],
@@ -517,4 +603,5 @@ pub fn game() -> &'static Game {
 pub mod ash;
 pub mod doors;
 pub mod hidden;
+pub mod ice;
 pub mod secret_base;

@@ -33,6 +33,7 @@ pub mod profile;
 pub mod rail;
 pub mod script;
 pub mod session;
+pub mod sky;
 pub mod speaker;
 pub mod talk;
 pub mod textures;

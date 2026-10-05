@@ -27,6 +27,7 @@ use std::rc::Rc;
 use indexmap::IndexMap;
 
 use crate::core::binary::{u16, u32};
+use crate::core::heaps::IN_USE;
 use crate::core::memory::Memory;
 use crate::core::rtti::ClassNames;
 use crate::games::common::layout::Layouts;
@@ -48,8 +49,6 @@ pub const MAX_LINE_HOSTS: i64 = 16;
 ///
 /// ORAS's and X's by default. Sun's message windows are ORAS's field for field under other names,
 /// and its TextBoxes hold every field 0x30 earlier (spike 111).
-///
-/// Python's `Shapes()` is [`Shapes::default`], which is [`ORAS_SHAPES`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Shapes {
     pub windows: &'static [&'static str],
@@ -57,6 +56,11 @@ pub struct Shapes {
     pub tag_processor: i64,
     pub capacity: i64,
     pub length: i64,
+    /// How far before a window the SDK's block header is, which reads 'UD' while the window lives,
+    /// or None where that was never measured. A freed window keeps its base class's vtable, so the
+    /// class check passes it, and its lines lead into memory the next screen may give the GPU:
+    /// reading them crashed Azahar after Groudon's capture (spikes 168 and 169).
+    pub block: Option<i64>,
 }
 
 impl Shapes {
@@ -66,18 +70,14 @@ impl Shapes {
     }
 }
 
-impl Default for Shapes {
-    fn default() -> Self {
-        ORAS_SHAPES
-    }
-}
-
+/// The SDK's block header (0x10) and Game Freak's (0x20) sit in front of each window (spike 110).
 pub const ORAS_SHAPES: Shapes = Shapes {
     windows: &msgwin::CLASSES,
     text: lyt::TEXT,
     tag_processor: lyt::TAG_PROCESSOR,
     capacity: lyt::CAPACITY,
     length: lyt::LENGTH,
+    block: Some(0x30),
 };
 
 /// A page the game has started to show, ready to speak.
@@ -274,6 +274,15 @@ impl DialogueReader {
         }
     }
 
+    /// Stop watching every TextBox, as an app ends. The field's message box keeps its lines
+    /// from one window to the next, but a battle's or the Pokédex's go with the app, into memory
+    /// the next app may give the GPU, and reading them crashed Azahar after Groudon's capture
+    /// (spikes 168 and 169). The screen text reader hands the new app's over as they are typed
+    /// in.
+    pub fn forget_hosts(&mut self) {
+        self.hosts.clear();
+    }
+
     pub fn poll(&mut self) -> Result<Vec<Shown>> {
         if let Some(layouts) = &self.layouts {
             layouts.refresh();
@@ -305,7 +314,15 @@ impl DialogueReader {
 
     /// Python's `_poll`, renamed because `poll` is the public one.
     fn poll_window(&mut self, address: i64, progress: &mut Progress) -> Result<Vec<Shown>> {
-        let head = self.memory.read(address, msgwin::HEAD)?;
+        let before = self.shapes.block.unwrap_or(0);
+        let head = self.memory.read(address - before, before + msgwin::HEAD)?;
+        if self.shapes.block.is_some() && u16(&head, 0)? != IN_USE {
+            // Its lines are no longer to be read, not even to see whether they are TextBoxes. They
+            // stay watched: the field's box keeps its lines for the next window (`forget_hosts`).
+            self.lines.shift_remove(&address);
+            return Ok(gone(progress, "again after the window closed"));
+        }
+        let head = head[before as usize..].to_vec();
         // A window freed since a sweep found it is memory something else now holds, and its
         // pointers lead anywhere: a read that fails loses the whole poll.
         let class = self.names.of_vtable(u32(&head, 0)?)?;

@@ -2892,3 +2892,320 @@ around". omega_ruby_psychic-gym.ctm, on the save of 14:03 (the rig's
   pressed, so P finds no way from one platform to another and says "no path" to everything off
   the player's own; and whether pa3ds should say a lift is not armed, which needs the work
   values read from the save.
+
+## Spike 164 — Route 128's dive spots
+
+2026-10-04 (`spikes/164_dive.py`). The user, surfing on Route 128 (zone `0x39`, 7 badges), could
+not find its dive spots in the list. omega_ruby_route-128-dive.ctm, on the save of 17:13 (the
+rig's `save_checkpoint_dive`), replayed with 0 out of sync; it ends on no save.
+
+- **A dive spot is kind `0x41`.** Spike 136 found it as water in patches inside the sea and
+  guessed Dive's. The executable has a kind test for it alone at `0x00403bcc` (`lsr r0, r0,
+  #0x18; cmp r0, #0x41; moveq r0, #1`, reached through a table at `0x006f469c`), and the field
+  code at `0x003d3454` reads the kind of the cell under the player while their state is `0x12`
+  or `0x13` and sets bit `0x400` of a flags word where it is `0x41`. The player surfing on
+  Route 128 had +0x07 `0x13` throughout.
+- **It is the darker water.** The movie starts with the player on `0x41` at (314, 166); the
+  picture as they left it, a cell south, shows them at the edge of a band of dark water running
+  diagonally from the north-west, the sea round it lighter.
+- **Route 128 has three patches in its own zone:** 3-by-3 squares at (307, 175) and (339, 175),
+  and a band of 296 cells whose box is 37 by 36 from (296, 160). Across ORAS's chunk files
+  `0x41` is 8,630 cells in 66 files, words `0x411a0006` but for 143; 45 of its patches in one
+  chunk are 3-by-3 squares, and the rest bands and blobs up to a chunk wide.
+- **The game names none.** It draws the water darker and asks about diving there, so "dive
+  spot" is pa3ds's.
+- **Built** (`field.DIVE`, `FieldReader._ways`): each patch of `0x41` in the zone is listed under
+  exits as "dive spot", read off the whole matrix as the bike's ways are, at the patch's cell
+  nearest the player. A box would not do: the band's is mostly plain sea, and the way to it
+  would end there. Replayed, the list at the start says "dive spot here", "dive spot 5 west 9
+  south" and "dive spot 25 east 9 south", and P from the water says "9 south, 5 west" and "24
+  east, 9 south, 1 east" to the two squares.
+- **Under the water, Seafloor Cavern's way in is a trigger.** omega_ruby_route-128-sea-floor.ctm,
+  on the save of 17:46 underwater (zone `0x44`, the rig's `save_checkpoint_seafloor`), replayed
+  with 0 out of sync. Zone `0x44` has no warp record, and no zone outside Seafloor Cavern (`0x62`
+  to `0x6f`) has one into it. Its only trigger, script 5, seven cells wide at (305, 184), is the
+  gap in the south wall of a ring of rock about x 302 to 314 and z 169 to 184, round the light
+  under the surface's dive square at (307, 175). Case 5 of the zone's script calls a function that
+  ends in its one call with `0x62` among the arguments: (`0x62`, 21, -69, 35, 0, 1), Seafloor
+  Cavern's first room at (21, 35), whose own trigger is an 11-cell line at (16, 36). Diving keeps
+  the cell: the player under the water at (340, 175) had dived at the surface's square at (339,
+  175). That square's light is in a pocket of 159 cells walled off from the rest (seaweed, `0x42`,
+  and the Free Diver), from which nothing joins the gap: the player swam in it for the whole
+  movie. Built (`oras.TRIGGERS`, its third item the zone an exit leads to): listed as "entrance to
+  Seafloor Cavern", 29 west 9 south from (340, 175).
+- **Swum through.** omega_ruby_route-128-sea-floor2.ctm, on the same save, the player's own log:
+  diving at (307, 175), inside the ring, the list said "entrance to Seafloor Cavern 9 south" and P
+  "can't continue, entrance, 5 south"; they surfaced, dived again at (307, 190), south of the
+  ring, where the list said "6 north", P said "entrance, here", and the next poll had them in
+  Seafloor Cavern, zone `0x62` at (21, 35), as the script says. Why the inside of the ring does
+  not reach the gap was not looked at.
+- **Under the water `0x41` is where the player surfaces**: "Light is filtering down from above.
+  Would you like to return to the surface?" at (340, 175). The list still calls it a dive spot.
+  The player's +0x07 is `0x03` under the water, against `0x13` surfing, and the log said "field:
+  on the bike" throughout.
+- **Left open**: where each spot leads (the underwater zone and the cell there), which the
+  game's scripts or its Dive code hold and were not read; what `0x42`, tested at `0x00403434`
+  and `0x003f9968`, is; and whether `0x41` in the chunk files with no sea on Route 128's matrix
+  (237 to 259, 810 to 831) is the light the player surfaces through underwater, where "dive spot"
+  would be the wrong word. No dive was recorded.
+
+## Spike 165 — the way into Sootopolis City under Route 126
+
+2026-10-04 (`spikes/165_sootopolis.py`). The user, under the water on Route 126 (zone `0x42`, 7
+badges), could not find the way into Sootopolis City: the list had seven dive spots and nothing
+else under exits, and P to most of them said "11 south, then can't continue".
+omega_ruby_route-126-dive.ctm, on the save of 20:37 (the rig's `save_checkpoint_route126`),
+replayed with 0 out of sync; the player stays at (13, 10) throughout, and it ends on no save.
+
+- **The way in is a trigger, as Seafloor Cavern's is.** Zone `0x42` has no warp and one
+  trigger, script 2, five cells wide at (55, 95); its case ends in the zone's one call with
+  another zone among its arguments, (`0x4c`, 20, 29, 36, 0, 1). `0x4c` is the water under the
+  city, which the game calls Sootopolis City: one trigger, script 2, seven wide at (17, 37),
+  back to `0x42` at (57, 96), and 131 cells of deep water from (12, 29) to (28, 33), the light
+  into the city's lake, 3 north of where the player arrives. Built (`oras.TRIGGERS`):
+  "entrance to Sootopolis City", and back, "way out to Route 126". Replayed, the list said
+  "entrance to zone 0x4c (Sootopolis City) 42 east 85 south".
+- **Five such ways in ORAS** (`rom`): these two, Route 128's into Seafloor Cavern and back (`0x62`'s
+  script 3, 11 wide at (16, 36), to `0x44` at (308, 185)), and Route 125's one-cell trigger at
+  (240, 103) into Shoal Cave, `0x80` or `0x84` by the tide, and back. Shoal Cave's two and
+  Seafloor Cavern's way out are not listed.
+- **The water under the sea is pockets.** Drawn from the ROM's chunks (`map_42.txt`), rock (kind
+  `0x01`, blocked) walls it into pockets. The player's, at the top, holds two lights, (11..13,
+  10..12) and (60..62, 4..6), and no way to the entrance, whose pocket is the big one from z 25
+  south, the entrance opening onto its south side at z 96. The south-west corner is a third,
+  with two lights more. P's "can't continue" was true.
+- **The matrices are `a/0/4/0`**, file N the matrix a zone-table row's +0x04 names: `MM`, a u16
+  count of sections and their u32 offsets, the first section a u16 0 or 1, a u16 0, u16 width
+  and height in chunks, and each chunk's file. Under Route 126 is 31, 3 by 3, files 251 to 259
+  as the field map has them; Route 126 is 28, 8 by 8, files 237 to 245 in chunks 2 to 4 each way.
+- **Every zone under the sea is area kind `0xc2`** (+0x08), and no other: under Routes 107, 124,
+  126 to 130 and 134, under Sootopolis City, and Seafloor Cavern's first room.
+- **Deep water lies under deep water, moved.** Under each but Seafloor Cavern, the sea above is
+  the zone of the same place-name that is its own parent and not under the water, and its deep
+  water is the underwater zone's, every cell, moved: under Route 126 by (80, 80), so (13, 10)
+  rose at (93, 90) in the recording's log; under 128 by nothing; under Sootopolis by (41, 77);
+  under 107 by (120, 240) and 124 by (80, 120). Routes 127 and 128 share one underwater matrix,
+  129 and 130 another, and all four one sea, so the corners do not line up: the move is the one
+  that lands every cell. Under Route 134's second zone a lone 3-by-3 lands in two places.
+- **The sea above is pockets too.** The light at (13, 10) rises into a pond, rows 89 to 100 round
+  (93, 90), walled by rock round a beach: in the recording's log P from there stopped short of
+  everything. The light at (60, 6) rises at (140, 86) into a sea of 471 cells in the middle of
+  the route, walled from the rest by a line of rock through the water (word `0x1000021`), whose
+  other light, (122..124, 106..108), is over (42..44, 26..28) in the entrance's pocket.
+- **Built** (`FieldReader._surfaces`, `navigate._dive_again`): under the water each light is
+  joined to every light the sea above reaches from it, out of the ROM's matrix and chunks, and
+  nothing where the sea is not found or lands in more than one place. Where P's way stops
+  short in another pocket, it goes to the nearest light whose sea reaches a dive spot over the
+  thing's pocket, and says that spot from the light, where the list puts it once the player has
+  risen. Replayed from (13, 10), P to the entrance said "47 east, 4 north, then can't continue,
+  surface and go to the dive spot 16 west 20 south", in 0.07 s with the sea read. Off the ROM's
+  chunks, the way from (44, 26) to the entrance is "6 east, 27 south, 19 west, 36 south, 2 east,
+  7 south, 22 east, 1 north". None of it was swum: the movie never moves.
+- **Before and after**, dive, seafloor, seafloor2 and route126 replayed with 0 out of sync: the
+  only change said is the entrance. seafloor2's 59 lines are a hidden Pokémon that appeared in
+  one run and not the other; two runs of the new code differed by 82.
+- **Left open**: a way that rises and dives more than once — P to the south-west pocket from the
+  player's still says "can't continue"; the sea's own way between two lights, said as the crow
+  flies; Shoal Cave's and Seafloor Cavern's ways out; and the light under the water still listed
+  as "dive spot".
+
+## Spike 167 — Sootopolis Gym: thin ice over a lower floor, its stairs, and invisible blockers
+
+2026-10-05 (`spikes/167_ice_gym.py`, and the ROM's zone file and chunks). The user, in
+Sootopolis Gym (zone `0x1bc`, 7 badges), asked for the way back up to be listed, for P to work
+through the ice, and for some things not to be called people. omega_ruby_gym-8.ctm, on the save
+of 09:00 (the rig's `save_checkpoint_gym8`), replayed with 0 out of sync; it ends on no save.
+
+- **What the movie does.** The player walks north from the door at (18, 72) into the first room
+  of ice, at height 254, steps back onto (18, 51) and drops through to (18, 51) at 38, where a
+  Beauty battles them. After it, P to the way out said "1 east, 19 south", then "way out, 1
+  south" at (18, 72): on the lower floor, 216 under the way out. The player walked west to
+  (14, 72), beside a stair, and the movie ends.
+- **Two floors in each chunk.** Both of the Gym's chunks, files 706 and 707 (matrix 346, 1 by
+  2), have a deck. The floor above is the entrance's room (x 11 to 25, z 56 to 63) and corridor
+  (x 17 to 19, z 64 to 73) at 198, three rooms of ice up corridors from it, at 252 (x 16 to 20,
+  z 48 to 53), 306 (x 15 to 21, z 36 to 43) and 360 (x 11 to 25, z 24 to 30), and Wallace's
+  platform at 414. The ground's floor lies under it all: a room under each room and a corridor
+  under each corridor, its bottom room under the entrance's at -18, of kind `0x0a`, which
+  Lavaridge Gym's hot spring has too and no other zone. The pictures show shallow water. Six of
+  the eight trainers stand on it.
+- **The ice has no kind.** The rooms above are kind `0x00`, as the corridors are. Which tiles
+  are cracked is the Gym's module's, `DllUSGymWater.cro` (`--rooms`, and the module's file out
+  of the ROM, disassembled): its `field::FieldUniqueSequenceGymWater` checks the player's cell
+  against three rooms at every step (file offset `0x1ce0`). The module is mapped whole, at
+  `0x00838000` in the replay, the sequence's vtable at +0x3310; two words of its code (+0x230c,
+  +0x2310) hold where its 36 cells that are no ice are, in its own image, and where its data is,
+  whose first three words point to the rooms, the top first. A room's record is u8 width, height,
+  x and z of its corner, i32 its floor's height, u16 the work value (`0x4046` to `0x4048`) that
+  is 1 once it is cleared, a pointer to a byte a tile and one to its three exits, and at +0x18 a
+  byte set as it is cleared. The rooms are 15 by 7 from (11, 24) at 362, 7 by 7 from (15, 36) at
+  308 and 5 by 5 from (16, 48) at 254; the cells that are no ice are three blocks of nine in the
+  top room and one in the middle, and their bytes start at 1.
+- **A step onto a whole tile cracks it; onto a cracked one, the player falls.** In the replay
+  (18, 52), (18, 51) and (18, 50) went from 0 to 1 as the player stepped onto each; stepping
+  back onto (18, 51) set the sequence's +0x84 to 135, that tile's place among every room's ice,
+  and the player fell, and the room's bytes were all 0 again. The code: a whole tile is set to 1
+  and a sound played; a cracked one starts `EventFallFromIceFloor`; once a step leaves every
+  tile of the room at 1, `EventIceFloorClear` starts, and where the player stands on one of the
+  exits, the top row's middle three, the room is cleared, and the code passes over it from then
+  on. So a room is crossed by stepping on every tile once, last on an exit. The blocks of floor
+  are skipped by the check, and walked on freely.
+- **Two stairs are the way back up.** The lower floor climbs at x 11 and 12, and at x 24 and 25,
+  from 0 at z 72 to 189 at z 59, 18 or 19 a cell, and steps onto the entrance's room at 198 at
+  z 58. Nowhere else does either floor come within 18 of the other beside it. They are no warp
+  or trigger: the zone has one warp, the way out, and no trigger. The top steps' inner cells are
+  kinds `0x51` and `0x52`, which the League has side by side on an ordinary step, so they say
+  nothing of stairs.
+- **The nameless people are invisible blockers.** Nine NPC records drawn as `0x8a`, the ROM's
+  `STOPPER`, sit in a square at (36, 70), off the map; in the replay they stood in rows of three
+  across the three corridors up from the rooms, at z 45 (height 290), 34 (317) and 23 (371), on
+  the floor above. `STOPPER` stands in three zones: this one, Fortree Gym, where they are the
+  doors' stand-ins (spike 161), and Seafloor Cavern, six.
+- **P walked one floor a cell**, the one nearest the player's height (spike 156), and where two
+  floors overlap that broke it four ways. The Lass pacing the bottom room stood in the corridor
+  above her: from the door, P to Wallace said "3 north, then can't continue, Lass in the way".
+  The blockers above stood in the lower floor's corridors. A thing on the other floor was
+  reached on this one: the way out from below, the Beauty below from the room over her. And the
+  fallback of walking the whole map at another floor's height (spike 159) never goes from one
+  floor to the other by the stairs.
+- **Built: a stacked ground** (`Ground.stacked`, `Ground.climb`, `pathfind.find`'s `arrives`). A
+  matrix with a deck is walked a floor at a time, the floor part of where the search stands. A
+  step goes on along its floor, or onto another within 18 of the one it leaves, the nearest.
+  Whoever stands in a cell stands on its floor nearest their height, and move models, warps and
+  triggers now carry theirs. A thing is reached on its cell's floor within 36 of its height, and
+  a way that falls short ends on the thing's own floor first. A cell with no height, as the
+  bottom room's edges are in the lower floor's table, keeps the floor it is walked on.
+- **Built: invisible blockers and stairs** (`oras.STOPPER`, `Game.blocker`, `Game.stairs`,
+  `mapblock.joins`). A blocker is never listed, and stands in the way but round a rotating door;
+  the doors' own copy of the sprite is gone. A way it shuts ends with "then can't continue",
+  naming nobody. In the Gym, each run of the ground's cells beside a floor over it within 18 is
+  listed under exits as "stairs": from the door, "stairs 6 west 13 north; stairs 6 east 13
+  north".
+- **Checked** over the ROM's chunks with everyone where the replay had them: from (14, 72) the
+  way out is "2 west, 13 north, 2 east, 4 south, 3 east, 10 south", up the west stair, through the
+  entrance's room and down its corridor; from the door, the Beauty below is "12 north, 4 west, 1
+  north, 2 west, 11 south, 5 east, 16 north"; Wallace from anywhere goes up to the blockers and
+  says "then can't continue". Route 119's way north from its foot (spike 159's capture) is the
+  same as the one-height fallback found, "2 east, 14 north, 10 east, 54 north, 8 east, 12 north,
+  48 west, 10 north", in 0.11 s. Replayed with the runtime, the list has no nameless people, and
+  P from (19, 59) after the battle to the way out says "11 south, 5 east, 11 north, 2 west, 4
+  south, 3 west, 10 south", up the east stair.
+- **Built: P over the ice** (`oras.ice`, `IceRoom`, `pathfind.cover`, `navigate._over_ice`).
+  The rooms are read whenever the ground is, and their cracked tiles stand in the way on their
+  floor while the room is not cleared. Where a way falls short within three cells of a room's
+  exits, or the player is in the room, it goes onto the room and over every whole tile once,
+  ending on an exit, said with "and the ice is cleared", and "ice cleared" on the last tile; a
+  way that crosses the floor among the ice twice is followed from the leg being walked. The way
+  over a room is found by a search in depth taking the tile furthest from the exits first, then
+  the one with fewest ways on: Warnsdorff's rule alone did not cross the top room in 400,000
+  tiles tried, and furthest first crosses each room from each way onto it in under 20 ms.
+  Replayed, P to Wallace from the first room's corridor says "2 north, 2 west, 4 north, 1 east,
+  3 south, 2 east, 1 south, 1 east, 2 north, 2 west, 1 north, 2 east, 1 north, 2 west, and the
+  ice is cleared", and from the lower floor goes up a stair first. Over the ROM's chunks, with
+  the first room cleared and its blockers gone the way goes over the middle room, and with all
+  three, straight to Wallace.
+- **Left open**: whether the blockers leave the corridor once its room is cleared, and the work
+  values read from the save on a later visit, neither seen (no movie clears a room); a room
+  cleared is taken to be one whose record says so or that keeps no tiles; whether the stair's top step joins the room sideways as well as north, which
+  P takes; and the one-height fallback, now only for a ground not stacked (Sun's), to delete once
+  this is confirmed.
+
+## Spike 166 — soaring on Latios: where the player is over Hoenn, and the places they can land at
+
+2026-10-05 (`spikes/166_soaring.py`, and the ROM's `a/2/5/1` to `a/2/5/4`). The user, with eight
+badges, used the Eon Flute and flew over Littleroot Town: "I don't think the map tracker works
+there", and asked what the D-pad, the Circle Pad, X and Y do while soaring. omega_ruby_aeon-flute.ctm,
+on the save of 13:30 in Littleroot Town (the rig's `save_checkpoint_soar`), replayed with 0 out of
+sync three times; it ends on no save.
+
+- **What the movie does.** The Eon Flute from the Y button; Latios climbs out of the town and
+  hovers, facing north, 13 s; the Circle Pad up, down, left, right, down and up; Y held 2 s and X
+  4 s; B, A and B; the D-pad up, left, down and right; B. The player never lands.
+- **The sky is an app of its own**, `app::skyTrip::MainProc`, from the module `DllSkyTrip`
+  (`0x00722000`, 0x12000 long in the replay, beside `DllSequence` and `DllBackGround`). The
+  field's lists stayed as they were in the town all the while, which is what the user heard.
+- **The camera holds the player.** The process's +0xb4 leads to an `app::skyTrip::Camera`,
+  rebuilt once the climb is done; before that every word read is 0. Its +0x0c is the heading in
+  radians, +0x4c, +0x50 and +0x54 the target's x, height and z: the player, at (-3896, 1900,
+  9522) over Littleroot Town, heading pi. Its eye is 150 behind and 90 above.
+- **What the controls do**, read at ten polls a second. The Circle Pad's up flies forward along
+  (sin, cos) of the heading in (x, z), about 1,200 a second once up to speed, so pi is north;
+  down flies back, slower; left turns on the spot, the heading rising about 1.2 a second, right
+  the other way, with Latios banking as it turns. Y pitched Latios down and X up (+0x44 from 90
+  to 148 and to 12) with the height left at 1900 while it hovered; the D-pad and B moved nothing.
+  The height never left 1900 in the movie.
+- **The bottom screen** is one picture, `map.bclim`, 320 by 240, and a pane over it holding
+  `hero.bclim`, the player's arrow, turned with the heading. The arrow stands at
+  `320 * (x + 14773) / 43698 - 160` to a tenth of a pixel, and its y as z over 136.6: the map is
+  the world from (-14773, -11408) to (28925, 17074), letterboxed, a literal of `DllSkyTrip`'s
+  (`0x0072ebb0` in the replay, beside 43698 and 28482).
+- **The places are a table of the ROM's**, `a/2/5/2`'s one file, a two-letter archive "TM" of
+  one file, "SLAN": 117 rows of 0x34 bytes from +0x28, each a zone (and up to three more of the
+  same place), +0x10 a number from `0xb11` up, +0x14 a mirage spot's number, +0x18 0 for a place
+  always there and 1 to 6 for the mirage spots and Latios's islands, +0x1c the colour a debug
+  map draws it (white the 17 towns and the League, orange routes over land, cyan over the sea,
+  tomato the caves and the rest), +0x20 1 but for one of Route 111's, and +0x24 x, z, width and
+  depth as fractions of the world. A place in more than one rectangle has a row each: Route 104
+  three, Route 126 three. 69 places are always there. Its neighbours are the sky's models and
+  textures, "TM" archives of `BCH` and `CGFX` files, `a/2/5/1` holding a `SCOL`, not read.
+- **+0x10 is not a flag of having been there.** At `field::EventWork`+0x300 the save's event
+  flags sit in RAM as PKHeX lays them out, and `0xb11` (Littleroot Town) to `0xb21` were clear
+  but for two, in a game with eight badges. Which places a player may land at is not read.
+- **The place the game says is a little ahead of the player.** The top screen says the place as
+  screen text, with "Land" beside it where the player can land: "Littleroot Town" hovering at
+  z 9522, though its rectangle ends at 8831. Taking the first row whose rectangle holds a point
+  ahead of the player, every one of the eight changes of the words fits a point 1,400 to 1,600
+  ahead; whether the words stay put in between fits 1,150 to 1,350 flying north and more than
+  1,400 turning on the spot. Neither the camera's eye nor its look at the ground explains it.
+- **Built: the sky's places in the navigation keys** (`gen6.sky`, `RomLayout.sky`,
+  `GameText.sky`, `SkySource`). While the sky runs, the keys walk its places under three new
+  categories, towns, routes and landmarks, by the debug colours, said by the game's own place
+  names and never renamed. Each is said from a point 1,300 ahead of the player to its nearest
+  edge, in the player's own frame, a step 100 of the world's units: "Oldale Town, 2 of 17, 21
+  ahead", "Slateport City, 42 right". Direction mode looks 100 each way, its keys ahead, right,
+  behind and left. P says the smallest turn on the spot that brings the place to where the game
+  looks, or the turn and how far to fly: "turn right 90 degrees, 29 ahead", "turn left 10
+  degrees", "here". The way the player faces is said as a compass point once a turn stops,
+  "facing south-west", as the arrow shows it.
+- **Checked** replaying the movie with the keys pressed by the spike: over Littleroot Town at
+  the start, "towns, 17", "Littleroot Town, 1 of 17, here", "Oldale Town, 2 of 17, 21 ahead";
+  flying north, the game said Route 101 and Oldale Town about when the list's distances ran out;
+  "facing north" once the camera was placed, and nothing while it read 0.
+- **Left open**: which places the player may land at; the mirage spots and Latios's islands,
+  there only some days, which are left out; the flocks of birds the player can fly into
+  (`app::skyTrip::BMEncount`); the height, and whether X and Y change it while flying; the
+  point the game looks at, measured only from the words.
+- **Later the same day: the mirage spots, the flocks, and +0x10 after all.** The user asked
+  for "the secret spots or the flying Pokémon", having flown to an island with a Hoopa ring. In
+  their session of 14:18 the game said "Mirage Forest" and "Land" near the Pokémon League, at
+  (25302, 2378) facing north, which the list had nothing for, and the League's "Land" never
+  came; the height rose to 2190 flying east with X or Y held.
+- **+0x10 is the flag of having been there, read elsewhere.** `DllSkyTrip`'s `0x007231dc`
+  goes over the rows at the sky's start: a row with +0x20 0 is skipped; one whose +0x10 is a
+  flag is kept only where the flag is set, by the executable's `0x0012fd48`, which reads flag n
+  below 0xd00 as bit n & 7 of byte n / 8 from +0x2f4 of `field::EventWork`, itself +0x13140 into
+  `savedata::SaveData` (the 0x300 above was 0xc off); kinds 0 and 1 then stay, and 2 to 6 only
+  where +0x14 is today's mirage spot (`0x004608fc`, from the date, mod 33) or one of up to ten
+  the save was given (`savedata::SangoNetworkSavedata` +0x51dc, u16 every 4 bytes). It writes
+  the answer as a byte a row at the places' record's +0x40, the process's +0x154, and today's
+  number at its +0x44: 2, Mirage Forest at (24780, 383). In the movie's save the League, Ever
+  Grande City and Pacifidlog Town were not shown, nor Routes 127 to 134, and of the mirage
+  spots a flag opens, Pathless Plain and Nameless Cavern were: 59 rows of 117.
+- **The sky's models are a list.** The process's +0x160 leads to a manager whose +0xa0 holds
+  the model built last, linked to the others at +0x04 and +0x08, each with its place at +0x20
+  and its class saying what it is: `BMHikyo` the mirage spot at (24780, 0, 383), two
+  `BMEncount`, the flocks, at heights 1700 and 1500, three `BMLegendPoint`, the red beacons, 600
+  over Pathless Plain, Nameless Cavern and the Mirage Forest, and `BMShip`, the ship, at 90. The
+  flocks and the ship move, the flocks about 300 a second; no model is a place, and the beacons
+  stand over places the table has.
+- **Built: what the game shows, the mirage spots and the flocks** (`sky.shown`, `sky.flocks`,
+  `sky.chase`, `field.MIRAGE`). The places listed are the rows the game shows, so a place not yet
+  visited is left out, as the game leaves it unnamed; the mirage spots shown are a category of
+  their own, "mirage spots", named by the game ("Pathless Plain"); and each flock is listed under
+  pokémon as "flock", pa3ds's word, said from the player rather than where the game looks, since
+  flying into one is what battles it. P on a flock says the turn, the distance and how far
+  above or below it flies: "turn right 45 degrees, 38 ahead, 2 below". Checked on the capture
+  at 20 s (14 towns, 24 routes, 9 landmarks, 3 mirage spots, 2 flocks) and replayed with the keys,
+  "flock, 1 of 2, 26 ahead 28 right" moving to "11 ahead 21 right" four seconds on.
+- **Left open now**: whether diving to a flock's height is needed to battle it; the ship and
+  the beacons, not listed; the point the game looks at, measured only from the words.

@@ -13,7 +13,7 @@ use indexmap::IndexMap;
 use crate::core::memory::Memory;
 use crate::core::toml;
 use crate::games::gen6::archives::RomLayout;
-use crate::games::gen6::field::{AshReader, DoorReader, HiddenReader, SecretBaseReader};
+use crate::games::gen6::field::{AshReader, DoorReader, HiddenReader, IceReader, SecretBaseReader};
 
 /// A game's `data` folder as the binary carries it: each language's `sprites.toml`, by the
 /// language's code. Python's is a `Path` to the folder and `pa3ds.core.names` reads
@@ -30,6 +30,8 @@ pub type SecretBaseFactory = fn(Rc<dyn Memory>, &[u8]) -> Rc<dyn SecretBaseReade
 pub type AshFactory = fn(Rc<dyn Memory>) -> Rc<dyn AshReader>;
 /// `Callable[[Memory], DoorReader]`.
 pub type DoorFactory = fn(Rc<dyn Memory>) -> Rc<dyn DoorReader>;
+/// `Callable[[Memory], IceReader]`.
+pub type IceFactory = fn(Rc<dyn Memory>) -> Rc<dyn IceReader>;
 
 /// One game as the gen 6 readers read it.
 ///
@@ -65,9 +67,13 @@ pub struct Game {
     pub barriers: HashSet<(i64, i64)>,
     /// (zone, a trigger's script) -> the category and kind it is listed as: a switch, the way
     /// between two rooms that share no floor, a trapdoor or a geyser between a floor and the hot
-    /// spring under it, a lift or a teleporter between platforms, or a Secret Base's way out. As with
-    /// the belts, nothing in the record says which.
-    pub triggers: IndexMap<(i64, i64), (String, String)>,
+    /// spring under it, a lift or a teleporter between platforms, a Secret Base's way out, or the way
+    /// into Seafloor Cavern, with the zone it leads to. As with the belts, nothing in the record says
+    /// which.
+    ///
+    /// Python's value is `tuple[str, str] | tuple[str, str, int]`: the zone is the third item, None
+    /// where the tuple has two.
+    pub triggers: IndexMap<(i64, i64), (String, String, Option<i64>)>,
     /// (zone, a furniture record's script) -> what it is, where it is not a sign: a Secret Base's
     /// PC and flag, Mossdeep Gym's switches.
     pub furniture: IndexMap<(i64, i64), String>,
@@ -80,6 +86,15 @@ pub struct Game {
     /// The reader of its rotating doors, or None in a game with none: ORAS's, in Fortree Gym
     /// (`games.oras.doors`).
     pub doors: Option<DoorFactory>,
+    /// The reader of its rooms of thin ice, or None in a game with none: ORAS's, in Sootopolis
+    /// Gym (`games.oras.ice`).
+    pub ice: Option<IceFactory>,
+    /// The sprite of its invisible blocker, a move model drawn as nothing that stands in the way:
+    /// listed as nobody, and solid but where it stands in for a rotating door's arm.
+    pub blocker: Option<i64>,
+    /// Zones whose chunks' floors are joined by stairs, each listed under exits where it meets
+    /// the floor above: Sootopolis Gym's two, the way back up from its lower floor.
+    pub stairs: HashSet<i64>,
 }
 
 impl Game {
@@ -108,6 +123,9 @@ impl Game {
             secret_bases: None,
             ash: None,
             doors: None,
+            ice: None,
+            blocker: None,
+            stairs: HashSet::new(),
         }
     }
 

@@ -30,4 +30,5 @@ pub const SHAPES: Shapes = Shapes {
     tag_processor: TAG_PROCESSOR,
     capacity: CAPACITY,
     length: LENGTH,
+    block: None,
 };

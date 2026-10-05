@@ -7,8 +7,8 @@ use std::rc::Rc;
 use indexmap::IndexMap;
 
 use crate::core::pathfind::{
-    Box, Cell, EAST, Leg, NORTH, Options, SOUTH, WEST, facing, find, legs, nearest, off, spoken,
-    turned,
+    Box, Cell, EAST, Leg, NORTH, Options, SOUTH, WEST, cover, facing, find, legs, nearest, off,
+    spoken, turned,
 };
 use crate::py::Result;
 
@@ -453,4 +453,69 @@ fn test_a_place_is_said_from_the_way_the_player_faces() {
     assert_eq!(facing((0, 0), (8, -9), EAST).unwrap(), "8 ahead 9 left");
     assert_eq!(facing((0, 0), (0, 3), NORTH).unwrap(), "3 behind");
     assert_eq!(facing((2, 2), (2, 2), WEST).unwrap(), "here");
+}
+
+/// Spike 167: each of Sootopolis Gym's rooms of thin ice is cleared by stepping on every tile
+/// once and last on an exit, the top row's middle three, the blocks of floor among the ice
+/// crossed as often as wanted. Its first room, 5 by 5, cannot be done from a corner's colour,
+/// and its top room, 78 tiles round three blocks, was not done by Warnsdorff's rule alone.
+#[test]
+fn test_thin_ice_is_crossed_over_every_tile_once_and_left_by_an_exit() {
+    type Room = (HashSet<Cell>, HashSet<Cell>, Vec<Cell>);
+
+    fn room(corner: Cell, size: (i64, i64), blocks: &[Cell]) -> Room {
+        let cells: HashSet<Cell> = (0..size.0)
+            .flat_map(|x| (0..size.1).map(move |z| (corner.0 + x, corner.1 + z)))
+            .collect();
+        let free: HashSet<Cell> = blocks
+            .iter()
+            .flat_map(|&(x, z)| (0..3).flat_map(move |dx| (0..3).map(move |dz| (x + dx, z + dz))))
+            .collect();
+        (
+            cells.difference(&free).copied().collect(),
+            free,
+            [17, 18, 19].iter().map(|&x| (x, corner.1)).collect(),
+        )
+    }
+
+    let rooms: [(Room, Cell); 3] = [
+        (room((16, 48), (5, 5), &[]), (18, 52)),
+        (room((15, 36), (7, 7), &[(17, 38)]), (17, 42)),
+        (
+            room((11, 24), (15, 7), &[(13, 26), (17, 26), (21, 26)]),
+            (19, 30),
+        ),
+    ];
+    for ((once, free, exits), entry) in &rooms {
+        let way = cover(
+            *entry,
+            once.iter().copied(),
+            free.iter().copied(),
+            exits.iter().copied(),
+        )
+        .expect("a way over the ice");
+        assert!(exits.contains(&way[way.len() - 1]));
+        assert!(
+            once.iter()
+                .all(|cell| way.iter().filter(|c| *c == cell).count() == 1)
+        );
+        assert!(
+            way.iter()
+                .all(|cell| once.contains(cell) || free.contains(cell))
+        );
+        assert!(
+            way.windows(2)
+                .all(|pair| (pair[0].0 - pair[1].0).abs() + (pair[0].1 - pair[1].1).abs() == 1)
+        );
+    }
+    let (first, free, exits) = room((16, 48), (5, 5), &[]);
+    assert_eq!(
+        cover(
+            (17, 52),
+            first.iter().copied(),
+            free.iter().copied(),
+            exits.iter().copied()
+        ),
+        None
+    );
 }

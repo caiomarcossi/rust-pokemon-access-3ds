@@ -362,11 +362,14 @@ under its points. A porch's deck over the ground is one floor, the ground under 
 town's edge and the route below it, side by side in one cell, are two. Two cells' floors are
 walked between where they come within 50 units (spike 120). An ORAS chunk with a **deck** over
 its ground — Mt. Chimney's catwalk over the crater, a bridge over a path — keeps a floor a cell
-table and a mesh: the ground's, and one more for each deck. P walks each cell on the open floor
-nearest the player's height, and two floors join where they come within a cell's height, 18
-units; where they do not, the cell further from the player's is closed (spike 156). Where that
-finds no way, P walks the decks at each other floor's height on the matrix in turn, the ground's
-**decks**: Route 119's way north crosses a bridge high over the path below it (spike 159).
+table and a mesh: the ground's, and one more for each deck. Two floors join where they come
+within a cell's height, 18 units (spike 156). P walks a matrix with a deck a floor at a time, a
+**stacked** ground: a step goes on along its floor, or onto another that joins it; whoever
+stands in a cell stands on the floor nearest their height, in nobody's way on the others; and a
+thing is reached on its own floor. Route 119's way north crosses a bridge high over the path
+below it (spike 159), and Sootopolis Gym's lower floor lies under its rooms (spike 167). Where
+the ground is not stacked, each cell is walked on the floor nearest the player's height, and
+then at each other floor's height in turn, the ground's **decks**.
 
 **Pocket** — open floors of one area joined side to side, all of it walked to from any of it.
 Floor runs on under a bed, and under a house seen from outdoors, so their middles are pockets
@@ -579,6 +582,12 @@ signs, turns two barriers a quarter about the post between them; a way elsewhere
 switches. The gym is two rooms with no floor between them, joined by a trigger at the end of
 each, listed under **exits** as a **passage** (spike 146).
 
+**Invisible blocker** — a move model the game draws as nothing, the ROM's sprite `STOPPER`: a
+cell nobody walks into, listed as nobody. Fortree Gym's stand in for its rotating doors' arms
+(spike 161); Sootopolis Gym's nine stand in rows of three across the corridors up from its
+rooms (spike 167); Seafloor Cavern has six more. A way they shut ends before them with "then
+can't continue", naming nobody.
+
 **Trapdoor** — an opening in the floor of Lavaridge Gym's entrance room, which drops the player
 into the hot spring below; a **geyser** is under a raft in that hot spring, and shoots it back up
 through the trapdoor over it. Twelve of each, every one a one-cell trigger the game names
@@ -596,6 +605,32 @@ is armed. The game names none of them, so the words are pa3ds's. Lifts and the t
 listed under **exits**, walked onto when one is the goal and walked round otherwise, and the
 switches under **signs** (spike 163).
 
+**Dive spot** — a patch of deep water, drawn darker than the sea round it, which a player surfing
+dives down through with Dive: cells of kind `0x41` in the cell table, a 3-by-3 square or a band
+or blob of any shape. The game names none, so the word is pa3ds's. Listed under **exits**, one
+thing a patch, read off the whole matrix as the bike's ways are, and placed at the patch's cell
+nearest the player, so the bearing and the way there end on deep water and never on the plain sea
+inside a band's box (spike 164). Under the water the same cells are the light the player
+surfaces through. Seafloor Cavern's way in is no warp but a trigger under Route 128, the gap in a
+ring of rock, listed under exits as "entrance to Seafloor Cavern", and Sootopolis City's a trigger
+under Route 126, "entrance to Sootopolis City". Rock walls the water under the sea into
+**pockets**, and the sea above has pockets of its own, a pond or a sea walled off by rock: under
+the water, P to a thing in another pocket goes to the light whose sea above reaches a dive spot
+over the thing's pocket, and says that spot from there, "47 east, 4 north, then can't continue,
+surface and go to the dive spot 16 west 20 south" (spike 165).
+
+**Thin ice** — the floor of Sootopolis Gym's three rooms, up a corridor from each other on the
+way to Wallace: a tile cracks as the player steps onto it, and stepping onto a cracked one drops
+them through to the **lower floor**, shallow water under the rooms where most of the trainers
+stand, and makes the room whole again. Blocks of plain floor among the ice never crack. A room
+is **cleared** once every tile is cracked with the player on one of its **exits**, the top row's
+middle three, and its ice is safe from then on; the corridor up from it is shut by invisible
+blockers until then. The cell table has no kind for the ice: the Gym's module keeps a byte a
+tile (`games.oras.ice`). P never steps onto a cracked tile, and where a way stops short by a
+room not yet cleared, it goes over every whole tile once and ends on an exit, "and the ice is
+cleared". The lower floor's **stairs**, one each side, climb to the entrance's room, the only
+way back up: listed under exits as "stairs" at their tops, the game naming neither (spike 167).
+
 **Dowsing Machine** — the key item the player holds out on the field to find hidden items, drawn
 in their hands, not on the bottom screen. Its two **lights** come on only while the player faces a
 hidden item near enough, coloured by how near: blue, green, yellow, and red with the item in the
@@ -603,6 +638,22 @@ cell in front. The game keeps what they show in a record without a class of its 
 the field's process through the field's work (`games.gen6.dowsing`, spike 145). pa3ds says the
 colour once it holds, "dowsing green", and "dowsing nothing" as the lights go off; never where the
 item is, which the game does not show (an **Extra**).
+
+**Soaring** — flying over Hoenn on Latios or Latias, with the Eon Flute: an app of its own,
+`app::skyTrip::MainProc`, whose camera holds where the player is and the way they face, the
+**heading** (spike 166). The Circle Pad's up flies forward and down back, left and right turn on the
+spot; X and Y pitch Latios up and down. The game says the place under the player as screen text,
+with "Land" where they can land with A, and the place it says is a little ahead of the player,
+about 1,300 of the world's units, where it **looks**. The ROM lists the sky's **places** as
+rectangles of the world, the towns, the routes, the **landmarks** (caves, islands and the
+rest) and the **mirage spots**, each a category of the navigation keys while soaring and of
+nothing else. The game shows a place once the player has been there, and a mirage spot on its
+day or once a flag opens it, and pa3ds lists what it shows. A **flock** is a group of Pokémon
+flying about, which the player flies into to battle one: pa3ds's word, listed under pokémon. A
+bearing is said from where the game looks, a flock's from the player, in the player's own frame,
+a step 100 units: "21 ahead", "42 right"; P says the turn to face it, "turn right 90 degrees, 29
+ahead", a flock's with how far below it flies, and the heading is said as a compass point once a
+turn stops, "facing north-west".
 
 **Navigation keys** — the keys that walk the map's list, answered only while the emulator's
 window is in front and kept from reaching the game. Their answer interrupts. They work in one of

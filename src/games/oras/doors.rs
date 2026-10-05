@@ -15,9 +15,9 @@
 //!
 //! A door is walked through by walking into an arm, which turns it a quarter the way the step goes
 //! where every cell its arms sweep through is open. The game keeps nine invisible models drawn as
-//! `STAND_IN` in the Gym's records, and sets a few of them in the cells round the door the player
-//! is at to stand in for its arms; a door's arms are what they stand in for, so they are not listed
-//! and nobody stands in them.
+//! `STOPPER`, its invisible blocker, in the Gym's records, and sets a few of them in the cells
+//! round the door the player is at to stand in for its arms; a door's arms are what they stand in
+//! for, so they are not listed and nobody stands in them (`gen6.field`).
 
 use std::cell::{Cell as Slot, RefCell};
 use std::rc::Rc;
@@ -74,8 +74,6 @@ impl Record {
 pub const HEAD: i64 = RECORDS + COUNT * 16;
 pub const PIVOT: i64 = 0x130;
 pub const CELL: i64 = 18;
-/// The sprite of the invisible models the game sets round a door for its arms.
-pub const STAND_IN: i64 = 0x8A;
 
 /// Each pattern's arms at no turn, a way out from the pivot and a length in cells, as the
 /// module's table of which steps walk into an arm has them: the steps into each arm from both its
@@ -97,7 +95,6 @@ pub fn patterns() -> &'static IndexMap<i64, IndexMap<&'static str, i64>> {
 /// ground is, since they turn as the player walks.
 pub struct RotatingDoors {
     pub classes: Vec<&'static str>,
-    pub stand_in: i64,
     memory: Rc<dyn Memory>,
     sequence: Slot<Option<i64>>,
     vtable: Slot<i64>,
@@ -109,7 +106,6 @@ impl RotatingDoors {
     pub fn new(memory: Rc<dyn Memory>) -> Self {
         RotatingDoors {
             classes: vec![CLASS],
-            stand_in: STAND_IN,
             memory,
             sequence: Slot::new(None),
             vtable: Slot::new(0),
