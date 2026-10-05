@@ -22,7 +22,8 @@ byte for byte: change them upstream, never here.
 Settled. Reopen one only by asking Orion first.
 
 - **Announce, never act.** pa3ds never presses buttons and never writes to game memory. The one
-  approved exception, much later, is moving the OS mouse to a named touch target.
+  approved exception is a tap on the touch target pa3ds has just named, on the player's key
+  (ADR-0009, amended 2026-10-01: a tap through Azahar's cemuhook touch input, not the mouse).
 - **No hardcoded game text.** Every name, label and message *the game itself shows* comes from
   the ROM or RAM. Hardcoded struct layouts and anchor definitions are fine; hardcoded strings are
   not. What the game **never** names — a speaker, a sign, a door — may carry a name of pa3ds's own
@@ -89,6 +90,14 @@ The Python checkout is `PA3DS_PYTHON`, or `../pokemon-access-3ds` beside this on
 
 Conventional Commits: `type(scope): summary`, with `feat`, `fix`, `docs`, `refactor`, `test`,
 `chore`, and a scope naming the area (`battle`, `rig`, `speech`, `port`).
+
+## The README is the player's manual
+
+[README.md](README.md) is what a player reads, and it ships in the release zip: the games, what is
+said, setup, the default keys, every setting, the Azahar settings pa3ds writes. Upstream's README
+is the same manual for the Python pa3ds (Orion, 2026-10-06); a sync that changes it changes this
+one to match, in the same commit, but for running `pa3ds.exe` where upstream runs uv. It names no
+ADR, finding or spike, except in its section for developers.
 
 ## Runbooks
 

@@ -37,3 +37,9 @@ pub mod sky;
 pub mod speaker;
 pub mod talk;
 pub mod textures;
+
+pub mod buttons;
+pub mod distribution;
+pub mod mapcursor;
+pub mod partyicons;
+pub mod townmap;

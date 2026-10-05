@@ -30,6 +30,10 @@ pub enum Category {
     Dialogue,
     Battle,
     System,
+    /// Something the player must do before pa3ds can work, said as it starts: close Azahar so its
+    /// settings can be written. It interrupts and is said whatever window is in front, so it is not
+    /// left queued behind the console being read out (Orion, 2026-10-05).
+    Warning,
     /// The answer to a key the player pressed. It interrupts: the player asked for it now, and
     /// the key never reaches the game's window, so the screen reader has not cut speech for it.
     Key,
@@ -39,13 +43,14 @@ pub enum Category {
 }
 
 impl Category {
-    pub const ALL: [Category; 8] = [
+    pub const ALL: [Category; 9] = [
         Category::Menu,
         Category::Prompt,
         Category::Screen,
         Category::Dialogue,
         Category::Battle,
         Category::System,
+        Category::Warning,
         Category::Key,
         Category::Guidance,
     ];
@@ -59,6 +64,7 @@ impl Category {
             Category::Dialogue => "dialogue",
             Category::Battle => "battle",
             Category::System => "system",
+            Category::Warning => "warning",
             Category::Key => "key",
             Category::Guidance => "guidance",
         }
@@ -66,13 +72,13 @@ impl Category {
 }
 
 pub fn default_interrupts() -> HashSet<Category> {
-    HashSet::from([Category::Key])
+    HashSet::from([Category::Key, Category::Warning])
 }
 
 /// Said whether or not the player is in the game's window (ADR-0021): pa3ds's own few lines
 /// ("pa3ds ready", a reader failing), said while the player may still be in the window they started
 /// pa3ds from, and the answer to a key they pressed, which only comes while the game is in front.
-pub const HEARD_ANYWHERE: [Category; 2] = [Category::System, Category::Key];
+pub const HEARD_ANYWHERE: [Category; 3] = [Category::System, Category::Warning, Category::Key];
 
 /// The game font's private-use gender glyphs, as the Unicode signs they draw. A screen reader skips
 /// a private-use character but says ♂ and ♀ in the player's own words (the user, 2026-09-14). U+E08E

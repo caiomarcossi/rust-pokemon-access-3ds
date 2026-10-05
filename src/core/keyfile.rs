@@ -72,12 +72,13 @@ pub const EMULATOR_SECTION: &str = "azahar";
 /// The Qt key codes that are not just the character's own. `Qt::Key_Left` is `0x01000012`, which
 /// is the `16777234` in this machine's circle pad binding. Shift, ctrl and alt are here because a
 /// stick's modifier is usually one of them: held down, it moves the stick halfway.
-pub const QT_NAMED: [(&str, i64); 20] = [
+pub const QT_NAMED: [(&str, i64); 21] = [
     ("escape", 0x01000000),
     ("tab", 0x01000001),
     ("backspace", 0x01000003),
     ("return", 0x01000004),
-    ("enter", 0x01000005),
+    ("enter", 0x01000004),
+    ("keypad enter", 0x01000005),
     ("insert", 0x01000006),
     ("delete", 0x01000007),
     ("home", 0x01000010),
@@ -194,7 +195,9 @@ pub fn qt_code(name: &str) -> Result<Option<i64>> {
 
 /// What Azahar's `code:` number is called here, or the number itself when nothing knows it.
 pub fn qt_name(code: i64) -> String {
-    if let Some((name, _)) = QT_NAMED.iter().find(|(_, named)| *named == code) {
+    // `_BY_CODE` is a dict comprehension over `QT_NAMED`, so of two names for one code the
+    // later one is kept: 0x01000004 reads back as "enter", not "return".
+    if let Some((name, _)) = QT_NAMED.iter().rev().find(|(_, named)| *named == code) {
         return name.to_string();
     }
     if (0x41..=0x5A).contains(&code) {
@@ -564,24 +567,27 @@ pub fn patch(text: &str, wanted: &Wanted) -> Result<(String, Vec<String>)> {
 
 /// The config with Azahar's own settings written into it (`pa3ds.core.config`), and a line
 /// for each changed. A setting is found by its name alone: these are unique across the file's
-/// sections, and one the file does not have is said rather than invented.
+/// sections, and one the file does not have is said rather than invented. A setting of the
+/// input profile in use, as `controller_touch_device` is, is found under its profile.
 pub fn patch_settings(text: &str, wanted: &IndexMap<String, Value>) -> (String, Vec<String>) {
     let mut config = Config::new(text);
     let mut changed = Vec::new();
-    for (setting, asked) in wanted {
+    for (name, asked) in wanted {
         let value = match asked {
             Value::Bool(asked) => asked.to_string(),
             Value::Int(asked) => asked.to_string(),
             Value::Float(asked) => py::float_repr(*asked),
             Value::Str(asked) => asked.clone(),
         };
-        if config.value(setting).is_none() {
-            changed.push(format!(
-                "Azahar has no setting called {}",
-                py::repr(setting)
-            ));
-        } else if config.set(setting, &value, matches!(asked, Value::Str(_))) {
-            changed.push(format!("Azahar's {setting} is now {value}"));
+        let setting = if config.value(name).is_some() {
+            name.clone()
+        } else {
+            config.setting(name)
+        };
+        if config.value(&setting).is_none() {
+            changed.push(format!("Azahar has no setting called {}", py::repr(name)));
+        } else if config.set(&setting, &value, matches!(asked, Value::Str(_))) {
+            changed.push(format!("Azahar's {name} is now {value}"));
         }
     }
     (config.text(), changed)
@@ -1062,14 +1068,17 @@ pub fn unreachable(bindings: &Bindings, defaults: &Bindings) -> IndexMap<String,
 /// Which of the emulator's controls pa3ds's keys are sitting on: what it is called, which key
 /// took it, and whether its loss is one to keep quiet about (`QUIET`).
 ///
-/// Sorted by the control, so the same overlap is reported the same way every run.
+/// A key bound with a modifier takes its button only while the modifier is held, and is not said
+/// to sit on it: shift and T, touch mode for a day, was chosen so T stays this machine's D-pad
+/// up (Orion, 2026-10-01). Sorted by the control, so the same overlap is reported the same way
+/// every run.
 pub fn taken(
     bindings: &Bindings,
     emulator: &IndexMap<String, Vec<String>>,
 ) -> Vec<(String, String, bool)> {
     let mine: HashSet<String> = bindings
         .values()
-        .flat_map(|keys| keys.keys().map(|key| bare(key)))
+        .flat_map(|keys| keys.keys().filter(|key| bare(key) == **key).cloned())
         .collect();
     let mut found: Vec<(String, String, bool)> = Vec::new();
     for (control, names) in emulator {

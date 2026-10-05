@@ -214,12 +214,21 @@ fn test_a_stick_scale_that_is_not_a_number_is_written_unknown() {
 #[test]
 fn test_every_code_reads_back_as_the_name_it_was_written_from() {
     for name in [
-        "a", "z", "0", "9", ";", "'", "[", "]", "/", "left", "down", "return", "space",
+        "a", "z", "0", "9", ";", "'", "[", "]", "/", "left", "down", "enter", "space",
     ] {
         let code = keyfile::qt_code(name).unwrap();
         assert!(code.is_some(), "{name}");
         assert_eq!(keyfile::qt_name(code.unwrap()), name);
     }
+}
+
+/// Qt calls it Return and the keypad's Enter; the hook calls it enter, as the player does, and a
+/// key pa3ds takes is compared with Azahar's by that name (touch mode's tap, 2026-10-01).
+#[test]
+fn test_the_main_enter_key_is_enter_as_pa3ds_s_hook_calls_it() {
+    assert_eq!(keyfile::qt_code("return").unwrap(), Some(0x01000004));
+    assert_eq!(keyfile::qt_code("enter").unwrap(), Some(0x01000004));
+    assert_eq!(keyfile::qt_name(0x01000005), "keypad enter");
 }
 
 #[test]
@@ -273,13 +282,20 @@ fn test_a_key_pa3ds_takes_is_named_with_the_button_it_costs() {
     )));
 }
 
-/// Azahar watches the key, not what is held with it: `shift+k` reaches the hook, the hook
-/// swallows it, and the C-stick never sees K.
+/// The hook swallows shift and T, not T: touch mode is shift and T so that T stays the D-pad
+/// (Orion, 2026-10-01), and saying at every start that it sits on the D-pad would be untrue
+/// whenever shift is up. Until then `shift+k` was said to take the C-stick's K.
 #[test]
-fn test_a_modifier_does_not_save_a_key_from_being_taken() {
+fn test_a_key_with_a_modifier_takes_its_button_only_while_the_modifier_is_held() {
     let emulator = keyfile::emulator_keys(&config()).unwrap();
-    let over = keyfile::taken(&modes(&[(LIST, &[("shift+k", "rename")])]), &emulator);
-    assert_eq!(over, [("the C-stick".to_string(), "k".to_string(), true)]);
+    assert_eq!(
+        keyfile::taken(&modes(&[(LIST, &[("shift+k", "rename")])]), &emulator),
+        []
+    );
+    assert_eq!(
+        keyfile::taken(&modes(&[(LIST, &[("k", "item read")])]), &emulator),
+        [("the C-stick".to_string(), "k".to_string(), true)]
+    );
 }
 
 /// Taking the C-stick or the debug button costs nothing in this game, so saying it at every

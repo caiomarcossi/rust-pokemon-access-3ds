@@ -40,17 +40,24 @@ pub const BLOCKED: i64 = 0x1;
 /// (omega_ruby_surf.ctm, spike 136). Across every chunk in both ROMs the bit is set on every word
 /// of nine kinds and no other: the sea `0x3d`, the deep water Dive goes down through (`DIVE`),
 /// `0x42` between the sea and walls, the four `0x94` to `0x97` (currents, one a way, as ledges
-/// are), and `0x3f` and `0x40`, which are blocked as well (`SHORE`). X has `0x3d`, `0x3f` and
-/// `0x40`.
+/// are), and `0x3f` and `0x40`, which are blocked as well (`FALLS`, `SHORE`). X has `0x3d`,
+/// `0x3f` and `0x40`.
 pub const WATER: i64 = 0x2;
 
 /// The kind of the strip of shore between land and the sea, one cell wide: water and blocked.
 /// Surf jumps the player over it, never onto it, getting on the water and off: on Route 122 from
 /// (22, 8) to (22, 10) over (22, 9), and from (54, 58) to (54, 56) over (54, 57), and P walled the
 /// water off at both (omega_ruby_surf3.ctm, spike 162). Of its 1,528 cells in ORAS's chunks,
-/// nearly all have land on one side and the sea on the other. `0x3f`, the other blocked water,
-/// has water on both sides and no land, and is not read.
+/// nearly all have land on one side and the sea on the other.
 pub const SHORE: i64 = 0x40;
+
+/// The kind of a waterfall, the other blocked water: a row of it one cell deep with water on both
+/// sides, the water above it higher. Waterfall carries the player up over it, and they go back
+/// down over it with no question asked: at the foot of Ever Grande City's, from (51, 52) to (51,
+/// 50) over (51, 51), the sea below at height 0 and the water above at 234
+/// (omega_ruby_waterfall.ctm, spike 170). All 72 cells of it in ORAS's chunks, in 8 files, are
+/// `0x3f180003`, and wherever water lies on both sides the higher is north.
+pub const FALLS: i64 = 0x3F;
 
 /// The kind of the deep water a player surfing dives through, drawn darker than the sea round it.
 /// The executable tests the cell under the player for it alone while they are on the water
@@ -63,6 +70,7 @@ pub const DIVE: i64 = 0x41;
 pub const CUT: i64 = 15;
 pub const SURF: i64 = 57;
 pub const STRENGTH: i64 = 70;
+pub const WATERFALL: i64 = 127;
 /// The moves that open a way, by their numbers, the same in every game and each its line in the
 /// move names: "Surf", "なみのり" in both ORAS and X (spike 136).
 pub const ROCK_SMASH: i64 = 249;
@@ -124,7 +132,7 @@ pub const BUMPY_SLOPES: [i64; 1] = [0x6F];
 /// files, the Safari Zone's, which has rails too, and one other, and on Route 119 each runs in a
 /// line from open ground to open ground: 0x6e at (107, 219) to (114, 219), (114, 222) and (121,
 /// 222), beside the path north up the route, and 0x6d up and down the lines of 0x6e in the route's
-/// top (spike B). Read off the map, not seen ridden.
+/// top (spike 159). Read off the map, not seen ridden.
 pub const BIKE_RAILS: [i64; 2] = [0x6D, 0x6E];
 
 /// `{n:#x}`, which writes a negative number as Python does, with its sign before the prefix.
@@ -639,7 +647,7 @@ impl IceRoom {
 
 /// One of Fortree Gym's rotating doors: wooden arms standing on the lines between cells, out
 /// from a pivot where four cells meet, turned a quarter about it as one is walked into (spike
-/// D). An arm stops a step across the line it stands on; a step into one turns the door the way
+/// 161). An arm stops a step across the line it stands on; a step into one turns the door the way
 /// the step goes and is taken, but only where every cell the arms sweep through is open, an arm
 /// two cells long sweeping the whole quarter between where it is and where it goes, one cell long
 /// the cell beside the pivot.
@@ -799,7 +807,7 @@ pub type Far = Rc<dyn Fn(i64, i64) -> Result<Option<Rc<Chunk>>>>;
 /// neither holds is taken to be open, and a path that turns out to cross a wall is found again
 /// once the chunk with the wall in it loads.
 /// Water is a wall too, unless the ground is one to `surf`, and a bush or a rock a move clears
-/// unless it is one to clear them (`hm`).
+/// unless it is one to clear them (`hm`), and a waterfall unless it is one to climb it (`falls`).
 #[derive(Clone)]
 pub struct Ground {
     pub chunks: Vec<Rc<Chunk>>,
@@ -845,6 +853,9 @@ pub struct Ground {
     /// The bumpy slopes, each with the way it is hopped up on the Acro Bike, from the cell before
     /// it to the cell after, as a ledge is jumped down: walls on foot (spike 159).
     pub hops: IndexMap<Cell, &'static str>,
+    /// The waterfalls, each cell with the way it is climbed: jumped over either way as the shore
+    /// is, where the ground is one with HMs, and a wall to any other (`over`, spike 170).
+    pub falls: IndexMap<Cell, &'static str>,
     /// Fortree Gym's rotating doors, as they stand now: walked through by turning them, a step
     /// into an arm turning its door (`through`, spike 161).
     pub doors: Vec<RotatingDoor>,
@@ -900,6 +911,7 @@ impl Default for Ground {
             bike: false,
             cliffs: IndexSet::new(),
             hops: IndexMap::new(),
+            falls: IndexMap::new(),
             doors: Vec::new(),
             ice: Vec::new(),
             surfaces: IndexMap::new(),
@@ -929,6 +941,7 @@ impl fmt::Debug for Ground {
             .field("bike", &self.bike)
             .field("cliffs", &self.cliffs)
             .field("hops", &self.hops)
+            .field("falls", &self.falls)
             .field("doors", &self.doors)
             .field("ice", &self.ice)
             .field("surfaces", &self.surfaces)
@@ -1245,14 +1258,33 @@ impl Ground {
         }
     }
 
+    /// Whether the cell is blocked but jumped over either way: the shore, and a waterfall on
+    /// a ground with HMs, climbed with Waterfall and gone down with nothing.
+    pub fn over(&self, cell: Cell) -> Result<bool> {
+        Ok(self.shore(cell)? || (self.hm && self.falls.contains_key(&cell)))
+    }
+
+    /// Whether the move from `cell` to `step` is onto, off or over a waterfall going up: a
+    /// search's move over one lands two cells on.
+    pub fn climbing(&self, cell: Cell, step: Cell) -> bool {
+        let way = pathfind::towards(cell, step);
+        let over = (
+            py::floordiv(cell.0 + step.0, 2),
+            py::floordiv(cell.1 + step.1, 2),
+        );
+        [cell, step, over]
+            .iter()
+            .any(|one| self.falls.get(one) == Some(&way))
+    }
+
     /// What a move from `cell` to `step` costs on top of its steps: going onto water,
-    /// through what a move clears, or up a slope from the foot of it on foot, where the player
-    /// gets on the bike first.
+    /// through what a move clears, up a waterfall, or up a slope from the foot of it on foot,
+    /// where the player gets on the bike first.
     pub fn toll(&self, cell: Cell, step: Cell) -> Result<i64> {
         if self.cleared.contains_key(&step) || (self.water(step)? && !self.water(cell)?) {
             return Ok(BOARD);
         }
-        if !self.bike && self.hopping(cell, step) {
+        if (!self.bike && self.hopping(cell, step)) || self.climbing(cell, step) {
             return Ok(BOARD);
         }
         Ok(

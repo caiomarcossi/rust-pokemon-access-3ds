@@ -198,7 +198,17 @@ pub const TOP_SCREEN_WIDTH: f64 = 400.0;
 
 // Game Freak's layout work
 pub const WORK_ALIVE: i64 = 0x04;
+/// 1 while the layout is on the system's list of layouts to draw, which the field and the battle
+/// draw theirs through, walked each frame (0x0012aa3c, a work's next at +0xC4); 0 for a layout an
+/// app draws itself, as the PC Box and the party do theirs. The battle takes its command buttons
+/// off the list while its move list is up, and draws them no more: their root is not read once a
+/// frame (spike 188, movie23).
+pub const WORK_LISTED: i64 = 0x05;
+/// 1 once the layout has been drawn, written by the draw itself (0x0014d98c) and never cleared:
+/// a layout no longer drawn keeps it.
 pub const WORK_DRAWN: i64 = 0x07;
+/// u16: where the layout is drawn among its screen's others, higher over lower (movie21).
+pub const WORK_LAYER: i64 = 0x0A;
 pub const WORK_LAYOUT: i64 = 0x10;
 pub const WORK_DRAWINFO: i64 = 0x14;
 pub const WORK_HEAD: i64 = WORK_DRAWINFO + 4;

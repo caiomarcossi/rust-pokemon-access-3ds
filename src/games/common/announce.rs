@@ -844,7 +844,10 @@ impl ScreenAnnouncer {
     }
 
     /// Say every panel the cursor's moves have changed, in the order the screen built them,
-    /// each row by row. Returns the TextBoxes said.
+    /// each row by row, as one line that never interrupts. Returns the TextBoxes said.
+    ///
+    /// A line a panel, said as menus are, cut off the item they belong to under `interrupt`, and
+    /// each other; the next item still cuts them off (Khai and Orion, 2026-10-05).
     fn say_details(
         &mut self,
         gathering: &Gathering,
@@ -857,6 +860,8 @@ impl ScreenAnnouncer {
         panels.extend(gathering.panels.iter().copied());
         let panels = panels.clone();
         let mut said: HashSet<i64> = HashSet::new();
+        let mut texts: Vec<String> = Vec::new();
+        let mut roots: Vec<i64> = Vec::new();
         let built: IndexSet<Panel> = on_screen.iter().map(ScreenText::group).collect();
         for panel in built {
             if !panels.contains(&panel) {
@@ -881,11 +886,23 @@ impl ScreenAnnouncer {
                         group[0].root
                     ));
                 } else {
-                    (self.log)(&format!("details: {text}  [layout {:#x}]", group[0].root));
-                    self.speech.say(&text, Category::Menu);
+                    texts.push(text);
+                    roots.push(group[0].root);
                 }
                 said.extend(group.iter().map(|p| p.r#box));
             }
+        }
+        if !texts.is_empty() {
+            let line = line(&texts);
+            let r#where = roots
+                .iter()
+                .collect::<IndexSet<_>>()
+                .iter()
+                .map(|root| format!("{root:#x}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            (self.log)(&format!("details: {line}  [layout {where}]"));
+            self.speech.say(&line, Category::Screen);
         }
         said
     }
@@ -922,6 +939,19 @@ impl ScreenAnnouncer {
         let all: Vec<ScreenText> = shown.iter().chain(stayed).cloned().collect();
         py::sorted_by_lt(all, |a, b| (!a.top, a.r#box) < (!b.top, b.r#box))
     }
+}
+
+/// Panels said as one line, a comma between two where the first ends no sentence, for the pause
+/// a line of its own had: "In Bag: 9, A spray-type medicine for treating wounds.".
+fn line(parts: &[String]) -> String {
+    let mut out = String::new();
+    for part in parts {
+        if let Some(last) = out.chars().last() {
+            out += if ".!?…".contains(last) { " " } else { ", " };
+        }
+        out += part;
+    }
+    out
 }
 
 /// Python's `min(a, b)` on floats: `a`, unless `b < a`, so a NaN stays where Python puts it.

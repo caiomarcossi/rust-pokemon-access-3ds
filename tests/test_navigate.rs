@@ -14,14 +14,15 @@ use crate::core::pathfind::{self, Cell, nearest};
 use crate::core::speech::{Backend, Category, Speech, default_interrupts};
 use crate::games::common::field::{
     BLOCKED, CHUNK, CUT, Chunk, FURNITURE_SOURCE, Field, Floor, Ground, IceRoom, Interactable, Of,
-    ROCK_SMASH, RotatingDoor, STRENGTH, SURF, WARP_SOURCE, place_source,
+    ROCK_SMASH, RotatingDoor, STRENGTH, SURF, WARP_SOURCE, WATERFALL, place_source,
 };
 use crate::games::common::navigate::{
     CATEGORY_NEXT, CATEGORY_PREVIOUS, DEFAULT_BINDINGS, DIRECTION, EAST, ENEMY_SIDE, FieldSource,
     Guidance, ITEM_NEXT, ITEM_PREVIOUS, ITEM_READ, LIST, LeadsTo, MODE_TOGGLE, NORTH, Navigator,
-    OUR_SIDE, Options, PATHFIND, PATHFIND_HM, RENAME, RENAME_SPEAKER, SOUTH, Sides, Street, WEST,
-    bound_keys,
+    OUR_SIDE, Options, PATHFIND, PATHFIND_HM, RENAME, RENAME_SPEAKER, SOUTH, Sides, Street, TOUCH,
+    WEST, bound_keys,
 };
+use crate::games::common::touch::{ROW_NEXT, ROW_PREVIOUS, TAP};
 use crate::games::oras::{self, BIG_BOULDER, BUSH, CRACKED_BOULDER};
 use crate::py::{self, Result};
 
@@ -49,6 +50,8 @@ const BUMPY: i64 = 0x6F000021;
 const SEA: i64 = 0x3D1A0006;
 /// Route 122's strip of shore, jumped over getting on the water and off (spike 162).
 const SHORE: i64 = 0x40180023;
+/// Ever Grande City's waterfall, climbed north (omega_ruby_waterfall.ctm, spike 170).
+const FALLS: i64 = 0x3F180003;
 /// Jagged Pass's sandy slopes, ridden up north on the Mach Bike (omega_ruby_bike.ctm, spike 158).
 const SOUTH_SLOPE: i64 = 0x6C000020;
 
@@ -68,6 +71,8 @@ struct FakeField {
     /// Cells of the Acro Bike's bumpy slopes, each hopped up north.
     bumpy: RefCell<HashSet<Cell>>,
     shore: RefCell<HashSet<Cell>>,
+    /// Cells of a waterfall, each climbed north.
+    falls: RefCell<HashSet<Cell>>,
     /// A floor's height -> the blocked cells its deck opens, walked at that height alone. A
     /// list, since a float is no key in Rust.
     decks: RefCell<Vec<(f64, HashSet<Cell>)>>,
@@ -98,6 +103,7 @@ impl FakeField {
             slopes: slopes.iter().copied().collect(),
             bumpy: RefCell::new(HashSet::new()),
             shore: RefCell::new(HashSet::new()),
+            falls: RefCell::new(HashSet::new()),
             decks: RefCell::new(Vec::new()),
             surfaces: RefCell::new(IndexMap::new()),
             floors: RefCell::new(IndexMap::new()),
@@ -151,6 +157,7 @@ impl FieldSource for FakeField {
         let blocked = self.blocked.borrow();
         let bumpy = self.bumpy.borrow();
         let shore = self.shore.borrow();
+        let falls = self.falls.borrow();
         let words: Vec<i64> = cells
             .iter()
             .map(|cell| {
@@ -164,6 +171,8 @@ impl FieldSource for FakeField {
                     BUMPY
                 } else if shore.contains(cell) {
                     SHORE
+                } else if falls.contains(cell) {
+                    FALLS
                 } else if blocked.contains(cell) && !opened.contains(cell) {
                     BLOCKED
                 } else {
@@ -225,6 +234,10 @@ impl FieldSource for FakeField {
             .filter(|known| Some(*known) != height)
             .collect();
         ground.hops = bumpy
+            .iter()
+            .map(|&cell| (cell, pathfind::NORTH))
+            .collect::<IndexMap<_, _>>();
+        ground.falls = falls
             .iter()
             .map(|&cell| (cell, pathfind::NORTH))
             .collect::<IndexMap<_, _>>();
@@ -359,6 +372,7 @@ fn navigator(want: Want) -> Rig {
                 (CUT, "Cut".to_string()),
                 (STRENGTH, "Strength".to_string()),
                 (ROCK_SMASH, "Rock Smash".to_string()),
+                (WATERFALL, "Waterfall".to_string()),
             ])),
             bike: Some("Mach Bike".to_string()),
             ..Options::default()
@@ -869,12 +883,14 @@ fn test_the_toggle_switches_mode_and_a_key_means_what_its_mode_says() {
     rig.press_key("'");
     rig.press_key("o");
     rig.press_key("'");
+    rig.press_key("'");
     assert_eq!(
         said(&rig.backend),
         [
             "exits, 2",
             "direction mode",
             "door, 1 of 1, 1 north",
+            "touch mode, nothing to touch",
             "list mode"
         ]
     );
@@ -1182,6 +1198,60 @@ fn test_shift_p_jumps_the_shore_onto_the_water_and_off_it() {
     });
     rig.press(PATHFIND);
     assert_eq!(last(&rig.backend), "2 south");
+}
+
+/// Ever Grande City: the waterfall is a row of blocked water, and Waterfall carries the player up
+/// over it, from (51, 52) to (51, 50); they came back down over it with no question
+/// (omega_ruby_waterfall.ctm, spike 170). Shift and P climbs it, saying the move, and goes down it
+/// without; P from the water stops at it either way (the user, 2026-10-05).
+#[test]
+fn test_shift_p_climbs_a_waterfall_and_goes_down_it_and_p_keeps_off_it() {
+    let falls: HashSet<Cell> = (80..120).map(|x| (x, 178)).collect();
+    let sea: Vec<Cell> = (80..120)
+        .flat_map(|x| (174..186).map(move |z| (x, z)))
+        .filter(|cell| !falls.contains(cell))
+        .collect();
+    let below = Field {
+        interactables: vec![Interactable {
+            source: 0x08D1E9A8,
+            move_model: true,
+            ..Interactable::new("people", "person", (100, 172))
+        }],
+        ..Field::new(0x15, (100, 182))
+    };
+    let mut rig = navigator(Want {
+        sea,
+        ..on(below.clone())
+    });
+    *rig.field.falls.borrow_mut() = falls.clone();
+    rig.press(CATEGORY_PREVIOUS);
+    rig.press(PATHFIND);
+    let way = guidance(&rig);
+    assert!(way.is_some() && !path_of(&way).iter().any(|cell| falls.contains(cell)));
+    rig.press_key("shift+p");
+    assert_eq!(last(&rig.backend), "3 north, Waterfall 2 north, 4 north");
+    let above = Field {
+        interactables: vec![Interactable {
+            source: 0x08D1E9A8,
+            move_model: true,
+            ..Interactable::new("people", "person", (100, 187))
+        }],
+        ..Field::new(0x15, (100, 175))
+    };
+    *rig.field.r#where.borrow_mut() = Some(above);
+    rig.press_key("shift+p");
+    assert_eq!(last(&rig.backend), "11 south");
+    rig.press(PATHFIND);
+    let way = guidance(&rig);
+    assert!(way.is_some() && !path_of(&way).iter().any(|cell| falls.contains(cell)));
+    *rig.field.r#where.borrow_mut() = Some(Field {
+        cell: (100, 177),
+        ..below
+    });
+    rig.press(PATHFIND);
+    let spoken = said(&rig.backend).len();
+    step(&mut rig, &[(100, 178)]);
+    assert_eq!(said(&rig.backend).len(), spoken);
 }
 
 /// A sandy slope going down south, the one way up through a cliff across the chunk at z 170.
@@ -1823,8 +1893,22 @@ fn test_the_users_keys_map_to_the_actions() {
         );
     }
     let mut expected: HashSet<String> = "iojlk[];'pr".chars().map(|key| key.to_string()).collect();
-    expected.extend(["shift+k", "shift+j", "shift+p", "shift+r"].map(str::to_string));
+    expected.extend(["shift+k", "shift+j", "shift+p", "shift+r", "enter"].map(str::to_string));
     assert_eq!(bound_keys(&DEFAULT_BINDINGS), expected);
+    assert_eq!(
+        ["j", "l", "i", "o", "k", "enter"].map(|key| bound(TOUCH, key)),
+        [
+            ITEM_PREVIOUS,
+            ITEM_NEXT,
+            ROW_PREVIOUS,
+            ROW_NEXT,
+            ITEM_READ,
+            TAP
+        ]
+    );
+    for mode in [LIST, DIRECTION, TOUCH] {
+        assert_eq!(bound(mode, "'"), MODE_TOGGLE, "{mode}");
+    }
     for mode in [LIST, DIRECTION] {
         assert_eq!(bound(mode, "shift+k"), RENAME, "{mode}");
         assert_eq!(bound(mode, "shift+j"), RENAME_SPEAKER, "{mode}");

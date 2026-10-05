@@ -195,3 +195,26 @@ record too, not maintained code.
 | [167](field-and-rom.md) | Sootopolis Gym: thin ice in three rooms over a lower floor of shallow water, two stairs the only way back up, nine invisible blockers (`STOPPER`) across its corridors; P walks a matrix with a deck a floor at a time; the Gym's module keeps a byte a tile, and P goes over every whole tile once to clear a room | 2026-10-05 |
 | [168](text-and-dialogue.md) | a freed message window keeps its class's vtable; the SDK's block header 0x30 before it reads 'UD' only while the window lives | 2026-10-05 |
 | [169](text-and-dialogue.md) | the reads that crashed Azahar after Groudon's capture: the dialogue reader through a battle's window, kept after the battle, into line objects the cutscene's graphics had taken | 2026-10-05 |
+| [170](field-and-rom.md) | Ever Grande City's waterfall: kind `0x3f`, blocked water one cell deep, the water above it higher; Waterfall carries the player over it, and down it needs nothing; Shift and P climbs it | 2026-10-05 |
+| [171](screens-and-cursors.md) | every touch area on the bottom screen, and what each can be called: the PokéNav's app buttons by text file 123, the X menu's icons as a shortcut bar | 2026-10-01 |
+| [172](tools-and-rig.md) | a tap pa3ds sends reaches the game through Azahar's cemuhook touch input | 2026-10-01 |
+| [173](screens-and-cursors.md) | where the Hoenn map's cursor is, as a share of the map, whatever its zoom | 2026-10-01 |
+| [174](screens-and-cursors.md) | a layout drawn by every flag, and not on screen | 2026-10-02 |
+| [175](screens-and-cursors.md) | the map's cursor glides every frame while the circle pad is held; the tones broke it into beeps | 2026-10-02 |
+| [176](screens-and-cursors.md) | the Pokémon Distribution's pictures draw icons no ROM file holds | 2026-10-02 |
+| [177](screens-and-cursors.md) | the AreaNav's navigator holds the place's Pokémon, and their icons in the same order | 2026-10-02 |
+| [178](screens-and-cursors.md) | each Pokémon Distribution picture named by species; species are text file 98 in ORAS and 80 in X | 2026-10-02 |
+| [179](screens-and-cursors.md) | the layout helper does not say the berry list is gone | 2026-10-02 |
+| [180](screens-and-cursors.md) | the AreaNav's button manager keeps the berry list's buttons once the list is gone | 2026-10-02 |
+| [181](screens-and-cursors.md) | the game stops walking a layout it puts away: a read watchpoint on its root | 2026-10-02 |
+| [182](screens-and-cursors.md) | an app's module dumped live: the AreaNav's views and their draw | 2026-10-02 |
+| [183](screens-and-cursors.md) | the AreaNav's views say which of their layouts are drawn: NutsView's +0xAC | 2026-10-02 |
+| [184](screens-and-cursors.md) | the Bag's party slots draw the party's icons in its order | 2026-10-02 |
+| [185](screens-and-cursors.md) | the button managers read the same with the Box in use and under "Continue operations?" | 2026-10-03 |
+| [186](screens-and-cursors.md) | what the game draws as out of play: the party's white veil and its dimmed bottom bar | 2026-10-03 |
+| [187](screens-and-cursors.md) | every change of the bottom screen's layouts: pool slot order is not drawing order | 2026-10-03 |
+| [188](screens-and-cursors.md) | who draws a layout is its work's +0x05; the battle takes its commands off the draw list | 2026-10-03 |
+| [189](screens-and-cursors.md) | each app's touch bar, on UITouchBarView, feeds its bar's buttons only while +0x2d is set | 2026-10-05 |
+| [190](screens-and-cursors.md) | what touch mode offers through a movie, logged to compare code before and after | 2026-10-05 |
+| [191](screens-and-cursors.md) | a button manager is locked by its +0x24; the party locks its list's under its menu | 2026-10-05 |
+| [192](text-and-dialogue.md) | the BuzzNav scrolls its shows through two lines that fade in turn; a box is gone only when every line is | 2026-10-06 |

@@ -17,7 +17,8 @@ of the postgame come after.
 3. Full battle coverage — move selection, switching — plus the light camera.
 4. Collision reading and real A* pathfinding.
 5. Alpha Sapphire parity. A decrypted dump is available now: Orion and Khai both have one.
-6. Touch targets and a spoken menu for DexNav, Super Training and other touch-only features.
+6. Touch targets and a spoken menu for DexNav, Super Training and other touch-only features
+   ([plan](plans/pokenav-and-touch.md)).
 7. A second game profile: done. X and Y are read by gen 6's profile with ORAS (spike 100), and
    Sun and Moon by a profile of their own (spike 111); ORAS is the most complete. Shauna's choice
    of nicknames for the player, not read when pa3ds first ran over X on 2026-09-14, is read now.
@@ -163,7 +164,7 @@ carries the detail in its own record:
 | [0017](adr/0017-extras-ship-off.md) | No Extra is read at all yet, so there is nothing to toggle |
 | [0018](adr/0018-an-unknown-screen-is-scraped-and-snapshotted.md) | An unclaimed screen is silent; nothing auto-captures |
 | [0020](adr/0020-speech-goes-to-the-players-own-screen-reader.md) | No fallback chain, no startup warning, no braille |
-| [0026](adr/0026-config-and-logs.md) | No diagnostics key |
+| [0026](adr/0026-config-and-logs.md) | No diagnostics key. **A portable Azahar is never patched**: one with a `user` folder beside `azahar.exe` keeps its settings in `user\config\qt-config.ini`, and pa3ds looks only in `%APPDATA%\Azahar` (`keyfile.emulator_config`), so `[azahar]`'s settings and keys never reach it and nothing says so. To be built, not yet (Orion, 2026-10-06), after a friend's Azahar went unconfigured for a cause nobody knows |
 | [0024](adr/0024-interactables-are-cycled-nearest-first.md) | No light camera |
 
 [0033](adr/0033-how-pa3ds-ships-is-not-decided-yet.md) is not in that table: it decides that **how

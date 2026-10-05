@@ -7,7 +7,10 @@ When a plan lands, **delete it** and fold what it decided into an ADR. A plan le
 after the code exists is the thing that goes stale first, and a stale plan is worse than none:
 someone will follow it.
 
-Waiting, one plan a document: none.
+Waiting, one plan a document:
+
+- [The PokéNav Plus, and touching the bottom screen](pokenav-and-touch.md) (2026-10-01):
+  decided, and the touch targets and the tap built; movies of the apps and their readers next.
 
 The plan for naming a picture by the image it draws landed on 2026-09-29 and 2026-09-30
 ([ADR-0036](../adr/0036-a-picture-is-named-by-the-image-it-draws.md); findings, spike 147); git

@@ -154,7 +154,15 @@ fn test_azahar_open_is_left_alone() {
     let ini = emulator(&tmp_path);
     let settings = prepare(&tmp_path.join("home"), &ini, true);
     assert_eq!(read(&ini), emulator_text());
-    assert!(settings.said.contains("close Azahar"));
+    assert!(settings.said.contains("close Azahar") && settings.warning);
+}
+
+/// No qt-config.ini yet: nothing can be patched, and the RPC server stays off.
+#[test]
+fn test_an_azahar_never_started_is_said() {
+    let tmp_path = TmpPath::new();
+    let settings = prepare(&tmp_path.join("home"), &tmp_path.join("none.ini"), false);
+    assert!(settings.said.contains("start Azahar once") && settings.warning);
 }
 
 #[test]

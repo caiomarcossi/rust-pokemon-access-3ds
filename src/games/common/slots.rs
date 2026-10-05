@@ -70,8 +70,8 @@ pub fn slot(
     let mut touch: Option<i64> = None;
     for (pane, kind) in &tree {
         if kind == lyt::BOUNDING_CLASS
-            && shown(layouts, *pane)?
             && on(place(layouts, *pane)?, (x, y))
+            && shown(layouts, *pane)?
         {
             touch = Some(*pane);
             break;
@@ -254,7 +254,8 @@ fn in_grid(
     )))
 }
 
-/// The sign of the mark whose picture lies within this touch area, beside it, if one does.
+/// The sign of the mark whose picture lies within this touch area, if one does: beside it in the
+/// Box, and in the summary the picture it hangs from (movie22).
 fn mark_of(
     layouts: &Layouts,
     file: &LayoutFile,
@@ -264,7 +265,7 @@ fn mark_of(
 ) -> Result<Option<String>> {
     let (x, y) = place(layouts, touch)?;
     let (width, height) = size(layouts, touch)?;
-    for pane in layouts.children(root, parent) {
+    for pane in std::iter::once(parent).chain(layouts.children(root, parent)) {
         if layouts.tree(root).get(&pane).map(String::as_str) != Some(lyt::PICTURE_CLASS) {
             continue;
         }
@@ -299,7 +300,7 @@ fn mark_of(
 fn holds_icon(layouts: &Layouts, file: &LayoutFile, root: i64, at: (f64, f64)) -> Result<bool> {
     for (pane, kind) in &layouts.tree(root) {
         let pane = *pane;
-        if kind == lyt::PICTURE_CLASS && shown(layouts, pane)? && on(place(layouts, pane)?, at) {
+        if kind == lyt::PICTURE_CLASS && on(place(layouts, pane)?, at) && shown(layouts, pane)? {
             let name = name(layouts, pane)?;
             if let Some(textures) = file.textures.get(&name)
                 && textures.iter().any(|texture| texture.starts_with(ICON))

@@ -19,6 +19,7 @@ use crate::core::memory::{Cache, Memory, phase};
 use crate::core::names::{GamePlace, GameSprite, Names};
 use crate::core::rtti::{ClassNames, demangle};
 use crate::core::speech::{Category, Speech};
+use crate::core::tones::Tones;
 use crate::games::common::announce::{Announcements, ScreenAnnouncer, Speaker};
 use crate::games::common::cursor::CursorReader;
 use crate::games::common::dialogue::{DialogueReader, Shown};
@@ -26,17 +27,21 @@ use crate::games::common::field::{
     Field, Ground, Interactable, WARP_SOURCE, bearing, describe, source_kind, source_number,
 };
 use crate::games::common::layout::Layouts;
-use crate::games::common::layout_file::LayoutFiles;
+use crate::games::common::layout_file::{LayoutFile, LayoutFiles};
 use crate::games::common::navigate::{
     Bindings, FieldSource, LeadsTo, Navigator, Options as NavigatorOptions, Sides, Street,
 };
 use crate::games::common::screen::{Pictures, ScreenText, ScreenTextReader};
 use crate::games::common::session::Profile;
-use crate::games::common::{lyt, msgwin, strbuf};
+use crate::games::common::touch::{
+    self, FileOf, Idle, ImageOf, Lists, OnScreen, PictureName, Tap, TextOf, TouchTargets,
+};
+use crate::games::common::{lyt, msgwin, pokemon, strbuf};
 use crate::games::gen6::apps::{BATTLE, FIELD, MANAGER_CLASS, RunningApp};
 use crate::games::gen6::archives::GameText;
 use crate::games::gen6::battle::{BattleReader, Battlers, GAUGE_CLASSES, Gauges};
 use crate::games::gen6::choices::{BOX_DEVICE_MANAGER, ChoiceReader, DEVICE_MANAGER_CLASS};
+use crate::games::gen6::distribution::Distribution;
 use crate::games::gen6::dowsing::Lights;
 use crate::games::gen6::field::{
     FieldReader, MOVE_MODEL_CLASS, Options as FieldOptions, PC_TILE, Streets,
@@ -44,24 +49,31 @@ use crate::games::gen6::field::{
 use crate::games::gen6::game::Game;
 use crate::games::gen6::habitat::HabitatReader;
 use crate::games::gen6::lists::{CONTROLLER_CLASS, ListReader};
+use crate::games::gen6::mapcursor::MapCursor;
+use crate::games::gen6::partyicons::PartyIcons;
 use crate::games::gen6::sky::{Place, SkySource};
 use crate::games::gen6::speaker::SpeakerReader;
 use crate::games::gen6::textures::Index;
-use crate::games::gen6::{camera, gflheap, mapblock, sky, talk};
+use crate::games::gen6::{
+    buttons, camera, distribution, gflheap, mapblock, partyicons, sky, talk, textures, townmap,
+};
 use crate::py::{self, Error, Log, PySet, Result};
 
 /// What the heap is swept for: message windows, list controllers, the device manager a choice box
 /// holds, layout works through their DrawInfo, the battlers' names and HP gauges, the map's move
 /// models, the heaps themselves, whose blocks the runtime watches for what they allocate (`app`,
-/// ADR-0034), the camera whose heading the D-pad walks by on Lumiose's rails, and the process manager
-/// that says which app is running. A game's own readers add what they find their objects by
-/// (`Gen6Profile.classes`): ORAS's DexNav, the player's work its hidden Pokémon's record is found
+/// ADR-0034), the camera whose heading the D-pad walks by on Lumiose's rails, the process manager
+/// that says which app is running, and the button managers and touch bars that say whose
+/// buttons take taps (`buttons`), and the AreaNav's navigator, which says whose icon each picture of
+/// its Pokémon Distribution draws, and its views, which say which of its layouts it draws; and the
+/// party and the icons the Bag draws it with. A game's own readers add what they find their objects
+/// by (`Gen6Profile.classes`): ORAS's DexNav, the player's work its hidden Pokémon's record is found
 /// through.
 ///
 /// Not TextBoxes or cursor windows: walking each layout's tree finds every one that can be placed on
 /// screen (spike 62). And the linear heap is not swept: the battle builds its layouts there, and its
 /// message window leads to their pool (spike 64).
-pub const HEAP_CLASSES: [&str; 14] = [
+pub const HEAP_CLASSES: [&str; 24] = [
     msgwin::CLASSES[0],
     msgwin::CLASSES[1],
     talk::CLASSES[0],
@@ -76,6 +88,17 @@ pub const HEAP_CLASSES: [&str; 14] = [
     mapblock::CLASS,
     camera::CLASS,
     MANAGER_CLASS,
+    distribution::CLASS,
+    // `*townmap.VIEWS`: the dict's keys, in its order.
+    townmap::VIEWS[0].0,
+    townmap::VIEWS[1].0,
+    townmap::VIEWS[2].0,
+    townmap::VIEWS[3].0,
+    townmap::VIEWS[4].0,
+    pokemon::PARAM_CLASS,
+    partyicons::ICON_CLASS,
+    buttons::MANAGER_CLASS,
+    buttons::BAR_CLASS,
 ];
 
 /// Without a message window class there is nothing to read: not this game, or not this version.
@@ -96,6 +119,8 @@ pub struct Options {
     pub pictures: Option<Rc<Index>>,
     /// The executable as read from its code, `b""` when there is none.
     pub image: Vec<u8>,
+    pub tap: Option<Tap>,
+    pub tones: Option<Rc<Tones>>,
 }
 
 /// The gen 6 readers, and what each sweep and poll does with them, for ORAS or for X and Y.
@@ -116,9 +141,12 @@ pub struct Gen6Profile {
     /// Shared with the sky source's `soaring`, which the Python hands as a bound method.
     pub apps: Rc<RefCell<RunningApp>>,
     pub dialogue: RefCell<DialogueReader>,
-    pub lists: RefCell<ListReader>,
+    /// Shared with touch mode's `lists`, which the Python hands as a bound method.
+    pub lists: Rc<RefCell<ListReader>>,
     pub choices: RefCell<ChoiceReader>,
-    pub screen: RefCell<ScreenTextReader>,
+    /// Shared with touch mode's `on_screen` and `text_of`, which the Python hands as bound
+    /// methods.
+    pub screen: Rc<RefCell<ScreenTextReader>>,
     /// Layout files name the textures a screen's pictures use, which is all the battle's
     /// command menu has to say what its buttons are (spike 50). They live in both heaps.
     pub files: Rc<LayoutFiles>,
@@ -141,6 +169,12 @@ pub struct Gen6Profile {
     /// What the heap is swept for in this game: `HEAP_CLASSES`, and what the game's own
     /// readers find their objects by.
     pub classes: Vec<String>,
+    pub distribution: Rc<RefCell<Distribution>>,
+    pub views: RefCell<townmap::Views>,
+    pub buttons: Rc<RefCell<buttons::Buttons>>,
+    pub party_icons: Rc<RefCell<PartyIcons>>,
+    pub map_cursor: RefCell<MapCursor>,
+    /// Python's `self.touch` is the navigator's `touch`, which it owns here.
     pub navigator: RefCell<Navigator>,
     log: Log,
     speech: Rc<Speech>,
@@ -165,7 +199,7 @@ pub struct Gen6Profile {
     pub screen_announcer: RefCell<ScreenAnnouncer>,
     /// The Pokédex's habitat map draws the Pokémon's places and never names them (spike 152).
     pub habitat: RefCell<HabitatReader>,
-    /// (work, root) of every layout whose files have been looked for.
+    /// (work, root) of every layout whose files have been looked for since an app started.
     archived: RefCell<HashSet<(i64, i64)>>,
     /// The zone the player was last polled in.
     zone: Cell<Option<i64>>,
@@ -224,6 +258,8 @@ impl Gen6Profile {
             text,
             pictures,
             image,
+            tap,
+            tones,
         } = options;
         let cache = memory;
         let memory: Rc<dyn Memory> = cache.clone();
@@ -231,7 +267,7 @@ impl Gen6Profile {
         let layouts = Rc::new(Layouts::new(memory.clone(), names.clone(), lyt::ORAS));
         let apps = Rc::new(RefCell::new(RunningApp::new(memory.clone(), names.clone())));
         let dialogue = DialogueReader::new(memory.clone(), names.clone(), Some(layouts.clone()));
-        let lists = ListReader::new(memory.clone(), names.clone());
+        let lists = Rc::new(RefCell::new(ListReader::new(memory.clone(), names.clone())));
         let choices = ChoiceReader::new(memory.clone(), names.clone());
         // A picture whose texture the game swaps as it runs is named by the image it draws: the
         // Pokédex's language tabs and its type (spike 147).
@@ -239,7 +275,7 @@ impl Gen6Profile {
             let memory = memory.clone();
             Rc::new(move |pane: i64| pictures.said(&*memory, pane)) as Pictures
         });
-        let screen = ScreenTextReader::with(
+        let screen = Rc::new(RefCell::new(ScreenTextReader::with(
             memory.clone(),
             names.clone(),
             layouts.clone(),
@@ -249,7 +285,7 @@ impl Gen6Profile {
                 .collect(),
             None,
             named_by_image.clone(),
-        );
+        )));
         let files = Rc::new(LayoutFiles::new(memory.clone()));
         let cursors = CursorReader::with(
             layouts.clone(),
@@ -379,6 +415,114 @@ impl Gen6Profile {
             let (apps, known) = (apps.clone(), known.clone());
             Rc::new(move || soaring_of(&apps, &known))
         };
+
+        // Touch mode walks the bottom screen's touch areas, and taps one on the player's key
+        // (`games.common.touch`, ADR-0009 as amended 2026-10-01).
+
+        let image_of: ImageOf = {
+            let (memory, files) = (memory.clone(), files.clone());
+            Rc::new(move |pane: i64| {
+                let at = textures::drawn_at(&*memory, pane)?;
+                Ok(at.and_then(|at| files.image_at(at)))
+            })
+        };
+        let file_of: FileOf = {
+            let (files, layouts) = (files.clone(), layouts.clone());
+            Rc::new(move |root: i64| -> Option<Rc<LayoutFile>> {
+                files.matching(&layouts.pane_names(root))
+            })
+        };
+
+        let species: Vec<String> = text
+            .as_ref()
+            .map(|text| text.species.clone())
+            .unwrap_or_default();
+        // The AreaNav's Pokémon Distribution draws each Pokémon's icon, which no file names.
+        let distribution = Rc::new(RefCell::new(Distribution::new(
+            memory.clone(),
+            names.clone(),
+            species.clone(),
+        )));
+        // The AreaNav keeps the layouts of a screen it has left as they were; its views say.
+        let views = townmap::Views::new(memory.clone(), names.clone());
+        // The game's button managers say whose buttons take taps (spike 189).
+        let buttons = Rc::new(RefCell::new(buttons::Buttons::new(memory.clone())));
+        // The Bag draws each party member's icon, and says nothing of whose it is.
+        let party_icons = Rc::new(RefCell::new(PartyIcons::new(
+            memory.clone(),
+            names.clone(),
+            species,
+            {
+                let apps = apps.clone();
+                Rc::new(move || apps.borrow().running.clone())
+            },
+        )));
+        let on_screen: OnScreen = {
+            let screen = screen.clone();
+            Rc::new(move || screen.borrow().on_screen())
+        };
+        let text_of: TextOf = {
+            let screen = screen.clone();
+            Rc::new(move |r#box: i64| screen.borrow().text_of(r#box))
+        };
+        // The AreaNav is the field's: elsewhere its navigators are gone, and asking cost a touch
+        // walk 1,400 reads (movie22).
+        let picture_name: PictureName = {
+            let (apps, distribution, party_icons) =
+                (apps.clone(), distribution.clone(), party_icons.clone());
+            Rc::new(move |pane: i64| {
+                // `(running in (FIELD, None) and distribution.name(pane)) or
+                // party_icons.name(pane)`: a name of "" or None goes on to the party's icons.
+                let running = apps.borrow().running.clone();
+                if running.as_deref().is_none_or(|running| running == FIELD)
+                    && let Some(name) = distribution.borrow().name(pane)?
+                    && !name.is_empty()
+                {
+                    return Ok(Some(name));
+                }
+                party_icons.borrow().name(pane)
+            })
+        };
+        let lists_labels: Lists = {
+            let lists = lists.clone();
+            Rc::new(move || lists.borrow().labels())
+        };
+        let idle: Idle = {
+            let buttons = buttons.clone();
+            Rc::new(move || buttons.borrow_mut().idle())
+        };
+        let touch = TouchTargets::new(
+            layouts.clone(),
+            on_screen,
+            text_of,
+            image_of.clone(),
+            file_of,
+            log.clone(),
+            touch::Options {
+                images: text.as_ref().map(|text| text.touch_words.clone()),
+                tap,
+                tone: tones.clone().map(|tones| {
+                    Rc::new(move |across: f64, down: f64| {
+                        // The sound thread not starting, raised to the key's handler in Python.
+                        let _ = tones.play(across, down);
+                    }) as touch::Tone
+                }),
+                picture_name: Some(picture_name),
+                lists: Some(lists_labels),
+                idle: Some(idle),
+            },
+        );
+        // The Hoenn map's cursor says nothing between places: a tone says where it is.
+        let map_cursor = MapCursor::new(
+            layouts.clone(),
+            image_of,
+            tones.map(|tones| {
+                Rc::new(move |start: (f64, f64), end: (f64, f64)| {
+                    // The sound thread not starting, raised to the screen's poll in Python.
+                    let _ = tones.glide(start, end);
+                }) as crate::games::gen6::mapcursor::Tone
+            }),
+        );
         let navigator = Navigator::new(
             Rc::new(SkySource::new(
                 memory.clone(),
@@ -405,6 +549,7 @@ impl Gen6Profile {
                     let announcements = announcements.clone();
                     Rc::new(move |player: bool| announcements.borrow().sides(player)) as Sides
                 }),
+                touch: Some(touch),
                 ..NavigatorOptions::default()
             },
         );
@@ -441,9 +586,9 @@ impl Gen6Profile {
             layouts,
             apps,
             dialogue: RefCell::new(dialogue),
-            lists: RefCell::new(lists),
+            lists,
             choices: RefCell::new(choices),
-            screen: RefCell::new(screen),
+            screen,
             files,
             cursors: RefCell::new(cursors),
             battlers,
@@ -452,6 +597,11 @@ impl Gen6Profile {
             speaker,
             field,
             classes: classes.into_iter().collect(),
+            distribution,
+            views: RefCell::new(views),
+            buttons,
+            party_icons,
+            map_cursor: RefCell::new(map_cursor),
             navigator: RefCell::new(navigator),
             log,
             speech,
@@ -500,6 +650,21 @@ impl Gen6Profile {
         self.apps.borrow_mut().track(found.of(&[MANAGER_CLASS]))?;
         // A talk object's class is a DLL's while a talk runs, so every one found is kept.
         self.speaker.track(found.of(&talk::CLASSES));
+        self.distribution
+            .borrow_mut()
+            .track(found.of(&[distribution::CLASS]), adding);
+        self.views.borrow_mut().track(&found.heap, adding)?;
+        self.buttons.borrow_mut().track(
+            found.of(&[buttons::MANAGER_CLASS]),
+            found.of(&[buttons::BAR_CLASS]),
+            adding,
+        )?;
+        self.party_icons.borrow_mut().track(
+            &found.of(&[pokemon::PARAM_CLASS]),
+            found.of(&[partyicons::ICON_CLASS]),
+            &|targets: &[i64]| found.holders(targets),
+            adding,
+        )?;
         self.lists.borrow_mut().track(found.of(&[CONTROLLER_CLASS]));
         // A choice box has no class of its own; the device manager it holds does.
         for manager in found.of(&[DEVICE_MANAGER_CLASS]) {
@@ -586,6 +751,9 @@ impl Gen6Profile {
         };
         (self.log)(&format!("app: {}", demangle(&started)));
         self.dialogue.borrow_mut().forget_hosts();
+        // A screen built again where it was may load its archive elsewhere: the PokéNav's came
+        // back from the PlayNav's tutorial in another, and its pictures went unnamed (movie24).
+        self.archived.borrow_mut().clear();
         // A battle's sides are said again on a key only while it lasts.
         self.announcements.borrow_mut().forget_sides();
         if started == BATTLE {
@@ -693,6 +861,8 @@ impl Gen6Profile {
             // The field's layouts come back where they were when a menu screen closes, and a
             // layout found before it was built is taken in once it is.
             let revived = self.layouts.revive()?;
+            let put_away = self.views.borrow().put_away()?;
+            self.layouts.put_away(put_away);
             // The battle's layouts are built into a pool its message window leads to.
             let failed: RefCell<Option<Error>> = RefCell::new(None);
             self.layouts.watch_pools(self.linear_handles(&failed))?;
@@ -713,6 +883,7 @@ impl Gen6Profile {
             // The HP box is the battle reader's to say, whole and once it holds still.
             let sides = self.battle.borrow_mut().poll(&on_screen)?;
             self.habitat.borrow_mut().poll(&on_screen)?;
+            self.map_cursor.borrow_mut().poll()?;
             let items = self.cursors.borrow_mut().poll(&on_screen)?;
             Ok((texts, on_screen, sides, items))
         })?;

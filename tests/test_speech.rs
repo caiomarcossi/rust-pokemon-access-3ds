@@ -4,7 +4,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::rc::Rc;
 
-use crate::core::speech::{Backend, Category, Speech};
+use crate::core::speech::{Backend, Category, Speech, default_interrupts};
 
 #[derive(Default)]
 struct Recorder {
@@ -41,7 +41,7 @@ fn test_nothing_interrupts_by_default() {
     let backend = Rc::new(Recorder::default());
     let speech = Speech::plain(backend.clone());
     for category in Category::ALL {
-        if category != Category::Key {
+        if category != Category::Key && category != Category::Warning {
             speech.say("Bag", category);
         }
     }
@@ -55,6 +55,19 @@ fn test_the_answer_to_a_key_interrupts() {
     let backend = Rc::new(Recorder::default());
     Speech::plain(backend.clone()).say("door, 1 north", Category::Key);
     assert_eq!(spoken(&backend), [("door, 1 north".to_string(), true)]);
+}
+
+/// "Close Azahar" must not wait behind the console being read out (Orion, 2026-10-05).
+#[test]
+fn test_a_warning_interrupts_from_any_window() {
+    let backend = Rc::new(Recorder::default());
+    Speech::new(
+        backend.clone(),
+        default_interrupts(),
+        Some(Rc::new(|| false)),
+    )
+    .say("close Azahar", Category::Warning);
+    assert_eq!(spoken(&backend), [("close Azahar".to_string(), true)]);
 }
 
 #[test]

@@ -5,8 +5,9 @@ use std::rc::Rc;
 use indexmap::IndexMap;
 
 use super::fake_memory::Counting;
-use crate::core::rtti::{ClassNames, demangle, find_objects, find_vtables};
+use crate::core::rtti::{ClassNames, demangle, find_derived, find_objects, find_vtables};
 use crate::core::snapshot::{PAGE, Snapshot};
+use crate::py::PySet;
 
 const BASE: i64 = 0x00100000;
 const SIZE: i64 = 0x1000;
@@ -93,6 +94,49 @@ fn test_find_vtables_does_not_match_a_longer_name_ending_the_same_way() {
 fn test_find_vtables_of_an_absent_class_is_empty() {
     assert_eq!(
         find_vtables(&menu_window(), BASE, "N2nw3lyt7TextBoxE", 0, None).unwrap(),
+        Vec::<i64>::new()
+    );
+}
+
+const MODULE: i64 = 0x00700000;
+
+/// An app's touch bar is a class of its module, built on the executable's
+/// `app::ui::UITouchBarView` and a listener; one class may be built on it in turn. A second
+/// vtable, the listener's part of the object, is no primary one (spike 189).
+#[test]
+fn test_find_derived_finds_a_modules_classes_by_what_they_are_built_on() {
+    let mut raw = vec![0u8; SIZE as usize];
+    raw[0x100..0x110].copy_from_slice(b"N3box7BoxViewE\0\0");
+    pack_into(
+        &mut raw,
+        0x200,
+        &[
+            MODULE + 0x280,
+            MODULE + 0x100,
+            0,
+            2,
+            BASE + TYPEINFO,
+            2,
+            BASE + 0x900,
+            0x7402,
+        ],
+    );
+    pack_into(&mut raw, 0x304, &[0, MODULE + 0x200, BASE + FUNCTION]);
+    pack_into(&mut raw, 0x404, &[-0x74, MODULE + 0x200, BASE + FUNCTION]);
+    raw[0x500..0x512].copy_from_slice(b"N3box9OtherViewE\0\0");
+    pack_into(
+        &mut raw,
+        0x600,
+        &[MODULE + 0x280, MODULE + 0x500, MODULE + 0x200],
+    );
+    pack_into(&mut raw, 0x704, &[0, MODULE + 0x600, MODULE + 0x800]);
+    let code = (BASE, MODULE + SIZE);
+    assert_eq!(
+        find_derived(&raw, MODULE, &PySet::of([BASE + TYPEINFO]), Some(code)).unwrap(),
+        [MODULE + 0x30C, MODULE + 0x70C]
+    );
+    assert_eq!(
+        find_derived(&raw, MODULE, &PySet::of([BASE + 0x123]), Some(code)).unwrap(),
         Vec::<i64>::new()
     );
 }

@@ -21,8 +21,10 @@ use regex::bytes::Regex;
 
 use crate::core::binary;
 use crate::core::memory::Memory;
-use crate::py::{self, Error, Result};
+use crate::py::{self, Error, PySet, Result};
 
+/// Most bases a typeinfo is searched for the one asked about among; a touch bar has two.
+pub const MAX_BASES: i64 = 4;
 /// Longest mangled name read. Template-heavy names run long; anything past this is not a name.
 pub const NAME_LIMIT: i64 = 256;
 
@@ -71,7 +73,7 @@ pub fn find_vtables(
     start: i64,
     code: Option<(i64, i64)>,
 ) -> Result<Vec<i64>> {
-    let (low, high) = match code {
+    let span = match code {
         Some(code) => code,
         None => (base, base + image.len() as i64),
     };
@@ -80,21 +82,125 @@ pub fn find_vtables(
     wanted.push(0);
     for name in aligned(image, &wanted, 1, start) {
         for name_ref in aligned(image, &pack_u32(base + name)?, 4, start) {
-            let typeinfo = base + name_ref - 4;
-            for typeinfo_ref in aligned(image, &pack_u32(typeinfo)?, 4, start) {
-                if typeinfo_ref < 4 || typeinfo_ref + 8 > image.len() as i64 {
-                    continue;
-                }
-                let offset_to_top = i32::from_le_bytes(binary::take::<4>(image, typeinfo_ref - 4)?);
-                let first_slot = binary::u32(image, typeinfo_ref + 4)?;
-                if offset_to_top == 0 && low <= first_slot && first_slot < high {
-                    out.push(base + typeinfo_ref + 4);
-                }
-            }
+            out.extend(vtables_of(image, base, base + name_ref - 4, span, start)?);
         }
     }
     out.sort();
     Ok(out)
+}
+
+/// The typeinfo a vtable in the image names, in the word before it.
+pub fn typeinfo_of(image: &[u8], base: i64, vtable: i64) -> Result<i64> {
+    binary::u32(image, vtable - 4 - base)
+}
+
+/// Every primary vtable in the image of a class built on one whose typeinfo is among
+/// `typeinfos`, at any depth: how a module's class whose own name is not known is found by the
+/// executable's class it is built on, as each app's touch bar is on `app::ui::UITouchBarView`
+/// (spike 189). The classes of `typeinfos` themselves are not among them.
+///
+/// Python's default is no `code`. The result is sorted, so the order the sets here are iterated
+/// in cannot reach it.
+pub fn find_derived(
+    image: &[u8],
+    base: i64,
+    typeinfos: &PySet,
+    code: Option<(i64, i64)>,
+) -> Result<Vec<i64>> {
+    let span = match code {
+        Some(code) => code,
+        None => (base, base + image.len() as i64),
+    };
+    let mut out: Vec<i64> = Vec::new();
+    for typeinfo in built_on(image, base, typeinfos)?
+        .difference(&typeinfos.copy())
+        .iter()
+    {
+        out.extend(vtables_of(image, base, typeinfo, span, 0)?);
+    }
+    out.sort();
+    Ok(out)
+}
+
+/// The typeinfos in the image of every class built on one among `typeinfos`, at any depth,
+/// and `typeinfos` themselves. A module's class names the executable's it is built on, which may
+/// itself be built on the one asked about: `app::pokelist::TouchBar` on `UITouchBarView`, on
+/// `UIView` (spike 189).
+///
+/// A class's typeinfo names its base at +8 where it has one, and where it has several, as a
+/// touch bar has its listener too, a count at +0x0C and then each base from +0x10, eight bytes
+/// each; either way its +4 points at its mangled name.
+pub fn built_on(image: &[u8], base: i64, typeinfos: &PySet) -> Result<PySet> {
+    let mut seen = typeinfos.copy();
+    let mut fresh = typeinfos.copy();
+    while !fresh.is_empty() {
+        let mut built = PySet::new();
+        for parent in fresh.iter() {
+            for r#ref in aligned(image, &pack_u32(parent)?, 4, 0) {
+                let mut starts: Vec<i64> = vec![r#ref - 8];
+                for i in 0..MAX_BASES {
+                    let start = r#ref - 0x10 - 8 * i;
+                    if start >= 0 {
+                        let count = binary::u32(image, start + 0x0C)?;
+                        if i < count && count <= MAX_BASES {
+                            starts.push(start);
+                        }
+                    }
+                }
+                for start in starts {
+                    if start >= 0 && names(image, base, start + 4)? {
+                        built.add(base + start);
+                    }
+                }
+            }
+        }
+        fresh = built.difference(&seen);
+        seen.update(&fresh);
+    }
+    Ok(seen)
+}
+
+/// The primary vtables in the image naming this typeinfo: an offset-to-top of zero before
+/// the word naming it, and a first slot in `code` after it.
+fn vtables_of(
+    image: &[u8],
+    base: i64,
+    typeinfo: i64,
+    code: (i64, i64),
+    start: i64,
+) -> Result<Vec<i64>> {
+    let (low, high) = code;
+    let mut out: Vec<i64> = Vec::new();
+    for typeinfo_ref in aligned(image, &pack_u32(typeinfo)?, 4, start) {
+        if typeinfo_ref < 4 || typeinfo_ref + 8 > image.len() as i64 {
+            continue;
+        }
+        let offset_to_top = i32::from_le_bytes(binary::take::<4>(image, typeinfo_ref - 4)?);
+        let first_slot = binary::u32(image, typeinfo_ref + 4)?;
+        if offset_to_top == 0 && low <= first_slot && first_slot < high {
+            out.push(base + typeinfo_ref + 4);
+        }
+    }
+    Ok(out)
+}
+
+/// Does the word at `at` in the image point at a mangled name in it?
+fn names(image: &[u8], base: i64, at: i64) -> Result<bool> {
+    if at + 4 > image.len() as i64 {
+        return Ok(false);
+    }
+    let name = binary::u32(image, at)? - base;
+    if !(0 <= name && name < image.len() as i64) {
+        return Ok(false);
+    }
+    let name = name as usize;
+    let searched = &image[name..image.len().min(name + NAME_LIMIT as usize)];
+    // `image.find(b"\0", name, name + NAME_LIMIT)` is `end`, -1 for none; `end > name` is a
+    // terminator past the first byte.
+    let Some(length) = searched.iter().position(|&b| b == 0) else {
+        return Ok(false);
+    };
+    Ok(length > 0 && MANGLED.is_match(&image[name..name + length]))
 }
 
 /// `image.find(needle, start)`: the first index at or past `start`, or None where Python says -1.

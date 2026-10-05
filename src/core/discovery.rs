@@ -24,7 +24,7 @@ use indexmap::{IndexMap, IndexSet};
 use crate::core::memory::Memory;
 use crate::core::modules::{Module, Modules};
 use crate::core::rpc::{Rpc, joined, reads_of};
-use crate::core::rtti::{find_objects, find_vtables};
+use crate::core::rtti::{built_on, find_derived, find_objects, find_vtables, typeinfo_of};
 use crate::core::snapshot::{DEFAULT_GAP, PAGE, PROBE_STEP, merge, probe, range_of, sweep};
 use crate::py::PySet;
 use crate::py::{self, Result};
@@ -98,6 +98,9 @@ pub struct Discovery {
     /// Whether the last look left a module unread because it was new: look again soon.
     pub unsettled: bool,
     classes: Vec<String>,
+    /// Each of `bases` -> its typeinfo and those of the executable's classes built on it, any of
+    /// which a module's class may name as its own base.
+    bases: IndexMap<String, PySet>,
     names: IndexMap<i64, String>,
     /// Where the heap was when last measured.
     pub heap: Vec<(i64, i64)>,
@@ -114,14 +117,16 @@ impl Discovery {
         classes: &[&str],
         between: Rc<dyn Fn()>,
     ) -> Result<Self> {
-        Discovery::with(rpc, image, base, classes, between, 512, None)
+        Discovery::with(rpc, image, base, classes, between, 512, None, &[])
     }
 
     /// `image` is the executable from `base`, to find vtables in. `between` is called between a
     /// sweep's chunks. `walk` reads the heap for a profile that says where it may be read: every
     /// span it may read, by its start, read to the byte and never a page around it, calling
     /// back as it goes. Without it, the heap is wherever `HEAP_SPAN` holds anything, read a page
-    /// at a time.
+    /// at a time. `bases` are classes of `classes` whose objects are found with those of every
+    /// class built on them, under their name: an app's touch bar is of a class of its module's
+    /// own, which pa3ds has no name for (spike 189).
     pub fn with(
         rpc: Rc<dyn Rpc>,
         image: &[u8],
@@ -130,11 +135,31 @@ impl Discovery {
         between: Rc<dyn Fn()>,
         chunk: i64,
         walk: Option<Walk>,
+        bases: &[&str],
     ) -> Result<Self> {
+        let mut roots: IndexMap<String, PySet> = IndexMap::new();
+        for &name in bases {
+            let mut typeinfos = PySet::new();
+            for vtable in find_vtables(image, base, name, 0, None)? {
+                typeinfos.add(typeinfo_of(image, base, vtable)?);
+            }
+            roots.insert(name.to_string(), typeinfos);
+        }
+        // Each of `bases` -> its typeinfo and those of the executable's classes built on it, any
+        // of which a module's class may name as its own base.
+        let mut built: IndexMap<String, PySet> = IndexMap::new();
+        for (name, typeinfos) in &roots {
+            built.insert(name.clone(), built_on(image, base, typeinfos)?);
+        }
         let mut names: IndexMap<i64, String> = IndexMap::new();
         for &name in classes {
             for vtable in find_vtables(image, base, name, 0, None)? {
                 names.insert(vtable, name.to_string());
+            }
+        }
+        for (name, typeinfos) in &roots {
+            for vtable in find_derived(image, base, typeinfos, None)? {
+                names.insert(vtable, name.clone());
             }
         }
         Ok(Discovery {
@@ -147,6 +172,7 @@ impl Discovery {
             listed: Vec::new(),
             unsettled: false,
             classes: classes.iter().map(|name| name.to_string()).collect(),
+            bases: built,
             names,
             heap: Vec::new(),
             blocks: IndexSet::new(),
@@ -220,6 +246,9 @@ impl Discovery {
                             offsets.insert(vtable - module.base, name.clone());
                         }
                     }
+                    for (vtable, name) in self.built_on(&image, module.base, Some(span))? {
+                        offsets.insert(vtable - module.base, name);
+                    }
                     self.offsets.insert(module.name.clone(), offsets.clone());
                     offsets
                 }
@@ -236,6 +265,22 @@ impl Discovery {
         }
         self.listed = listed;
         Ok(learned)
+    }
+
+    /// The vtables in a module's image of the classes built on one of `bases`, by its name.
+    fn built_on(
+        &self,
+        image: &[u8],
+        base: i64,
+        code: Option<(i64, i64)>,
+    ) -> Result<IndexMap<i64, String>> {
+        let mut out: IndexMap<i64, String> = IndexMap::new();
+        for (name, typeinfos) in &self.bases {
+            for vtable in find_derived(image, base, typeinfos, code)? {
+                out.insert(vtable, name.clone());
+            }
+        }
+        Ok(out)
     }
 
     /// Measure where the heap is, before a whole sweep. Returns whether memory has turned up

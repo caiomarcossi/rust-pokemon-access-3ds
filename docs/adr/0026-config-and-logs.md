@@ -62,7 +62,9 @@ alone, and any other setting of Azahar's may be added by its name in `qt-config.
 Azahar saves its settings over the file when it closes, so nothing is written while it is open
 (ADR-0022): the player is told to close it and start pa3ds again. A start that changes nothing
 writes nothing and says nothing, which on Orion's machine, tuned by hand before any of this, is
-every start.
+every start. Both sentences that leave Azahar unconfigured — that one, and "Azahar's settings were
+not found" where Azahar has never been started — interrupt, from any window (ADR-0010, amended
+2026-10-05).
 
 ## Consequences
 

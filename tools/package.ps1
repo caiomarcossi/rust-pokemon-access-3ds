@@ -7,7 +7,7 @@ Builds the release, checks the executable starts, and writes
 target\package\pa3ds-<version>-windows.zip holding:
 
   pa3ds.exe          the program, with Prism (which reaches the player's screen reader) built in
-  README.md          what pa3ds is
+  README.md          the player's manual
   LICENSE            pa3ds's licence
   licenses\prism\    Prism's licence and those of the libraries built into it: Prism is under the
                      MPL 2.0, which asks that its licence go wherever its code goes

@@ -16,16 +16,40 @@ use indexmap::IndexMap;
 
 use crate::py;
 
-/// The word a texture name ends in to say its picture is a button. Left unsaid.
+/// The word a texture name ends in to say its picture is a button, or `btn` short for it, as the
+/// PlayNav's `return_btn` and the Pokédex's `up_btn` (movie24). Left unsaid.
 pub const BUTTON: &str = "button";
+pub const ICON: &str = "icon";
 /// Words a texture name starts with to say what its picture is or belongs to, left unsaid: an
 /// icon, a move's ("waza", Japanese for move) or a contest's. The name entry's confirm key is
 /// `icon_return`, and reads "return" (opening.ctm, the user, 2026-09-18); the move-forget screen's
 /// `waza_con_change` reads "change" (Orion, 2026-10-01), not "waza con change".
-pub const KINDS: [&str; 3] = ["icon", "waza", "con"];
+pub const KINDS: [&str; 3] = [ICON, "waza", "con"];
 /// The word a designer starts a button's pane name with, as the battle's `Btn_Fight` (spike 124):
 /// what the button is, not what it says.
 pub const BUTTON_PREFIX: &str = "btn";
+
+/// Pictures whose texture's name says what they look like, not what they do, or says it in
+/// Japanese, and that the game never names, by pa3ds's words for what they do (Orion, 2026-10-01):
+/// the AreaNav's map draws `map_big` on the button that makes the map bigger, and `map_small` on
+/// the one that takes it back (movie17); the Bag's `rireki_icon` ("rireki", history) lists the last
+/// items used (Orion, 2026-10-02, movie21); the PC Box's three modes, `mode01` to `mode03`, are its
+/// red tab (a Poké Ball), its blue (two balls and an arrow both ways) and its green (a grid and an
+/// arrow), which as Gen 6's PC is known pick a Pokémon up as usual, move one with a press, and
+/// select a group (Orion, 2026-10-02, movie22).
+pub fn own_words() -> &'static IndexMap<&'static str, &'static str> {
+    static OWN_WORDS: OnceLock<IndexMap<&'static str, &'static str>> = OnceLock::new();
+    OWN_WORDS.get_or_init(|| {
+        IndexMap::from([
+            ("map_big", "zoom in"),
+            ("map_small", "zoom out"),
+            ("rireki_icon", "history"),
+            ("mode01", "normal mode"),
+            ("mode02", "swap mode"),
+            ("mode03", "multi-select mode"),
+        ])
+    })
+}
 
 /// Words a texture name spells otherwise. A file name is ASCII, so `pokemon_button.bclim` loses the
 /// accent the game itself writes everywhere else ("Choose a Pokémon."), and a screen reader says
@@ -63,18 +87,22 @@ pub const OFF: &str = "off";
 
 /// A texture's name as words: `fight_button.bclim` is "fight".
 ///
-/// A trailing "button", or a leading "icon" (`KINDS`), is the designer saying what the picture is,
-/// not part of the item's name. The battle's command menu reads "fight bag pokémon run" as any
-/// menu would (the user, 2026-09-16), and the name entry's confirm key `icon_return.bclim` reads
-/// "return". A texture called only `button` or `icon` keeps the word: dropping it leaves nothing.
+/// A trailing "button", or a leading or trailing "icon" (`KINDS`), is the designer saying what
+/// the picture is, not part of the item's name. The battle's command menu reads "fight bag
+/// pokémon run" as any menu would (the user, 2026-09-16), the name entry's confirm key
+/// `icon_return.bclim` reads "return", and so does the AreaNav's `return_icon.bclim` (movie17).
+/// A texture called only `button` or `icon` keeps the word: dropping it leaves nothing.
 pub fn words(texture: &str) -> String {
     let stem = match texture.rsplit_once('.') {
         Some((stem, _)) => stem,
         None => texture,
     };
+    if let Some(own) = own_words().get(stem) {
+        return own.to_string();
+    }
     let replaced = stem.replace('_', " ");
     let mut said = py::split(&replaced);
-    if said.len() > 1 && said[said.len() - 1] == BUTTON {
+    if said.len() > 1 && [BUTTON, BUTTON_PREFIX, ICON].contains(&said[said.len() - 1]) {
         said.pop();
     }
     while said.len() > 1 && KINDS.contains(&said[0]) {

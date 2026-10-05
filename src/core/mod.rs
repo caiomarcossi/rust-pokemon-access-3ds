@@ -30,3 +30,6 @@ pub mod snapshot;
 pub mod speech;
 pub mod toml;
 pub mod window;
+
+pub mod tones;
+pub mod touch;

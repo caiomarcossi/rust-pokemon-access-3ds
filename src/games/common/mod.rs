@@ -38,3 +38,5 @@ pub mod session;
 pub mod slots;
 pub mod strbuf;
 pub mod text;
+
+pub mod touch;

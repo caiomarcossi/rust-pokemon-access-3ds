@@ -71,6 +71,9 @@ pub const DOWN: i64 = 0x8000;
 /// The process whose window the keys are answered in front of.
 pub const EMULATOR: &str = window::EMULATOR;
 
+/// Keys named by a word, as the keys file writes them: Enter taps in touch mode.
+pub const NAMED: [(i64, &str); 1] = [(0x0D, "enter")];
+
 /// The OEM virtual keys by the character each carries on a US layout. Windows numbers these
 /// keys by their place, not their character, so on another layout the key in the semicolon's place
 /// is still `;` here.
@@ -96,6 +99,9 @@ pub fn key_name(virtual_key: i64) -> String {
     }
     if let Some((_, character)) = PUNCTUATION.iter().find(|(key, _)| *key == virtual_key) {
         return character.to_string();
+    }
+    if let Some((_, name)) = NAMED.iter().find(|(key, _)| *key == virtual_key) {
+        return name.to_string();
     }
     format!("vk{virtual_key:#x}")
 }

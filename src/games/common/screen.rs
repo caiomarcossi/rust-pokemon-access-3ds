@@ -799,6 +799,19 @@ impl ScreenTextReader {
         Ok(self.window_tags[&tag])
     }
 
+    /// A TextBox's words whether or not it is on screen, where code wrote them: the X menu keeps
+    /// its words hidden under the shortcut bar's icons (`games.common.touch`). A designer's words,
+    /// a placeholder of full-width digits left as the layout file has it, are "": the AreaNav's
+    /// tabs were named with them (movie17, Orion, 2026-10-01).
+    pub fn text_of(&self, r#box: i64) -> Result<String> {
+        let head = self.layouts.textbox(r#box)?;
+        if u32(&head, self.layouts.shape.tag_processor)? != 0 {
+            self.text(&head)
+        } else {
+            Ok(String::new())
+        }
+    }
+
     /// The TextBox's words, control codes dropped and whitespace collapsed.
     fn text(&self, head: &[u8]) -> Result<String> {
         let shape = self.layouts.shape;

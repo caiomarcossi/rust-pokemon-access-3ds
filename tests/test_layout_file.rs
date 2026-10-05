@@ -276,6 +276,7 @@ fn test_a_textures_name_is_said_as_words() {
     assert_eq!(words("run_button"), "run");
     assert_eq!(words("waza_plate_00.bclim"), "plate 00");
     assert_eq!(words("button.bclim"), "button");
+    assert_eq!(words("return_btn.bclim"), "return");
 }
 
 /// A `darc` holding these files one after another, as a work's resource points at (spike 64).
@@ -382,6 +383,11 @@ fn test_two_files_of_the_same_panes_in_another_order_match_neither() {
 #[test]
 fn test_a_texture_called_an_icon_is_said_without_the_word() {
     assert_eq!(words("icon_return.bclim"), "return");
+    assert_eq!(words("return_icon.bclim"), "return");
+    assert_eq!(
+        (words("map_big.bclim"), words("map_small.bclim")),
+        ("zoom in".to_string(), "zoom out".to_string())
+    );
     assert_eq!(words("icon.bclim"), "icon");
     // A move's and a contest's: the move-forget screen's (Orion, 2026-10-01).
     assert_eq!(words("waza_con_change.bclim"), "change");

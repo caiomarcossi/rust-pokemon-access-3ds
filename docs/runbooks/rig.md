@@ -226,7 +226,10 @@ Azahar and the save file handed over with each movie, the game's `main`:
   the other games' extdata and titles. Omega Ruby's movies were recorded without X's; X's were
   recorded with Omega Ruby's, and are replayed without them.
 - **Take the NAND from the recorder's Azahar** (`%APPDATA%\Azahar\nand`), not the fork's: the
-  system settings in them differ (`sysdata\00010017\00000000\config`).
+  system settings in them differ (`sysdata\00010017\00000000\config`). **Take it as it is when the
+  movie starts**: StreetPass keeps a mailbox a game in the NAND
+  (`data\<32 zeros>\sysdata\00010026\00000000\CEC`), and the BuzzNav asks one question more
+  without the recorder's, so movie25's taps ran out a screen early (spike 192).
 
 Orion keeps his movies, logs and saves a game a folder (2026-09-27): `<checkout>\user\movies\or`,
 `user\logs\or`, and `user\saves\or (0011c400)\after_<movie>`, with `x` and `x (00055d00)` for X.

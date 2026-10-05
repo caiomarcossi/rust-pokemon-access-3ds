@@ -3209,3 +3209,35 @@ sync three times; it ends on no save.
   "flock, 1 of 2, 26 ahead 28 right" moving to "11 ahead 21 right" four seconds on.
 - **Left open now**: whether diving to a flock's height is needed to battle it; the ship and
   the beacons, not listed; the point the game looks at, measured only from the words.
+
+## Spike 170 — Ever Grande City's waterfall
+
+2026-10-05 (`spikes/170_waterfall.py`, and the ROM's map chunks). The user, surfing at (51, 52) at
+the foot of Ever Grande City's waterfall (zone `0x15`), pressed P to the Pokémon Center: "no path
+to Pokémon Center". They used Waterfall, P from the top gave a way, and they went back down,
+where P said "no path" again. P is to stay off the waterfall, and Shift and P to climb it (the
+user, 2026-10-05). omega_ruby_waterfall.ctm, on the save of 18:27 (the rig's
+`save_checkpoint_waterfall`), replayed twice with 0 out of sync; it ends on no save.
+
+- **The waterfall is kind `0x3f`, a row of blocked water one cell deep.** Ever Grande City's is
+  `0x3f180003` from x 36 to 54 at z 51, the water bit and the blocked bit both set, with the sea
+  `0x3d` on both sides: the sea below at height 0 by the ROM's ground heights, the water above at
+  234. Spike 162 left the kind unknown.
+- **Waterfall carries the player over it, as Surf jumps the shore.** The climb took the player
+  from (51, 52) to (51, 50), polled at (51, 51) on the way, after "It's a large waterfall. Would
+  you like to use Waterfall?" and Yes. Going back down from (51, 50) to (51, 52), the game asked
+  nothing.
+- **Every waterfall in ORAS goes up north.** All 72 cells of `0x3f` in the ROM's chunks, in 8
+  files, are the one word. The 60 with water on both sides inside a chunk are all higher to the
+  north; 9 have rock north and south, the row's ends against a cliff, and 3 sit on a chunk's
+  edge.
+- **Built** (`field.FALLS`, `Ground.falls`, `Ground.over`, `Ground.climbing`, `FieldReader._rises`,
+  which also gives the bumpy slopes their way up): a ground with HMs jumps a waterfall either
+  way, from the cell before it to the cell after, going up at the five steps' cost of going onto
+  water and said with the game's name for the move, and down with no cost and no word; any
+  other ground walls it. Guiding waits while the player is on a waterfall's cell, between its
+  two sides. Replayed, Shift and P at the foot says "20 west, Waterfall 2 north, 15 north, 10
+  east, 7 north, 10 east, 5 north" and P there "no path to Pokémon Center"; from the top both
+  find the way on.
+- **Left open**: X's waterfalls, which the same height reading should place but no movie has
+  checked; and whether the game lets a player without Waterfall go down one.

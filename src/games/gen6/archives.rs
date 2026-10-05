@@ -46,7 +46,7 @@ use unicode_general_category::{GeneralCategory, get_general_category};
 
 use crate::core::binary::{self, u16, u32};
 use crate::core::rom::{Rom, lz11};
-use crate::games::common::field::{CUT, Floor, ROCK_SMASH, STRENGTH, SURF};
+use crate::games::common::field::{CUT, Floor, ROCK_SMASH, STRENGTH, SURF, WATERFALL};
 use crate::games::common::garc::{garc_files, garc_spans, message_lines, plain};
 use crate::games::gen6::field as gen6_field;
 use crate::games::gen6::sky::{Place, places as sky_places};
@@ -62,7 +62,7 @@ pub const GIRL: i64 = 4;
 pub const DOUBLE: i64 = 1;
 
 /// The moves whose names a way is said with (`Navigator`).
-pub const MOVES: [i64; 4] = [CUT, SURF, STRENGTH, ROCK_SMASH];
+pub const MOVES: [i64; 5] = [CUT, SURF, STRENGTH, ROCK_SMASH, WATERFALL];
 
 /// The PC's own text: booting it ("booted up the PC!") and the three PCs it offers ("Someone's
 /// PC", "Lanette's PC", "Professor's PC"). Nothing labels the PC where it stands — it is a cell of
@@ -212,12 +212,18 @@ pub struct RomLayout {
     pub languages: Option<(i64, i64)>,
     /// The text file of the types' names, a line a type by its number.
     pub types: Option<i64>,
+    /// The text file of the Pokémon's names, a line a species by its national number.
+    pub species: Option<i64>,
     /// The text file naming the moves' categories and the line they start at: status, physical,
     /// special, as the category icons number them (`textures`).
     pub categories: Option<(i64, i64)>,
     /// The text file naming the status conditions and the line they start at: paralysis, asleep,
     /// frozen, burned, poisoned, fainted, Pokérus, as the status icons number them (`textures`).
     pub conditions: Option<(i64, i64)>,
+    /// Text files, and the line of each that names what each of the game's pictures that no word
+    /// on screen names is a button for, by the image's file: the PokéNav's app buttons, the Bag's
+    /// pockets (`games.common.touch`); none in a game whose are not read.
+    pub touch_words: Vec<(i64, IndexMap<String, i64>)>,
     /// The map's archive and file, which opens with the names of its layout's panes, and where a
     /// row of the list of what each town has keeps the index of its zone's touch area among them
     /// (`map_places`); None in a game whose map is not read.
@@ -280,8 +286,10 @@ impl RomLayout {
             textures: Vec::new(),
             languages: None,
             types: None,
+            species: None,
             categories: None,
             conditions: None,
+            touch_words: Vec::new(),
             map_panes: None,
             decorations: None,
             bike: None,
@@ -668,6 +676,9 @@ pub struct GameText {
     pub categories: Vec<String>,
     /// What the game calls each status condition, in `RomLayout.conditions`' order.
     pub conditions: Vec<String>,
+    /// An image a button is drawn with -> the game's word for the button
+    /// (`RomLayout.touch_words`).
+    pub touch_words: IndexMap<String, String>,
     /// A touch area of the map, by its pane's name -> what the game calls the place, in the
     /// order the AreaNav lists them (`map_places`); none where the map is not read.
     pub map_places: IndexMap<String, String>,
@@ -679,6 +690,8 @@ pub struct GameText {
     pub acro: Option<String>,
     /// Every place always on the sky's map, by what the game calls it (`RomLayout.sky`).
     pub sky: Vec<Place>,
+    /// What the game calls each Pokémon, by its national number; none where they are not read.
+    pub species: Vec<String>,
 }
 
 impl PartialEq for GameText {
@@ -697,11 +710,13 @@ impl PartialEq for GameText {
             && self.types == other.types
             && self.categories == other.categories
             && self.conditions == other.conditions
+            && self.touch_words == other.touch_words
             && self.map_places == other.map_places
             && self.decorations == other.decorations
             && self.bike == other.bike
             && self.acro == other.acro
             && self.sky == other.sky
+            && self.species == other.species
     }
 }
 
@@ -726,11 +741,13 @@ impl Default for GameText {
             types: Vec::new(),
             categories: Vec::new(),
             conditions: Vec::new(),
+            touch_words: IndexMap::new(),
             map_places: IndexMap::new(),
             decorations: Vec::new(),
             bike: None,
             acro: None,
             sky: Vec::new(),
+            species: Vec::new(),
         }
     }
 }
@@ -958,6 +975,7 @@ impl GameText {
             categories,
             conditions,
             map_places: map_places_of(rom, layout, &table, &places)?,
+            touch_words: touch_words(&files, layout)?,
             decorations: match layout.decorations {
                 Some(file) => lines_of_file(&files, file)?,
                 None => Vec::new(),
@@ -971,6 +989,10 @@ impl GameText {
                 .next()
                 .filter(|line| !line.is_empty()),
             sky: sky(rom, layout, &table, &places)?,
+            species: match layout.species {
+                Some(file) => lines_of_file(&files, file)?,
+                None => Vec::new(),
+            },
         };
         if layout.protagonists && !text.protagonists_hold() {
             return Err(Error::new(
@@ -1429,6 +1451,20 @@ fn read_zones(zones: &[Vec<u8>], layout: &RomLayout) -> Result<IndexMap<i64, pla
         out.insert(number, (data, furniture, warps));
     }
     Ok(out)
+}
+
+/// `RomLayout.touch_words` read: an image -> its line of the text file, where it has one.
+fn touch_words(files: &[Vec<u8>], layout: &RomLayout) -> Result<IndexMap<String, String>> {
+    let mut words: IndexMap<String, String> = IndexMap::new();
+    for (file, lines) in &layout.touch_words {
+        let said = lines_of_file(files, *file)?;
+        for (image, &line) in lines {
+            if line < said.len() as i64 && !said[line as usize].is_empty() {
+                words.insert(image.clone(), said[line as usize].clone());
+            }
+        }
+    }
+    Ok(words)
 }
 
 /// A text file's lines, or none where the archive has no such file or it is not text: a ROM

@@ -137,7 +137,8 @@ pub fn characters() -> &'static IndexMap<i64, i64> {
 /// chunks are `a/0/4/1`, each file's section 4 the streets of Lumiose's that run through it
 /// (spike 106). Lumiose's street marks are `a/2/5/5`, a file a zone of its streets, and its street
 /// names text file 71, two lines a name (spike 107). The story's people are `CHARACTERS` (spike
-/// 108). The moves' names are text file 13, as file 14 (spike 136).
+/// 108). The moves' names are text file 13, as file 14 (spike 136); the Pokémon's names file 80
+/// (spike 178).
 pub fn rom() -> &'static RomLayout {
     static ROM: OnceLock<RomLayout> = OnceLock::new();
     ROM.get_or_init(|| RomLayout {
@@ -156,6 +157,7 @@ pub fn rom() -> &'static RomLayout {
         characters: characters().clone(),
         moves: Some(13),
         map_chunks: Some("a/0/4/1".to_string()),
+        species: Some(80),
         ..RomLayout::new(
             "X and Y",
             text_archives(),

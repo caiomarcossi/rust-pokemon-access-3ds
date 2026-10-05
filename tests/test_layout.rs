@@ -216,3 +216,28 @@ fn test_a_layout_taken_in_before_its_panes_are_built_has_them_read_as_they_come(
     fake.pane(group + 0x400, group);
     assert!(!fake.layouts.revive().unwrap());
 }
+
+/// The battle takes its command buttons off the system's list of layouts to draw while its move
+/// list is up, and every flag of their own still says drawn (spike 188, movie23); a layout an app
+/// draws itself is never on the list, and is drawn all the same.
+#[test]
+fn test_a_layout_taken_off_the_list_of_layouts_to_draw_is_drawn_no_more() {
+    let memory = FakeMemory::new();
+    let fake = FakeLayouts::new(&memory, &FakeClasses::new(memory.clone()));
+    let (work, root) = fake.screen_with(0x14B00000, false, false);
+    fake.track().unwrap();
+
+    let drawn = || -> bool {
+        fake.layouts.refresh();
+        let placement = fake.layouts.placement(root).unwrap();
+        placement.is_some_and(|placement| placement.drawn) && !fake.layouts.taken_off(root).unwrap()
+    };
+
+    assert!(drawn());
+    memory.write(work + lyt::WORK_LISTED, &[1]);
+    assert!(drawn());
+    memory.write(work + lyt::WORK_LISTED, &[0]);
+    assert!(!drawn());
+    memory.write(work + lyt::WORK_LISTED, &[1]);
+    assert!(drawn());
+}

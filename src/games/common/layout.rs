@@ -93,6 +93,9 @@ impl Placement {
     }
 }
 
+/// `_climb`'s answer: (visible, root, panel, the root's head).
+type Climb = (bool, i64, i64, Vec<u8>);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Layout {
     work: i64,
@@ -124,6 +127,16 @@ pub struct Layouts {
     roots: RefCell<IndexMap<i64, Layout>>,
     panes: RefCell<IndexMap<(i64, i64), Vec<u8>>>,
     states: RefCell<IndexMap<i64, Vec<u8>>>,
+    /// Pane -> whether it and the panes above it are visible, its root, the pane under the root it
+    /// hangs from and the root's head, or None off any tree: `placement`'s walk up, read once until
+    /// `refresh`, since a touch mode walk asked 22,000 times (movie22).
+    climbs: RefCell<IndexMap<i64, Option<Climb>>>,
+    /// The works of layouts their app has put away and does not draw, though every flag of theirs
+    /// says drawn (`put_away`).
+    put_away: RefCell<HashSet<i64>>,
+    /// (work, root) of every layout seen on the system's list of layouts to draw: one taken off it
+    /// is no longer drawn (`lyt.WORK_LISTED`).
+    listed: RefCell<HashSet<(i64, i64)>>,
     /// Root -> every pane under it, with its class name, as last walked.
     contents: RefCell<IndexMap<i64, IndexMap<i64, String>>>,
     /// Root -> the names of the panes under it, in the order walked.
@@ -158,6 +171,9 @@ impl Layouts {
             roots: RefCell::new(IndexMap::new()),
             panes: RefCell::new(IndexMap::new()),
             states: RefCell::new(IndexMap::new()),
+            climbs: RefCell::new(IndexMap::new()),
+            put_away: RefCell::new(HashSet::new()),
+            listed: RefCell::new(HashSet::new()),
             contents: RefCell::new(IndexMap::new()),
             pane_names: RefCell::new(IndexMap::new()),
             children: RefCell::new(IndexMap::new()),
@@ -519,6 +535,24 @@ impl Layouts {
     pub fn refresh(&self) {
         self.panes.borrow_mut().clear();
         self.states.borrow_mut().clear();
+        self.climbs.borrow_mut().clear();
+    }
+
+    /// Where a layout is drawn among its screen's others: the higher over the lower. The field's
+    /// bottom screen draws its background at 0, the PokéNav's layouts at 1 to 3 and the X menu at
+    /// 10 (movie21); the AreaNav draws all of its at 1, its views in their own order.
+    pub fn layer(&self, root: i64) -> Result<i64> {
+        let Some(layout) = self.roots.borrow().get(&root).copied() else {
+            return Ok(0);
+        };
+        let state = self.state(layout.work)?;
+        u16(&state, lyt::WORK_LAYER)
+    }
+
+    /// Say which layouts, by their works, their app is not drawing now: the AreaNav's screens it
+    /// has left keep their layouts as they were (`gen6.townmap`).
+    pub fn put_away(&self, works: impl IntoIterator<Item = i64>) {
+        *self.put_away.borrow_mut() = works.into_iter().collect();
     }
 
     /// The shape's head of a pane, read once until `refresh`.
@@ -552,39 +586,25 @@ impl Layouts {
 
     /// Where `pane` is, or None when it is not under the root of any layout being tracked.
     pub fn placement(&self, pane: i64) -> Result<Option<Placement>> {
-        let mut root = pane;
-        let mut head = self.pane(pane)?;
-        let mut panel = pane;
-        let mut visible = byte(&head, self.shape.alpha)? > 0;
-        let mut reached = false;
-        for _ in 0..MAX_DEPTH {
-            visible = visible && byte(&head, self.shape.flags)? & lyt::VISIBLE != 0;
-            let parent = u32(&head, lyt::PARENT)?;
-            if parent == 0 {
-                reached = true;
-                break;
-            }
-            head = self.pane(parent)?;
-            let name = self.names.of_vtable(u32(&head, 0)?)?;
-            if !name.is_some_and(|name| name.starts_with(lyt::CLASS_PREFIX)) {
-                return Ok(None);
-            }
-            (panel, root) = (root, parent);
+        if !self.climbs.borrow().contains_key(&pane) {
+            let climbed = self.climb(pane)?;
+            self.climbs.borrow_mut().insert(pane, climbed);
         }
-        if !reached {
+        let walked = self.climbs.borrow()[&pane].clone();
+        let Some((visible, root, panel, head)) = walked else {
             return Ok(None);
-        }
-
+        };
         let Some(layout) = self.roots.borrow().get(&root).copied() else {
             return Ok(None);
         };
-        if !self.states.borrow().contains_key(&layout.work) {
-            let read = self.memory.read(layout.work, lyt::WORK_PROJECTION + 4)?;
-            self.states.borrow_mut().insert(layout.work, read);
-        }
-        let state = self.states.borrow()[&layout.work].clone();
+        let state = self.state(layout.work)?;
         let alive = byte(&state, lyt::WORK_ALIVE)? == 1;
-        let drawn = alive && byte(&state, lyt::WORK_DRAWN)? == 1;
+        if byte(&state, lyt::WORK_LISTED)? == 1 {
+            self.listed.borrow_mut().insert((layout.work, root));
+        }
+        let drawn = alive
+            && byte(&state, lyt::WORK_DRAWN)? == 1
+            && !self.put_away.borrow().contains(&layout.work);
         let projection = f32(&state, lyt::WORK_PROJECTION)?;
         let mut top = if projection < 0.0 {
             -2.0 / projection >= SCREEN_SPLIT
@@ -604,6 +624,52 @@ impl Layouts {
             drawn,
             alive,
         }))
+    }
+
+    /// A work's head through its projection, read once until `refresh`.
+    fn state(&self, work: i64) -> Result<Vec<u8>> {
+        if !self.states.borrow().contains_key(&work) {
+            let read = self.memory.read(work, lyt::WORK_PROJECTION + 4)?;
+            self.states.borrow_mut().insert(work, read);
+        }
+        Ok(self.states.borrow()[&work].clone())
+    }
+
+    fn climb(&self, pane: i64) -> Result<Option<Climb>> {
+        let mut root = pane;
+        let mut head = self.pane(pane)?;
+        let mut panel = pane;
+        let mut visible = byte(&head, self.shape.alpha)? > 0;
+        for _ in 0..MAX_DEPTH {
+            visible = visible && byte(&head, self.shape.flags)? & lyt::VISIBLE != 0;
+            let parent = u32(&head, lyt::PARENT)?;
+            if parent == 0 {
+                return Ok(Some((visible, root, panel, head)));
+            }
+            head = self.pane(parent)?;
+            let name = self.names.of_vtable(u32(&head, 0)?)?;
+            if !name.is_some_and(|name| name.starts_with(lyt::CLASS_PREFIX)) {
+                return Ok(None);
+            }
+            (panel, root) = (root, parent);
+        }
+        Ok(None)
+    }
+
+    /// Has this layout been taken off the system's list of layouts to draw, which it was seen on?
+    /// Then it is not drawn, though every flag of its own says it is: the battle's command buttons
+    /// under its move list (spike 188). Asked by touch mode alone: as drawn, the move list came
+    /// back to the screen each turn, and its words were read out whole before its cursor said the
+    /// move under it (night regression, movie5).
+    pub fn taken_off(&self, root: i64) -> Result<bool> {
+        let Some(layout) = self.roots.borrow().get(&root).copied() else {
+            return Ok(false);
+        };
+        if !self.listed.borrow().contains(&(layout.work, root)) {
+            return Ok(false);
+        }
+        let state = self.state(layout.work)?;
+        Ok(byte(&state, lyt::WORK_LISTED)? == 0)
     }
 
     /// The roots of every layout tracked, whose works were still works at the last sweep.

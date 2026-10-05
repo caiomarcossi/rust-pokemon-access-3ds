@@ -27,6 +27,7 @@ use indexmap::IndexMap;
 
 use crate::core::keyfile;
 use crate::core::toml;
+use crate::core::touch;
 use crate::py::{self, Error, Result};
 
 pub const FILE_NAME: &str = "config.toml";
@@ -84,11 +85,23 @@ impl Table for General {
 }
 
 /// `[pa3ds.ui]`: how menus, lists and screens are said.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Ui {
     pub pauses: bool,
     pub interrupt: bool,
     pub unfocused: bool,
+    pub tones: bool,
+}
+
+impl Default for Ui {
+    fn default() -> Self {
+        Ui {
+            pauses: false,
+            interrupt: false,
+            unfocused: false,
+            tones: true,
+        }
+    }
 }
 
 impl Table for Ui {
@@ -97,6 +110,7 @@ impl Table for Ui {
             ("pauses", Value::Bool(self.pauses)),
             ("interrupt", Value::Bool(self.interrupt)),
             ("unfocused", Value::Bool(self.unfocused)),
+            ("tones", Value::Bool(self.tones)),
         ]
     }
 
@@ -105,6 +119,7 @@ impl Table for Ui {
             ("pauses", Value::Bool(value)) => self.pauses = value,
             ("interrupt", Value::Bool(value)) => self.interrupt = value,
             ("unfocused", Value::Bool(value)) => self.unfocused = value,
+            ("tones", Value::Bool(value)) => self.tones = value,
             _ => {}
         }
     }
@@ -162,7 +177,7 @@ fn defaults(name: &str) -> Vec<(&'static str, Value)> {
 }
 
 /// What each setting does, as the file's comment above it says it.
-pub const EXPLAINED: [(&str, &str); 8] = [
+pub const EXPLAINED: [(&str, &str); 9] = [
     (
         "pa3ds.keys",
         "answer pa3ds's keys and bind Azahar's buttons, as keys.toml says",
@@ -186,6 +201,11 @@ pub const EXPLAINED: [(&str, &str); 8] = [
         "pa3ds.ui.unfocused",
         "keep saying what the game shows while another window is in front; otherwise pa3ds is \
          quiet then, but for its own keys and messages",
+    ),
+    (
+        "pa3ds.ui.tones",
+        "a short tone as a map's cursor or touch mode moves, higher the further up and panned the \
+         further right, to say where the cursor is",
     ),
     (
         "pa3ds.navigation.positions",
@@ -250,6 +270,20 @@ pub fn azahar() -> IndexMap<&'static str, (Value, &'static str)> {
                 "do not wait for the monitor between frames",
             ),
         ),
+        (
+            "use_touchpad",
+            (
+                Value::Bool(true),
+                "take touches from a second device beside the mouse: pa3ds's taps in touch mode",
+            ),
+        ),
+        (
+            "controller_touch_device",
+            (
+                Value::Str(touch::DEVICE.to_string()),
+                "that second device: pa3ds itself, in the touch screen's own pixels",
+            ),
+        ),
     ])
 }
 
@@ -261,6 +295,8 @@ pub struct Config {
     pub navigation: Navigation,
     pub notes: Vec<String>,
     pub said: String,
+    /// Whether `said` is something the player must do before Azahar has pa3ds's settings.
+    pub warning: bool,
 }
 
 /// `<pa3ds>/user/config.toml`, or under `home` instead.
@@ -572,11 +608,18 @@ pub fn prepare(
             let (patched, changed) = keyfile::patch_settings(&text, &wanted);
             notes.extend(changed);
             saved = keyfile::save(&config, &text, &patched, write, running, &mut notes);
+        } else {
+            // An Azahar never started has no settings yet: said, or its RPC server stays off
+            // unheard.
+            saved = "missing".to_string();
         }
     }
     let said = match saved.as_str() {
         "applied" => "Azahar settings applied",
         "waiting" => "close Azahar and start pa3ds again to apply its settings",
+        "missing" => {
+            "Azahar's settings were not found: start Azahar once, close it, and start pa3ds again"
+        }
         _ => "",
     };
     Ok(Config {
@@ -585,5 +628,6 @@ pub fn prepare(
         navigation,
         notes,
         said: said.to_string(),
+        warning: matches!(saved.as_str(), "waiting" | "missing"),
     })
 }

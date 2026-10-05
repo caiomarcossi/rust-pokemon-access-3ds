@@ -502,6 +502,15 @@ speed).
   36 trials of a search through single loads' charges, of re-rolls, and of re-rolls with random
   charges all "found" the same frame in a second each. `Rig.boot` now deletes the file before it
   starts the fork. Neither the single-load search nor the random charges has been tried since.
+- **On the fork rebased onto azahar-emu/azahar#2631 the pins miss in bursts** (2026-10-05,
+  `regress.py` over movies 5, 7, 9, 11, 17 and 21, on main and on feat/touch): every pinned replay
+  before had a pin for every load, and now most have some loads at a tick no pin was taken at, the
+  fork's log saying "no pinned charge at tick ...": 4 at 124 s, about 40 at 284 s and 20 at 295 s
+  in movie7, every load between them pinned. Such a load is charged the host's time, and with
+  every RPC read now run on the emulation thread, what pa3ds reads changes that time: movie7
+  went its own way twice of two on feat/touch (766 out of sync from 295.7 s) and followed on main,
+  movie11 went its own way twice of two on main and followed on feat/touch, the speech the same
+  until then. Pinned afresh on the new fork, every load should have its pin again; not tried.
 
 ## Spike 84 — a Bag a millisecond late, and a replay gone long before it
 
@@ -551,3 +560,27 @@ fork commit `eced308`).
   random word. movie2's one stretch, the Pokédex, turns on the accelerometer and the gyroscope
   together from 16 s to 97 s: it landed at the third run, and every run after it went 180 out of
   sync and missed. The fork marks the accelerometer turning on, not the gyroscope.
+
+## Spike 172 — a tap pa3ds sends, through Azahar's cemuhook touch input
+
+2026-10-01 (`spikes/172_tap.py`, and a script tapping Orion's own Azahar), after Orion chose a tap
+over moving the mouse (ADR-0009, amended; docs/plans/pokenav-and-touch.md).
+
+- **Stock Azahar takes a touch from another program.** Its HID reads the touch screen from the
+  mouse and, while the mouse is not pressing, from `controller_touch_device`
+  (`core/hle/service/hid/hid.cpp`), **only while `use_touchpad` is true** as well; it can be the
+  cemuhook UDP client (`input_common/udp`), which asks 127.0.0.1:26760 for pad 0 every three
+  seconds and takes each pad state the server sends: a header of "DSUS", protocol 1001, the
+  payload's length with its type, a CRC-32 of the whole packet and a server id; then 80 bytes,
+  the first touch 36 bytes in. A touch's x and y are scaled by the setting's calibration and
+  multiplied by 320 and 240, so a calibration of 0 to 320 and 0 to 240 makes them pixels.
+- **Tapped, Orion's Azahar opened the DexNav**: full screen at 1920 by 1080, Petalburg Woods, a
+  press of 0.1 s at (285, 53), where spike 171 placed the DexNav's button; the bottom screen went
+  from the AreaNav to the DexNav, the woods' grass and a Zigzagoon. The window's size played no
+  part.
+- **The rig cannot tap yet.** A movie's replay replaces every input, and a state saved in one
+  loads only with that movie playing: the fork keeps it as `<title>.movie<id>.<slot>.cst`, and
+  under another name it is refused, "You must load the same movie to load this state"
+  (`core/movie.cpp`). Booted from a save with no movie (`Rig(movie=None)`), the game shows its
+  opening and then PRESS START, which two taps did not get past. Reaching the field with no
+  movie wants a press of A the rig cannot make, or a movie that ends there.

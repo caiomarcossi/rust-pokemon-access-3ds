@@ -7,7 +7,7 @@ use std::rc::Rc;
 use indexmap::{IndexMap, IndexSet};
 
 use super::fake_speech::Recorder;
-use crate::core::speech::Speech;
+use crate::core::speech::{Category, Speech};
 use crate::games::common::announce::{
     ARRIVAL_MAX_POLLS, Announcements, CURSOR_HEARD_POLLS, DETAIL_MAX_POLLS, DETAIL_POLLS,
     FOCUS_HEARD_POLLS, Focus, PLACE_POLLS, REPEAT_POLLS, SPEAKER_POLLS, ScreenAnnouncer,
@@ -925,6 +925,38 @@ fn test_details_that_change_with_the_cursor_are_said_whole_once_settled() {
     assert_eq!(screen.on(&everything), ["Category Power 40 Accuracy 100"]);
 }
 
+/// With menus set to interrupt, a move's power cut off the move it belonged to, and the Mart's
+/// description its count in the bag (Khai, 2026-10-04): the item interrupts, its details queue.
+#[test]
+fn test_details_are_one_line_that_never_cuts_off_the_item() {
+    let mut screen = Screen::new();
+    screen.announcer = ScreenAnnouncer::new(
+        Rc::new(Speech::new(
+            screen.backend.clone(),
+            HashSet::from([Category::Key, Category::Menu]),
+            None,
+        )),
+        Rc::new(|_line: &str| {}),
+    );
+    let growl = vec![piece(1, "Growl", -120.0, 70.0, MENU)];
+    let panel = move_panel("40");
+    let words = description("The user growls.");
+    let everything = cat(&[&growl, &one(&words), &panel]);
+    screen.say(args(
+        &[changed(&words), changed(&panel[3])],
+        vec![CursorItem::new(0x0C, growl.clone(), false)],
+        &everything,
+    ));
+    for _ in 0..DETAIL_POLLS {
+        screen.on(&everything);
+    }
+    assert_eq!(
+        screen.backend.spoken(),
+        ["Growl", "The user growls. Category Power 40 Accuracy 100"]
+    );
+    assert_eq!(screen.backend.interrupting(), ["Growl"]);
+}
+
 #[test]
 fn test_a_cursor_on_its_way_elsewhere_drops_its_details_unsaid() {
     // The Box's pointer is held two polls on each slot before it is said, and Party 1's details
@@ -1010,7 +1042,7 @@ fn test_details_are_said_in_the_order_the_screen_built_them_however_they_changed
     assert_eq!(screen.on_settling(&everything, &[SUMMARY]), NOTHING);
     assert_eq!(
         screen.say(args(&[changed(&words)], vec![], &everything)),
-        ["The user growls.", "Category Power — Accuracy 100"]
+        ["The user growls. Category Power — Accuracy 100"]
     );
 }
 
@@ -1041,7 +1073,7 @@ fn test_a_moves_details_read_every_panel_its_moves_have_changed() {
     screen.on(&with_claws);
     assert_eq!(
         screen.on(&with_claws),
-        ["Sharp claws.", "Category Power 40 Accuracy 100"]
+        ["Sharp claws. Category Power 40 Accuracy 100"]
     );
 }
 
@@ -1627,7 +1659,7 @@ fn test_what_changes_as_a_list_cursor_moves_is_said_as_its_details() {
     assert_eq!(listed(&mut screen, &[], &[], &now, &rows), NOTHING);
     assert_eq!(
         listed(&mut screen, &[], &[], &now, &rows),
-        ["In Bag: 9", "A spray-type medicine for treating wounds."]
+        ["In Bag: 9, A spray-type medicine for treating wounds."]
     );
 }
 

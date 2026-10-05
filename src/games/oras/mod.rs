@@ -167,6 +167,52 @@ pub fn towns() -> &'static TownFacilities {
         first: NAV_FIRST,
     })
 }
+/// The PokéNav's app buttons, drawn as pictures alone, by the icon each draws, and the line of
+/// text file 123 the game names its app with: AreaNav 139, PlayNav 140, BuzzNav 141, DexNav 142
+/// (spike 171, and the BuzzNav's in movie24); and the AreaNav's tabs, by the images their layout
+/// file gives them: Places 143, Pokémon 144, Trainers 145, Bases 146, Berries 147 (movie17).
+pub fn touch_words() -> &'static (i64, IndexMap<&'static str, i64>) {
+    static TOUCH_WORDS: OnceLock<(i64, IndexMap<&'static str, i64>)> = OnceLock::new();
+    TOUCH_WORDS.get_or_init(|| {
+        (
+            123,
+            IndexMap::from([
+                ("pmn_screen_map.bclim", 139),
+                ("pmn_sub_screen_pss.bclim", 140),
+                ("pmn_screen_tv.bclim", 141),
+                ("pmn_screen_zukan.bclim", 142),
+                ("map_navi01.bclim", 143),
+                ("map_navi02.bclim", 144),
+                ("map_navi03.bclim", 145),
+                ("map_navi04.bclim", 146),
+                ("map_navi05.bclim", 147),
+            ]),
+        )
+    })
+}
+/// The Bag's pockets, drawn as icons alone, by the icon each draws (its `_l` copy while it is the
+/// pocket open), and the line of text file 163 the game names the pocket with: ITEMS, MEDICINE,
+/// TMs & HMs, BERRIES, KEY ITEMS (movie21).
+pub fn bag_pockets() -> &'static (i64, IndexMap<&'static str, i64>) {
+    static BAG_POCKETS: OnceLock<(i64, IndexMap<&'static str, i64>)> = OnceLock::new();
+    BAG_POCKETS.get_or_init(|| {
+        (
+            163,
+            IndexMap::from([
+                ("ball_icon.bclim", 0),
+                ("ball_icon_l.bclim", 0),
+                ("kaifuku_icon.bclim", 1),
+                ("kaifuku_icon_l.bclim", 1),
+                ("waza_icon.bclim", 2),
+                ("waza_icon_l.bclim", 2),
+                ("kinomi_icon.bclim", 3),
+                ("kinomi_icon_l.bclim", 3),
+                ("taisetu_icon.bclim", 4),
+                ("taisetu_icon_l.bclim", 4),
+            ]),
+        )
+    })
+}
 /// The AreaNav's map, `map_lower`, which the Pokédex's habitat draws too: its archive opens
 /// with its panes' names, and an AreaNav row keeps its zone's touch area among them at +0x04
 /// (spike 152: Route 101 is `m`, Route 102 `1p`).
@@ -197,6 +243,8 @@ pub const TEXTURE_ARCHIVES: [&str; 131] = [
 /// The language choice's text file (`app::lang_select`), whose lines from 6 name the languages.
 pub const LANGUAGE_NAMES: (i64, i64) = (103, 6);
 pub const TYPE_NAMES: i64 = 18;
+/// The Pokémon's names, "Egg" at 0 and Bulbasaur at 1 (spike 178).
+pub const SPECIES_NAMES: i64 = 98;
 /// STATUS, PHYSICAL, SPECIAL: the summary's words, in the category icons' order (spike 147).
 pub const MOVE_CATEGORIES: (i64, i64) = (150, 17);
 /// PARALYSIS, ASLEEP, FROZEN, BURNED, POISONED, FAINTED, POKÉRUS (spike 147).
@@ -235,6 +283,7 @@ pub fn rom() -> &'static RomLayout {
             .collect(),
         languages: Some(LANGUAGE_NAMES),
         types: Some(TYPE_NAMES),
+        species: Some(SPECIES_NAMES),
         categories: Some(MOVE_CATEGORIES),
         conditions: Some(CONDITIONS),
         map_panes: Some((MAP_PANES.0.to_string(), MAP_PANES.1, MAP_PANES.2)),
@@ -242,6 +291,18 @@ pub fn rom() -> &'static RomLayout {
         bike: Some(MACH_BIKE),
         acro: Some(ACRO_BIKE),
         sky: Some(SKY_PLACES.to_string()),
+        touch_words: [touch_words(), bag_pockets()]
+            .into_iter()
+            .map(|(file, lines)| {
+                (
+                    *file,
+                    lines
+                        .iter()
+                        .map(|(image, &line)| (image.to_string(), line))
+                        .collect(),
+                )
+            })
+            .collect(),
         ..RomLayout::new(
             "ORAS",
             text_archives(),

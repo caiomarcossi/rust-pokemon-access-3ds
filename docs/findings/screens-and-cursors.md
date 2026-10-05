@@ -1431,3 +1431,363 @@ scrolled, the item's cursor said only "× 1", and the closing YES and NO said bo
 - **Left open**: the categories with nothing in them are drawn grey (Desks, Dolls, Cushions,
   Tricks) and are said as the others. The cursor on the base's floor is read by the field since
   (field-and-rom.md, spike 154, decorating).
+
+## Spike 171 — every touch area on the bottom screen, and what each can be called
+
+2026-10-01, on or/movie7_menus at 17 s and or/movie3_dexnav at 70, 145 and 155 s, pinned
+(`spikes/171_touch_census.py`), with pictures of movie3 at the same moments
+(docs/plans/pokenav-and-touch.md, step 1).
+
+- **On the field the bottom screen is the PokéNav Plus**: the app on show (the AreaNav, a window
+  onto the map titled "AreaNav" and the place, "Route 101"), the other apps' buttons down the
+  right, and a **shortcut bar** along the bottom of six icons, the X menu's own (`menu_icon1` to
+  `6`): Pokémon, Pokédex, Bag, trainer card, Save, Options, touchable from the field.
+- **The app buttons are pictures alone.** Each is a 70 by 30 touch area under a plate
+  (`pmn_sub_win.bclim`) with an icon: `pmn_screen_map` (AreaNav), `pmn_sub_screen_pss` (PlayNav,
+  in movie7 where it is held), `pmn_screen_zukan` (DexNav). They live in the DexNav's own layout
+  (Search Level, Name, Potential, First Move and SEARCH among its hidden words), and the app on
+  show has its button slid off the screen, at x 240. No word in memory names them; text file 123
+  of the ROM does, lines 139 to 142: "AreaNav", "PlayNav", "BuzzNav", "DexNav" ("Navi-Map",
+  "Navi-Fun", "Navi-Dex" in French). The icons sit in an archive the ROM's walk does not open,
+  as the Pokédex's do (spike 147), so the BuzzNav's has not been seen.
+- **The shortcut bar's words are the X menu's**, kept hidden in the same layout, a group each in
+  the icons' order: POKÉMON, POKÉDEX, BAG, the player's name, SAVE, OPTIONS. Text file 133 has
+  them too, but its fourth line is the player's name as a variable, so the layout's own are read.
+- **The DexNav's button draws a magnifier when a hidden Pokémon is near** (145 and 155 s), an
+  image from no file of its archive: a button keeps the name it last had.
+- **The AreaNav's map is 74 touch areas**, its places and the map itself (spike 152). On the
+  field it is drawn zoomed in and cut to a window, and its places beyond the window are touch
+  areas on screen all the same, 65 of them under the DexNav's button and the bar. They are left
+  out of touch mode, to the AreaNav's own reader.
+- **The PokéNav's layouts have no file pa3ds matches**: none of their archives' files holds
+  their panes, in any order. The image each picture draws is named all the same, by the file of
+  its archive it starts at (spike 153).
+- **Built** (`games.common.touch`): touch mode walks, on the field in movie3, "DexNav", "Route
+  101" (the AreaNav's window), POKÉMON, POKÉDEX, BAG, Raiden, SAVE and OPTIONS, each placed in
+  the touch screen's own pixels: the DexNav's at (285, 53).
+- **The AreaNav opened by touch** (or/movie17_area_nav, Orion's, recorded with touch mode,
+  pinned): tapping the AreaNav's window on the field starts `app::townmap::Proc`, whose bottom
+  screen is the whole map with a bar of five tabs below it, a zoom button at the top right and
+  return at the bottom right. The tabs draw images of their words, Places, Pokémon, Trainers,
+  Bases and Berries, from no archive pa3ds reads; their layout file gives them `map_navi01` to
+  `05`, and text file 123 has the words at lines 143 to 147. The zoom draws `map_big.bclim` or
+  `map_small.bclim`, and the game has no word for it. Trainer's Eye adds "View Details" and a row
+  a trainer on the map ("Petalburg Woods James"), which opens their card.
+- **A designer's placeholders are not words.** The AreaNav's layout keeps full-width digits in
+  TextBoxes no code writes, and the shortcut bar's rule took them for the tabs' names, by count:
+  only words code wrote (a tag processor set) are paired now, and only for a row of three or
+  more touch areas, since the zoom and return were paired with "View Details" and "Trainer's Eye".
+
+## Spike 173 — where the Hoenn map's cursor is, as a share of the map
+
+2026-10-01, on or/movie17_area_nav and or/movie7_menus, pinned (`spikes/173_map_cursor.py`), after
+Orion asked for a tone at each move of the map's cursor, which says nothing between places.
+
+- **The cursor is a pane of its own holding `cursol.bclim`**, placed over the map picture
+  (`poke_navi_map.bclim`, 380 by 270); its place across and down the picture is where on Hoenn it
+  is: Petalburg City 0.13 across and 0.62 down, Oldale Town 0.22 and 0.62, Littleroot Town 0.22
+  and 0.69 (the habitat's map, movie7).
+- **The AreaNav zooms by scaling the map picture itself**, to 1.2, 1.4, 1.8 and 2 as it animates,
+  and slides it so the place in view stays put; its cursor is hidden but in Trainer's Eye. Its
+  movement over the Places map has not been recorded.
+- **The field's AreaNav keeps the cursor drawn off the screen**, at x 190, while its map slides
+  under the player's walk: a cursor off the bottom screen is not one.
+- **Built** (`gen6.mapcursor`): at each poll the cursor moved, a tone sliding from where it was
+  to where it is, as long as a poll, so the two or three polls of one step's glide are one slide
+  (Orion, 2026-10-02); and the map is known once its archive is, not decided against the poll
+  it comes on screen, before it.
+
+- **The X menu's own buttons name the shortcut bar** (or/movie18_area_nav2, Orion's, not pinned:
+  its save differs from the recording's): opened, the X menu's layout draws thirteen touch areas,
+  its six buttons sliding up from below the screen beside the bar, and the bar's pairing by count
+  failed, "menu icon1" to "6" from then on. Each X menu button draws its icon, `menu_icon1` to
+  `6`, beside its word; the bar draws the same icons alone. **Built:** a button drawn as a
+  picture alone is named by the one button of its layout, shown or not, whose written words are
+  beside the same picture, never one whose pane holds other touch areas (the AreaNav hangs one
+  from its root, which named every picture of the layout).
+- **The AreaNav's Pokémon tab** shows, past View Details, "Pokémon Distribution": the place as a
+  scene of grass with the Pokémon seen there walking in it, a 50 by 40 touch area each, and an
+  unseen one as a grey shape; their pictures draw images the texture index does not name, and
+  whose they are is not read yet.
+- **A layout the game no longer draws looks drawn.** The Berries tab's list of trees, shown in its
+  View Details, stays in every flag pa3ds reads after it: its work record is the same byte for
+  byte, its panes visible, their own and global alpha 255 (+0xB4 and +0xB5), its rows on the
+  screen's middle; pictures show the map alone. Touch mode offered "Route 104 Oran Berry" on the
+  Trainers tab. What tells the game not to draw it is not found (`spikes/174_hidden_layouts.py`).
+
+## Spike 174 — a layout drawn by every flag, and not on screen
+
+2026-10-02, on or/movie18_area_nav2 at 191 s (the Berries list fading out over the map) and 222 and
+229 s (gone), with pictures (`spikes/174_hidden_layouts.py`). The work records of all six layouts on
+the bottom screen are the same byte for byte at 191 and 229 s; the list's panes' global alpha
+(+0xB5) is 0x66 while it fades and 0xFF once it is gone, where it would be 0 if alpha hid it. The
+next place to look is the draw itself: what the AreaNav's process hands its layouts to draw.
+
+## Spike 175 — the map's cursor glides on, and the tones broke it into beeps
+
+2026-10-02, on or/movie19_map_glides (Orion's, from movie18's end save, not filed or pinned), at
+real speed (`spikes/175_glide_ticks.py`), after Orion heard the tones of a circle pad held across
+the map as beeps with a short silence between. The movie opens the **Town Map** from the Bag
+(`app::townmap::Proc`), which draws the same `map_lower` and is toned the same way.
+
+- **The cursor moves every frame while the circle pad is held**, 0.004 of the map's width a frame,
+  about 0.05 a screen poll, evenly from one edge to the other: one glide, never hops and rests.
+- **The screen polls came 0.205 s apart**, each taking 8 to 15 ms, and each tone was a sound file
+  of a 0.2 s slide faded in and out, started by `PlaySound`: a break of at least the fades and the
+  5 ms between, at every poll. The beeps were pa3ds's.
+- **Built** (`pa3ds.core.tones`): one tone kept sounding, written to Windows' waveOut a fiftieth
+  of a second at a time by a thread of its own; each poll's slide starts from where the tone is,
+  and the tone holds its end for 0.1 s for the next poll's to carry on from.
+
+## Spikes 176, 177 and 178 — whose icon each Pokémon Distribution picture draws
+
+2026-10-02, on or/movie18_area_nav2 from 130 s (Orion's, not pinned), at real speed
+(`spikes/176_unnamed_pictures.py`, `177_icon_owners.py`, `178_distribution_species.py`).
+
+- **Each Pokémon is a 40 by 30 picture drawing a 64 by 32 RGBA5551 image**, one of six pictures
+  (`2`, `b`, `h`, `n`, `t`, `z`), a place's icons loaded into the same images each time. While a
+  place's icons load, every picture draws one grey shape, an 8-bit image shared by all.
+- **No file of the ROM holds those bytes**, at any depth of archive or compression: the icons are
+  stored with a palette (`app::tool::PaletteTexture`, eleven colours) and expanded as they load,
+  so the texture index cannot name them.
+- **The AreaNav's navigator names them.** `app::tool::ZukanNavi` holds the place's name at +0x25C
+  and from +0x48 a record of 0x14 bytes a species, the national number a u16 first (its top byte
+  is sometimes 1: Shroomish, Surskit), with the records' count at +0x1D8. Its +0x44 leads to
+  `common::resource::PokeIcon`, whose +0x0C leads to `app::tool::LytTexReplaceSystem`: at +0x04 a
+  list of 21 `app::tool::LytTexData`, each the image's physical address at +0x0C, the last the
+  grey shape. The n-th record's icon is in the n-th texture: Route 101's Wurmple, Zigzagoon and
+  Poochyena, Route 102's Seedot, Ralts and Surskit, Petalburg Woods' Shroomish and Taillow, each
+  image decoded and checked by eye.
+- **Some species get no picture**, likely those the player has not seen: the records whose fourth word is 1
+  (Silcoon, Cascoon, Wingull) have their pictures hidden, so naming the pictures shown says only
+  what the game shows.
+- **The species' names are text file 98 in ORAS and 80 in X**, a line by national number.
+- **Built** (`gen6.distribution`): touch mode names a Distribution touch area by the species of
+  the picture in its button. For one poll as a place's icons load, two names were heard swapped.
+- **Orion's lead, the field's sprites (`0x1026` Wingull), is another thing**: a move model is
+  drawn from the field's sprite list, the AreaNav from the box icons by species.
+
+## Spike 179 — the layout helper does not say the berry list is gone
+
+2026-10-02, on or/movie18_area_nav2 (`spikes/179_layout_container.py`), with screenshots. Spike 174's
+191 s was the list **sliding in**, not out: it is on screen from about 191.5 s to 195 to 198 s
+(the replay's timing wanders by a few seconds, the movie unpinned), so spike 174 compared a list
+arriving with one gone, both drawn by every flag.
+
+- The executable has `app::util::G2DUtil` and `app::util::G2dLayoutContainer`. Ten `G2DUtil`s
+  are on the heap with the AreaNav open; none points at a layout's work or root. Each keeps at
+  +0x1C an array of 8-byte entries, a pointer and a word of 0x100 or 0x101, as many as +0x20.
+- **Between the list shown (194 s) and gone (200 s) every `G2DUtil` and its array is the same**;
+  only a text buffer after one of them changes. Whatever stops the list being drawn is not there.
+- Next: the GDB stub, a read watchpoint on the list's root pane, to see whether the draw still
+  walks it once it is gone, and if not, which code decides.
+
+## Spikes 180 to 183 — the AreaNav's views say which of its layouts it draws
+
+2026-10-02, on or/movie20_area_nav_bugs (Orion's, from movie18's end save, not pinned), after
+Orion found a tap on a berry row touch mode still offered moved the map's cursor instead
+(`spikes/180_button_managers.py` to `183_view_flag.py`).
+
+- **The berry list's buttons stay as they were** (spike 180): the touch bar's
+  `app::tool::ButtonManager` holds the AreaNav's buttons, each a pane number and a layout handle,
+  and between the list up and gone only one button's byte at +0x38 changes.
+- **The game stops walking the list's layout** (spike 181, the GDB stub): a read watchpoint on its
+  root's flags fired many times a second while the list was up and not once in a second after;
+  the touch bar's root, as a control, all along. The reads came from NintendoWare's pane walk,
+  called through code at 0x6fe324 and 0x6fe39c, in the AreaNav's module (0x690000 up, dumped live
+  by spike 182, since the executable's dump does not hold it).
+- **Each AreaNav screen is a view of its module**, its class named by the module's RTTI:
+  `app::townmap::NutsView` (the berry list), `ZukanView` (the Pokémon Distribution),
+  `TrainerEyeView`, `SecretBaseView`, `MessageView`, `MapView`, `TB_CursorView`, `GraphicWork`.
+  Vtable slot 9 is the draw and 8 the update. The draw returns at once while a byte of the view is
+  0 — +0xAC in `NutsView` and `TrainerEyeView`, +0xB4 in `SecretBaseView`, +0x7C in `ZukanView`,
+  `MessageView` and `TB_CursorView` — and otherwise draws the layouts of the `G2DUtil` at +0x5C;
+  `MapView` and `GraphicWork` always draw. A `G2DUtil` lists its layouts at +0x1C, 8 bytes each,
+  a handle whose +0x04 is the layout's work, as many as +0x20 says.
+- **`NutsView`'s byte was 1 with the list up and 0 once it was gone** (spike 183), and every other
+  object pointing at a `G2DUtil` the same at both moments.
+- **Built** (`gen6.townmap`, `Layouts.put_away`): the layouts of a view whose byte is 0 are not
+  drawn. The berry rows left touch mode the moment the list closed (movie20).
+- **The X menu's six buttons hold their words twice**, the touch bar's icons slid up into them:
+  touch mode said "BAG BAG". Each button's words are now said once.
+
+## Movie21 — touch mode in the Bag, the Pokédex and under the X menu
+
+2026-10-02, on or/movie21_other_touchscreen_bugs (Orion's, from movie20's end save, pinned), with
+`spikes/171_touch_census.py` (each layout's layer now in its header), `181_draw_reads.py --names` and
+`180_button_managers.py --on-change`.
+
+- **The field goes on drawing the PokéNav under the X menu**: a read watchpoint on its layout's
+  root fired with the menu open, so nothing says it is put away. No `ButtonManager` changes either
+  (the PokéNav's buttons are in none). A tap lands on what is drawn on top: Orion's tap on the
+  PokéNav's DexNav opened the Pokédex, on its place window the Bag.
+- **A layout work's u16 at +0x0A is where it is drawn among its screen's others**: the field's
+  bottom screen draws its background at 0, the PokéNav's three layouts at 1 to 3, the X menu at 10
+  and its cursor at 11; the AreaNav draws all of its at 1. **Built:** a target whose tap point
+  lies in a touch area of a layout drawn higher is left out (`touch.uncovered`).
+- **The PokéNav is under the X menu whenever the field has built it again**: right after an app,
+  the X menu opens over a bottom screen not built yet, which is why Orion heard the bug only on
+  the first opening.
+- **A button is what lies inside its touch area.** The Bag's list hangs two scrolling strips, and
+  the Pokédex its scroll bar, from the layout's root, and they were said by every word on screen;
+  a button is now the panes under the touch area's parent whose middle lies within it, in the
+  layout's own order (collected last child first, "13 Number seen: 5 Number caught: HOENN
+  POKÉDEX"). A button with a TextBox of its own is named by its words or not at all: the Bag's
+  rows all draw `bar1.bclim`, and the strip over an empty row was said by the one item.
+- **The Bag's pockets are text file 163, lines 0 to 4** (ITEMS to KEY ITEMS), drawn as
+  `ball_icon`, `kaifuku_icon`, `waza_icon`, `kinomi_icon` and `taisetu_icon`, `_l` while open.
+- **The Bag's party slots draw the party's icons in its order** (spike 184): one
+  `common::resource::PokeIcon` holds a texture a member, and the party is six `PokemonParam`
+  pointers and then its size, with no class of its own (0x8cf7200 in movie21). **Built**
+  (`gen6.partyicons`): a slot is said by its member's species, then its words, "Torchic L 14",
+  while the Bag runs. The Bag's `rireki_icon` lists the last items used, and is said "history"
+  (Orion); the Pokédex's `change_icon1` is left for Orion's next movie.
+
+## Movie22 and movie23 — what touch mode offered, and what a tap reaches
+
+2026-10-02 and the night after, on or/movie22_labels_and_overlays and
+or/movie23_touchscreen_in_battle (Orion's, filed, not pinned; movie22 from a save of its own,
+movie23 from movie22's end), with `spikes/171_touch_census.py` (now reading with the replays' own
+user folder, so pictures are named) and spikes 185 to 188.
+
+- **The PC Box's slots are the Box pointer's.** Touch mode named the grid by the wallpaper drawn
+  under it ("wave pattern", "box wp01") and the party by its slot's backing ("box1"). A touch area
+  with no words on screen that is a slot is now said by `slots.slot`: "BOX 1, row 1, column 1,
+  empty", "Party 2". Two of the grid's slots lie under a placeholder TextBox of another panel,
+  never written. Six more touch areas, the Battle Box's two columns, hang from the root under
+  BOX 1 and are said by nothing now: a touch area hanging straight from its root is not named by
+  the pictures over it, which are the screen's.
+- **The Box's modes, `mode01` to `mode03`**, a red tab with a Poké Ball, a blue one with two
+  balls and an arrow both ways and a green one with a grid and an arrow, have no words in the
+  Box's text file (152); said "normal mode", "swap mode" and "multi-select mode" (Orion, who
+  tried each).
+- **The summary hangs each mark's touch area from the mark's picture**, where the Box keeps it
+  beside: `slots` now looks at that picture too, "●, off".
+- **A button's words are read as a cursor's item is** (`in_rows`, `distinct`, `join`): each word
+  once in build order made a move's PP "PP / 35" and put its type last.
+- **The party list lays a second touch area over each plate**, from the root, and holds a 30 by 20
+  one in each plate's corner where a held item is drawn: each Pokémon was said twice, and the
+  corners "pokelist 0", where a tap did nothing. Touch areas under one pixel are one target, and
+  one wholly inside a larger of its layout, with no words the larger lacks, is part of it; in
+  every census so far that rule leaves out only those corners and one unnamed area.
+- **A touch walk in the Box took 343 ms** (224 before the slots were named): each button was
+  found twice, `Layouts.placement` climbed to the root 22,000 times a walk, and the Pokémon
+  Distribution read the emulator 1,400 times for nothing outside the field. Now 96 ms.
+- **The summary's five party balls are said "ITEMS"**: they draw an image the index does not
+  know, and their file's texture, `ball_icon.bclim`, is the Bag's ITEMS pocket's too. Open.
+
+## Spikes 185 to 188 — what is in play: drawn, taken off the list, veiled, answered first
+
+2026-10-03, overnight, on movies 22 and 23 and spike 187's logs of movies 6 to 12, 14 to 18 and 20
+to 23 (`spikes/185_button_flags.py` to `188_draw_order.py`).
+
+- **The game's button managers say nothing** (spike 185): `app::tool::ButtonManager`s hold the
+  screens' buttons, each a layout handle and two numbers that do not map onto the layout's panes
+  in its file's order, and not a byte of any changes between the Box in use and the Box under
+  "Continue operations?".
+- **What the game shows as out of play it draws** (spike 186): under the party's "Do what with
+  Blaze?" the message's layout draws `white.bclim`, 320 by 240 at alpha 150, a white veil over
+  the party, and the bottom bar's icons go from alpha 255 to 100. The Box under "Continue
+  operations?" draws nothing new over its grid.
+- **Pool slot order is not drawing order** (spike 187 logs every change of the bottom screen's
+  layouts): the Pokédex's bottom bar is drawn over its entry's full-screen picture though the
+  entry's work is in the later slot.
+- **Who draws a layout is +0x05 of its work** (spike 188, read watchpoints on every root at once,
+  each hit named by the register holding it; the executable at 0x0012aa3c and 0x0014d78c): 1 puts
+  the layout on the system's list, which a frame walks through each work's next at +0xC4, as the
+  field and the battle draw theirs; 0 leaves it to its app, which draws it in an order of its
+  own, as the Box, the party, the Bag and most of the Pokédex do (the party: bottom bar, party,
+  its cursor, the veil, the menu, the menu's cursor). The draw writes +0x07, drawn, and nothing
+  clears it.
+- **The battle takes its command buttons off the list while its move list is up**: +0x05 goes 1
+  to 0 and back each turn, and their root is not read once a frame; the blur behind the moves is
+  the move list's own picture. **Built:** a layout seen on the list and then off it offers no
+  touch target (`Layouts.taken_off`); the move list offers its moves and "return", and BAG no
+  longer. Taken for not drawn everywhere, the move list was read out whole each turn as it came
+  back, before its cursor said the move (the night's regression, movie5), so screen text and
+  cursors still take such a layout for drawn.
+- **Built: a Yes and No answered first.** While the list reader has a list window on screen,
+  touch mode offers only the layout holding its labels and any at a higher layer: YES and NO
+  over the Box.
+- **Built: under a veil, the cursor's menu.** A layout holding no touch area that draws a picture
+  over the whole touch screen at alpha below 255 is a veil; since apps draw in an order of their
+  own, what is over it is told by the cursor the player moved last (`CursorReader.front`): the
+  party's SUMMARY, RESTORE, ITEM, SWITCH and BACK, and nothing of the party or its bar.
+- Byte +0x06 of a work is 1 on every layout of a menu, list or cursor and 0 on an app's own
+  screens; what it is for is not read.
+- Not built: covering by a full-screen picture drawn above, which the field (the X menu at layer 10
+  over the PokéNav) would meet but `touch.uncovered` already handles; a picture's transparent
+  parts cannot be read (ADR-0036's 4 KB limit), so a full-screen picture alone proves nothing.
+- **The night's regression** (`regress.py`, 17 movies, `night-before` at b344c23 against
+  `night-after3` at fe790fc): movie17 the same, the rest only the races two runs of one commit
+  also differ by (the X menu opening on "Raiden" or "POKÉMON", a Yes said by its cursor or its
+  list, the Box pointer's slots as it glides: movie9 said 14 to 23 of them over four runs, and
+  29 and 21 in two runs of one commit before). One change held over both runs after: the
+  Pokédex entry's words are said as each entry comes up ("007 Mudkip", "HEIGHT ???'??\"") where
+  a cursor took them for one poll and said "HEIGHT WEIGHT" (Orion's race, movie22), likely the
+  screen polls a tenth faster for the placement cache moving where they land; not yet explained.
+
+## Spikes 189 and 191 — the game's button managers and touch bars say whose buttons take taps
+
+2026-10-05, on movies 22 and 23 (`spikes/189_ui_views.py` and `191_button_locks.py`), the code read in
+the executable's dump, after Orion asked whether a flag says a button responds, whatever is drawn
+over it.
+
+- **Every app draws its own layouts itself, one at a time, in its own code.** The draw of one
+  layout is 0x14d060, which returns at once for a layout on the system's list (work +0x05, spike
+  188); it has 11 callers in the executable, and the apps, in their modules, call it in an order of
+  their own: the party draws its veil, at layer 0, after the party at layer 1. No table holds the
+  order.
+- **A button manager's update returns at once while its byte +0x24 is set** (0x34c9e4; set by
+  0x34b0c0, cleared by 0x34b1ec): the manager is **locked**. A manager's buttons are a pointer
+  each from its +0x10, as many as +0x14 says, and a button's +0x08 is a handle whose +0x04 is
+  its layout's work (spike 185).
+- **The party locks its list's managers under its menu.** Its list (layout 0x8270a14) has three:
+  two of six buttons, open at the list (movie22, 110 s) and locked under "Do what with Blaze?"
+  (131 s), and one of two buttons locked at both, likely the held items' corners a tap did
+  nothing on (movie22's "pokelist 0"). **The PC Box keeps its grid's manager open** under
+  "Continue operations?" (82 s): a list window answered first stays the rule there.
+- **Each of these apps has a touch bar**, its bottom bar: a view of its module's own class
+  (`app::box::TouchBar`, `app::pokelist::TouchBar`, `app::status::Touchbar`, `app::bag::TouchBar`,
+  `app::sango_zukan::ZukanTouchBarView`) built on the executable's `app::ui::UITouchBarView`, on
+  `app::ui::UIView`, on `app::ui::UIResponder`, with its listener inside it at +0x74. Each frame the
+  responder's input update (0x33b4b0) clears +0x2c and goes on only while +0x2d is set: it updates
+  the button manager at +0x10, four buttons in the bottom bar's layout, then hands the event to the
+  listener, setting +0x2c once one is taken. Its four event handlers test +0x2d too. Taken at first
+  for the whole app's switch, it feeds the bar's four buttons alone. **The party clears +0x2d under
+  its menu**, the bar's own manager left unlocked; the Box's stays set under "Continue operations?".
+  The field and the battle have no touch bar.
+- **A module's class names the executable's class it is built on**, which may be built on
+  another: `app::pokelist::TouchBar`'s typeinfo lists `UITouchBarView` and
+  `app::ui::UITouchBarListener` as its bases, and a search from `UIView` alone found none of them
+  in the module. Words of a module's file kept in the heap name the same vtables with code where
+  a listener would be: a touch bar's listener is inside it.
+- **Built** (`gen6.buttons`, `Discovery`'s `bases`): the sweep finds every button manager, and
+  every touch bar by the classes built on `UITouchBarView` in each module; a layout whose every
+  manager is locked, or fed by a touch bar taking no input, is **idle**, and touch mode offers
+  nothing of it. The veil and the cursor moved last, which stood in for this, are gone.
+
+## Movie24 — the PlayNav, the DexNav and the BuzzNav
+
+2026-10-05, on or/movie24_other_touchscreens (Orion's, from a save of his own in Fortree City, no
+save after it), with `spikes/190_touch_walks.py` and `171_touch_census.py`.
+
+- **The BuzzNav's icon and the wifi icon left touch mode after the PlayNav's tutorial**, and came
+  back after the town map: the field built the PokéNav's icons again at the same work and root,
+  with their archive loaded elsewhere (0x158c1280 before, 0x158ebd00 after, 0x158c1280 again after
+  the town map), and pa3ds read a layout's archive once for its work and root, so the pictures
+  drew images of an archive never read and had no name. The AreaNav's, DexNav's and PlayNav's
+  icons kept the names touch mode remembered. **Built:** every layout's archive is looked for
+  again when an app starts.
+- **The BuzzNav's icon draws `pmn_screen_tv.bclim`**, the app text file 123 names at line 141.
+- **The BuzzNav's NEXT lies inside a touch area over its whole panel**, 250 by 210, hanging from
+  the layout's root, and touch mode offered only the panel, named by every word on it; Orion's
+  taps at its middle did nothing, and he could not leave. **Built:** a touch area hanging from its
+  root does not take in the buttons inside it. What the panel itself does is not known.
+- **The DexNav in Fortree City shows only the place's name**: a town has no wild Pokémon to list.
+- **Names the game never gives:** the PlayNav's top corners draw `button.bclim` alone, as the
+  tutorial's page buttons do; the Amie page's large button `menu_bg_button.bclim`; the PSS's
+  `pss_menu_icon` and `wifi_change_icon`, and the PokéNav's `wifi_icon_off`. The PSS's own text is
+  file 70 (Friends, Acquaintances, Passersby, Local Wireless, Internet, PSS Settings), none of it
+  on those buttons. A texture name ending in `btn` (`return_btn`, the Pokédex's `up_btn`) is said
+  without it, as `button` is.

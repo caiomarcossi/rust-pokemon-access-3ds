@@ -404,3 +404,42 @@ other had been read in between. The replay said exactly the same, so the movie r
   forgotten as an app ends, since a battle's or the Pokédex's go with it into memory the next app
   may give the GPU. The fork rebased onto azahar-emu/azahar#2631 no longer crashes on such reads
   (tools-and-rig.md), but players' Azahar does until a release carries the fix.
+
+## Spike 192 — the BuzzNav's shows said again every two or three seconds
+
+2026-10-06 (`spikes/192_buzznav.py`, Orion's movie25, which logs each line of every show "again
+after the box left the screen" every 2 to 3 s). The spike logs, for every message window the
+dialogue reader polls, each change in what decides whether a line object is shown: each pane up
+to the root, by name, visible flag and alpha, and its layout's work.
+
+- **The BuzzNav's box never leaves the screen.** A show's words scroll through its two line
+  objects: as a line leaves the top, that line object alone fades to alpha 0 for about four
+  frames and comes back at the bottom with the next words, the first line and then the second,
+  each every 2.6 s. A show's line is one page of its message, so the lines scrolling never make a
+  new page.
+- **The reader judged the box by its first line object alone**, so each fade of that line was the
+  box leaving and coming back, and the page was said again. It now takes a box as off the screen
+  only while every line object is. Replayed, each line of each show is said once, as it starts
+  (35 times again before, none after), and a show's next lines still come as new messages.
+- **A box that really leaves hides every line.** The PC's "Which PC should be accessed?" in
+  movie9 hides both line objects by their own visible flags, and is still said again when it
+  comes back (122.4 s). Signs are thought to use that plain box, but no movie of now reads one
+  twice: spike 58's sign watched only its first line.
+- **The field's talk box fades its first line as it scrolls to the next page**, so the old rule
+  also labelled some next pages "again after the box left the screen": the Youngster's "You can't
+  say no to my challenge!" in movie4, Mom's line in movie1. Each was said once either way; they
+  are "next" and "new message" now.
+- **The shows run by themselves.** Hoenn News Network, Search2Catch, The Name Rater Show and Shall
+  We Dowse? followed one another with no tap, each line 6 to 14 s after the last. Orion's six
+  taps on the show's panel changed nothing that could be heard: the news moved on to Search2Catch
+  26.7 s after it began, once its words had scrolled to their end. The BuzzNav's one button of its
+  own is the blue icon at the top right, which its own words say turns StreetPass on and off.
+  The panel stays a touch target, named by the show's words (Orion, 2026-10-06): it says which
+  show is up, and that the BuzzNav is the PokéNav app running.
+- **movie25 replays on the fork only with the recorder's StreetPass state.** Without it the game
+  asked "Would you like to activate StreetPass for this game?" first and the movie's taps ran out
+  a screen early. ORAS's StreetPass mailbox, `CEC\0011c500` and `CEC\MBoxList____` under the
+  NAND's `data\<32 zeros>\sysdata\00010026\00000000`, copied whole from Orion's Azahar, made it
+  follow to its save.
+- **The fork pauses the game when a movie ends** (`OnMoviePlaybackCompleted`), so the rig cannot
+  go on with taps of its own after a movie, as spike 172 hoped.

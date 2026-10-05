@@ -10,6 +10,7 @@ use std::collections::HashSet;
 use std::panic::{self, AssertUnwindSafe, Location};
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::{Arc, mpsc};
 
 use indexmap::IndexMap;
 
@@ -22,6 +23,8 @@ use crate::core::rpc::{Process, Rpc};
 use crate::core::rtti::demangle;
 use crate::core::snapshot::{self, PAGE};
 use crate::core::speech::{Category, Speech};
+use crate::core::tones::Tones;
+use crate::core::touch::{self, SharedLog, TouchServer};
 use crate::games::catalog;
 use crate::games::common::navigate::{Bindings, DEFAULT_BINDINGS, bound_keys};
 use crate::games::common::session::{Session, Setup};
@@ -500,6 +503,18 @@ fn session(
     .read(code.0, code.1 - code.0)?;
     // The title says which game is running, and its engine's package puts it together.
     let game = catalog::for_title(process.title_id);
+    // The server logs from a thread of its own, where the runtime's log, an `Rc`, cannot go: its
+    // lines come over a channel, into the log at each poll and once more after it closes.
+    let (told, telling) = mpsc::channel::<String>();
+    let touching = touch_server(settings, log, told)?.map(Rc::new);
+    let hear_touch: Rc<dyn Fn()> = {
+        let log = log.clone();
+        Rc::new(move || {
+            for line in telling.try_iter() {
+                log(&line);
+            }
+        })
+    };
     let session = start(
         game,
         rpc.clone(),
@@ -516,6 +531,15 @@ fn session(
             names_home: settings.names_home.clone(),
             rom: settings.rom.clone(),
             sweep_chunk: settings.sweep_chunk,
+            tap: touching.clone().map(|touching| {
+                Rc::new(move |x: i64, y: i64| touching.tap(x, y))
+                    as Rc<dyn Fn(i64, i64) -> Option<String>>
+            }),
+            tones: if settings.keys.is_some() && settings.ui.tones {
+                Some(Rc::new(Tones::new()))
+            } else {
+                None
+            },
             ..Setup::new(process.clone(), log.clone())
         },
         &image,
@@ -599,6 +623,7 @@ fn session(
     // because the sweep that would find its list, whose labels keep a cursor over them quiet, had
     // not finished (menus.ctm replay, 2026-09-16).
     let classes: Vec<&str> = session.classes.iter().map(String::as_str).collect();
+    let bases: Vec<&str> = session.bases.iter().map(String::as_str).collect();
     let mut discovery = Discovery::with(
         rpc.clone(),
         &image,
@@ -607,6 +632,7 @@ fn session(
         between.clone(),
         settings.sweep_chunk,
         heap_walk.clone(),
+        &bases,
     )?;
     let required: Vec<&str> = session.required.iter().map(String::as_str).collect();
     if discovery.missing(&required).len() == required.len() {
@@ -666,18 +692,32 @@ fn session(
     // `rpc.unsure` catches the stalls a reader swallowed: the game restarting itself replaces the
     // RPC server just as a new emulator does (movie13, 2026-09-29).
     let mut silent = false;
-    // Python's `finally`: the keyboard hook is let go however the session ends.
-    struct Unhook(Rc<RefCell<Option<Hotkeys>>>);
-    impl Drop for Unhook {
+    // Python's `finally`: the keyboard hook is let go and the touch server closed however the
+    // session ends.
+    struct Finally {
+        hotkeys: Rc<RefCell<Option<Hotkeys>>>,
+        touching: Option<Rc<TouchServer>>,
+        hear_touch: Rc<dyn Fn()>,
+    }
+    impl Drop for Finally {
         fn drop(&mut self) {
-            if let Some(hotkeys) = self.0.borrow().as_ref() {
+            if let Some(hotkeys) = self.hotkeys.borrow().as_ref() {
                 hotkeys.stop();
+            }
+            if let Some(touching) = &self.touching {
+                touching.close();
+                (self.hear_touch)();
             }
         }
     }
-    let _unhook = Unhook(hotkeys.clone());
+    let _finally = Finally {
+        hotkeys: hotkeys.clone(),
+        touching: touching.clone(),
+        hear_touch: hear_touch.clone(),
+    };
 
     while !until() {
+        hear_touch();
         let started = time::monotonic();
         if silent || rpc.unsure() {
             match still_there(&*rpc)? {
@@ -711,6 +751,13 @@ fn session(
                         "classes loaded since the executable was read: {}",
                         learned.join(", ")
                     ));
+                    // A module is learned a look after it loads, and the party's touch bar's
+                    // was learned after the party's sweep: nothing found it for 30 s (movie23).
+                    // Swept for as an app's are, once it has built them: at once, the touch bar
+                    // was not built yet, and the app's own sweep went with it.
+                    if !whole {
+                        sweeping.soon(started + settings.app_sweep);
+                    }
                 }
             }
             if whole {
@@ -830,6 +877,32 @@ fn still_there(rpc: &dyn Rpc) -> Result<Option<bool>> {
     match rpc.confirm() {
         Ok(answer) => Ok(Some(answer)),
         Err(error) if error.is(Kind::RpcError) => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+/// The server touch mode taps through, when keys are bound; none in a replay, and none, said
+/// in the log, where its port is taken.
+///
+/// The server's log is `told`, a channel's end, since it logs from a thread of its own.
+fn touch_server(
+    settings: &Settings,
+    log: &Log,
+    told: mpsc::Sender<String>,
+) -> Result<Option<TouchServer>> {
+    if settings.keys.is_none() {
+        return Ok(None);
+    }
+    let shared: SharedLog = Arc::new(move |line: &str| {
+        // A line sent once the session has ended and dropped its end has no one to read it.
+        let _ = told.send(line.to_string());
+    });
+    match TouchServer::new(shared, touch::PORT) {
+        Ok(server) => Ok(Some(server)),
+        Err(error) if error.is(Kind::OsError) => {
+            log(&error.message);
+            Ok(None)
+        }
         Err(error) => Err(error),
     }
 }

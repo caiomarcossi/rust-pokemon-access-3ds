@@ -246,5 +246,9 @@ Kept here so the next porter, and anyone reading a tape that differs, knows what
   `__main__::main_with` and `app::run_with`; `test_navigate`'s "P again finds no way" uses a
   `FakeField` hook; and `test_sm_zones`' "areas read file by file" lost its guard that the event
   archive is never read whole, which needed `Rom.read` patched.
+- **pa3ds's own threads.** The touch server (`core::touch`) logs from its thread, which cannot
+  call the runtime's `Rc` log: its lines go through a channel the session loop drains each poll,
+  so a line can land a poll later than Python's. A tone that cannot start its sound thread is
+  dropped where Python would raise to the key's handler. Neither exists in a replay.
 - **What the tapes cannot check.** A movie presses no pa3ds keys, so the navigation keys are
   checked by their tests alone; and no tape so far holds a reader's failure.

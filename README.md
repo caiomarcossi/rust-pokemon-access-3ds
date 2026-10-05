@@ -1,32 +1,248 @@
-# pa3ds, in Rust
+# pa3ds
 
-A screen reader accessibility layer for Nintendo 3DS Pokemon games running under the
-[Azahar](https://azahar-emu.org/) emulator: Omega Ruby and Alpha Sapphire, X and Y, and Sun and
-Moon.
+A screen reader accessibility layer for 3DS Pokémon games running in the
+[Azahar](https://azahar-emu.org/) emulator.
 
-It reads the game's actual memory over Azahar's RPC interface and speaks through
-[Prism](https://github.com/ethindp/prism) to NVDA (or SAPI5). No OCR, no screenshots, and no
-hand-written game text: every word spoken comes out of the ROM or the game's RAM.
+pa3ds reads the game's own memory while you play and sends what it finds to your screen reader
+through [Prism](https://github.com/ethindp/prism): NVDA, or another screen reader Prism supports,
+or SAPI. Every word the game shows is read from the game itself, in your game's language. pa3ds
+never presses a button for you. The one exception is touch mode, where it taps the touch-screen
+button it has just named, and only when you press its tap key.
+
+Inspired by [pokemon-access](https://github.com/nuive/pokemon-access), which does the same job for
+the Game Boy games. Nothing here is taken from its code.
+
+**Status: pre-alpha. There is no release yet.** pa3ds is one program, `pa3ds.exe`, with nothing
+to install.
+
+## Games
+
+- **Omega Ruby and Alpha Sapphire**: the most complete.
+- **X and Y**: read by the same code as Omega Ruby, with some screens still silent.
+- **Sun and Moon**: dialogue with the speaker's name, the language choice, menus and screens,
+  the name entry keyboard, battles, and the map's doors, signs, people and item balls, with
+  pathfinding.
+
+## What it says
+
+- **Dialogue**, a page at a time as it starts to type, with who is speaking where pa3ds knows.
+- **Menus**: the item under the cursor, then its details, such as a description or a count.
+- **Screen text**: labels, options and questions as they appear and when they change.
+- **Name entry**: the key under the cursor.
+- **Battles**: the battle text, and each side's Pokémon with its name, gender, level and HP. Your
+  HP is said exactly; the enemy's as a percentage, because a bar is all the game shows.
+- **The PC Box, the party, the Bag and the Pokédex**, including the habitat map.
+- **Where you are**: the place name when you arrive somewhere new.
+- **The map**: exits, signs, people, items, berry spots and more, each with its direction and
+  distance ("door, 1 of 3, 3 east 2 north"), and the way to any of them on foot.
+- **The touch screen**: the buttons on the bottom screen, which touch mode can tap for you,
+  and the PokéNav's apps, the BuzzNav's shows among them.
+- **The Dowsing Machine's lights** ("dowsing green"), **soaring** on Latios or Latias, the
+  DexNav's hidden Pokémon, and decorating a Secret Base.
+
+pa3ds says only what the game shows. Hidden information such as IVs or the enemy's exact HP is
+not read.
+
+## What you need
+
+- Windows.
+- Azahar, installed. A portable Azahar (with a `user` folder beside `azahar.exe`) is not set up
+  by pa3ds yet: see [Known problems](#known-problems).
+- Your own Pokémon game, dumped from your own 3DS. pa3ds reads place names, building names and
+  the rival's name from the ROM file. This works only with a **decrypted** ROM (`.3ds` or `.cci`).
+  With an encrypted one the game still plays and pa3ds still reads it, but some of those names
+  are missing. pa3ds finds the ROM among the ones Azahar has opened.
+- A screen reader: NVDA, or any other Prism supports. Without one, pa3ds speaks with SAPI.
+
+ROMs are not distributed here and never will be.
+
+## Setting up
+
+1. Unpack pa3ds into a folder of its own.
+2. Start Azahar once and close it, so that it writes its settings file.
+3. With Azahar closed, run `pa3ds.exe`. On its first start pa3ds writes its own settings files
+   into the `user` folder beside it, changes the Azahar settings it needs (listed below), and
+   says "Azahar settings applied".
+4. Start Azahar and your game. pa3ds says "Waiting for the game" until the game is running, then
+   "pa3ds ready".
+
+After that, start pa3ds and Azahar in either order.
+
+pa3ds changes Azahar's settings only while Azahar is closed, because Azahar writes its own
+settings back over the file when it closes. If pa3ds says "close Azahar and start pa3ds again to
+apply its settings", do exactly that. If it says "Azahar's settings were not found", start Azahar
+once, close it, and start pa3ds again.
+
+pa3ds is quiet while another window is in front of Azahar. It still says its own messages and
+answers its own keys.
+
+## Azahar settings pa3ds needs
+
+pa3ds writes these into Azahar's `qt-config.ini` (in `%APPDATA%\Azahar\config`). They come from
+the `[azahar]` table of `user\config.toml`, so you can change them there.
+
+| Setting | Value | Why |
+|---|---|---|
+| `enable_rpc_server` | `true` | **Required.** pa3ds reads the game through it. Azahar ships it off. |
+| `use_touchpad` | `true` | Required for touch mode: lets pa3ds tap the touch screen. |
+| `controller_touch_device` | pa3ds's own touch device | Required for touch mode: where the taps come from. |
+| `log_filter` | `*:Info RPC_Server:Error` | Stops Azahar's log from growing by a megabyte a second. |
+| `graphics_api` | `2` (Vulkan) | With OpenGL, Azahar's window is slow to answer the screen reader. |
+| `async_shader_compilation` | `true` | Fewer stutters. |
+| `shaders_accurate_mul` | `false` | Faster, at the cost of a rare wrong pixel. |
+| `use_vsync` | `false` | Faster. |
+
+Delete a line from the table to leave that setting as Azahar has it. Any other Azahar setting can
+be added by its name in `qt-config.ini`.
+
+## Keys
+
+pa3ds's keys work only while Azahar's game window is in front, and they never reach the game.
+They do nothing while your screen reader's modifier key (Insert or Caps Lock) or a Windows key is
+held.
+
+The map's list has three **modes**. The apostrophe steps through them.
+
+**In every mode**
+
+| Key | What it does |
+|---|---|
+| `'` (apostrophe) | Next mode: list mode, direction mode, touch mode. |
+| `[` and `]` | Previous and next category of the map's list. |
+| `P` | Find the way on foot to the chosen thing, and guide you along it turn by turn. |
+| `Shift+P` | The same, but also using Surf, Cut, Rock Smash, Strength, Waterfall and the bikes. |
+| `R` | Say your side of the battle again. |
+| `Shift+R` | Say the enemy's side of the battle again. |
+| `Shift+K` | Give the chosen thing a name of your own. |
+| `Shift+J` | Give whoever spoke last a name of your own. |
+
+**List mode** walks the whole list, nearest first.
+
+| Key | What it does |
+|---|---|
+| `I` and `O` | Previous and next category. |
+| `J` and `L` | Previous and next thing in the category. |
+| `K` | The chosen thing again, from where you stand now. |
+
+**Direction mode** looks one way at a time, up to 10 cells away.
+
+| Key | What it does |
+|---|---|
+| `O` | The next thing to the north. |
+| `;` (semicolon) | The next thing to the east. |
+| `L` | The next thing to the south. |
+| `K` | The next thing to the west. |
+
+**Touch mode** walks the buttons on the bottom screen, in reading order.
+
+| Key | What it does |
+|---|---|
+| `J` and `L` | Previous and next button. |
+| `I` and `O` | Previous and next row. |
+| `K` | The chosen button again. |
+| `Enter` | Tap the chosen button. |
+
+The categories are all, exits, signs, people, items, berries, ash, bike and pokémon; while
+soaring, towns, routes, landmarks and mirage spots. A category with nothing in it is skipped.
+
+On a fresh Azahar, `I`, `J`, `K` and `L` are the C-stick and `O` and `P` are the debug and GPIO
+buttons, none of which the Pokémon games use. When one of pa3ds's keys is on an Azahar button,
+pa3ds says so as it starts.
+
+### Changing keys
+
+Keys live in `user\keys.toml`, written with the defaults on the first start and never
+overwritten.
+
+- `[pa3ds.navigation]` holds keys that do the same thing in every mode.
+  `[pa3ds.navigation.list]`, `[pa3ds.navigation.direction]` and `[pa3ds.navigation.touch]` hold
+  the keys of one mode, and win over it. A key can have modifiers: `"shift+k"`.
+- `[azahar]` rebinds Azahar's own buttons, and `[azahar.circle_pad]` and `[azahar.c_stick]` its
+  two sticks. It is empty by default. The comments in the file list what Azahar's buttons are
+  bound to now. Changes apply the next time pa3ds starts with Azahar closed.
+
+A key added to pa3ds after your file was written is not added to your file, so it cannot take a
+key you are using. pa3ds says so as it starts, and the log has the line to add.
+
+## Settings
+
+Settings live in `user\config.toml`, written with the defaults on the first start and never
+overwritten. Each setting has a comment in the file saying what it does.
+
+| Setting | Default | What it does |
+|---|---|---|
+| **`[pa3ds]`** | | |
+| `keys` | `true` | Answer pa3ds's keys and rebind Azahar's buttons as `keys.toml` says. |
+| `poll_rate` | `60` | How many times a second pa3ds reads the game. 30 for a slower machine. |
+| **`[pa3ds.ui]`** | | |
+| `pauses` | `false` | Pause between pieces of screen text said together: "OT: Raiden". |
+| `interrupt` | `false` | Cut off speech when a menu's cursor moves, instead of queueing. pa3ds's own keys always cut off speech. |
+| `unfocused` | `false` | Keep saying what the game shows while another window is in front. |
+| `tones` | `true` | A short tone as the map's cursor or touch mode moves: higher the further up, panned the further right. |
+| **`[pa3ds.navigation]`** | | |
+| `positions` | `true` | Say where a thing is in the list: "door, 1 of 3". |
+| `position_first` | `true` | Say the place in the list before the way to it. `false` says "door, 1 north, 1 of 3". |
+| `turn_by_turn` | `true` | Say each turn of the way P found as you reach it. `false` says the way once, and P again says it from where you stand. |
+| **`[azahar]`** | | Azahar's own settings: see [above](#azahar-settings-pa3ds-needs). |
+
+A setting added to pa3ds after your file was written is not added to your file. It works at its
+default, and you can add the line yourself.
+
+### Command-line options
+
+Run `pa3ds.exe --help` for the full list. The ones a player may want:
+
+- `--rom PATH`: your decrypted ROM, if pa3ds does not find it among the ones Azahar has opened.
+- `--no-keys`: answer no keys and rebind no buttons.
+- `--port PORT`: Azahar's RPC port, if you changed it from 45987.
+
+## Names of your own
+
+The game never names some things: most people on the map, signs, doors. pa3ds gives some of them
+a name of its own. You can give anything a name with `Shift+K`, or name whoever spoke last with
+`Shift+J`: a box opens, type the name and press Enter. pa3ds says the new name back.
+
+Your names are saved in `user\names\<language>\`, one file per game. Your names always win over
+pa3ds's. To share them, send the file.
+
+## Your files
+
+Everything that is yours is in the `user` folder beside `pa3ds.exe`. Copy that folder to keep it
+all when you move or update pa3ds.
+
+- `config.toml`: settings.
+- `keys.toml`: keys.
+- `names\`: your names.
+- `logs\`: what pa3ds did and said in each of the last ten runs. `pa3ds.log` is the latest run,
+  `pa3ds.1.log` the one before, up to `pa3ds.9.log`.
+- `cache\`: what pa3ds worked out from your ROM. Safe to delete; it is built again.
+
+## When something goes wrong
+
+- **pa3ds says "Waiting for the game" and nothing more while the game runs**: Azahar's RPC server
+  is off. Close Azahar, start pa3ds, then start Azahar.
+- **pa3ds says "Reader error"**: part of pa3ds failed on that screen. The log has the details.
+
+To report a problem, send `user\logs\pa3ds.log` from the run where it happened, and say what you
+were doing.
+
+## Known problems
+
+- **A portable Azahar is not set up by pa3ds.** pa3ds changes only the settings in
+  `%APPDATA%\Azahar`. With a portable Azahar, set the settings in
+  [the table above](#azahar-settings-pa3ds-needs) yourself, in `user\config\qt-config.ini` beside
+  `azahar.exe`, while Azahar is closed.
+- **Some touch-screen apps are not fully read yet**: the PokéNav's DexNav and PlayNav.
+- **X, Y, Sun and Moon** are read less completely than Omega Ruby and Alpha Sapphire.
+
+## For developers
 
 This is a port of [the Python pa3ds](https://github.com/KenzonYeoh/pokemon-access-3ds) to Rust, so
 that a player runs one `pa3ds.exe` with nothing to install. The Python repository is where
 features are built first; this one follows it module for module (`port.toml` names the commit it
-matches) and is checked against it line for line on recorded replays (`tools/tape/`).
-
-**Status: pre-alpha.** No release yet. The decisions are in [docs/adr/](docs/adr/README.md), the
-evidence behind them in [docs/findings/](docs/findings/README.md), and the vocabulary in
-[CONTEXT.md](CONTEXT.md).
-
-## Requirements
-
-- Windows
-- Azahar with its RPC server reachable on UDP 45987
-- Your own legally obtained, decrypted Pokemon ROM
-- NVDA, or any Prism-supported screen reader, or SAPI5
-
-ROMs are not distributed here and never will be.
-
-## Building
+matches) and is checked against it line for line on recorded replays (`tools/tape/`). The
+decisions are in [docs/adr/](docs/adr/README.md), the evidence behind them in
+[docs/findings/](docs/findings/README.md), and the vocabulary in [CONTEXT.md](CONTEXT.md).
 
 ```
 cargo build --release

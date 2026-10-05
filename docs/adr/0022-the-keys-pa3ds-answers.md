@@ -121,6 +121,19 @@ away. Now **nothing is written while Azahar is open**: pa3ds says "close Azahar 
 again to apply your keys", and patches at the next start with Azahar closed, saying "keys applied
 to Azahar" only when the file really changed (`keyfile.save`).
 
+**Touch mode, 2026-10-01** (Orion; `games.common.touch`, ADR-0009 as amended). **The mode key**,
+the apostrophe, steps through list mode, direction mode and touch mode in turn (2026-10-02: it was
+shift and T for a day, chosen so T stays this machine's D-pad up, which X and Y's rollerskates
+want; one key for all three is simpler). In touch mode, **J** and **L** walk the bottom screen's touch targets in
+reading order, **I** and **O** a row at a time, **K** says the one chosen again, and **Enter** taps
+it: `[pa3ds.navigation.touch]`, rebindable as every other table is. Enter is the hook's name for
+the main Enter key, which Qt calls Return.
+
+**A key with a modifier takes its button only while the modifier is held**, so pa3ds does not
+say at startup that one sits on its button, as it did of shift and T and the D-pad: it was said of every modified key before,
+since the emulator watches the key and not what is held with it, which is true only while shift
+is down (`keyfile.taken`).
+
 ## Consequences
 
 - **A key's answer interrupts**, and it is the only thing that does by default (ADR-0010): the

@@ -159,6 +159,14 @@ impl Scene {
         }
     }
 
+    /// The box leaving the screen or coming back: both its lines, as the PC's prompt hides them
+    /// (spike 192, movie9).
+    fn box_shown(&self, shown: bool) {
+        for &r#box in &BOXES {
+            self.fake.visible(r#box, shown);
+        }
+    }
+
     fn said(&mut self) -> Vec<String> {
         self.reader
             .poll()
@@ -397,13 +405,31 @@ fn test_a_sign_read_twice_is_heard_twice() {
     scene.message("wee's House");
     scene.r#type(0, "wee's House");
     assert_eq!(scene.said(), texts(&["wee's House"]));
-    scene.fake.visible(BOXES[0], false);
+    scene.box_shown(false);
     for _ in 0..AWAY_POLLS {
         assert_eq!(scene.said(), texts(&[]));
     }
-    scene.fake.visible(BOXES[0], true);
+    scene.box_shown(true);
     assert_eq!(scene.said(), texts(&["wee's House"]));
     assert_eq!(scene.said(), texts(&[]));
+}
+
+/// The BuzzNav scrolls a show's words through two lines, each fading out for a few frames as it
+/// leaves the top; the box never leaves the screen (spike 192, movie25).
+#[test]
+fn test_a_box_scrolling_its_lines_is_not_heard_again() {
+    let mut scene = Scene::new(true);
+    scene.message("This is an HNN special report.");
+    scene.r#type(0, "This is an HNN special report.");
+    assert_eq!(scene.said(), texts(&["This is an HNN special report."]));
+    for line in [0, 1, 0] {
+        scene.fake.fade(BOXES[line], 0);
+        for _ in 0..AWAY_POLLS + 1 {
+            assert_eq!(scene.said(), texts(&[]));
+        }
+        scene.fake.fade(BOXES[line], 255);
+        assert_eq!(scene.said(), texts(&[]));
+    }
 }
 
 #[test]
@@ -412,9 +438,9 @@ fn test_a_box_that_flickers_off_is_not_heard_again() {
     scene.message("wee's House");
     scene.r#type(0, "wee's House");
     scene.said();
-    scene.fake.visible(BOXES[0], false);
+    scene.box_shown(false);
     scene.said();
-    scene.fake.visible(BOXES[0], true);
+    scene.box_shown(true);
     assert_eq!(scene.said(), texts(&[]));
 }
 
@@ -426,14 +452,14 @@ fn test_a_page_typed_while_the_box_is_off_is_not_heard_again_as_it_comes_back() 
     scene.message(&format!("at times fighting{SCROLL}\none another out."));
     scene.r#type(0, "at times fighting");
     scene.said();
-    scene.fake.visible(BOXES[0], false);
+    scene.box_shown(false);
     for _ in 0..AWAY_POLLS {
         scene.said();
     }
     scene.r#type(0, "one");
     assert_eq!(scene.said(), texts(&["one another out."]));
     assert_eq!(scene.said(), texts(&[]));
-    scene.fake.visible(BOXES[0], true);
+    scene.box_shown(true);
     assert_eq!(scene.said(), texts(&[]));
     assert_eq!(scene.said(), texts(&[]));
 }
@@ -473,11 +499,11 @@ fn test_a_new_message_after_the_box_left_the_screen_is_read_from_its_first_page(
     scene.message("wee's House");
     scene.r#type(0, "wee's House");
     scene.said();
-    scene.fake.visible(BOXES[0], false);
+    scene.box_shown(false);
     scene.said();
     scene.message(&format!("One.{SCROLL}\nTwo."));
     scene.r#type(0, "Two.");
-    scene.fake.visible(BOXES[0], true);
+    scene.box_shown(true);
     let shown = scene.reader.poll().unwrap();
     assert!(
         shown.iter().all(|page| matches!(page, Shown::Page(_))),
@@ -498,11 +524,11 @@ fn test_talking_again_after_the_box_left_the_screen_is_heard_once() {
     scene.message("Now take care out there, honey!");
     scene.r#type(0, "Now take care out there, honey!");
     scene.said();
-    scene.fake.visible(BOXES[0], false);
+    scene.box_shown(false);
     for _ in 0..AWAY_POLLS {
         assert_eq!(scene.said(), texts(&[]));
     }
-    scene.fake.visible(BOXES[0], true);
+    scene.box_shown(true);
     scene.r#type(0, "No");
     assert_eq!(scene.said(), texts(&["Now take care out there, honey!"]));
     scene.r#type(0, "Now take care out there, honey!");

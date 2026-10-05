@@ -30,7 +30,7 @@ use crate::core::binary::{u16, u32};
 use crate::core::heaps::IN_USE;
 use crate::core::memory::Memory;
 use crate::core::rtti::ClassNames;
-use crate::games::common::layout::Layouts;
+use crate::games::common::layout::{Layouts, Placement};
 use crate::games::common::text::{Line, NEWLINE, Page, pages};
 use crate::games::common::{lyt, msgwin, strbuf};
 use crate::py::{self, Error, Kind, PySet, Result};
@@ -419,16 +419,25 @@ impl DialogueReader {
         // opening flickers off between pages, the next page is typed while it is off, and taking
         // its return for a new showing said "one another out." twice, 20 ms apart (movie3 replay,
         // 2026-09-17).
-        let placement = match &self.layouts {
-            Some(layouts) => layouts.placement(boxes[0])?,
-            None => None,
-        };
-        let shown = placement.is_some_and(|placement| placement.shown);
-        if placement.is_some() && !shown {
+        //
+        // And only with every line off screen. The BuzzNav scrolls a show's words through two
+        // lines, each line fading out for a few frames as it leaves the top and coming back at the
+        // bottom; read by its first line alone, the box left and came back every two or three
+        // seconds, and the whole show was said again each time (spike 192, movie25).
+        let mut placements: Vec<Placement> = Vec::new();
+        if let Some(layouts) = &self.layouts {
+            for &r#box in &boxes {
+                if let Some(placement) = layouts.placement(r#box)? {
+                    placements.push(placement);
+                }
+            }
+        }
+        let shown = placements.iter().any(|placement| placement.shown);
+        if !placements.is_empty() && !shown {
             if progress.seen {
                 progress.hidden += 1;
             }
-        } else if placement.is_some() {
+        } else if !placements.is_empty() {
             if progress.hidden >= AWAY_POLLS && progress.said >= 0 {
                 progress.said = -1;
                 progress.join = true;

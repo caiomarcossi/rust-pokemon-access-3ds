@@ -18,7 +18,7 @@ use crate::games::common::session::{Profile, Session, Setup};
 use crate::games::gen6::archives::{GameText, RomLayout};
 use crate::games::gen6::game::Game;
 use crate::games::gen6::profile::{Gen6Profile, Options, REQUIRED};
-use crate::games::gen6::{gflheap, textures};
+use crate::games::gen6::{buttons, gflheap, textures};
 use crate::py::Result;
 
 /// `game` read through a page cache, every poll in a phase of its own: one pipelined fetch of
@@ -94,6 +94,8 @@ pub fn start(
             text,
             pictures,
             image: image.to_vec(),
+            tap: setup.tap.clone(),
+            tones: setup.tones.clone(),
         },
     ));
     // What the game allocates is found where it was allocated, the look after (spike 110).
@@ -126,6 +128,7 @@ pub fn start(
         to_sweep: Rc::new(|block: Block| Some(gflheap::to_sweep(block))),
         allocated: Rc::new(|_blocks: &[Block]| {}),
         walk: None,
+        bases: vec![buttons::BAR_CLASS.to_string()],
         pages: Some(memory),
     })
 }

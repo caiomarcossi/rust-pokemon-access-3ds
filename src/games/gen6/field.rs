@@ -69,7 +69,7 @@
 //! when the player faces the cell and presses A, with no entity record behind it (spike 83).
 
 use std::cell::{Cell as Slot, RefCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::rc::{Rc, Weak};
 
 use indexmap::{IndexMap, IndexSet};
@@ -80,10 +80,10 @@ use crate::core::memory::Memory;
 use crate::core::pathfind::{self, Cell, EAST, NORTH, SOUTH, WEST};
 use crate::games::common::field::{
     self as common, ASH, ASH_SOURCE, BERRIES, BERRY_SOURCE, BIKE, BIKE_RAILS, BIKE_SOURCE, BLOCK,
-    BLOCKED, BUMPY_SLOPES, CHUNK, CRACKED, Chunk, DIVE, DIVE_SOURCE, EDGE_SOURCE, FURNITURE_SOURCE,
-    Field, Floor, Grid, Ground, IceRoom, Interactable, KIND_SHIFT, NO_ZONE, Of, RotatingDoor,
-    SECRET_BASE_SOURCE, SHORE, SLOPES, STAIRS_SOURCE, TILE_SOURCE, TRIGGER_SOURCE, WARP_SOURCE,
-    place_source, walkable,
+    BLOCKED, BUMPY_SLOPES, CHUNK, CRACKED, Chunk, DIVE, DIVE_SOURCE, EDGE_SOURCE, FALLS,
+    FURNITURE_SOURCE, Field, Floor, Grid, Ground, IceRoom, Interactable, KIND_SHIFT, NO_ZONE, Of,
+    RotatingDoor, SECRET_BASE_SOURCE, SHORE, SLOPES, STAIRS_SOURCE, TILE_SOURCE, TRIGGER_SOURCE,
+    WARP_SOURCE, place_source, walkable,
 };
 use crate::games::gen6::{camera, mapblock, mmodel, rail};
 use crate::py::{self, Error, PySet, Result};
@@ -499,6 +499,8 @@ impl Default for Options {
 
 /// What `_ways` was found for: the zone, the matrix's chunk files, and the chunks loaded.
 type BikeKey = (i64, Rc<Vec<i64>>, Vec<(i64, i64)>);
+/// The chunk files the ways up a kind's cells were found for, and the ways (`_rises`).
+type Rises = (Rc<Vec<i64>>, IndexMap<Cell, &'static str>);
 
 /// Tracks the player's model and the current zone's data, and lists what is on the map.
 ///
@@ -564,8 +566,10 @@ pub struct FieldReader {
     /// What the slopes, rail ends and dive spots were found for, and what they are: the bike's
     /// things, and each dive spot's patch (`_ways`).
     ways_of: RefCell<(Option<BikeKey>, Vec<Interactable>, Vec<Vec<Cell>>)>,
-    /// The chunk files the bumpy slopes' ways were found for, and the ways (`_hops`).
-    hops_of: RefCell<(Option<Rc<Vec<i64>>>, IndexMap<Cell, &'static str>)>,
+    /// Kinds -> the chunk files the ways up their cells were found for, and the ways (`_rises`).
+    ///
+    /// Python keys it by a `frozenset`; a `BTreeSet` is equal where the frozenset is.
+    rises_of: RefCell<IndexMap<BTreeSet<i64>, Rises>>,
     /// The chunk files the floors' heights were read for, and the heights (`_decks`).
     deck_heights: RefCell<(Option<Rc<Vec<i64>>>, Vec<i64>)>,
     /// (column, row, file) -> the ROM's chunk there, once read.
@@ -728,7 +732,7 @@ impl FieldReader {
             flat: RefCell::new(HashMap::new()),
             files: RefCell::new((0, Rc::new(Vec::new()))),
             ways_of: RefCell::new((None, Vec::new(), Vec::new())),
-            hops_of: RefCell::new((None, IndexMap::new())),
+            rises_of: RefCell::new(IndexMap::new()),
             deck_heights: RefCell::new((None, Vec::new())),
             far_chunks: RefCell::new(HashMap::new()),
             clock,
@@ -1074,7 +1078,7 @@ impl FieldReader {
             None => Vec::new(),
             Some(doors) => doors.doors(r#where.zone)?,
         };
-        let hops = self.hops()?;
+        let (hops, falls) = (self.rises(&BUMPY_SLOPES)?, self.rises(&[FALLS])?);
         let surfaces = self.surfaces(r#where.zone)?;
         if self.zone_at(r#where.cell)?.is_none() {
             let belts = self.belts_here(r#where.zone)?;
@@ -1083,6 +1087,7 @@ impl FieldReader {
                 cliffs,
                 doors,
                 hops,
+                falls,
                 surfaces,
                 stacked,
                 level,
@@ -1115,6 +1120,7 @@ impl FieldReader {
             cliffs,
             doors,
             hops,
+            falls,
             surfaces,
             stacked,
             level,
@@ -1299,17 +1305,21 @@ impl FieldReader {
             .collect())
     }
 
-    /// Each bumpy slope on the matrix with the way it is hopped up: between the two open cells on
+    /// Each cell of `kinds` on the matrix with the way it goes up: between the two open cells on
     /// its opposite sides, towards the higher, as the ROM's heights have them. Every one of Jagged
-    /// Pass's 24 has one such pair, a cell's height apart, north for most and west for three (spike
-    /// 159). None without the ROM's heights.
-    fn hops(&self) -> Result<IndexMap<Cell, &'static str>> {
+    /// Pass's 24 bumpy slopes has one such pair, a cell's height apart, north for most and west for
+    /// three (spike 159), and Ever Grande City's waterfall has the sea at 0 below and the water at
+    /// 234 above (spike 170). None without the ROM's heights.
+    fn rises(&self, kinds: &[i64]) -> Result<IndexMap<Cell, &'static str>> {
         let (wide, files) = {
             let held = self.files.borrow();
             (held.0, held.1.clone())
         };
-        if self.hops_of.borrow().0.as_ref() == Some(&files) {
-            return Ok(self.hops_of.borrow().1.clone());
+        let key: BTreeSet<i64> = kinds.iter().copied().collect();
+        if let Some(cached) = self.rises_of.borrow().get(&key)
+            && cached.0 == files
+        {
+            return Ok(cached.1.clone());
         }
         let mut out: IndexMap<Cell, &'static str> = IndexMap::new();
         let mut tables: IndexMap<(i64, i64), (Vec<i64>, Vec<Option<f64>>)> = IndexMap::new();
@@ -1345,7 +1355,7 @@ impl FieldReader {
         for (&(column, row), (words, _)) in &tables {
             for (i, &word) in words.iter().enumerate() {
                 let i = i as i64;
-                if !BUMPY_SLOPES.contains(&(word >> KIND_SHIFT)) {
+                if !kinds.contains(&(word >> KIND_SHIFT)) {
                     continue;
                 }
                 let cell = (column * CHUNK + i % CHUNK, row * CHUNK + i / CHUNK);
@@ -1371,8 +1381,8 @@ impl FieldReader {
                 }
             }
         }
-        *self.hops_of.borrow_mut() = (Some(files), out);
-        Ok(self.hops_of.borrow().1.clone())
+        self.rises_of.borrow_mut().insert(key.clone(), (files, out));
+        Ok(self.rises_of.borrow()[&key].1.clone())
     }
 
     /// Every drop on the matrix with its decks walked at `level` (`_cliffs`).

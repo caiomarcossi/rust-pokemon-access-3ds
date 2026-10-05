@@ -2081,6 +2081,29 @@ impl BoxGrid {
             10.0,
         );
         grid.fake.fade(grid.mark, 127);
+        // The summary's: a touch area hanging from its mark's picture (movie22).
+        let hung = grid.add(
+            "sm",
+            root,
+            Some(picture),
+            b"pic1",
+            2,
+            -85.0,
+            -95.0,
+            10.0,
+            10.0,
+        );
+        grid.add(
+            "st",
+            hung,
+            Some(bounding),
+            b"bnd1",
+            0,
+            -85.0,
+            -95.0,
+            10.0,
+            10.0,
+        );
         let button = grid.add(
             "bt",
             root,
@@ -2445,6 +2468,8 @@ fn test_a_mark_is_said_by_its_sign_and_whether_it_is_set() {
     assert_eq!(r#box.rest(80.0, -50.0), said(&[(&["♥, off"], false)]));
     r#box.fake.fade(r#box.mark, 255);
     assert_eq!(r#box.rest(80.0, -50.0), said(&[(&["♥, on"], false)]));
+    // The summary hangs each mark's touch area from its picture (movie22).
+    assert_eq!(r#box.rest(-85.0, -95.0), said(&[(&["♥, on"], false)]));
 }
 
 /// Down from the grid the Box's pointer rests on the bottom bar's `change_box.bclim`, in a

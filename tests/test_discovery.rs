@@ -55,6 +55,7 @@ fn discovery(rpc: &Rc<dyn Rpc>, image: &[u8]) -> Discovery {
         nothing(),
         1,
         None,
+        &[],
     )
     .unwrap();
     found.heap = vec![(HEAP, HEAP + 2 * MAX_READ)];
@@ -247,8 +248,17 @@ fn test_measuring_the_heap_says_whether_it_changed() {
     let window = page(0, vtables[WINDOW]);
     let emu = FakeEmulator::new(HashMap::from([(HEAP, window.clone())]));
     let rpc = connect(&emu);
-    let mut found =
-        Discovery::with(rpc, &image, CODE.0, &[WINDOW, BUFFER], nothing(), 1, None).unwrap();
+    let mut found = Discovery::with(
+        rpc,
+        &image,
+        CODE.0,
+        &[WINDOW, BUFFER],
+        nothing(),
+        1,
+        None,
+        &[],
+    )
+    .unwrap();
     assert!(found.measure_heap().unwrap());
     assert!(!found.measure_heap().unwrap());
     emu.set_page(HEAP + 0x100000, window);
@@ -285,8 +295,17 @@ fn test_a_span_measured_once_is_kept_and_reaches_a_block_either_side() {
     let window = page(0, vtables[WINDOW]);
     let emu = FakeEmulator::new(HashMap::from([(HEAP + PROBE_STEP, window)]));
     let rpc = connect(&emu);
-    let mut found =
-        Discovery::with(rpc, &image, CODE.0, &[WINDOW, BUFFER], nothing(), 1, None).unwrap();
+    let mut found = Discovery::with(
+        rpc,
+        &image,
+        CODE.0,
+        &[WINDOW, BUFFER],
+        nothing(),
+        1,
+        None,
+        &[],
+    )
+    .unwrap();
     assert!(found.measure_heap().unwrap());
     assert_eq!(found.heap, [(HEAP, HEAP + 3 * PROBE_STEP)]);
     emu.remove_page(HEAP + PROBE_STEP);
@@ -377,6 +396,7 @@ fn test_a_heap_the_profile_walks_is_what_every_sweep_reads() {
         between,
         512,
         Some(walk),
+        &[],
     )
     .unwrap();
     assert!(!found.measure_heap().unwrap());
@@ -409,6 +429,7 @@ fn test_a_sweep_of_spans_for_a_walked_heap_reads_them_to_the_byte() {
         nothing(),
         512,
         Some(walk),
+        &[],
     )
     .unwrap()
     .sweep_spans(&[(inside, inside + 0x20)])

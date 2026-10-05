@@ -16,6 +16,7 @@ use crate::core::heaps::{Block, Heaps};
 use crate::core::memory::{Cache, PageCache};
 use crate::core::rom::Rom;
 use crate::core::rpc::Process;
+use crate::core::tones::Tones;
 use crate::core::{keyfile, rom};
 use crate::games::common::navigate::{Bindings, DEFAULT_BINDINGS};
 use crate::py::{self, Error, Kind, Log, Result};
@@ -75,6 +76,8 @@ pub struct Session {
     /// How a whole sweep reads the heap where a game says where it may be read (Sun,
     /// ADR-0035); None for a sweep of the whole heap span.
     pub walk: Option<Walk>,
+    /// Classes of `classes` found with every class built on them (`Discovery`).
+    pub bases: Vec<String>,
     /// The page cache the readers read through, whose pages are saved when a reader fails
     /// (ADR-0019); None where they read to the byte.
     pub pages: Option<Rc<PageCache>>,
@@ -84,8 +87,8 @@ pub struct Session {
 /// and the settings its readers read by (`app.Settings`).
 ///
 /// Python's defaults are `DEFAULT_BINDINGS`, `Ui()`, `Navigation()`, `"en"`, no `names_home`, no
-/// `rom` and a `sweep_chunk` of 512: [`Setup::new`] has them, and the rest is set with
-/// `Setup { language, ..Setup::new(process, log) }`.
+/// `rom`, a `sweep_chunk` of 512, and no `tap` or `tones`: [`Setup::new`] has them, and the rest is
+/// set with `Setup { language, ..Setup::new(process, log) }`.
 #[derive(Clone)]
 pub struct Setup {
     pub process: Process,
@@ -97,6 +100,12 @@ pub struct Setup {
     pub names_home: Option<PathBuf>,
     pub rom: Option<PathBuf>,
     pub sweep_chunk: i64,
+    /// Tap the touch screen at a pixel, saying why not where it cannot (`pa3ds.core.touch`); None
+    /// where pa3ds takes no keys, as in a replay.
+    pub tap: Option<Rc<dyn Fn(i64, i64) -> Option<String>>>,
+    /// The tones that say where a cursor is (`pa3ds.core.tones`); None where pa3ds takes no keys,
+    /// so a replay makes no sound, or where `[pa3ds.ui] tones` is off.
+    pub tones: Option<Rc<Tones>>,
 }
 
 impl Setup {
@@ -111,6 +120,8 @@ impl Setup {
             names_home: None,
             rom: None,
             sweep_chunk: 512,
+            tap: None,
+            tones: None,
         }
     }
 

@@ -13,6 +13,10 @@ Terrain follows from it: ORAS already plays footsteps for some terrain and not o
 **fills the gaps** with its own footstep sounds, one per step, rather than replacing what the game
 does. No panning, no HRTF, no audio engine.
 
+**pa3ds's own tones, 2026-10-01** (Orion): a short tone beside the game's sound where nothing else
+says where a cursor is, the Hoenn map's between places and touch mode's over a screen the player
+cannot see (`pa3ds.core.tones`). Never instead of a word, and `[pa3ds.ui] tones` turns them off.
+
 ## Consequences
 
 This is a constraint on optimisation as much as on features: a change that makes the emulator

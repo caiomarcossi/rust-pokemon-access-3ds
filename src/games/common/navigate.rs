@@ -55,8 +55,10 @@ use crate::core::pathfind::{self, Cell, Leg};
 use crate::core::speech::{Category, Speech};
 use crate::games::common::field::{
     self, ALL, ANY_FLOOR, CUT, Field, Ground, IceRoom, Interactable, Of, ROCK_SMASH, SOLID, SPRITE,
-    STRENGTH, SURF, WHOLE,
+    STRENGTH, SURF, WATERFALL, WHOLE,
 };
+use crate::games::common::touch::ACTIONS as TOUCH_ACTIONS;
+use crate::games::common::touch::{ROW_NEXT, ROW_PREVIOUS, TAP, TouchTargets};
 use crate::py::{self, Error, Log, Result};
 
 /// `(ALL, *field.CATEGORIES)`.
@@ -77,6 +79,11 @@ pub const ICE_REACH: i64 = 3;
 
 pub const LIST: &str = "list";
 pub const DIRECTION: &str = "direction";
+/// Touch mode: the navigation keys walk the bottom screen's touch targets, and one taps the one
+/// said (`games.common.touch`, docs/plans/pokenav-and-touch.md).
+pub const TOUCH: &str = "touch";
+/// What the mode key steps through, in turn (Orion, 2026-10-02: one key for all three).
+pub const MODES: [&str; 3] = [LIST, DIRECTION, TOUCH];
 
 pub const CATEGORY_PREVIOUS: &str = "category previous";
 pub const CATEGORY_NEXT: &str = "category next";
@@ -115,7 +122,8 @@ pub const PATHFIND: &str = "pathfind";
 /// Up a sandy slope too, said with the bike that rides up it, "Mach Bike 6 north", where the
 /// player is not riding it already; P goes up one only on the bike (the user, 2026-10-03). Up a
 /// bumpy slope as well, the Acro Bike's, said with it, "Acro Bike 2 north", by P too on the bike,
-/// since the player's model is the same on either (spike 159).
+/// since the player's model is the same on either (spike 159). Up a waterfall, said with the move,
+/// "Waterfall 2 north", and down one; P keeps off it either way (the user, 2026-10-05, spike 170).
 pub const PATHFIND_HM: &str = "pathfind with HMs";
 
 pub const OUR_SIDE: &str = "our side";
@@ -127,12 +135,23 @@ pub const ENEMY_SIDE: &str = "enemy side";
 /// What the keys file says above an action's key, where its name does not say it all. The
 /// horde's order is Orion's, heard by fainting the bottom left Zigzagoon and the fifth going to 0%
 /// (movie16, 2026-10-01): the enemy side is said by battle position (`gen6.battle`).
-pub const EXPLAINED: [(&str, &str); 1] = [(
-    ENEMY_SIDE,
-    "The enemy's Pokémon are said in the order the battle places them. In a horde of five that is \
-     round a half circle from the bottom right: bottom right, top right, top middle, top left, \
-     bottom left.",
-)];
+pub const EXPLAINED: [(&str, &str); 3] = [
+    (
+        ENEMY_SIDE,
+        "The enemy's Pokémon are said in the order the battle places them. In a horde of five that \
+         is round a half circle from the bottom right: bottom right, top right, top middle, top \
+         left, bottom left.",
+    ),
+    (
+        MODE_TOGGLE,
+        "Steps through list mode, direction mode and touch mode, which walks the buttons of the \
+         bottom screen, the PokéNav's among them, and taps the one said.",
+    ),
+    (
+        TAP,
+        "Touches the button touch mode last said, and nothing else.",
+    ),
+];
 
 /// What a step into one of Fortree Gym's rotating doors is said with, which turns it a quarter as
 /// the player walks on: "push 1 west" (spike 161). The game names no such thing.
@@ -140,11 +159,12 @@ pub const PUSH: &str = "push";
 
 /// What a leg is said with where the ROM's move names cannot be read: pa3ds's own word for where
 /// the leg goes.
-pub const OWN_MOVE_WORDS: [(i64, &str); 4] = [
+pub const OWN_MOVE_WORDS: [(i64, &str); 5] = [
     (SURF, "water"),
     (CUT, "bush"),
     (STRENGTH, "boulder"),
     (ROCK_SMASH, "rock"),
+    (WATERFALL, "waterfall"),
 ];
 /// What a leg up a sandy slope is said with where the ROM's name for the Mach Bike cannot be
 /// read.
@@ -176,8 +196,10 @@ fn keys(pairs: &[(&str, &str)]) -> IndexMap<String, String> {
 ///
 /// Shift and K renames what K reads, as Pokemon Access does it, and shift and J renames whoever
 /// last spoke. Shift and P is the way there with HMs (2026-09-28). R says the player's side of a
-/// battle again and shift and R the enemy's (2026-09-29). All of these are the player's to change
-/// in `<pa3ds>\user\keys.toml`.
+/// battle again and shift and R the enemy's (2026-09-29). The apostrophe steps on to touch mode
+/// after direction mode (Orion, 2026-10-02; it was shift and T for a day), where J and L walk the
+/// bottom screen's buttons, I and O a row at a time, K says the one chosen again and Enter taps it.
+/// All of these are the player's to change in `<pa3ds>\user\keys.toml`.
 pub static DEFAULT_BINDINGS: LazyLock<Bindings> = LazyLock::new(|| {
     IndexMap::from([
         (
@@ -206,6 +228,26 @@ pub static DEFAULT_BINDINGS: LazyLock<Bindings> = LazyLock::new(|| {
                 (";", EAST),
                 ("l", SOUTH),
                 ("k", WEST),
+                ("[", CATEGORY_PREVIOUS),
+                ("]", CATEGORY_NEXT),
+                ("'", MODE_TOGGLE),
+                ("shift+k", RENAME),
+                ("shift+j", RENAME_SPEAKER),
+                ("p", PATHFIND),
+                ("shift+p", PATHFIND_HM),
+                ("r", OUR_SIDE),
+                ("shift+r", ENEMY_SIDE),
+            ]),
+        ),
+        (
+            TOUCH.to_string(),
+            keys(&[
+                ("j", ITEM_PREVIOUS),
+                ("l", ITEM_NEXT),
+                ("i", ROW_PREVIOUS),
+                ("o", ROW_NEXT),
+                ("k", ITEM_READ),
+                ("enter", TAP),
                 ("[", CATEGORY_PREVIOUS),
                 ("]", CATEGORY_NEXT),
                 ("'", MODE_TOGGLE),
@@ -385,6 +427,7 @@ pub struct Options {
     pub bike: Option<String>,
     pub acro: Option<String>,
     pub sides: Option<Sides>,
+    pub touch: Option<TouchTargets>,
 }
 
 impl Default for Options {
@@ -404,6 +447,7 @@ impl Default for Options {
             bike: None,
             acro: None,
             sides: None,
+            touch: None,
         }
     }
 }
@@ -411,6 +455,8 @@ impl Default for Options {
 /// Answers the navigation keys from the field reader's list.
 pub struct Navigator {
     pub(crate) field: Rc<dyn FieldSource>,
+    /// The bottom screen's touch targets, in a game where they are read.
+    touch: Option<TouchTargets>,
     /// How an item and the way to it are said (`config.toml`'s `[pa3ds.navigation]`).
     wording: Navigation,
     /// What a leg on water, through a bush or through a rock is said with, by the move's
@@ -476,6 +522,7 @@ impl Navigator {
             bike,
             acro,
             sides,
+            touch,
         } = options;
         let mut own: IndexMap<i64, String> = OWN_MOVE_WORDS
             .iter()
@@ -484,6 +531,7 @@ impl Navigator {
         own.extend(moves.unwrap_or_default());
         Navigator {
             field,
+            touch,
             wording: navigation.unwrap_or_default(),
             moves: own,
             bike: match bike {
@@ -552,11 +600,33 @@ impl Navigator {
             self.say(&text);
             return Ok(());
         }
+        if self.mode == TOUCH && TOUCH_ACTIONS.contains(&action) {
+            let said = match &mut self.touch {
+                Some(touch) => touch.press(action)?,
+                None => String::new(),
+            };
+            if !said.is_empty() {
+                self.say(&said);
+            }
+            return Ok(());
+        }
         if action == MODE_TOGGLE {
-            self.mode = if self.mode == LIST { DIRECTION } else { LIST };
+            let at = MODES
+                .iter()
+                .position(|&mode| mode == self.mode)
+                .ok_or_else(|| Error::value("tuple.index(x): x not in tuple"))?;
+            self.mode = MODES[(at + 1) % MODES.len()];
             self.chosen = None;
             self.facing = None;
-            self.say(&format!("{} mode", self.mode));
+            if self.mode == TOUCH {
+                let first = match &mut self.touch {
+                    Some(touch) => touch.start()?,
+                    None => "nothing to touch".to_string(),
+                };
+                self.say(&format!("touch mode, {first}"));
+            } else {
+                self.say(&format!("{} mode", self.mode));
+            }
             return Ok(());
         }
         let Some(r#where) = self.field.poll()? else {
@@ -935,6 +1005,13 @@ impl Navigator {
             if ground.hopping(cell, step) {
                 return Ok(self.acro.clone());
             }
+            if ground.climbing(cell, step) {
+                return self
+                    .moves
+                    .get(&WATERFALL)
+                    .cloned()
+                    .ok_or_else(|| Error::key(WATERFALL.to_string()));
+            }
             if let Some(clear) = ground.cleared.get(&step) {
                 return self
                     .moves
@@ -1062,7 +1139,7 @@ impl Navigator {
             return Ok(());
         }
         // A chunk loaded since the path was found can show a wall where nothing was known. A
-        // ledge on the way is not one, nor the shore: they are jumped.
+        // ledge on the way is not one, nor the shore or a waterfall: they are jumped.
         let (hm, height) = {
             let guidance = guidance.borrow();
             (guidance.hm, guidance.height)
@@ -1070,7 +1147,7 @@ impl Navigator {
         let ground = self.ground(r#where, hm, height)?;
         let mut all = true;
         for &cell in py::slice_from(&guidance.borrow().path, at + 1) {
-            if !(ground.open(cell)? || ground.ledge(cell)?.is_some() || ground.shore(cell)?) {
+            if !(ground.open(cell)? || ground.ledge(cell)?.is_some() || ground.over(cell)?) {
                 all = false;
                 break;
             }
@@ -1227,6 +1304,16 @@ impl Navigator {
             // On a door that is not the way's end, or the hidden Pokémon: what the cell does is
             // about to happen, and a path said now would be for a map the player is leaving. The
             // game walks the player into a door's own cell before the warp (poke_center_pc.ctm).
+            return Ok(());
+        }
+        if self
+            .field
+            .ground(r#where, None)?
+            .falls
+            .contains_key(&r#where.cell)
+        {
+            // Halfway up or down a waterfall, the player lands a cell on: going down Ever Grande
+            // City's, the way found there was "Waterfall 1 north", back up (spike 170).
             return Ok(());
         }
         let Some(item) = self.find(&listed, &guidance.borrow()) else {
@@ -1628,7 +1715,7 @@ fn reached(
     Ok(at.is_some_and(|at| at == ANY_FLOOR || at == walked[walked.len() - 1]))
 }
 
-/// `pathfind.find(...)` over `ground` with `over=ground.shore` and `**_walk(ground, start,
+/// `pathfind.find(...)` over `ground` with `over=ground.over` and `**_walk(ground, start,
 /// item)`, which each of Python's three calls spells out in full.
 fn search(
     ground: &Ground,
@@ -1663,7 +1750,7 @@ fn search_by(
     let ledge = |cell: Cell| ground.ledge(cell);
     let toll = |cell: Cell, step: Cell| ground.toll(cell, step);
     let joined = |cell: Cell, step: Cell| Ok(ground.joined(cell, step));
-    let over = |cell: Cell| ground.shore(cell);
+    let over = |cell: Cell| ground.over(cell);
     let walk = walk(ground, start, item)?;
     let through = |turns: &[i64], cell: Cell, step: Cell| walk.through(turns, cell, step);
     let arrives = |cell: Cell, turns: &[i64]| walk.arrives(cell, turns);

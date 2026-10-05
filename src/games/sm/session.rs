@@ -193,6 +193,7 @@ pub fn start(rpc: Rc<dyn Rpc>, speech: Rc<Speech>, setup: Setup) -> Result<Sessi
             Rc::new(move |blocks: &[Block]| watch.borrow_mut().forget(&live.allocated(blocks)))
         },
         walk: Some(walk),
+        bases: Vec::new(),
         pages: None,
     })
 }

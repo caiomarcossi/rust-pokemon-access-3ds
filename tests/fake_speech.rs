@@ -8,6 +8,8 @@ use crate::core::speech::Backend;
 #[derive(Default)]
 pub struct Recorder {
     pub spoken: RefCell<Vec<String>>,
+    /// What was said cutting off what came before.
+    pub interrupting: RefCell<Vec<String>>,
 }
 
 impl Recorder {
@@ -18,11 +20,18 @@ impl Recorder {
     pub fn spoken(&self) -> Vec<String> {
         self.spoken.borrow().clone()
     }
+
+    pub fn interrupting(&self) -> Vec<String> {
+        self.interrupting.borrow().clone()
+    }
 }
 
 impl Backend for Recorder {
-    fn speak(&self, text: &str, _interrupt: bool) {
+    fn speak(&self, text: &str, interrupt: bool) {
         self.spoken.borrow_mut().push(text.to_string());
+        if interrupt {
+            self.interrupting.borrow_mut().push(text.to_string());
+        }
     }
 
     fn braille(&self, _text: &str) {}

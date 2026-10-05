@@ -241,7 +241,14 @@ fn run(args: Args, hooks: &Hooks) -> py::Result<()> {
         log(note);
     }
     if !settings.said.is_empty() {
-        speech.say(&settings.said, Category::System);
+        speech.say(
+            &settings.said,
+            if settings.warning {
+                Category::Warning
+            } else {
+                Category::System
+            },
+        );
     }
     let mut bindings = None;
     if settings.general.keys && !args.no_keys {

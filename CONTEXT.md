@@ -106,7 +106,29 @@ game's **pane shape** (`lyt.PaneShape`, `sm.lyt.SHAPE`) says where, and every la
 panes through it (spike 112).
 
 **Layout work** — Game Freak's record for one layout, which says whether the layout is being drawn.
-It has no class of its own; the `nw::lyt::DrawInfo` inside it has.
+It has no class of its own; the `nw::lyt::DrawInfo` inside it has. The field and the battle draw
+their layouts through the system's **draw list**, a layout on it while its work's +0x05 is 1;
+an app draws the rest itself, in an order of its own. The draw marks a work drawn (+0x07) and
+nothing clears the mark, so a layout taken off the list is not drawn whatever its mark says: the
+battle's command buttons under its move list (spike 188).
+
+**View** — one of the AreaNav's screens as its module runs it (`app::townmap::NutsView`, the
+berry list; `ZukanView`, the Pokémon Distribution, and the rest): it draws the layouts of its
+`G2DUtil` only while a byte of its own says so, and leaves them as they were when it stops, every
+flag of theirs still saying drawn. Its layouts are **put away** while that byte is 0
+(`gen6.townmap`, spikes 181 and 183).
+
+**Button manager** — `app::tool::ButtonManager`: what an app's buttons are answered through,
+each button in a layout. Its buttons take taps only while it is not **locked** (+0x24), and the
+game locks a screen's managers under a menu: the party's list under "Do what with Blaze?". A
+layout whose every manager is locked is **idle** (`gen6.buttons`, spike 189). The field's PokéNav
+has no manager.
+
+**Touch bar** — an app's bottom bar, a view of a class of its module's own (`app::box::TouchBar`,
+`app::pokelist::TouchBar`, `app::sango_zukan::ZukanTouchBarView`) that pa3ds finds by the
+executable's `app::ui::UITouchBarView` it is built on: the PC Box, the party, the summary, the Bag
+and the Pokédex have one each. It feeds its button manager only while its byte +0x2d is set, which
+the party clears under its menu, the manager's own lock left open (spike 189).
 
 **Layout pool** — where a screen's layout works are built: a header pointing at itself, a table of
 (pool, work) entries, then slots of 0x104 bytes, and the pool's own work after the last. Every
@@ -241,6 +263,33 @@ touch area, a place the Pokémon lives in drawing a `poke_point.bclim` picture o
 names each touch area, through the AreaNav's list of what each town has (`archives.map_places`);
 the top screen names only the place under the map's cursor (spike 152).
 
+**Touch target** — a touch area (`nw::lyt::Bounding`) drawn on the bottom screen, by name: the
+words in its button, the game's word for the picture it is drawn with (the PokéNav's app buttons,
+"DexNav", out of the ROM's text), or its place among its layout's groups of words (the shortcut
+bar's icons under the AreaNav: POKÉMON, POKÉDEX, BAG, the player's name, SAVE, OPTIONS), or the
+species whose icon its picture draws, as the AreaNav's **Pokémon Distribution** does, through
+the AreaNav's navigator (`gen6.distribution`, spike 178), or where it is, as a **slot** with no
+words of its own is: the Box's grid and party, a Pokémon's marks (movie22). Placed in
+the touch screen's own pixels, from its top left (`games.common.touch`, spike 171). The AreaNav's
+map's places are touch areas too, left to its reader.
+
+A target's **button** is what lies inside its touch area, under the pane it hangs from; a
+target under a touch area of a layout drawn over its own, by its work's **layer** (+0x0A), is left
+out, since a tap would land on that (the X menu over the PokéNav, movie21). So is everything but
+a **list window** while one is up, a Yes and No answered first; and an **idle** layout, whose
+buttons the game has locked, however bright it is drawn (the party under "Do what with Blaze?",
+spike 189).
+
+**Touch mode** — the navigation mode that walks the touch targets, row by row, and taps the one
+just said on the player's key: the one thing pa3ds does to the game (ADR-0009, as amended
+2026-10-01). The tap goes through Azahar's cemuhook touch input, which pa3ds serves
+(`pa3ds.core.touch`), never the mouse.
+
+**Tone** — a short sound of pa3ds's own saying where a cursor is: higher the further up, panned
+the further right (`pa3ds.core.tones`). Touch mode sounds its target's place on the touch screen,
+and the Hoenn map's cursor its place on the map at each move, where between places the game says
+nothing (`gen6.mapcursor`, spike 173). `[pa3ds.ui] tones`, on unless turned off; never in a replay.
+
 **Pointer** — the hand that shows a tap in a battle the player watches: Wally's catching tutorial,
 the one battle fought for the player. A small picture alone in a layout but for the pane that
 places it, which the game puts on the button about to be tapped. Its item is that button, found
@@ -283,10 +332,12 @@ status, encounter slots). Each is separately toggleable and ships off.
 ## Speaking
 
 **Speech category** — what a piece of speech is (menu, dialogue, battle, system, a key's answer,
-guidance along a path), which decides whether it interrupts or queues. A key's answer
+guidance along a path, a warning), which decides whether it interrupts or queues. A key's answer
 interrupts, since the key never reached the game's window for the screen reader to cut speech
-on; everything else queues, menus too under `[pa3ds.ui] interrupt` (ADR-0010). While another window
-is in front only pa3ds's own lines and a key's answer are said (ADR-0021).
+on, and so does a **warning**, something the player must do before pa3ds can work ("close Azahar
+and start pa3ds again"); everything else queues, menus too under `[pa3ds.ui] interrupt`
+(ADR-0010). While another window is in front only pa3ds's own lines, a warning and a key's
+answer are said (ADR-0021).
 
 **Speech formatting** — pronunciation applied on the way out: "Cap O" for a single capital letter,
 symbol names, gender signs. Applied to speech only. Braille receives the raw string.
@@ -496,14 +547,17 @@ cells side by side more than two cells' height apart, is not walked between, but
 **ladder**, two one-cell triggers a drop apart, its top on a platform and its foot on the ground
 below: Fortree City's platforms in the trees are in the ground's own cell table (spike 160). A **ledge** is jumped down the way it drops and never climbed, a **slope** walked down
 and never up but on the **Mach Bike**, which the player's move model says they are riding (spike
-A), and a **conveyor belt** ridden the way it runs and never walked against: a
+158), and a **conveyor belt** ridden the way it runs and never walked against: a
 trigger over plain floor, known a game at a time by its script, as Dewford Gym's three are
 (spike 132). A turn costs as much as a step. **Water** is a wall to P, unless the player is on it
 already; **Shift and P** finds the way **with HMs**, across water too, going onto it costing five
 steps more than a step, and says each leg on the water with the game's word for the move:
 "3 south, Surf 33 south" (spike 136). The **shore**, the strip of blocked water between land and
 the sea, is jumped over either way as a ledge is jumped, getting on the water and off it, and the
-jump is said with the side it lands on (spike 162). A **bush**, the thing Cut clears, and a **cracked boulder**,
+jump is said with the side it lands on (spike 162). A **waterfall**, a row of blocked water one
+cell deep with the water above it higher, is jumped over the same way by Shift and P alone: up it
+with the move, at the same five steps' cost, "Waterfall 2 north", and down it with nothing to
+say, the game asking nothing. P keeps off it either way (spike 170). A **bush**, the thing Cut clears, and a **cracked boulder**,
 the rock Rock Smash breaks, stand in the way of P as anything standing does, and Shift and P goes
 through them at the same five steps' cost, "Cut 1 east, 2 east", the three of Rusturf Tunnel's
 rocks with a script of their own too, the only way through it to Verdanturf Town (spike 137). A
@@ -722,7 +776,9 @@ four kinds, one a way it drops: `0x74` north, `0x75` south, `0x73` west, `0x72` 
 kinds a way it goes down, as ledges are: `0x69` east (Granite Cave 1F), `0x6a` west, `0x6b`
 north and `0x6c` south (Jagged Pass), read off the ground's mesh (spike 158). **Bit 1 is set on water**, the sea `0x3d` and eight
 other kinds, where the blocked bit is clear and only a player surfing goes (spike 136), but for
-the **shore** `0x40` along the sea's edge, blocked as well, which Surf jumps (spike 162). Which of
+the **shore** `0x40` along the sea's edge, blocked as well, which Surf jumps (spike 162), and the
+**waterfall** `0x3f`, blocked too, climbed towards the higher water by the ROM's heights, north
+everywhere in ORAS (spike 170). Which of
 the other bits is tall grass is unread, so pathfinding goes through it. The game loads the
 quarter of the map round the player; the field map lists every chunk's file in the ROM's map
 chunks, and pathfinding reads the rest of the matrix from there, a chunk once. A cell neither
