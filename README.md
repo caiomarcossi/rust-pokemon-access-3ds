@@ -58,7 +58,12 @@ ROMs are not distributed here and never will be.
 
 ## Setting up
 
-1. Unpack pa3ds into a folder of its own.
+1. Unpack pa3ds into a folder of its own that you can write to, such as one in your Documents
+   folder. Not under Program Files: pa3ds keeps its settings beside itself, and there it cannot
+   without running as administrator. Before unpacking, open the zip's Properties and check
+   Unblock, or Windows SmartScreen stops pa3ds when it starts. Unpack with Extract All rather than
+   running `pa3ds.exe` from inside the zip: run that way, Windows runs a copy in a temporary
+   folder, and the settings, keys and names you change there are gone on the next start.
 2. Start Azahar once and close it, so that it writes its settings file.
 3. With Azahar closed, run `pa3ds.exe`. On its first start pa3ds writes its own settings files
    into the `user` folder beside it, changes the Azahar settings it needs (listed below), and
