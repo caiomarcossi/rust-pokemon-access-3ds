@@ -1,4 +1,4 @@
-# LF everywhere: docs/ and CONTEXT.md are mirrored byte for byte from the Python checkout
+# LF everywhere: docs/ and GLOSSARY.md are mirrored byte for byte from the Python checkout
 # (tools/sync.py mirror), and a CRLF checkout would make every one of them look changed.
 * text=auto eol=lf
 *.dll binary

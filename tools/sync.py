@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PYTHON = Path(os.environ.get("PA3DS_PYTHON", ROOT.parent / "pokemon-access-3ds"))
 MANIFEST = ROOT / "port.toml"
 
-MIRRORED = ("docs/", "CONTEXT.md", "LICENSE", "tests/fake_qt_config.ini")
+MIRRORED = ("docs/", "GLOSSARY.md", "LICENSE", "tests/fake_qt_config.ini")
 """Carried over byte for byte: the decisions, findings and vocabulary are the same whichever
 language reads the game."""
 ADAPTED = ("README.md", "AGENTS.md", "CLAUDE.md")

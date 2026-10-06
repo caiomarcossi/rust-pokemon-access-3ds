@@ -11,10 +11,10 @@ is upstream: features are found and built there first, with its spikes and movie
 here as a port of the commit `port.toml` names. Each Python file has one Rust file at the same
 path (`docs/porting.md`), so an upstream change is a change to the files it maps to.
 
-Before the first change in a session, read [CONTEXT.md](CONTEXT.md) in full — the vocabulary,
+Before the first change in a session, read [GLOSSARY.md](GLOSSARY.md) in full — the vocabulary,
 which code and conversation both use — and the **ADRs** for the area you are working in
 ([the index](docs/adr/README.md) is grouped by area). An ADR is binding: contradict one only by
-saying so. `CONTEXT.md` and everything in `docs/` but `docs/porting.md` are upstream's, copied
+saying so. `GLOSSARY.md` and everything in `docs/` but `docs/porting.md` are upstream's, copied
 byte for byte: change them upstream, never here.
 
 ## Hard constraints

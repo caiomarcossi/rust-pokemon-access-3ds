@@ -8,7 +8,7 @@ expect:
 
 | The skills expect | pa3ds has |
 | ----------------- | --------- |
-| `CONTEXT.md` | [`CONTEXT.md`](../../CONTEXT.md) — the glossary, at the repo root |
+| `GLOSSARY.md` | [`GLOSSARY.md`](../../GLOSSARY.md) — the glossary, at the repo root |
 | `docs/adr/` | [`docs/adr/`](../adr/README.md) — one decision a record, indexed by area |
 
 Beside them, and not something the skills know about: [`docs/findings/`](../findings/README.md),
@@ -16,7 +16,7 @@ the evidence — 79 spikes, what each measured and what was built from it.
 
 ## Before exploring, read these
 
-- **`CONTEXT.md`** — the vocabulary. Short; read all of it, and use its words.
+- **`GLOSSARY.md`** — the vocabulary. Short; read all of it, and use its words.
 - **The ADRs for the area you are about to work in.** The [index](../adr/README.md) groups them.
 - **The findings for that area**, when you need to know *how* something was established rather
   than what was decided. `spikes/README.md` maps the scripts to them.
@@ -25,7 +25,7 @@ the evidence — 79 spikes, what each measured and what was built from it.
 
 | What resolved | Where it goes |
 | ------------- | ------------- |
-| A term, or a concept the code names inconsistently | `CONTEXT.md` |
+| A term, or a concept the code names inconsistently | `GLOSSARY.md` |
 | A decision someone could plausibly undo without knowing why | a new ADR in `docs/adr/` |
 | Something measured against the running game | a spike entry in `docs/findings/` |
 | Designed work not yet built | `docs/plans/` |
@@ -35,7 +35,7 @@ the evidence — 79 spikes, what each measured and what was built from it.
 ## Use the glossary's vocabulary
 
 When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a
-test name), use the term as defined in `CONTEXT.md`. Don't drift to synonyms the glossary
+test name), use the term as defined in `GLOSSARY.md`. Don't drift to synonyms the glossary
 explicitly avoids.
 
 If the concept you need isn't in the glossary yet, that's a signal — either you're inventing

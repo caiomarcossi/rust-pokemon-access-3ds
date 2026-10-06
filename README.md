@@ -247,7 +247,7 @@ that a player runs one `pa3ds.exe` with nothing to install. The Python repositor
 features are built first; this one follows it module for module (`port.toml` names the commit it
 matches) and is checked against it line for line on recorded replays (`tools/tape/`). The
 decisions are in [docs/adr/](docs/adr/README.md), the evidence behind them in
-[docs/findings/](docs/findings/README.md), and the vocabulary in [CONTEXT.md](CONTEXT.md).
+[docs/findings/](docs/findings/README.md), and the vocabulary in [GLOSSARY.md](GLOSSARY.md).
 
 ```
 cargo build --release

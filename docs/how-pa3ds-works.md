@@ -4,7 +4,7 @@ This is a tour of pa3ds from the start, for a coder who is not a reverse enginee
 each part does and why it is necessary. It does not tell every detail: the detail is in the code,
 the [ADRs](adr/README.md) and the [findings](findings/README.md).
 
-Words in **bold** are words of [CONTEXT.md](../CONTEXT.md), the vocabulary that the code uses.
+Words in **bold** are words of [GLOSSARY.md](../GLOSSARY.md), the vocabulary that the code uses.
 Technical words (DLL, vtable, heap) have a short meaning in the [glossary](#glossary) at the end.
 
 Written 2026-09-29. If the code and this page do not agree, the code is correct.
