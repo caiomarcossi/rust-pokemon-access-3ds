@@ -246,8 +246,8 @@ This is a port of [the Python pa3ds](https://github.com/KenzonYeoh/pokemon-acces
 that a player runs one `pa3ds.exe` with nothing to install. The Python repository is where
 features are built first; this one follows it module for module (`port.toml` names the commit it
 matches) and is checked against it line for line on recorded replays (`tools/tape/`). The
-decisions are in [docs/adr/](docs/adr/README.md), the evidence behind them in
-[docs/findings/](docs/findings/README.md), and the vocabulary in [GLOSSARY.md](GLOSSARY.md).
+decisions, the evidence behind them and the vocabulary are the Python repository's, in its
+`docs/` and `GLOSSARY.md`.
 
 ```
 cargo build --release

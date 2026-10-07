@@ -1,0 +1,63 @@
+# Keeps one open issue labelled `upstream` saying what the port has not caught up with yet.
+# Upstream's own workflow (`.github/workflows/port.yml` there) dispatches `upstream-push` here on
+# every push to its main; a push here that changes port.toml runs this too, and closes the issue
+# once port.toml names upstream's HEAD. PORT_SYNC_TOKEN reads the private upstream repository.
+name: upstream
+
+on:
+  repository_dispatch:
+    types: [upstream-push]
+  push:
+    paths: [port.toml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency: upstream
+
+jobs:
+  issue:
+    # A port.toml marked on a work-in-progress branch has not landed yet.
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/pokemon-access-3ds
+          token: ${{ secrets.PORT_SYNC_TOKEN }}
+          path: upstream
+          fetch-depth: 0
+      - name: Open, rewrite or close the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PA3DS_PYTHON: upstream
+          UPSTREAM_REPO: ${{ github.repository_owner }}/pokemon-access-3ds
+        run: |
+          pinned=$(python -c "import tomllib; print(tomllib.load(open('port.toml', 'rb'))['upstream'])")
+          head=$(git -C upstream rev-parse HEAD)
+          number=$(gh issue list --label upstream --state open --json number --jq '.[0].number // empty')
+          if [ "$pinned" = "$head" ]; then
+            [ -n "$number" ] && gh issue close "$number" --comment "port.toml now matches upstream ${head:0:7}."
+            exit 0
+          fi
+          {
+            echo "Upstream is at $UPSTREAM_REPO@$head; port.toml matches $UPSTREAM_REPO@$pinned."
+            echo "Compare: https://github.com/$UPSTREAM_REPO/compare/$pinned...$head"
+            echo
+            echo "Port it as AGENTS.md's *Keeping up with upstream* says. This issue closes itself"
+            echo "when a push to the default branch brings port.toml level with upstream."
+            echo
+            echo '```'
+            # An issue body holds 65536 characters; the whole refactor round's status was 16k.
+            python tools/sync.py status | sed 's#git -C upstream#git -C ../pokemon-access-3ds#' | head -c 60000
+            echo '```'
+          } > body.md
+          title="Port upstream up to ${head:0:7}"
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --title "$title" --body-file body.md
+          else
+            gh issue create --label upstream --title "$title" --body-file body.md
+          fi

@@ -11,11 +11,26 @@ is upstream: features are found and built there first, with its spikes and movie
 here as a port of the commit `port.toml` names. Each Python file has one Rust file at the same
 path (`docs/porting.md`), so an upstream change is a change to the files it maps to.
 
-Before the first change in a session, read [GLOSSARY.md](GLOSSARY.md) in full — the vocabulary,
-which code and conversation both use — and the **ADRs** for the area you are working in
-([the index](docs/adr/README.md) is grouped by area). An ADR is binding: contradict one only by
-saying so. `GLOSSARY.md` and everything in `docs/` but `docs/porting.md` are upstream's, copied
-byte for byte: change them upstream, never here.
+The Python checkout sits beside this one, at `../pokemon-access-3ds` (or `PA3DS_PYTHON`). Its
+glossary and docs are this repository's too, and are not copied here: before the first change in
+a session, read its `GLOSSARY.md` in full — the vocabulary, which code and conversation both use
+— and the **ADRs** for the area you are working in (`docs/adr/README.md` there is grouped by
+area). An ADR is binding: contradict one only by saying so. A path such as `docs/runbooks/rig.md`
+in a comment or doc here means the Python checkout's. This repository's only doc is
+`docs/porting.md`.
+
+## Talking to upstream
+
+- **What to port** is an open issue in this repository labelled `upstream`, kept up to date by
+  `.github/workflows/upstream.yml`: each push to upstream's main rewrites it with
+  `sync.py status`, and a push here that brings `port.toml` level with upstream closes it.
+- **A bug found in the Python while porting** is ported as it is (below) and filed as an issue in
+  the Python repository, labelled `from-port`:
+  `gh issue create --repo <owner>/pokemon-access-3ds --label from-port --title ... --body ...`,
+  naming the file, the upstream commit it was found at, and what goes wrong. Upstream fixes it
+  there; the fix then arrives here like any other change. Search first
+  (`gh issue list --repo <owner>/pokemon-access-3ds --label from-port --state all`) so a bug is
+  filed once.
 
 ## Hard constraints
 
@@ -75,8 +90,8 @@ The Python checkout is `PA3DS_PYTHON`, or `../pokemon-access-3ds` beside this on
 1. `status`, then for each file listed to port by hand, read its upstream diff
    (`git -C ../pokemon-access-3ds diff <port.toml's commit>..HEAD -- <path>`) and make the same
    change to its Rust file, following `docs/porting.md`. Port the change to its tests too.
-2. `mirror` for the docs; rewrite this file, `README.md` or `CLAUDE.md` by hand where upstream's
-   changed in a way that applies here.
+2. `mirror` for the data files; rewrite this file, `README.md` or `CLAUDE.md` by hand where
+   upstream's changed in a way that applies here.
 3. `cargo test --lib`, `cargo clippy --all-targets`, `sync.py tests`.
 4. With the upstream commit checked out there, record a tape of a movie that reaches the change
    and replay it here, with the tapes already recorded (`tools/tape/record_all.sh <replay>`, then
@@ -101,7 +116,7 @@ ADR, finding or spike, except in its section for developers.
 
 ## Runbooks
 
-Upstream's runbooks are in `docs/runbooks/` and apply as written to the game and the emulator;
+Upstream's runbooks are in its `docs/runbooks/` and apply as written to the game and the emulator;
 where they run `uv run` or a spike, run them in the Python checkout. Spikes and the movie rig stay
 upstream and are not ported (the user, 2026-10-03): they record how a finding was reached, and
 drive the emulator rather than ship.

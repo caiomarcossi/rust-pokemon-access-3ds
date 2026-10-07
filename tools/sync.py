@@ -6,7 +6,7 @@ Python file has one place here (`rust_path`), so a change upstream maps to a fil
 
     python tools/sync.py status            what changed upstream since the commit port.toml names
     python tools/sync.py layout            create the Rust file for any Python file without one
-    python tools/sync.py mirror            copy the files carried over as they are (docs, data)
+    python tools/sync.py mirror            copy the files carried over as they are (data, licence)
     python tools/sync.py tests             every Python test without a Rust test of its name
     python tools/sync.py mark [<commit>]   record that the port now matches <commit> (default HEAD)
 
@@ -28,14 +28,16 @@ ROOT = Path(__file__).resolve().parents[1]
 PYTHON = Path(os.environ.get("PA3DS_PYTHON", ROOT.parent / "pokemon-access-3ds"))
 MANIFEST = ROOT / "port.toml"
 
-MIRRORED = ("docs/", "GLOSSARY.md", "LICENSE", "tests/fake_qt_config.ini")
-"""Carried over byte for byte: the decisions, findings and vocabulary are the same whichever
-language reads the game."""
+MIRRORED = ("LICENSE", "tests/fake_qt_config.ini")
+"""Carried over byte for byte."""
 ADAPTED = ("README.md", "AGENTS.md", "CLAUDE.md")
 """Written again for the Rust repository: they name commands and tools."""
-NOT_PORTED = ("spikes/", "pyproject.toml", "uv.lock", ".gitignore", ".claude/")
+NOT_PORTED = ("spikes/", "docs/", "GLOSSARY.md", "pyproject.toml", "uv.lock", ".gitignore",
+              ".claude/", ".github/")
 """Stay upstream. A spike records how a finding was reached, run against the Python package;
-the rig drives the emulator and ships with nothing."""
+the rig drives the emulator and ships with nothing. The decisions, findings and vocabulary are
+the same whichever language reads the game, so they are read in the Python checkout rather than
+copied here."""
 
 
 def rust_path(python: str) -> str | None:
@@ -80,7 +82,7 @@ def status() -> int:
     upstream = str(manifest()["upstream"])
     head = git("rev-parse", "HEAD").strip()
     print(f"port.toml matches {upstream[:9]}; upstream HEAD is {head[:9]}")
-    if git("status", "--porcelain", "--", "src", "tests", "docs"):
+    if git("status", "--porcelain", "--", "src", "tests"):
         print("upstream has uncommitted changes; they are not counted")
     if head == upstream:
         print("nothing to sync")
@@ -166,10 +168,6 @@ def mirror() -> int:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
             copied += 1
-    for path in [p for p in (ROOT / "docs").rglob("*") if p.is_file()]:
-        rel = path.relative_to(ROOT).as_posix()
-        if rel not in tracked():
-            print(f"  only here, not upstream: {rel}")
     print(f"mirror: {copied} files copied")
     return 0
 
