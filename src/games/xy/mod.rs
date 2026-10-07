@@ -11,8 +11,8 @@ use std::sync::OnceLock;
 
 use indexmap::IndexMap;
 
-use crate::games::gen6::archives::{RomLayout, TownFacilities, owned};
 use crate::games::gen6::game::{Data, Game};
+use crate::games::gen6::rom::layout::{RomLayout, TownFacilities, owned};
 
 /// Words the game does not say itself, a folder a language: `sprites.toml`, X's fallback names
 /// for the people on its maps (spike 108).

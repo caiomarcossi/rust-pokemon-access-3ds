@@ -44,6 +44,7 @@
 //! where the player can land, and it names the place a little ahead of the player rather than under
 //! them: the first row shown whose rectangle holds the point `LOOKUP` ahead.
 
+use std::cell::{Cell as Slot, RefCell};
 use std::collections::HashSet;
 use std::rc::Rc;
 
@@ -54,13 +55,30 @@ use crate::core::discovery::{HEAP_SPAN, within};
 use crate::core::memory::Memory;
 use crate::core::rom::lz11;
 use crate::core::rtti::ClassNames;
-use crate::games::common::field::{
-    Field, Ground, Interactable, LANDMARKS, MIRAGE, NO_ZONE, POKEMON, ROUTES, SKY_SOURCE, Steer,
-    TOWNS, place_source, source_number,
+use crate::core::speech::{Category, Speech};
+use crate::games::common::field::ground::NO_ZONE;
+use crate::games::common::field::things::{
+    APP_SOURCE, Field, Interactable, POKEMON, Steer, place_source, source_number,
 };
-use crate::games::common::navigate::FieldSource;
+use crate::games::common::garc::garc_files;
 use crate::games::gen6::apps::LOADED_CODE;
-use crate::py::{self, Error, Result};
+use crate::games::gen6::game::OwnApp;
+use crate::games::gen6::rom::archives::GameText;
+use crate::py::{self, Error, Kind, Log, Result};
+
+/// The sky's map of places: the one file of its archive, "SLAN" in a two-letter archive of one
+/// (spike 166). Its neighbours `a/2/5/1`, `a/2/5/3` and `a/2/5/4` are the sky's models and
+/// textures, the files the sky's process loads.
+pub const ARCHIVE: &str = "a/2/5/2";
+
+pub const TOWNS: &str = "towns";
+pub const ROUTES: &str = "routes";
+pub const LANDMARKS: &str = "landmarks";
+/// The places on the sky's map: its towns and cities, its routes over land and sea, everything
+/// else always there, caves and islands, as the game's own table groups them, and the mirage spots
+/// it shows today (spike 166). Nothing on the field is in them.
+pub const MIRAGE: &str = "mirage spots";
+pub const SKY: [&str; 4] = [TOWNS, ROUTES, LANDMARKS, MIRAGE];
 
 pub const APP: &str = "N3app7skyTrip8MainProcE";
 pub const CAMERA: i64 = 0xB4;
@@ -391,7 +409,7 @@ pub fn listed(
         let at = cell(flight, near_x - look_x, near_z - look_z)?;
         items.push(Interactable {
             code: kept.zone,
-            source: place_source(SKY_SOURCE, number)?,
+            source: place_source(APP_SOURCE, number)?,
             ..Interactable::new(&kept.category, &kept.name, at)
         });
         places.insert(number, kept);
@@ -400,7 +418,7 @@ pub fn listed(
     for flock in flying {
         let at = cell(flight, flock.x - flight.x, flock.z - flight.z)?;
         items.push(Interactable {
-            source: place_source(SKY_SOURCE, flock.model)?,
+            source: place_source(APP_SOURCE, flock.model)?,
             ..Interactable::new(POKEMON, FLOCK, at)
         });
     }
@@ -491,49 +509,98 @@ pub fn facing(heading: f64) -> Result<&'static str> {
     Ok(COMPASS[py::modulo(py::round(clockwise / 45.0)?, COMPASS.len() as i64) as usize])
 }
 
-/// What the navigator reads the map through: the sky's places and flocks while the player soars,
-/// and the field's everywhere else.
-pub struct SkySource {
+/// Soaring on Latios, an app of ORAS's own for the gen 6 profile to run (`gen6.game.OwnApp`): the
+/// sky's places and flocks for the navigation keys, and the way the player faces, said once a turn
+/// stops on another, as the bottom screen's arrow shows it.
+pub struct Soaring {
     memory: Rc<dyn Memory>,
-    field: Rc<dyn FieldSource>,
-    /// The sky's process while it runs, else None.
-    soaring: Rc<dyn Fn() -> Option<i64>>,
     known: Vec<Place>,
     rows: i64,
+    speech: Rc<Speech>,
+    log: Log,
+    /// The heading the player soared with at the last poll, and the compass point last said for
+    /// it: said again once a turn stops on another.
+    heading: Slot<Option<f64>>,
+    facing: RefCell<Option<&'static str>>,
 }
 
-impl SkySource {
-    pub fn new(
-        memory: Rc<dyn Memory>,
-        field: Rc<dyn FieldSource>,
-        soaring: Rc<dyn Fn() -> Option<i64>>,
-        known: Vec<Place>,
-    ) -> Self {
+impl Soaring {
+    pub fn new(memory: Rc<dyn Memory>, known: Vec<Place>, speech: Rc<Speech>, log: Log) -> Self {
         let rows = 1 + known
             .iter()
             .flat_map(|place| place.rows.iter().copied())
             .max()
             .unwrap_or(-1);
-        SkySource {
+        Soaring {
             memory,
-            field,
-            soaring,
             known,
             rows,
+            speech,
+            log,
+            heading: Slot::new(None),
+            facing: RefCell::new(None),
         }
+    }
+
+    /// Soaring where the ROM's map of places is read, or None: without it, the field's lists are
+    /// walked as they were. The factory `Game.apps` holds.
+    pub fn of(
+        memory: Rc<dyn Memory>,
+        text: Option<&GameText>,
+        speech: Rc<Speech>,
+        log: Log,
+    ) -> Result<Option<Rc<dyn OwnApp>>> {
+        let Some(text) = text else {
+            return Ok(None);
+        };
+        let Some(packed) = text.files.get(ARCHIVE) else {
+            return Ok(None);
+        };
+        let known = (|| -> Result<Vec<Place>> {
+            let files = garc_files(packed)?;
+            let Some(first) = files.first() else {
+                return Err(Error::index("list index out of range"));
+            };
+            places(first, &|zone| text.zone_place(zone))
+        })();
+        let known = match known {
+            Ok(known) => known,
+            Err(error)
+                if error.is(Kind::RomError)
+                    || error.is(Kind::IndexError)
+                    || error.is(Kind::StructError) =>
+            {
+                return Ok(None);
+            }
+            Err(error) => return Err(error),
+        };
+        if known.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(Rc::new(Soaring::new(memory, known, speech, log))))
     }
 }
 
-impl FieldSource for SkySource {
-    fn visit(&self) -> Option<(i64, i64)> {
-        self.field.visit()
+impl OwnApp for Soaring {
+    fn app(&self) -> &'static str {
+        APP
     }
 
-    fn poll(&self) -> Result<Option<Field>> {
-        let process = (self.soaring)();
-        let Some(process) = process.filter(|_| !self.known.is_empty()) else {
-            return self.field.poll();
-        };
+    fn name(&self) -> &'static str {
+        "sky"
+    }
+
+    fn categories(&self) -> Vec<&'static str> {
+        SKY.to_vec()
+    }
+
+    fn started(&self) {
+        // Each flight says the way the player faces as it settles, the first included.
+        self.heading.set(None);
+        *self.facing.borrow_mut() = None;
+    }
+
+    fn listed(&self, process: i64) -> Result<Option<Field>> {
         let Some(flight) = read(&*self.memory, process)? else {
             return Ok(None);
         };
@@ -544,16 +611,31 @@ impl FieldSource for SkySource {
         Ok(Some(listed(&flight, &self.known, today.as_ref(), &flying)?))
     }
 
-    fn interactables(&self, r#where: &Field) -> Result<Field> {
-        if r#where.steer.is_some() {
-            Ok(r#where.clone())
-        } else {
-            self.field.interactables(r#where)
+    /// One small read a field poll while soaring.
+    fn poll(&self, process: i64) -> Result<()> {
+        let Some(flight) = read(&*self.memory, process)? else {
+            return Ok(());
+        };
+        let was = self.heading.replace(Some(flight.heading));
+        let Some(was) = was else {
+            return Ok(());
+        };
+        if (flight.heading - was).abs() > STILL {
+            return Ok(());
         }
-    }
-
-    fn ground(&self, r#where: &Field, height: Option<f64>) -> Result<Ground> {
-        self.field.ground(r#where, height)
+        let word = facing(flight.heading)?;
+        if *self.facing.borrow() != Some(word) {
+            *self.facing.borrow_mut() = Some(word);
+            (self.log)(&format!(
+                "sky: facing {word} at ({}, {}) height {}",
+                py::fixed(flight.x, 0),
+                py::fixed(flight.z, 0),
+                py::fixed(flight.height, 0)
+            ));
+            self.speech
+                .say(&format!("facing {word}"), Category::Guidance);
+        }
+        Ok(())
     }
 }
 

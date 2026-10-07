@@ -1,7 +1,7 @@
 //! A battle as every game's battle reader says it: a side (`Battler`), the signs its name ends
 //! in, and what a gauge leads to.
 //!
-//! Gen 6 and Sun draw their HP boxes otherwise and find their gauges otherwise (`gen6.battle`,
+//! Gen 6 and Sun draw their HP boxes otherwise and find their gauges otherwise (`gen6.screens.battle`,
 //! `sm.battle`); what a gauge holds of the Pokémon it shows is the same in both, the battle record
 //! at +0x0c and its `PokemonParam` at the record's +0x00 (spikes 66 and 124).
 

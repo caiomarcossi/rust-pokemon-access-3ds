@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 use super::fake_memory::FakeMemory;
-use crate::games::gen6::buttons::{
+use crate::games::gen6::screens::buttons::{
     BAR_MANAGER, BUTTONS, Buttons, HANDLE, INPUT, LISTENER, LOCKED, WORK,
 };
 

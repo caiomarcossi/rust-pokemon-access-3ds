@@ -4,7 +4,7 @@
 use std::rc::Rc;
 
 use super::fake_memory::FakeMemory;
-use crate::games::gen6::dowsing::{LEVEL, Lights, PARENT, WORK};
+use crate::games::gen6::field::dowsing::{LEVEL, Lights, PARENT, WORK};
 
 const PROCESS: i64 = 0x08C65224;
 const FIELD_WORK: i64 = 0x08248DD4;

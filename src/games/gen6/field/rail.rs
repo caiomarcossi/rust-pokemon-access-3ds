@@ -44,15 +44,17 @@
 //! held (spike 105). So a way on a rail is said from the camera (`pathfind.turned`), whose heading
 //! the corridor gives as a bearing of its own (`bearing`).
 
+use std::cell::{Cell as Slot, RefCell};
 use std::collections::VecDeque;
 use std::rc::Rc;
 
 use indexmap::IndexMap;
 
 use crate::core::binary::{f32, s16, u16, u32};
-use crate::core::discovery::{ALLOCATION, HEAP_SPAN, LINEAR_SPAN, within};
+use crate::core::discovery::{ALLOCATION, Found, HEAP_SPAN, LINEAR_SPAN, within};
 use crate::core::memory::Memory;
 use crate::core::pathfind::{Box, Cell};
+use crate::games::gen6::field::{camera, mmodel, zonedata};
 use crate::py::{self, Error, Result};
 
 /// A table entry: owner, line id, 0, the line's record.
@@ -737,4 +739,197 @@ pub fn spread(cells: impl IntoIterator<Item = Cell>) -> Result<(Cell, (i64, i64)
         return Err(Error::value("min() iterable argument is empty"));
     };
     Ok(((west, north), (east - west + 1, south - north + 1)))
+}
+
+/// Every line and track in a map's chunks and where its joints are, out of the ROM
+/// (`archives.Streets`).
+pub type Streets = Rc<dyn Fn(&[i64]) -> Result<Network>>;
+
+/// A zone's furniture and warps out of the ROM, by zone (`Rails.records`).
+pub type Records = IndexMap<i64, (Vec<Vec<u8>>, Vec<Vec<u8>>)>;
+
+/// `a or b` for an address that is None or a number: 0 is as false as None.
+pub fn keep(found: Option<i64>, held: Option<i64>) -> Option<i64> {
+    if found.is_some_and(|address| address != 0) {
+        found
+    } else {
+        held
+    }
+}
+
+/// Lumiose's streets as the field walks them: the lines the game has loaded, every line of the
+/// map's streets out of the ROM, and the corridor the player is in.
+pub struct Rails {
+    memory: Rc<dyn Memory>,
+    /// Where there is no ROM to read, None, and only the lines the game has loaded are known,
+    /// with no joint to turn at.
+    streets: Option<Streets>,
+    /// The furniture and warps of every zone with records on streets, out of the ROM: on a
+    /// street the records of the other zones of the map are listed too, since South Boulevard
+    /// is two zones and the one the player is not in had Café Soleil (spike 107).
+    pub records: Records,
+    /// The chunk files the lines of the map were last read for.
+    chunk_files: RefCell<Vec<i64>>,
+    /// Where the world has each point and joint of the map's streets (`Network`).
+    places: RefCell<IndexMap<i64, (f64, f64)>>,
+    /// The table of the rails loaded, found through the line the player was on.
+    table: Slot<Option<i64>>,
+    /// Every line read from it, by id, kept once read: a line's walls and the points it joins
+    /// the others at never change, and the table misses a line it holds for a poll now and then
+    /// as the game moves its entries about, which laid the corridor out afresh under a way being
+    /// walked and lost the thing it led to (spike 105).
+    lines: RefCell<IndexMap<i64, Line>>,
+    /// The corridor the last poll found the player in, or None off the rails.
+    pub corridor: RefCell<Option<Rc<Corridor>>>,
+    /// The block holding the camera's heading, once a sweep has found it (`camera`).
+    camera: Slot<Option<i64>>,
+    /// The line the corridor is laid out from. Kept while it is loaded and joined to the
+    /// player's, so the cells a way was found in stay where they were as the player walks from
+    /// one line onto the next; laid afresh from the player's own line otherwise. Which way it
+    /// runs does not matter: a way there is said from the way the player faces.
+    anchor: Slot<Option<i64>>,
+}
+
+impl Rails {
+    pub fn new(memory: Rc<dyn Memory>, streets: Option<Streets>, records: Records) -> Self {
+        Rails {
+            memory,
+            streets,
+            records,
+            chunk_files: RefCell::new(Vec::new()),
+            places: RefCell::new(IndexMap::new()),
+            table: Slot::new(None),
+            lines: RefCell::new(IndexMap::new()),
+            corridor: RefCell::new(None),
+            camera: Slot::new(None),
+            anchor: Slot::new(None),
+        }
+    }
+
+    /// Take in what a sweep found: the camera, and the table of the rails loaded, through the
+    /// line the player's model `head` is on.
+    pub fn track(&self, found: &Found, head: Option<&[u8]>) -> Result<()> {
+        self.camera
+            .set(keep(camera::find(found, &*self.memory)?, self.camera.get()));
+        if let Some(head) = head
+            && mmodel::on_rail(head)?
+        {
+            let line = mmodel::rail(head)?.0;
+            self.table.set(keep(
+                find_table(&found.pages, &*self.memory, line)?,
+                self.table.get(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Where the player's model `head` is in the corridor of the streets joined to its line, and
+    /// the way up walks them, or None while the line is not known. `files` are the map's chunk
+    /// files, as the field map lists them.
+    pub fn poll(&self, head: &[u8], files: &[i64]) -> Result<Option<(Cell, Option<f64>)>> {
+        *self.corridor.borrow_mut() = None;
+        let (line, a, x) = mmodel::rail(head)?;
+        let corridor = self.read_corridor(line, files)?;
+        if let Some(corridor) = &corridor {
+            self.anchor.set(Some(corridor.laid[0].line.id));
+        }
+        let at = match &corridor {
+            None => None,
+            Some(corridor) => corridor.at(line, a, x)?,
+        };
+        let (Some(corridor), Some(at)) = (corridor, at) else {
+            return Ok(None);
+        };
+        *self.corridor.borrow_mut() = Some(corridor.clone());
+        Ok(Some((at, self.bearing(&corridor, line, head)?)))
+    }
+
+    /// Where up walks the player in the corridor: the camera's heading, turned from the world
+    /// into the line's frame by the way the line runs where they stand; the way they face while
+    /// no camera has been found, which is the same until left or right is tapped or down pressed.
+    fn bearing(&self, corridor: &Corridor, line: i64, head: &[u8]) -> Result<Option<f64>> {
+        let Some(on) = corridor.line(line) else {
+            return Ok(None);
+        };
+        let world = match self.camera.get() {
+            None => None,
+            Some(block) => camera::heading(&*self.memory, block)?,
+        };
+        let (across, along) = match world {
+            None => {
+                let (x, a) = mmodel::rail_facing(head)?;
+                let (along, across) = on.direction(a, x);
+                (across, along)
+            }
+            Some(world) => {
+                let toward = (world - mmodel::rail_way(head)?).to_radians();
+                let (across, along) = (toward.sin(), toward.cos());
+                if on.track {
+                    (-across, -along)
+                } else {
+                    (across, along)
+                }
+            }
+        };
+        Ok(corridor.bearing(line, across, along))
+    }
+
+    /// The streets joined to `line`, laid out flat, or None while the line is not known: every
+    /// line and track in the map's chunks where the ROM can be read, and the lines the game has
+    /// loaded.
+    fn read_corridor(&self, line: i64, files: &[i64]) -> Result<Option<Rc<Corridor>>> {
+        self.read_streets(files)?;
+        if let Some(table) = self.table.get() {
+            let read = read_table(&*self.memory, table, &self.lines.borrow())?;
+            self.lines.borrow_mut().extend(read);
+        }
+        if !self.lines.borrow().contains_key(&line) {
+            return Ok(None);
+        }
+        if let Some(anchor) = self.anchor.get() {
+            let kept = lay_out(&self.lines.borrow(), anchor, Some(&self.places.borrow()))?;
+            if let Some(kept) = kept
+                && kept.holds(line)
+            {
+                return Ok(Some(Rc::new(kept)));
+            }
+        }
+        Ok(lay_out(&self.lines.borrow(), line, Some(&self.places.borrow()))?.map(Rc::new))
+    }
+
+    /// Take in every line of the map's streets from the ROM, once a map: the game loads a line
+    /// only with the chunks round the player, and a door on a line further on was nowhere, the
+    /// Pokémon Lab's among them (spike 106). A map numbers its lines and points afresh, the same
+    /// id in two maps two different things (spike 107), so another map's are let go.
+    fn read_streets(&self, files: &[i64]) -> Result<()> {
+        if files.is_empty() || files == self.chunk_files.borrow().as_slice() {
+            return Ok(());
+        }
+        *self.chunk_files.borrow_mut() = files.to_vec();
+        *self.lines.borrow_mut() = IndexMap::new();
+        *self.places.borrow_mut() = IndexMap::new();
+        self.anchor.set(None);
+        if let Some(streets) = &self.streets {
+            let wanted: Vec<i64> = files.iter().copied().filter(|&file| file != 0).collect();
+            let network = streets(&wanted)?;
+            self.lines.borrow_mut().extend(network.lines);
+            self.places.borrow_mut().extend(network.places);
+        }
+        Ok(())
+    }
+}
+
+/// Where a record placed on a rail is in the corridor, as its first corner and size, or None for
+/// one on the grid or on a line the corridor does not hold.
+pub fn spot(corridor: &Corridor, record: &[u8]) -> Result<Option<(Cell, (i64, i64))>> {
+    if !zonedata::on_rail(record)? {
+        return Ok(None);
+    }
+    let (line, a, x, width, height) = placed(record)?;
+    let cells = cells_of(corridor, line, a, x, width, height)?;
+    if cells.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(spread(cells)?))
+    }
 }

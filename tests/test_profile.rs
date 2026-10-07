@@ -8,17 +8,19 @@ use indexmap::IndexMap;
 
 use super::fake_memory::{CODE, FakeMemory};
 use super::fake_speech::Recorder;
-use super::test_field::{HOUSE, PC_TILE, TOWN, TOWN_BLOCK, TOWN_CHUNK, Town, border};
+use super::test_field::{HOUSE, PC_TILE, POOCHYENA, TOWN, TOWN_BLOCK, TOWN_CHUNK, Town, border};
 use crate::core::memory::{Cache, Memory};
 use crate::core::names::Names;
 use crate::core::rtti::ClassNames;
 use crate::core::speech::Speech;
-use crate::games::common::field::{TOWNS, WARP_SOURCE};
-use crate::games::gen6::archives::GameText;
-use crate::games::gen6::mmodel::PLAYER_INDEX;
+use crate::games::common::field::keys::MODE_TOGGLE;
+use crate::games::common::field::things::WARP_SOURCE;
+use crate::games::gen6::field::mmodel::PLAYER_INDEX;
+use crate::games::gen6::game::{Game, OwnApp};
 use crate::games::gen6::profile::{Gen6Profile, Options};
-use crate::games::gen6::{gflheap, sky};
+use crate::games::gen6::rom::archives::GameText;
 use crate::games::oras::hidden::PLAYER_WORK_CLASS;
+use crate::games::{gen6::gflheap, oras::sky};
 use crate::games::{oras, xy};
 use crate::py::{Log, Result};
 
@@ -83,13 +85,24 @@ fn profile(
     named: Option<Rc<Names>>,
     log: Log,
 ) -> (Gen6Profile, Rc<Recorder>) {
+    profile_of(town, text, named, log, oras::game())
+}
+
+/// `profile(town, text, named, log, game)`: Python's `game` defaults to `oras.GAME`.
+fn profile_of(
+    town: &Town,
+    text: Option<GameText>,
+    named: Option<Rc<Names>>,
+    log: Log,
+    game: &Game,
+) -> (Gen6Profile, Rc<Recorder>) {
     let backend = Recorder::new();
     let made = Gen6Profile::new(
         Phased::new(town.memory.clone()),
         Rc::new(ClassNames::new(town.memory.clone(), CODE)),
         Rc::new(Speech::plain(backend.clone())),
         log,
-        oras::game(),
+        game,
         Options {
             named,
             text: text.map(Rc::new),
@@ -130,6 +143,51 @@ fn test_the_place_is_said_on_arriving_and_not_on_walking_into_a_building() {
     town.model(0, TOWN, PLAYER_INDEX, 0xAC, (99, 150));
     made.poll_field().unwrap();
     assert_eq!(backend.spoken(), ["Littleroot Town", "Route 101"]);
+}
+
+/// `[pa3ds.navigation] guide_to_hidden`, on by default (Orion, movie26): a find, not every
+/// poll it stays up; a faint, then the next search's find, is a find again; and what the
+/// detector turns up is no search's, "not a random Poochyena!" (Orion, movie27), but for the
+/// DexNav's in touch mode.
+#[test]
+fn test_a_hidden_pokemon_is_guided_to_as_a_search_finds_it_and_once() {
+    let town = Town::new();
+    let (made, backend) = profile(&town, None, None, no_log());
+    made.poll_field().unwrap();
+    let finds = || {
+        backend
+            .spoken()
+            .iter()
+            .filter(|text| text.starts_with("hidden Pokémon, "))
+            .count()
+    };
+    town.hide_found(POOCHYENA, 5, (97, 175), 0x08, 3);
+    made.poll_field().unwrap();
+    made.poll_field().unwrap();
+    assert_eq!(finds(), 1);
+    town.hide_found(POOCHYENA, 5, (97, 175), 0x0D, 3);
+    made.poll_field().unwrap();
+    town.hide_found(POOCHYENA, 5, (98, 176), 0x08, 3);
+    made.poll_field().unwrap();
+    assert_eq!(finds(), 2);
+    // The detector's, with the DexNav open, and then with the AreaNav: in list mode, neither.
+    for (cell, found_by) in [((96, 176), 1), ((95, 176), 2)] {
+        town.hide_state(POOCHYENA, 5, cell, 0xFF);
+        made.poll_field().unwrap();
+        town.hide_found(POOCHYENA, 5, cell, 0x08, found_by);
+        made.poll_field().unwrap();
+    }
+    assert_eq!(finds(), 2);
+    // In touch mode, at the DexNav, the DexNav's (Orion, 2026-10-07); still not the AreaNav's.
+    made.navigator.borrow_mut().press(MODE_TOGGLE).unwrap();
+    made.navigator.borrow_mut().press(MODE_TOGGLE).unwrap();
+    for (cell, found_by) in [((95, 175), 2), ((96, 175), 1)] {
+        town.hide_state(POOCHYENA, 5, cell, 0xFF);
+        made.poll_field().unwrap();
+        town.hide_found(POOCHYENA, 5, cell, 0x08, found_by);
+        made.poll_field().unwrap();
+    }
+    assert_eq!(finds(), 3);
 }
 
 /// AreaNav's words still say it, a moment later, as they always have.
@@ -298,17 +356,38 @@ fn test_every_gen_6_game_sweeps_for_its_heaps_and_only_oras_for_the_dexnav() {
 #[test]
 fn test_soaring_the_way_the_player_faces_is_said_once_a_turn_stops() {
     let town = Town::new();
-    let littleroot = sky::Place::new(
-        "Littleroot Town",
-        TOWNS,
-        0x6,
-        vec![(-4000.0, 8000.0, -2000.0, 10000.0)],
-    );
-    let text = GameText {
-        sky: vec![littleroot],
-        ..GameText::new(places(), trainers())
+
+    fn soaring(
+        memory: Rc<dyn Memory>,
+        _text: Option<&GameText>,
+        speech: Rc<Speech>,
+        log: Log,
+    ) -> Result<Option<Rc<dyn OwnApp>>> {
+        let littleroot = sky::Place::new(
+            "Littleroot Town",
+            sky::TOWNS,
+            0x6,
+            vec![(-4000.0, 8000.0, -2000.0, 10000.0)],
+        );
+        Ok(Some(Rc::new(sky::Soaring::new(
+            memory,
+            vec![littleroot],
+            speech,
+            log,
+        ))))
+    }
+
+    let game = Game {
+        apps: vec![soaring],
+        ..oras::game().clone()
     };
-    let (made, backend) = profile(&town, Some(text), None, no_log());
+    let (made, backend) = profile_of(
+        &town,
+        Some(GameText::new(places(), trainers())),
+        None,
+        no_log(),
+        &game,
+    );
     let (process, camera) = (0x08C65224, 0x0823C960);
     {
         let mut apps = made.apps.borrow_mut();

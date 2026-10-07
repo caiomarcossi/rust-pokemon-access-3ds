@@ -11,9 +11,39 @@ use std::rc::Rc;
 use indexmap::IndexMap;
 
 use crate::core::memory::Memory;
+use crate::core::speech::Speech;
 use crate::core::toml;
-use crate::games::gen6::archives::RomLayout;
-use crate::games::gen6::field::{AshReader, DoorReader, HiddenReader, IceReader, SecretBaseReader};
+use crate::games::common::field::things::Field;
+use crate::games::gen6::field::features::{
+    DoorReader, Feature, HiddenReader, IceReader, SecretBaseReader,
+};
+use crate::games::gen6::rom::archives::GameText;
+use crate::games::gen6::rom::layout::RomLayout;
+use crate::py::{Log, Result};
+
+/// An app only one game has, read by that game's own package: ORAS's soaring (`oras.sky`). While
+/// it runs, the navigation keys walk what it lists instead of the field's, and it is polled in
+/// the field's place.
+pub trait OwnApp {
+    /// The class its process is (`apps.RunningApp`).
+    fn app(&self) -> &'static str;
+
+    /// What the log and the poll's phase call it.
+    fn name(&self) -> &'static str;
+
+    /// The navigation keys' categories it lists things in, after the field's.
+    fn categories(&self) -> Vec<&'static str>;
+
+    /// Another app has started, this one or any other.
+    fn started(&self);
+
+    /// What the navigation keys walk while it runs, read through its process; None while it
+    /// says nothing.
+    fn listed(&self, process: i64) -> Result<Option<Field>>;
+
+    /// Say what it says of itself, every field poll while it runs.
+    fn poll(&self, process: i64) -> Result<()>;
+}
 
 /// A game's `data` folder as the binary carries it: each language's `sprites.toml`, by the
 /// language's code. Python's is a `Path` to the folder and `pa3ds.core.names` reads
@@ -26,8 +56,11 @@ pub type Data = &'static [(&'static str, &'static str)];
 pub type HiddenFactory = fn(Rc<dyn Memory>) -> Rc<dyn HiddenReader>;
 /// `Callable[[Memory, bytes], SecretBaseReader]`.
 pub type SecretBaseFactory = fn(Rc<dyn Memory>, &[u8]) -> Rc<dyn SecretBaseReader>;
-/// `Callable[[Memory], AshReader]`.
-pub type AshFactory = fn(Rc<dyn Memory>) -> Rc<dyn AshReader>;
+/// `Callable[[Memory, GameText | None], Feature]`.
+pub type FeatureFactory = fn(Rc<dyn Memory>, Option<&GameText>) -> Rc<dyn Feature>;
+/// `Callable[[Memory, GameText | None, Speech, Callable[[str], None]], OwnApp | None]`.
+pub type AppFactory =
+    fn(Rc<dyn Memory>, Option<&GameText>, Rc<Speech>, Log) -> Result<Option<Rc<dyn OwnApp>>>;
 /// `Callable[[Memory], DoorReader]`.
 pub type DoorFactory = fn(Rc<dyn Memory>) -> Rc<dyn DoorReader>;
 /// `Callable[[Memory], IceReader]`.
@@ -80,9 +113,9 @@ pub struct Game {
     /// The reader of its Secret Bases, given the executable's image to find every spot in, or None
     /// in a game with none: ORAS's (`games.oras.secret_base`).
     pub secret_bases: Option<SecretBaseFactory>,
-    /// The reader of its ash piles, or None in a game with none: ORAS's, on Route 113
-    /// (`games.oras.ash`).
-    pub ash: Option<AshFactory>,
+    /// The readers of what else it has on its field to list, each in its own words: ORAS's berry
+    /// spots and Route 113's ash piles (`games.oras.berries`, `games.oras.ash`).
+    pub features: Vec<FeatureFactory>,
     /// The reader of its rotating doors, or None in a game with none: ORAS's, in Fortree Gym
     /// (`games.oras.doors`).
     pub doors: Option<DoorFactory>,
@@ -95,6 +128,12 @@ pub struct Game {
     /// Zones whose chunks' floors are joined by stairs, each listed under exits where it meets
     /// the floor above: Sootopolis Gym's two, the way back up from its lower floor.
     pub stairs: HashSet<i64>,
+    /// Its own apps' readers, each built from the memory, the ROM's words, and where to say and
+    /// log, or None where what it needs is not read: ORAS's soaring (`oras.sky`).
+    pub apps: Vec<AppFactory>,
+    /// Warp kind -> what it is, where the kind says more than a door or stairs: ladders, a
+    /// teleporter pad, the way into one building alone. A kind not here is "warp".
+    pub warps: IndexMap<i64, String>,
 }
 
 impl Game {
@@ -121,11 +160,13 @@ impl Game {
             triggers: IndexMap::new(),
             furniture: IndexMap::new(),
             secret_bases: None,
-            ash: None,
+            features: Vec::new(),
             doors: None,
             ice: None,
             blocker: None,
             stairs: HashSet::new(),
+            apps: Vec::new(),
+            warps: IndexMap::new(),
         }
     }
 

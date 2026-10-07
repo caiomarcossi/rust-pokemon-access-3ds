@@ -26,7 +26,13 @@ use crate::core::binary::{self, u16, u32};
 use crate::core::discovery::{Found, HEAP_SPAN, within};
 use crate::core::memory::Memory;
 use crate::core::pathfind::Cell;
+use crate::games::common::field::things::{ASH, ASH_SOURCE, Interactable, place_source};
+use crate::games::gen6::field::features::{Feature, Tracked, ZoneAt};
 use crate::py::{self, Error, Result};
+
+/// What a grey mound of volcanic ash on Route 113 is called: the game says how many grams the Soot
+/// Sack has gathered, but never names the pile (spike 155).
+pub const ASH_PILE: &str = "ash pile";
 
 pub const CLASS: &str = "N5field25FieldUniqueSequenceOchibaE";
 pub const STATES: i64 = 0x14;
@@ -109,6 +115,19 @@ impl AshPiles {
     }
 
     /// (index, cell) of each pile in `zone` whose ash is still there.
+    /// Each pile in `zone` still there, for the field to list (`gen6.field.Feature`).
+    pub fn listed(&self, zone: i64, _zone_at: ZoneAt) -> Result<Vec<Interactable>> {
+        let mut out: Vec<Interactable> = Vec::new();
+        for (index, cell) in self.piles(zone)? {
+            out.push(Interactable {
+                source: place_source(ASH_SOURCE, index)?,
+                home: Some(zone),
+                ..Interactable::new(ASH, ASH_PILE, cell)
+            });
+        }
+        Ok(out)
+    }
+
     pub fn piles(&self, zone: i64) -> Result<Vec<(i64, Cell)>> {
         let head = match self.sequence.get() {
             None => None,
@@ -152,5 +171,21 @@ impl AshPiles {
             return Ok(None);
         }
         Ok(Some(head))
+    }
+}
+
+impl Tracked for AshPiles {
+    fn classes(&self) -> Vec<&'static str> {
+        self.classes.clone()
+    }
+
+    fn track(&self, found: &Found) -> Result<()> {
+        AshPiles::track(self, found)
+    }
+}
+
+impl Feature for AshPiles {
+    fn listed(&self, zone: i64, zone_at: ZoneAt) -> Result<Vec<Interactable>> {
+        AshPiles::listed(self, zone, zone_at)
     }
 }

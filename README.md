@@ -34,11 +34,19 @@ to install.
 - **The PC Box, the party, the Bag and the Pokédex**, including the habitat map.
 - **Where you are**: the place name when you arrive somewhere new.
 - **The map**: exits, signs, people, items, berry spots and more, each with its direction and
-  distance ("door, 1 of 3, 3 east 2 north"), and the way to any of them on foot.
+  distance ("door, 1 of 3, 3 east 2 north"), and the way to any of them on foot. An exit says
+  what it is: a door, stairs up or down, a passage between rooms with no floor between them, a
+  ladder up or down, the name of the building behind it, or in a hideout a teleporter and where
+  it comes out ("teleporter, 3 east, out at 17 east 8 south").
 - **The touch screen**: the buttons on the bottom screen, which touch mode can tap for you,
   and the PokéNav's apps, the BuzzNav's shows among them.
-- **The Dowsing Machine's lights** ("dowsing green"), **soaring** on Latios or Latias, the
-  DexNav's hidden Pokémon, and decorating a Secret Base.
+- **The DexNav**: the area's Pokémon in touch mode, "caught" after each one you have caught,
+  and the crown for an area whose Pokémon you have caught ("gold crown");
+  searching; and a hidden Pokémon's details, its Potential's stars and the marks for a higher
+  level, an egg move or the hidden ability among them ("Potential 2 stars", "First Move Helping
+  Hand egg move").
+- **The Dowsing Machine's lights** ("dowsing green"), **soaring** on Latios or Latias, and
+  decorating a Secret Base.
 
 pa3ds says only what the game shows. Hidden information such as IVs or the enemy's exact HP is
 not read.
@@ -48,8 +56,8 @@ not read.
 - Windows.
 - Azahar, installed. A portable Azahar (with a `user` folder beside `azahar.exe`) is not set up
   by pa3ds yet: see [Known problems](#known-problems).
-- Your own Pokémon game, dumped from your own 3DS. pa3ds reads place names, building names and
-  the rival's name from the ROM file. This works only with a **decrypted** ROM (`.3ds` or `.cci`).
+- Your own Pokémon game, dumped from your own 3DS. pa3ds reads place names, building names, the
+  rival's name, and what to call the people and Pokémon on the map from the ROM file. This works only with a **decrypted** ROM (`.3ds` or `.cci`).
   With an encrypted one the game still plays and pa3ds still reads it, but some of those names
   are missing. pa3ds finds the ROM among the ones Azahar has opened.
 - A screen reader: NVDA, or any other Prism supports. Without one, pa3ds speaks with SAPI.
@@ -188,6 +196,7 @@ overwritten. Each setting has a comment in the file saying what it does.
 | `positions` | `true` | Say where a thing is in the list: "door, 1 of 3". |
 | `position_first` | `true` | Say the place in the list before the way to it. `false` says "door, 1 north, 1 of 3". |
 | `turn_by_turn` | `true` | Say each turn of the way P found as you reach it. `false` says the way once, and P again says it from where you stand. |
+| `guide_to_hidden` | `true` | When a DexNav search finds the Pokémon you searched for, or the DexNav finds one by itself while it is open and you are in touch mode, find the way to it as P does, and keep P on it. One found while the AreaNav is open is left alone. |
 | **`[azahar]`** | | Azahar's own settings: see [above](#azahar-settings-pa3ds-needs). |
 
 A setting added to pa3ds after your file was written is not added to your file. It works at its

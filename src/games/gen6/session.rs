@@ -15,10 +15,11 @@ use crate::core::rtti::ClassNames;
 use crate::core::speech::Speech;
 use crate::core::window;
 use crate::games::common::session::{Profile, Session, Setup};
-use crate::games::gen6::archives::{GameText, RomLayout};
 use crate::games::gen6::game::Game;
 use crate::games::gen6::profile::{Gen6Profile, Options, REQUIRED};
-use crate::games::gen6::{buttons, gflheap, textures};
+use crate::games::gen6::rom::archives::GameText;
+use crate::games::gen6::rom::layout::RomLayout;
+use crate::games::{gen6::gflheap, gen6::rom::textures, gen6::screens::buttons};
 use crate::py::Result;
 
 /// `game` read through a page cache, every poll in a phase of its own: one pipelined fetch of

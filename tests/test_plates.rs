@@ -9,8 +9,7 @@ use super::fake_rom::{MessageLine, message_file};
 use super::test_field::{ZoneSpec, zone_file};
 use super::test_script::sign_script;
 use crate::games::common::garc::message_lines;
-use crate::games::gen6::field as gen6_field;
-use crate::games::gen6::{plates, script};
+use crate::games::{gen6::rom::plates, gen6::rom::script};
 use crate::py::Result;
 
 const TOWN: i64 = 1;
@@ -63,7 +62,7 @@ fn put(buffer: &mut [u8], at: i64, data: &[u8]) {
 }
 
 fn table() -> Vec<u8> {
-    let mut rows = vec![0u8; (8 * gen6_field::INFO_SIZE) as usize];
+    let mut rows = vec![0u8; (8 * crate::games::gen6::field::zonetable::INFO_SIZE) as usize];
     for (zone, parent, place) in [
         (TOWN, TOWN, PLACE),
         (CAFE, TOWN, PLACE),
@@ -72,14 +71,23 @@ fn table() -> Vec<u8> {
         (UPPER, TOWN, PLACE),
         (GYM_ROOM, TOWN, PLACE),
     ] {
-        let at = zone * gen6_field::INFO_SIZE;
+        let at = zone * crate::games::gen6::field::zonetable::INFO_SIZE;
         put(&mut rows, at + plates::INFO_STORY, &le16(&[STORY]));
-        put(&mut rows, at + gen6_field::INFO_PARENT, &le16(&[parent]));
-        put(&mut rows, at + gen6_field::INFO_NAME, &le16(&[place]));
+        put(
+            &mut rows,
+            at + crate::games::gen6::field::zonetable::INFO_PARENT,
+            &le16(&[parent]),
+        );
+        put(
+            &mut rows,
+            at + crate::games::gen6::field::zonetable::INFO_NAME,
+            &le16(&[place]),
+        );
     }
     put(
         &mut rows,
-        GYM_ROOM * gen6_field::INFO_SIZE + gen6_field::INFO_KIND,
+        GYM_ROOM * crate::games::gen6::field::zonetable::INFO_SIZE
+            + crate::games::gen6::field::zonetable::INFO_KIND,
         &le16(&[0x11]),
     );
     rows
@@ -99,6 +107,10 @@ fn town(
     furniture: &[(i64, i64, i64)],
     warps: &[(i64, i64, i64, i64)],
 ) -> Result<IndexMap<i64, plates::Zone>> {
+    let warps: Vec<_> = warps
+        .iter()
+        .map(|&(to, kind, x, z)| (to, kind, x, z, None, None))
+        .collect();
     let code = sign_script(
         &(1..6)
             .map(|number| (number, vec![(number - 1, script::PLATE)]))
@@ -107,20 +119,28 @@ fn town(
     );
     let data = zone_file(&ZoneSpec {
         furniture,
-        warps,
+        warps: &warps,
         sections: 4,
         script: &code,
         ..ZoneSpec::default()
     });
-    let zone = gen6_field::zone_file(&data)?;
+    let zone = crate::games::gen6::field::zonedata::zone_file(&data)?;
     let zone = zone.expect("a zone data file");
     let mut zones: IndexMap<i64, plates::Zone> = IndexMap::new();
     zones.insert(
         TOWN,
         (
             data.clone(),
-            gen6_field::records(&data, &zone, gen6_field::FURNITURE)?,
-            gen6_field::records(&data, &zone, gen6_field::WARP)?,
+            crate::games::gen6::field::zonedata::records(
+                &data,
+                &zone,
+                crate::games::gen6::field::zonedata::FURNITURE,
+            )?,
+            crate::games::gen6::field::zonedata::records(
+                &data,
+                &zone,
+                crate::games::gen6::field::zonedata::WARP,
+            )?,
         ),
     );
     for inside in [CAFE, LAB, ELSEWHERE] {
@@ -138,12 +158,17 @@ fn test_a_plate_names_the_door_it_stands_by() -> Result<()> {
     let zones = town(
         &[(1, 10, 8), (2, 20, 10), (3, 30, 8), (4, 40, 8), (5, 50, 1)],
         &[
-            (CAFE, gen6_field::WARP_DOOR, 10, 10),
-            (LAB, gen6_field::WARP_DOOR, 18, 10),
-            (LAB, gen6_field::WARP_DOOR, 22, 10),
-            (CAFE, gen6_field::WARP_DOOR, 30, 10),
-            (ELSEWHERE, gen6_field::WARP_DOOR, 40, 10),
-            (LAB, gen6_field::WARP_DOOR, 50, 10),
+            (CAFE, crate::games::gen6::field::zonedata::WARP_DOOR, 10, 10),
+            (LAB, crate::games::gen6::field::zonedata::WARP_DOOR, 18, 10),
+            (LAB, crate::games::gen6::field::zonedata::WARP_DOOR, 22, 10),
+            (CAFE, crate::games::gen6::field::zonedata::WARP_DOOR, 30, 10),
+            (
+                ELSEWHERE,
+                crate::games::gen6::field::zonedata::WARP_DOOR,
+                40,
+                10,
+            ),
+            (LAB, crate::games::gen6::field::zonedata::WARP_DOOR, 50, 10),
         ],
     )?;
     let named = plates::plate_names(&zones, &table(), &story, &HashSet::from([TOWN]), None)?;
@@ -158,12 +183,18 @@ fn test_a_plate_names_the_door_it_stands_by() -> Result<()> {
 /// of one line names the nearest door that far, and one of more lines only within 6.
 #[test]
 fn test_a_plate_of_one_line_names_a_door_further_off() -> Result<()> {
-    let zones = town(&[(1, 10, 0)], &[(CAFE, gen6_field::WARP_DOOR, 10, 11)])?;
+    let zones = town(
+        &[(1, 10, 0)],
+        &[(CAFE, crate::games::gen6::field::zonedata::WARP_DOOR, 10, 11)],
+    )?;
     assert_eq!(
         plates::plate_names(&zones, &table(), &story, &HashSet::from([TOWN]), None)?,
         IndexMap::from([((TOWN, 0), "Café Soleil".to_string())])
     );
-    let zones = town(&[(5, 10, 3)], &[(CAFE, gen6_field::WARP_DOOR, 10, 11)])?;
+    let zones = town(
+        &[(5, 10, 3)],
+        &[(CAFE, crate::games::gen6::field::zonedata::WARP_DOOR, 10, 11)],
+    )?;
     assert_eq!(
         plates::plate_names(&zones, &table(), &story, &HashSet::from([TOWN]), None)?,
         IndexMap::<(i64, i64), String>::new()
@@ -174,13 +205,142 @@ fn test_a_plate_of_one_line_names_a_door_further_off() -> Result<()> {
 /// ORAS's plates put a slogan on a line of its own, "“Ride in Gravel and Shake Up Your
 /// Soul!” Rydel's Cycles": a plate of more than one line holding a facility its town lists
 /// is named by that alone, and a plate of one line keeps its own words, which may say more.
+/// A kind that is the way into one building and no other, as ORAS's Devon Corporation is.
+const ENTRANCE: i64 = 0x0F01;
+
+/// What `plates.entrance_names` gives a town whose signs 1, 2 and so on each show a line of
+/// `plate_lines` as a plate, far from its doors, whose list has `listed`, and whose warp 1 is an
+/// entrance into a house that `doors` has not named. Warp 0 is the door of the Café.
+fn entrance_names(
+    plate_lines: &[&str],
+    listed: &[&str],
+    doors: &[((i64, i64), &str)],
+) -> Result<IndexMap<(i64, i64), String>> {
+    let count = plate_lines.len() as i64;
+    let code = sign_script(
+        &(1..count + 1)
+            .map(|n| (n, vec![(n - 1, script::PLATE)]))
+            .collect(),
+        false,
+    );
+    let furniture: Vec<(i64, i64, i64)> = (1..count + 1).map(|n| (n, 10 * n, 1)).collect();
+    let data = zone_file(&ZoneSpec {
+        furniture: &furniture,
+        warps: &[
+            (
+                CAFE,
+                crate::games::gen6::field::zonedata::WARP_DOOR,
+                10,
+                10,
+                None,
+                None,
+            ),
+            (LAB, ENTRANCE, 80, 10, None, None),
+        ],
+        sections: 4,
+        script: &code,
+        ..ZoneSpec::default()
+    });
+    let zone = crate::games::gen6::field::zonedata::zone_file(&data)?.expect("a zone data file");
+    let mut zones: IndexMap<i64, plates::Zone> = IndexMap::new();
+    zones.insert(
+        TOWN,
+        (
+            data.clone(),
+            crate::games::gen6::field::zonedata::records(
+                &data,
+                &zone,
+                crate::games::gen6::field::zonedata::FURNITURE,
+            )?,
+            crate::games::gen6::field::zonedata::records(
+                &data,
+                &zone,
+                crate::games::gen6::field::zonedata::WARP,
+            )?,
+        ),
+    );
+    zones.insert(CAFE, (Vec::new(), Vec::new(), Vec::new()));
+    zones.insert(LAB, (Vec::new(), Vec::new(), Vec::new()));
+    let message: Vec<MessageLine> = plate_lines
+        .iter()
+        .map(|&line| MessageLine::from(line))
+        .collect();
+    let lines = message_lines(&message_file(&message))?;
+    let story = move |file: i64| -> Result<Vec<Vec<u8>>> {
+        Ok(if file == STORY {
+            lines.clone()
+        } else {
+            Vec::new()
+        })
+    };
+    plates::entrance_names(
+        &zones,
+        &table(),
+        &story,
+        &HashSet::from([TOWN]),
+        &IndexMap::from([(PLACE, listed.iter().map(|name| name.to_string()).collect())]),
+        &doors
+            .iter()
+            .map(|&(door, name)| (door, name.to_string()))
+            .collect(),
+        &HashSet::from([ENTRANCE]),
+    )
+}
+
+/// Rustboro's Devon Corporation plate, "The Devon Corporation / For all your living needs...",
+/// stands 18 cells from its doors, past the Gym's, so no door is paired with it by distance. The
+/// Café's plate holds a facility a door name claims already, and the town's list has one more
+/// that no plate holds, which only the second rule would name (2026-10-06).
+#[test]
+fn test_an_entrance_is_the_facility_the_one_plate_holding_an_unclaimed_one_says() -> Result<()> {
+    let named = entrance_names(
+        &[
+            "Café Soleil",
+            "The Devon\nCorporation\nFor all your living needs",
+        ],
+        &["Café", "Devon Corporation", "Harbor"],
+        &[((TOWN, 0), "Café Soleil")],
+    )?;
+    assert_eq!(
+        named,
+        IndexMap::from([((TOWN, 1), "Devon Corporation".to_string())])
+    );
+    Ok(())
+}
+
+/// Route 112's Cable Car station: its list has "Cable Car Base Station" besides the Café, and
+/// the only plate is the Café's.
+#[test]
+fn test_an_entrance_no_plate_holds_is_the_one_facility_nothing_else_has() -> Result<()> {
+    let named = entrance_names(
+        &["Café Soleil"],
+        &["Café", "Cable Car Base Station"],
+        &[((TOWN, 0), "Café Soleil")],
+    )?;
+    assert_eq!(
+        named,
+        IndexMap::from([((TOWN, 1), "Cable Car Base Station".to_string())])
+    );
+    Ok(())
+}
+
+/// Lilycove's Museum: the only plate is the town's sign, which holds both "Harbor" and
+/// "Lilycove Museum", so neither is its own and neither is left over. Two plates each holding
+/// another one are two names, not one.
+#[test]
+fn test_an_entrance_is_left_unnamed_where_the_facilities_left_are_not_one() -> Result<()> {
+    assert!(entrance_names(&["Lilycove Harbor Museum"], &["Harbor", "Museum"], &[])?.is_empty());
+    assert!(entrance_names(&["Harbor", "Museum"], &["Harbor", "Museum"], &[])?.is_empty());
+    Ok(())
+}
+
 #[test]
 fn test_a_plate_of_more_than_one_line_is_named_by_what_its_towns_list_calls_it() -> Result<()> {
     let zones = town(
         &[(5, 10, 8), (1, 30, 8)],
         &[
-            (CAFE, gen6_field::WARP_DOOR, 10, 10),
-            (CAFE, gen6_field::WARP_DOOR, 30, 10),
+            (CAFE, crate::games::gen6::field::zonedata::WARP_DOOR, 10, 10),
+            (CAFE, crate::games::gen6::field::zonedata::WARP_DOOR, 30, 10),
         ],
     )?;
     let facilities = IndexMap::from([(PLACE, vec!["shack".to_string(), "Café".to_string()])]);
@@ -205,7 +365,12 @@ fn test_a_plate_of_more_than_one_line_is_named_by_what_its_towns_list_calls_it()
 /// on its line it is, as the game measures it.
 fn warp_on(line: i64, to: i64, back: i64, a: i64, x: i64, size: (i64, i64)) -> Vec<u8> {
     [
-        le16(&[to, back, 0x0300, gen6_field::ON_RAIL]),
+        le16(&[
+            to,
+            back,
+            0x0300,
+            crate::games::gen6::field::zonedata::ON_RAIL,
+        ]),
         le32(&[line]),
         le16(&[a, x, size.0, size.1]),
         vec![0; 4],
@@ -215,7 +380,14 @@ fn warp_on(line: i64, to: i64, back: i64, a: i64, x: i64, size: (i64, i64)) -> V
 
 fn mark(line: i64, street: i64, a: i64, x: i64, size: (i64, i64)) -> Vec<u8> {
     [
-        le16(&[2000, street, 0, 15, gen6_field::ON_RAIL, 0]),
+        le16(&[
+            2000,
+            street,
+            0,
+            15,
+            crate::games::gen6::field::zonedata::ON_RAIL,
+            0,
+        ]),
         le32(&[line]),
         le16(&[a, x, size.0, size.1]),
     ]
@@ -307,7 +479,17 @@ fn test_where_a_buildings_way_out_comes_out_in_its_towns_place_is_outdoors() -> 
             Vec::new(),
             vec![
                 [
-                    le16(&[UPPER, 0, gen6_field::WARP_OUT, 0, 9, 0, 9, 1, 1]),
+                    le16(&[
+                        UPPER,
+                        0,
+                        crate::games::gen6::field::zonedata::WARP_OUT,
+                        0,
+                        9,
+                        0,
+                        9,
+                        1,
+                        1,
+                    ]),
                     vec![0; 6],
                 ]
                 .concat(),

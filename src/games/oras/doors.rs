@@ -29,7 +29,8 @@ use crate::core::binary::{self, u32};
 use crate::core::discovery::{Found, HEAP_SPAN, within};
 use crate::core::memory::Memory;
 use crate::core::pathfind::{EAST, NORTH, SOUTH, WEST};
-use crate::games::common::field::RotatingDoor;
+use crate::games::common::field::ground::RotatingDoor;
+use crate::games::gen6::field::features::{DoorReader, Tracked};
 use crate::py::{self, Error, Result};
 
 pub const CLASS: &str = "N5field28FieldUniqueSequenceGymFlightE";
@@ -200,5 +201,21 @@ impl RotatingDoors {
             }
         }
         Ok(Some(head))
+    }
+}
+
+impl Tracked for RotatingDoors {
+    fn classes(&self) -> Vec<&'static str> {
+        self.classes.clone()
+    }
+
+    fn track(&self, found: &Found) -> Result<()> {
+        RotatingDoors::track(self, found)
+    }
+}
+
+impl DoorReader for RotatingDoors {
+    fn doors(&self, zone: i64) -> Result<Vec<RotatingDoor>> {
+        RotatingDoors::doors(self, zone)
     }
 }

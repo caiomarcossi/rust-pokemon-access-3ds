@@ -13,7 +13,7 @@ use crate::app::{self, Settings};
 use crate::core::rpc::{DEFAULT_PORT, Rpc, UdpRpc};
 use crate::core::speech::{self, Backend, Category, Speech};
 use crate::core::{config, keyfile, window};
-use crate::games::common::navigate::{DEFAULT_BINDINGS, EXPLAINED};
+use crate::games::common::field::keys::{DEFAULT_BINDINGS, EXPLAINED};
 use crate::py::{self, Log, time};
 
 /// Runs whose logs are kept, this one included.

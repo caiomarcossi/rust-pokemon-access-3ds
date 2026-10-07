@@ -16,30 +16,10 @@
 //! - The ROM: `archives`, the game's own words for places, the rival, the PC and doors.
 
 pub mod apps;
-pub mod archives;
-pub mod battle;
-pub mod camera;
-pub mod choices;
-pub mod dowsing;
 pub mod field;
 pub mod game;
 pub mod gflheap;
-pub mod habitat;
-pub mod lists;
-pub mod mapblock;
-pub mod mmodel;
-pub mod plates;
 pub mod profile;
-pub mod rail;
-pub mod script;
+pub mod rom;
+pub mod screens;
 pub mod session;
-pub mod sky;
-pub mod speaker;
-pub mod talk;
-pub mod textures;
-
-pub mod buttons;
-pub mod distribution;
-pub mod mapcursor;
-pub mod partyicons;
-pub mod townmap;

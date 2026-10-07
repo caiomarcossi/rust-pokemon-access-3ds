@@ -550,7 +550,7 @@ impl Layouts {
     }
 
     /// Say which layouts, by their works, their app is not drawing now: the AreaNav's screens it
-    /// has left keep their layouts as they were (`gen6.townmap`).
+    /// has left keep their layouts as they were (`gen6.screens.townmap`).
     pub fn put_away(&self, works: impl IntoIterator<Item = i64>) {
         *self.put_away.borrow_mut() = works.into_iter().collect();
     }

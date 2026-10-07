@@ -1,0 +1,760 @@
+//! Navigation: the keys that walk the list of what is on the map, in one of two modes.
+//!
+//! **List mode** walks the whole map. Two keys step between categories and two between a
+//! category's items, nearest first; a fifth says the chosen item again. **Direction mode** looks
+//! one way at a time: four keys, one a compass point, each cycling through the category's items on
+//! that side of the player within `RANGE` cells each way (a half-box: north is everything with a
+//! smaller z, so a thing north-east is heard under north and under east both), nearest first. A
+//! press of another direction starts again from the nearest that way. The apostrophe toggles the
+//! mode (the user, 2026-09-21; moved off M on 2026-09-22, which is the emulator's Start). The
+//! category is one setting under both modes, and "all" is a category of its own, the one both
+//! start on.
+//!
+//! Each press reads the map afresh, so the bearing is from where the player stands now and a
+//! person is where they have walked to. The chosen item is kept by what it is, not by its place in
+//! the list: walking re-sorts the list, and keeping a place meant K tracked one person and then, a
+//! few steps on, another (the user, 2026-09-21). An item that has gone — a ball picked up — gives
+//! way to the nearest.
+//!
+//! Spoken as "exits, 3" on reaching a category and "door, 1 of 3, 1 north" on an item (the user,
+//! 2026-09-21: the count on a category, the place on an item), the place counted within the
+//! direction in direction mode. A category with nothing in it is skipped over, "nothing here"
+//! when the map is empty, "nothing north" or "no exits north" when a direction is, and "no map"
+//! off the field. An exit into another place says it, in the game's own words out of the ROM:
+//! "edge to Route 101, 2 of 3, 5 north" (the user, 2026-09-24). A door into a town's own house
+//! leads nowhere new, as the game has it, and says nothing more; zone numbers stay in the log.
+//!
+//! Each thing is said by the name it has been given, and by what it is when it has none: "the
+//! Mart's sign, 1 of 3, 1 north" rather than "sign, 1 of 3, 1 north". A name is the player's or
+//! the shipped table's (`pa3ds.core.names`), and **one key renames whatever is chosen**, through
+//! a dialog — the player is the one standing in front of the thing, and nobody else is in a
+//! position to name it.
+//!
+//! Keys come in as names and are looked up in the mode's bindings here, since one key means one
+//! thing in list mode and another in direction mode: O steps the category in one and looks north
+//! in the other. A key bound in either mode is kept from the emulator in both.
+//!
+//! **P finds the way to whatever is chosen**, in either mode (the user, 2026-09-24), and says it
+//! as its legs: "5 east, 2 north". Then it **guides**: as the player walks the path, the next leg
+//! is said the moment they reach each turn ("2 north"), and the thing itself when they get there
+//! ("door, 1 north"). A player who steps off the path is given a new one from where they stand,
+//! said when it turns them and taken quietly when it goes on the way they are walking; a warp ends
+//! the guiding, since the path's cells belong to the map the player has left.
+
+use std::rc::Rc;
+
+use indexmap::IndexMap;
+
+use crate::core::config::Navigation;
+use crate::core::dialog::Asker;
+use crate::core::names::Names;
+use crate::core::speech::{Category, Speech};
+use crate::games::common::field::guide::{Clock, FieldSource, Guide, Key};
+use crate::games::common::field::keys::{
+    Bindings, CATEGORY_NEXT, CATEGORY_PREVIOUS, DEFAULT_BINDINGS, DIRECTIONS, EAST, ENEMY_SIDE,
+    ITEM_NEXT, ITEM_PREVIOUS, LIST, MODE_TOGGLE, MODES, NORTH, OUR_SIDE, PATHFIND, PATHFIND_HM,
+    RENAME, RENAME_SPEAKER, SOUTH, TOUCH, WEST,
+};
+use crate::games::common::field::things::{self, ALL, Field, Interactable, SPRITE};
+use crate::games::common::touch::ACTIONS as TOUCH_ACTIONS;
+use crate::games::common::touch::TouchTargets;
+use crate::py::{self, Error, Log, Result};
+
+/// `(ALL, *things.CATEGORIES)`.
+pub const CATEGORIES: [&str; 9] = {
+    let mut out = [ALL; 9];
+    let mut at = 0;
+    while at < things::CATEGORIES.len() {
+        out[at + 1] = things::CATEGORIES[at];
+        at += 1;
+    }
+    out
+};
+
+/// A dict in Python, read here by `find` on the key.
+pub const RELATIVE: [(&str, &str); 4] = [
+    (NORTH, "ahead"),
+    (EAST, "right"),
+    (SOUTH, "behind"),
+    (WEST, "left"),
+];
+
+/// What a dialog's answer is for, as `dialog.Answer` carries it.
+pub const RENAMING: &str = "interactable";
+pub const SPEAKING: &str = "speaker";
+
+/// How far direction mode looks, in cells each way: a box, so a thing 10 north and 10 east is
+/// in. The top screen shows about 13 cells across and 9 deep (measured from a rig screenshot,
+/// 2026-09-21), so this is a little over a screen sideways and two screens ahead; the user's
+/// choice, so the keys do not cycle the whole map.
+pub const RANGE: i64 = 10;
+
+/// Whether `cell` is on `direction`'s side of `origin`, no more than `within` cells away
+/// either way.
+pub fn towards(direction: &str, origin: (i64, i64), cell: (i64, i64), within: i64) -> bool {
+    let (dx, dz) = (cell.0 - origin.0, cell.1 - origin.1);
+    if dx.abs() > within || dz.abs() > within {
+        return false;
+    }
+    if direction == NORTH {
+        return dz < 0;
+    }
+    if direction == SOUTH {
+        return dz > 0;
+    }
+    if direction == EAST {
+        return dx > 0;
+    }
+    dx < 0
+}
+
+/// `Callable[[int, int], str | None]`: what the game calls the place an exit from one zone into
+/// another arrives in. It reads the game's words, so it can raise.
+pub type LeadsTo = Rc<dyn Fn(i64, i64) -> Result<Option<String>>>;
+/// `Callable[[int, int], str | None]`: the street an exit comes out on.
+pub type Street = Rc<dyn Fn(i64, i64) -> Result<Option<String>>>;
+/// `Callable[[], int | None]`: the character that last spoke.
+pub type Speaker = Rc<dyn Fn() -> Option<i64>>;
+/// `Callable[[bool], str | None]`: the player's side of the battle as last said, or the enemy's.
+pub type Sides = Rc<dyn Fn(bool) -> Option<String>>;
+
+/// `Navigator.__init__`'s arguments after `field`, `speech` and `log`, each as the Python
+/// defaults it: set what differs with `..Options::default()`.
+pub struct Options {
+    /// None is `DEFAULT_BINDINGS`.
+    pub bindings: Option<Bindings>,
+    pub names: Option<Rc<Names>>,
+    pub asker: Option<Asker>,
+    pub navigation: Option<Navigation>,
+    pub speaker: Option<Speaker>,
+    pub leads_to: Option<LeadsTo>,
+    pub street: Option<Street>,
+    /// None is `py::time::monotonic`.
+    pub clock: Option<Clock>,
+    pub routes: bool,
+    pub slack: i64,
+    pub moves: Option<IndexMap<i64, String>>,
+    pub bike: Option<String>,
+    pub acro: Option<String>,
+    pub sides: Option<Sides>,
+    pub touch: Option<TouchTargets>,
+    /// Those a game's own apps list, after the field's: ORAS's sky's.
+    pub categories: Vec<String>,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options {
+            bindings: None,
+            names: None,
+            asker: None,
+            navigation: None,
+            speaker: None,
+            leads_to: None,
+            street: None,
+            clock: None,
+            routes: true,
+            slack: 0,
+            moves: None,
+            bike: None,
+            acro: None,
+            sides: None,
+            touch: None,
+            categories: Vec::new(),
+        }
+    }
+}
+
+/// What a thing is said as and called: the navigator's `label`, `name_of`, `destination`,
+/// `called` and `_name`, which read nothing of the navigator but the names and the game's words.
+/// Python hands its `Guide` the navigator's bound methods; here the two share this.
+pub struct Naming {
+    names: Rc<Names>,
+    /// What the game calls the place an exit from one zone into another arrives in, or None
+    /// where it arrives in the player's own place, as every door of a town does.
+    leads_to: LeadsTo,
+    /// The street an exit from a zone, by its source, comes out on in the player's own
+    /// place, as Lumiose's zones all are one.
+    street: Street,
+}
+
+impl Naming {
+    /// What to call this: the name it has been given, or what it is when it has none.
+    pub fn name_of(&self, item: &Interactable, zone: i64) -> String {
+        match self.name(item, zone) {
+            Some(name) if !name.is_empty() => name,
+            _ => item.kind.clone(),
+        }
+    }
+
+    /// What this is said as: what it is called, and for an exit into another place, the
+    /// place: "edge to Route 101", "path to Route 102", "the north gap to Route 101".
+    ///
+    /// The place is the game's own word, so a name the player gives an exit comes before it
+    /// rather than instead of it (ADR-0023: nothing of ours replaces what the game says); a name
+    /// that already says the place is left as it is.
+    pub fn label(&self, item: &Interactable, zone: i64) -> Result<String> {
+        let called = self.name_of(item, zone);
+        Ok(leading(&called, self.destination(item, zone)?.as_deref()))
+    }
+
+    /// What the game calls the place this exit from `zone` leads to, or None: for anything that
+    /// is not an exit, for an exit into the player's own place — a house's door, the mat out of
+    /// it, the stairs between two floors, though not the edge onto another zone of the same
+    /// outdoors, as Route 119's two are — and without the game's text.
+    pub fn destination(&self, item: &Interactable, zone: i64) -> Result<Option<String>> {
+        let Some(there) = item.zone else {
+            return Ok(None);
+        };
+        let home = item.home.unwrap_or(zone);
+        // The street first: Lumiose's zones are one place, and a warp between two of them on one
+        // matrix would say that place where the street says more.
+        if let Some(street) = (self.street)(home, item.source)?
+            && !street.is_empty()
+        {
+            return Ok(Some(street));
+        }
+        (self.leads_to)(zone, there)
+    }
+
+    /// The name this has been given, by the player or the game, or None.
+    pub fn name(&self, item: &Interactable, zone: i64) -> Option<String> {
+        let (what, first, second) = item.naming(zone)?;
+        if what == SPRITE {
+            self.names.sprite(first)
+        } else {
+            self.names.place(first, second)
+        }
+    }
+}
+
+/// Answers the navigation keys from the field reader's list.
+pub struct Navigator {
+    pub(crate) field: Rc<dyn FieldSource>,
+    categories: Vec<String>,
+    /// The bottom screen's touch targets, in a game where they are read.
+    touch: Option<TouchTargets>,
+    /// How an item and the way to it are said (`config.toml`'s `[pa3ds.navigation]`).
+    wording: Navigation,
+    speech: Rc<Speech>,
+    log: Log,
+    bindings: Bindings,
+    names: Rc<Names>,
+    naming: Rc<Naming>,
+    pub(crate) asker: Asker,
+    speaker: Speaker,
+    /// The player's side of the battle as last said, or the enemy's, or None out of one.
+    sides: Sides,
+    /// What the open dialog is renaming and what it was called, since the player may have
+    /// walked on by the time they press OK.
+    renaming: Option<((&'static str, i64, i64), String)>,
+    mode: &'static str,
+    category: i64,
+    /// The key of the item chosen, or None for the nearest.
+    chosen: Option<Key>,
+    /// The direction the chosen item was found in, so the same key steps on from it and
+    /// another starts afresh.
+    facing: Option<String>,
+    /// P, and guiding the player along the way it finds.
+    pub guide: Guide,
+}
+
+impl Navigator {
+    /// `categories` are those a game's own apps list, after the field's: ORAS's sky's.
+    pub fn new(field: Rc<dyn FieldSource>, speech: Rc<Speech>, log: Log, options: Options) -> Self {
+        let Options {
+            bindings,
+            names,
+            asker,
+            navigation,
+            speaker,
+            leads_to,
+            street,
+            clock,
+            routes,
+            slack,
+            moves,
+            bike,
+            acro,
+            sides,
+            touch,
+            categories,
+        } = options;
+        let wording = navigation.unwrap_or_default();
+        let names = names.unwrap_or_else(|| Rc::new(Names::default()));
+        let naming = Rc::new(Naming {
+            names: names.clone(),
+            leads_to: leads_to.unwrap_or_else(|| Rc::new(|_here, _there| Ok(None))),
+            street: street.unwrap_or_else(|| Rc::new(|_zone, _slot| Ok(None))),
+        });
+        let tell = {
+            let (speech, log) = (speech.clone(), log.clone());
+            Rc::new(move |text: &str| {
+                log(&format!("path: {text}"));
+                speech.say(text, Category::Guidance);
+            })
+        };
+        let guide = Guide::new(
+            field.clone(),
+            {
+                let naming = naming.clone();
+                Rc::new(move |item: &Interactable, zone: i64| naming.label(item, zone))
+            },
+            {
+                let naming = naming.clone();
+                Rc::new(move |item: &Interactable, zone: i64| naming.name_of(item, zone))
+            },
+            tell,
+            log.clone(),
+            wording.clone(),
+            clock.unwrap_or_else(|| Rc::new(py::time::monotonic)),
+            routes,
+            slack,
+            moves,
+            bike,
+            acro,
+        );
+        Navigator {
+            field,
+            categories: CATEGORIES
+                .iter()
+                .map(|category| category.to_string())
+                .chain(categories)
+                .collect(),
+            touch,
+            wording,
+            speech,
+            log,
+            bindings: bindings.unwrap_or_else(|| DEFAULT_BINDINGS.clone()),
+            names,
+            naming,
+            asker: asker.unwrap_or_default(),
+            speaker: speaker.unwrap_or_else(|| Rc::new(|| None)),
+            sides: sides.unwrap_or_else(|| Rc::new(|_player| None)),
+            renaming: None,
+            mode: LIST,
+            category: 0,
+            chosen: None,
+            facing: None,
+            guide,
+        }
+    }
+
+    pub fn mode(&self) -> &str {
+        self.mode
+    }
+
+    /// Whether a path is being walked, and the player's every step wants following.
+    pub fn guiding(&self) -> bool {
+        self.guide.guidance.is_some()
+    }
+
+    /// Answer a key by what it means in the current mode; a key unbound there is quiet.
+    pub fn press_key(&mut self, key: &str) -> Result<()> {
+        let action = self
+            .bindings
+            .get(self.mode)
+            .and_then(|keys| keys.get(&key.to_lowercase()))
+            .cloned();
+        if let Some(action) = action {
+            self.press(&action)?;
+        }
+        Ok(())
+    }
+
+    pub fn press(&mut self, action: &str) -> Result<()> {
+        // Naming a speaker asks the field nothing: they may have walked off, or the conversation
+        // may be over, and the player still knows who they were talking to.
+        if action == RENAME_SPEAKER {
+            return self.rename_speaker();
+        }
+        // A battle's sides are the battle's, whatever the field says.
+        if action == OUR_SIDE || action == ENEMY_SIDE {
+            let text = match (self.sides)(action == OUR_SIDE) {
+                Some(text) if !text.is_empty() => text,
+                _ => "no battle".to_string(),
+            };
+            self.say(&text);
+            return Ok(());
+        }
+        if self.mode == TOUCH && TOUCH_ACTIONS.contains(&action) {
+            let said = match &mut self.touch {
+                Some(touch) => touch.press(action)?,
+                None => String::new(),
+            };
+            if !said.is_empty() {
+                self.say(&said);
+            }
+            return Ok(());
+        }
+        if action == MODE_TOGGLE {
+            let at = MODES
+                .iter()
+                .position(|&mode| mode == self.mode)
+                .ok_or_else(|| Error::value("tuple.index(x): x not in tuple"))?;
+            self.mode = MODES[(at + 1) % MODES.len()];
+            self.chosen = None;
+            self.facing = None;
+            if self.mode == TOUCH {
+                let first = match &mut self.touch {
+                    Some(touch) => touch.start()?,
+                    None => "nothing to touch".to_string(),
+                };
+                self.say(&format!("touch mode, {first}"));
+            } else {
+                self.say(&format!("{} mode", self.mode));
+            }
+            return Ok(());
+        }
+        let Some(r#where) = self.field.poll()? else {
+            self.say("no map");
+            return Ok(());
+        };
+        let r#where = self.field.interactables(&r#where)?;
+        if action == RENAME {
+            return self.rename(&r#where);
+        }
+        if action == PATHFIND || action == PATHFIND_HM {
+            let Some(item) = self.chosen_item(&r#where) else {
+                self.say("nothing here");
+                return Ok(());
+            };
+            if let Some(steer) = &r#where.steer {
+                let said = format!(
+                    "{}, {}",
+                    self.label(&item, r#where.zone)?,
+                    (steer.0)(&item)?
+                );
+                self.say(&said);
+                return Ok(());
+            }
+            let held = self.guide.guidance.clone();
+            let (speech, log) = (self.speech.clone(), self.log.clone());
+            let say = move |text: &str| {
+                log(&format!("key: {text}"));
+                speech.say(text, Category::Key);
+            };
+            return self.guide.to(
+                &r#where,
+                &item,
+                &say,
+                "",
+                action == PATHFIND_HM,
+                held,
+                None,
+                false,
+                true,
+            );
+        }
+        if action == CATEGORY_PREVIOUS || action == CATEGORY_NEXT {
+            let step = if action == CATEGORY_PREVIOUS { -1 } else { 1 };
+            self.chosen = None;
+            self.facing = None;
+            let was = self.category;
+            for _ in 0..self.categories.len() - 1 {
+                self.category = py::modulo(self.category + step, self.categories.len() as i64);
+                let items = self.items(&r#where);
+                if !items.is_empty() {
+                    self.chosen = Some(items[0].key());
+                    self.say(&format!(
+                        "{}, {}",
+                        self.categories[self.category as usize],
+                        items.len()
+                    ));
+                    return Ok(());
+                }
+            }
+            // Nowhere to go: the category stays, so an empty map's "nothing north" does not
+            // turn into "no items north" a press later.
+            self.category = was;
+            self.say("nothing here");
+            return Ok(());
+        }
+        if DIRECTIONS.contains(&action) {
+            return self.look(&r#where, action);
+        }
+        let items = self.items(&r#where);
+        if items.is_empty() {
+            self.say("nothing here");
+            return Ok(());
+        }
+        let keys: Vec<Key> = items.iter().map(Interactable::key).collect();
+        let mut at = match &self.chosen {
+            Some(chosen) => keys.iter().position(|key| key == chosen).unwrap_or(0) as i64,
+            None => 0,
+        };
+        if action == ITEM_PREVIOUS || action == ITEM_NEXT {
+            let step = if action == ITEM_PREVIOUS { -1 } else { 1 };
+            at = py::modulo(at + step, items.len() as i64);
+        }
+        self.chosen = Some(keys[at as usize].clone());
+        self.said(&r#where, &items, at)
+    }
+
+    /// Say the next item on `direction`'s side of the player, nearest first.
+    fn look(&mut self, r#where: &Field, direction: &str) -> Result<()> {
+        let items: Vec<Interactable> = self
+            .items(r#where)
+            .into_iter()
+            .filter(|item| {
+                towards(
+                    direction,
+                    r#where.cell,
+                    item.nearest(r#where.cell),
+                    r#where.reach.filter(|&reach| reach != 0).unwrap_or(RANGE),
+                )
+            })
+            .collect();
+        if items.is_empty() {
+            self.chosen = None;
+            self.facing = None;
+            let category = self.categories[self.category as usize].as_str();
+            // In the sky the list is in the player's own frame, north the way they face.
+            let way = if r#where.steer.is_some() {
+                match RELATIVE.iter().find(|(key, _)| *key == direction) {
+                    Some((_, word)) => *word,
+                    None => return Err(Error::key(py::repr(direction))),
+                }
+            } else {
+                direction
+            };
+            self.say(&if category == ALL {
+                format!("nothing {way}")
+            } else {
+                format!("no {category} {way}")
+            });
+            return Ok(());
+        }
+        let keys: Vec<Key> = items.iter().map(Interactable::key).collect();
+        let mut at = 0;
+        let kept = self
+            .chosen
+            .as_ref()
+            .and_then(|chosen| keys.iter().position(|key| key == chosen));
+        if self.facing.as_deref() == Some(direction)
+            && let Some(kept) = kept
+        {
+            at = py::modulo(kept as i64 + 1, items.len() as i64);
+        }
+        self.chosen = Some(keys[at as usize].clone());
+        self.facing = Some(direction.to_string());
+        self.said(r#where, &items, at)
+    }
+
+    fn items(&self, r#where: &Field) -> Vec<Interactable> {
+        r#where.of(&self.categories[self.category as usize])
+    }
+
+    fn said(&self, r#where: &Field, items: &[Interactable], at: i64) -> Result<()> {
+        let item = &items[at as usize];
+        let mut way = item.bearing(r#where.cell, r#where.heading)?;
+        if let Some(arrival) = item.arrival {
+            way += &format!(", out at {}", things::bearing(r#where.cell, arrival));
+        }
+        let mut parts = vec![self.label(item, r#where.zone)?, way];
+        if self.wording.positions {
+            parts.insert(
+                if self.wording.position_first { 1 } else { 2 },
+                format!("{} of {}", at + 1, items.len()),
+            );
+        }
+        self.say(&parts.join(", "));
+        Ok(())
+    }
+
+    /// Keep up with the player along the way being walked (`Guide.follow`).
+    pub fn follow(&mut self, r#where: &Field) -> Result<()> {
+        self.guide.follow(r#where)
+    }
+
+    /// What to call this: the name it has been given, or what it is when it has none.
+    pub fn name_of(&self, item: &Interactable, zone: i64) -> String {
+        self.naming.name_of(item, zone)
+    }
+
+    /// What this is said as: what it is called, and for an exit into another place, the
+    /// place: "edge to Route 101", "path to Route 102", "the north gap to Route 101".
+    ///
+    /// The place is the game's own word, so a name the player gives an exit comes before it
+    /// rather than instead of it (ADR-0023: nothing of ours replaces what the game says); a name
+    /// that already says the place is left as it is.
+    pub fn label(&self, item: &Interactable, zone: i64) -> Result<String> {
+        self.naming.label(item, zone)
+    }
+
+    /// What the game calls the place this exit from `zone` leads to, or None: for anything that
+    /// is not an exit, for an exit into the player's own place — a house's door, the mat out of
+    /// it, the stairs between two floors, though not the edge onto another zone of the same
+    /// outdoors, as Route 119's two are — and without the game's text.
+    pub fn destination(&self, item: &Interactable, zone: i64) -> Result<Option<String>> {
+        self.naming.destination(item, zone)
+    }
+
+    /// The name this has been given, by the player or the game, or None.
+    pub fn called(&self, item: &Interactable, zone: i64) -> Option<String> {
+        self.naming.name(item, zone)
+    }
+
+    fn name(&self, item: &Interactable, zone: i64) -> Option<String> {
+        self.naming.name(item, zone)
+    }
+
+    /// The thing the navigation keys are on now, or None when they are on nothing.
+    fn chosen_item(&self, r#where: &Field) -> Option<Interactable> {
+        let mut items = self.items(r#where);
+        if items.is_empty() {
+            return None;
+        }
+        let at = match &self.chosen {
+            Some(chosen) => items
+                .iter()
+                .position(|item| &item.key() == chosen)
+                .unwrap_or(0),
+            None => 0,
+        };
+        Some(items.swap_remove(at))
+    }
+
+    /// A hidden Pokémon the DexNav has just found, `item` of the list `where` holds: by its
+    /// search, the game asked for it by the player, or by its detector with the DexNav open,
+    /// which is taken only while the player is in touch mode, at the DexNav, and not at an
+    /// AreaNav they forgot to bring back (Orion, 2026-10-07); what the detector turns up with
+    /// the AreaNav open never comes here (`gen6.profile`). With
+    /// `[pa3ds.navigation] guide_to_hidden`, P is on it from now, in the category of all where
+    /// the one chosen does not hold it, and the way to it is found as P finds it, said after what
+    /// it leads to and queued, since no key asked for it: getting out of touch mode, where the
+    /// search is made, and walking the list to it took Orion long enough to lose it (movie26).
+    /// Python's `searched` defaults to True.
+    pub fn found(&mut self, r#where: &Field, item: &Interactable, searched: bool) -> Result<()> {
+        if !self.wording.guide_to_hidden || !(searched || self.mode == TOUCH) {
+            return Ok(());
+        }
+        let key = item.key();
+        if !self.items(r#where).iter().any(|listed| listed.key() == key) {
+            self.category = self
+                .categories
+                .iter()
+                .position(|category| category == ALL)
+                .ok_or_else(|| Error::value("tuple.index(x): x not in tuple"))?
+                as i64;
+        }
+        self.chosen = Some(key);
+        self.facing = None;
+        let tell = self.guide.tell.clone();
+        self.guide
+            .to(r#where, item, &*tell, "", false, None, None, true, false)
+    }
+
+    /// Put the rename dialog up for whatever is chosen.
+    ///
+    /// Nothing chosen is nothing to rename, and no dialog opens: that is the common case for a
+    /// mistyped key, and it must not leave a window in front of the game.
+    fn rename(&mut self, r#where: &Field) -> Result<()> {
+        let Some(item) = self.chosen_item(r#where) else {
+            self.say("nothing to rename");
+            return Ok(());
+        };
+        let Some(naming) = item.naming(r#where.zone) else {
+            // A hidden Pokémon: a different one each time, and the game names the species itself.
+            self.say(&format!("{} cannot be renamed", item.kind));
+            return Ok(());
+        };
+        if self.asker.open() {
+            self.say("already renaming");
+            return Ok(());
+        }
+        let called = self.name(&item, r#where.zone);
+        self.renaming = Some((naming, self.label(&item, r#where.zone)?));
+        let label = format!(
+            "{}, {}. ",
+            leading(
+                &item.kind,
+                self.destination(&item, r#where.zone)?.as_deref()
+            ),
+            item.bearing(r#where.cell, r#where.heading)?
+        ) + &match called.as_deref() {
+            Some(called) if !called.is_empty() => format!("Called: {called}"),
+            _ => "Not named yet".to_string(),
+        };
+        self.asker.ask(
+            RENAMING,
+            "Rename",
+            &label,
+            called.as_deref().unwrap_or_default(),
+        )?;
+        Ok(())
+    }
+
+    /// Put the dialog up for whoever last spoke.
+    fn rename_speaker(&mut self) -> Result<()> {
+        let Some(character) = (self.speaker)() else {
+            self.say("nobody has spoken");
+            return Ok(());
+        };
+        if self.asker.open() {
+            self.say("already renaming");
+            return Ok(());
+        }
+        let called = self.names.sprite(character);
+        let called = called.filter(|called| !called.is_empty());
+        self.renaming = Some((
+            (SPRITE, character, 0),
+            called
+                .clone()
+                .unwrap_or_else(|| "the last speaker".to_string()),
+        ));
+        let label = "The last speaker. ".to_string()
+            + &match &called {
+                Some(called) => format!("Called: {called}"),
+                None => "Not named yet".to_string(),
+            };
+        self.asker.ask(
+            SPEAKING,
+            "Rename",
+            &label,
+            called.as_deref().unwrap_or_default(),
+        )?;
+        Ok(())
+    }
+
+    /// Keep any name given since the last poll, and say it back.
+    ///
+    /// Said back because the dialog closing is not evidence to a blind player that anything was
+    /// saved. An empty name clears theirs and gives the thing back to the shipped table, so what
+    /// is said afterwards is read from the store rather than assumed.
+    pub fn poll_renames(&mut self) -> Result<()> {
+        for answer in self.asker.answers() {
+            if (answer.what != RENAMING && answer.what != SPEAKING) || self.renaming.is_none() {
+                continue;
+            }
+            let Some(((what, first, second), was)) = self.renaming.take() else {
+                continue;
+            };
+            let now = if what == SPRITE {
+                self.names.name_sprite(first, &answer.said)?;
+                self.names.sprite(first)
+            } else {
+                self.names.name_place(first, second, &answer.said)?;
+                self.names.place(first, second)
+            };
+            match now {
+                Some(now) if !now.is_empty() => self.say(&format!("{was} is now {now}")),
+                _ => self.say(&format!("{was} has no name")),
+            }
+        }
+        Ok(())
+    }
+
+    fn say(&self, text: &str) {
+        (self.log)(&format!("key: {text}"));
+        self.speech.say(text, Category::Key);
+    }
+}
+
+/// `called` with the place it leads to after it, unless it already says it.
+fn leading(called: &str, place: Option<&str>) -> String {
+    match place {
+        Some(place) if !called.contains(place) => format!("{called} to {place}"),
+        _ => called.to_string(),
+    }
+}

@@ -20,14 +20,16 @@ use crate::core::dialog::{
 };
 use crate::core::names::Names;
 use crate::core::speech::Speech;
-use crate::games::common::field::{
-    Field, Ground, Interactable, PLACE, POKEMON, SPRITE, WARP_SOURCE,
+use crate::games::common::field::ground::Ground;
+use crate::games::common::field::guide::FieldSource;
+use crate::games::common::field::keys::{
+    CATEGORY_NEXT, ITEM_NEXT, ITEM_READ, RENAME, RENAME_SPEAKER,
 };
-use crate::games::common::navigate::{
-    CATEGORY_NEXT, FieldSource, ITEM_NEXT, ITEM_READ, LeadsTo, Navigator, Options, RENAME,
-    RENAME_SPEAKER,
+use crate::games::common::field::navigate::{LeadsTo, Navigator, Options};
+use crate::games::common::field::things::{
+    Field, Interactable, PLACE, POKEMON, SPRITE, WARP_SOURCE,
 };
-use crate::games::gen6::field::HIDDEN_POKEMON;
+use crate::games::oras::hidden::HIDDEN_POKEMON;
 use crate::py::{self, Result};
 
 const NORMAN: i64 = 0x13F;
@@ -93,7 +95,7 @@ fn town() -> Field {
     }
 }
 
-/// A DexNav find, as `field.hidden` builds one: its `source` is the record's address, because
+/// A DexNav find, as `DexNav.listed` builds one: its `source` is the record's address, because
 /// there is no table it holds a slot in.
 fn hiding() -> Interactable {
     Interactable {

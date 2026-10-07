@@ -7,7 +7,7 @@ use indexmap::IndexMap;
 
 use super::fake_memory::{CODE, FakeClasses, FakeMemory};
 use crate::core::rtti::ClassNames;
-use crate::games::gen6::townmap::{self, VIEWS};
+use crate::games::gen6::screens::townmap::{self, VIEWS};
 
 const NUTS: &str = "N3app7townmap8NutsViewE";
 const VIEW: i64 = 0x08401BE4;

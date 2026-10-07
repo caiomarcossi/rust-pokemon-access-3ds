@@ -7,7 +7,7 @@ use indexmap::IndexMap;
 
 use super::fake_memory::FakeMemory;
 use crate::core::discovery::ALLOCATION;
-use crate::games::gen6::rail::{self, Line, Network};
+use crate::games::gen6::field::rail::{self, Line, Network};
 use crate::py::Result;
 
 pub(super) const TABLE: i64 = 0x08247214;

@@ -75,11 +75,14 @@ the live logs in `user\logs\` beside pa3ds.
 the `prismer` crate's static build. Building pa3ds therefore needs Visual Studio 2026 (its C and
 C++ compiler) and CMake 4.2 or newer on the path; the first build compiles Prism, about a minute.
 
+Change files with the Edit tool, which keeps a file's line endings. The checkout is LF
+(`.gitattributes`), and on Windows a Python script's `write_text` rewrites a whole file as CRLF.
+
 ## Keeping up with upstream
 
 ```
 python tools/sync.py status     # what changed upstream since port.toml's commit, file by file
-python tools/sync.py mirror     # copy the docs and data files across
+python tools/sync.py mirror     # copy the data files and the licence across
 python tools/sync.py layout     # create the Rust file for a new Python file
 python tools/sync.py tests      # every Python test has a Rust test of its name
 python tools/sync.py mark       # port.toml now matches upstream's HEAD

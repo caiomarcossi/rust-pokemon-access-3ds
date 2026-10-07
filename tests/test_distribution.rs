@@ -5,7 +5,7 @@ use std::rc::Rc;
 use super::fake_memory::{CODE, FakeClasses, FakeMemory};
 use crate::core::rtti::ClassNames;
 use crate::games::common::lyt;
-use crate::games::gen6::distribution as d;
+use crate::games::gen6::screens::distribution as d;
 
 const NAVI: i64 = 0x08200000;
 const ICONS: i64 = 0x08210000;
@@ -87,6 +87,23 @@ fn test_a_picture_is_named_by_the_record_of_the_texture_it_draws() {
             Some("Poochyena".to_string())
         ]
     );
+}
+
+/// 2 caught, 3 seen, as the save's Pokédex had Zigzagoon and Ralts (spike B, movie27).
+#[test]
+fn test_a_record_says_whether_its_species_is_caught() {
+    let (memory, found) = route_101();
+    memory.write(NAVI + d::RECORDS + d::STATE, &[3]);
+    memory.write(NAVI + d::RECORDS + d::RECORD + d::STATE, &[d::CAUGHT as u8]);
+    let caught: Vec<bool> = (0..3)
+        .map(|i| {
+            found
+                .caught(picture(&memory, i, 0x2077D480 + 0x1100 * i))
+                .unwrap()
+        })
+        .collect();
+    assert_eq!(caught, [false, true, false]);
+    assert!(!found.caught(picture(&memory, 0, GREY)).unwrap());
 }
 
 #[test]

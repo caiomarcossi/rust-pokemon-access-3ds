@@ -6,24 +6,27 @@ use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::OnceLock;
 
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
 
-use crate::core::discovery::Found;
 use crate::core::memory::Memory;
-use crate::core::pathfind::{Cell, SOUTH};
-use crate::games::common::field::{CUT, IceRoom, ROCK_SMASH, RotatingDoor, STRENGTH};
-use crate::games::gen6::archives::{BOY, GIRL, RomLayout, TownFacilities};
-use crate::games::gen6::field::{
-    AshReader, DoorReader, FLAG, HiddenReader, IceReader, PC_TILE, SecretBaseReader, use_tiles,
+use crate::core::pathfind::SOUTH;
+use crate::games::common::field::ground::{CUT, ROCK_SMASH, STRENGTH};
+use crate::games::common::pictures;
+use crate::games::gen6::field::features::{
+    DoorReader, Feature, HiddenReader, IceReader, SecretBaseReader,
 };
+use crate::games::gen6::field::mmodel;
+use crate::games::gen6::field::reader::{FLAG, PC_TILE, use_tiles};
 use crate::games::gen6::game::{Data, Game};
-use crate::games::gen6::mmodel;
+use crate::games::gen6::rom::archives::{BOY, GIRL, GameText};
+use crate::games::gen6::rom::layout::{RomLayout, TownFacilities};
 use crate::games::oras::ash::AshPiles;
+use crate::games::oras::berries::BerrySpots;
 use crate::games::oras::doors::RotatingDoors;
 use crate::games::oras::hidden::DexNav;
 use crate::games::oras::ice::IceFloors;
 use crate::games::oras::secret_base::{SecretBases, zones as secret_bases_zones};
-use crate::py::Result;
+use crate::games::oras::sky::Soaring;
 
 /// Words the game does not say itself, a folder a language: `pa3ds.core.names` reads them.
 ///
@@ -124,6 +127,8 @@ pub fn characters() -> &'static IndexMap<i64, i64> {
             (0xCA, 683),
             (0xCB, 688), // AQUABOSS_RS, AQUAKANBU_M_RS, _F_RS: Archie, Matt, Shelly
             (0xD3, 856), // HIMITU_RS, where the Secret Bases are: Aarune
+            (0xD4, 713), // ZAZAKO_RS, outside Sky Pillar and wherever her Whismur
+                         // stands beside her (spike A): Lorekeeper Zinnia
         ])
     })
 }
@@ -190,6 +195,50 @@ pub fn touch_words() -> &'static (i64, IndexMap<&'static str, i64>) {
         )
     })
 }
+/// The DexNav's red magnifier over the middle of its map, 120 by 120, while a hidden Pokémon is
+/// up: drawn as a picture alone, and tapped to show that Pokémon's box, so named by its title there,
+/// line 12 of text file 84, "Hidden Pokémon". It covers the icons under it, which a tap cannot reach
+/// meanwhile (movie27, 279 s: "search get" by its file's name). Its archive has two: `get`, with a
+/// Poké Ball on it, seen over a caught Surskit, and `check`, not seen, for one not caught (spike B).
+pub fn dexnav_words() -> &'static (i64, IndexMap<&'static str, i64>) {
+    static DEXNAV_WORDS: OnceLock<(i64, IndexMap<&'static str, i64>)> = OnceLock::new();
+    DEXNAV_WORDS.get_or_init(|| {
+        (
+            84,
+            IndexMap::from([
+                ("search_get_button.bclim", 12),
+                ("search_check_button.bclim", 12),
+            ]),
+        )
+    })
+}
+/// Pictures a button draws only while what it shows is caught: said "caught" after its name.
+pub const CAUGHT_IMAGES: [&str; 1] = ["search_get_button.bclim"];
+/// The DexNav's labels, each over its value or beside it: Name, Search Level, Level, Type,
+/// Potential, First Move, Ability, Held Item; and what its red mark says in the group of each it
+/// marks (spike B: in First Move's for an egg move, Helping Hand, movie27).
+pub fn dexnav_labels() -> (i64, IndexMap<i64, String>) {
+    (
+        84,
+        [
+            (13, ""),
+            (15, ""),
+            (19, pictures::HIGHER_LEVEL),
+            (22, ""),
+            (23, ""),
+            (24, pictures::EGG_MOVE),
+            (26, pictures::HIDDEN_ABILITY),
+            (32, ""),
+        ]
+        .into_iter()
+        .map(|(line, mark)| (line, mark.to_string()))
+        .collect(),
+    )
+}
+/// The DexNav's titles and buttons, no label of what follows: Nearby, Found, Last seen and Hidden
+/// Pokémon, SEARCH, Pokédex. "Found Pokémon: Search Level" and "Pokédex: SEARCH" were said under
+/// `pauses` (spike B).
+pub const DEXNAV_PLAIN: (i64, [i64; 6]) = (84, [9, 10, 11, 12, 28, 61]);
 /// The Bag's pockets, drawn as icons alone, by the icon each draws (its `_l` copy while it is the
 /// pocket open), and the line of text file 163 the game names the pocket with: ITEMS, MEDICINE,
 /// TMs & HMs, BERRIES, KEY ITEMS (movie21).
@@ -245,6 +294,10 @@ pub const LANGUAGE_NAMES: (i64, i64) = (103, 6);
 pub const TYPE_NAMES: i64 = 18;
 /// The Pokémon's names, "Egg" at 0 and Bulbasaur at 1 (spike 178).
 pub const SPECIES_NAMES: i64 = 98;
+/// The field's models, a file a model by the id the ROM's sprite list gives it (544 of each), and
+/// the first Pokémon's, `EV_POKE01`: the character `0x1000 + n` is drawn with model `0x1BE + n`, as
+/// each move model's record of its sprite says at +0x14 (spike A).
+pub const POKEMON_MODELS: (&str, i64) = ("a/0/2/1", 0x1BE);
 /// STATUS, PHYSICAL, SPECIAL: the summary's words, in the category icons' order (spike 147).
 pub const MOVE_CATEGORIES: (i64, i64) = (150, 17);
 /// PARALYSIS, ASLEEP, FROZEN, BURNED, POISONED, FAINTED, POKÉRUS (spike 147).
@@ -260,10 +313,55 @@ pub const MACH_BIKE: (i64, i64) = (114, 718);
 /// (spike 159).
 pub const ACRO_BIKE: (i64, i64) = (114, 719);
 
-/// The sky's map of places, soaring on Latios: the one file of its archive, "SLAN" in a two-letter
-/// archive of one (`gen6.sky`, spike 166). Its neighbours `a/2/5/1`, `a/2/5/3` and `a/2/5/4` are the
-/// sky's models and textures, the files the sky's process loads.
-pub const SKY_PLACES: &str = "a/2/5/2";
+/// The warp kinds that are the way into one building and no other, 16 of them, each used by that
+/// building's entrance alone (2026-10-06): `0x0f01` Devon Corporation in Rustboro, `0x1001` the
+/// Oceanic Museum in Slateport, `0x1101` TV Mauville, `0x1201` Mauville Gym, `0x1301` Route 112's
+/// Cable Car station, `0x1401` the Weather Institute on Route 119, `0x1501` the Safari Zone on Route
+/// 121, `0x1601` Lilycove's Department Store, `0x1701` its Museum, `0x1801` Mossdeep's Space Center,
+/// `0x1901` the Cave of Origin, from Sootopolis City by two zones, `0x1a01` the Battle Maison at the
+/// Battle Resort, `0x3601` Rydel's Cycles, `0x3701` New Mauville off Route 110, `0x3801` Fortree Gym
+/// and `0x3901` Mauville's Food Court. Most are named by their plate already; the rest by what their
+/// town's list leaves over (`plates.entrance_names`).
+pub const ENTRANCES: [i64; 16] = [
+    0x0F01, 0x1001, 0x1101, 0x1201, 0x1301, 0x1401, 0x1501, 0x1601, 0x1701, 0x1801, 0x1901, 0x1A01,
+    0x3601, 0x3701, 0x3801, 0x3901,
+];
+
+pub const LADDER_UP: (i64, i64) = (0x0A00, 0x0A01);
+pub const LADDER_DOWN: (i64, i64) = (0x0B00, 0x0B01);
+pub const TELEPORTER_PAD: i64 = 0x0601;
+
+/// What the warp kinds that are not a door or stairs are (2026-10-06, read off the ROM's warps).
+///
+/// Ladders: `0x0a00` and `0x0a01` lead up, `0x0b00` and `0x0b01` down. They pair, `0x0b00` with
+/// `0x0a01` and `0x0b01` with `0x0a00`, in Granite Cave, Meteor Falls, Shoal Cave, Sky Pillar, Mirage
+/// Cave and Victory Road. Every `0x0b` end goes from the entrance side deeper down, Granite Cave 1F
+/// to B1F to B2F, Meteor Falls to B1F, Shoal Cave to its lower room and its ice room; every `0x0a`
+/// end goes back up, and Victory Road climbs to the League by `0x0a`. The player went down from zone
+/// `0x7c` to `0x7d` by `0x0b00` and back by `0x0a01` (pa3ds.5.log, 2318 to 2330 s).
+///
+/// Teleporters: `0x0601`, 84 of them, all in Team Aqua's Hideout (zones `0x5c` to `0x61`) and Team
+/// Magma's (`0xa9` to `0xae`), most leading to another pad of their own room.
+///
+/// The entrances are `ENTRANCES`. X and Y have no table: their kinds `0x10xx`, `0x38xx` and `0x39xx`
+/// are not measured, and stay "warp".
+pub fn warps() -> &'static IndexMap<i64, String> {
+    static WARPS: OnceLock<IndexMap<i64, String>> = OnceLock::new();
+    WARPS.get_or_init(|| {
+        let mut out: IndexMap<i64, String> = IndexMap::new();
+        for kind in [LADDER_UP.0, LADDER_UP.1] {
+            out.insert(kind, "ladder up".to_string());
+        }
+        for kind in [LADDER_DOWN.0, LADDER_DOWN.1] {
+            out.insert(kind, "ladder down".to_string());
+        }
+        out.insert(TELEPORTER_PAD, "teleporter".to_string());
+        for kind in ENTRANCES {
+            out.insert(kind, "entrance".to_string());
+        }
+        out
+    })
+}
 
 /// Where ORAS keeps what `archives.GameText` reads.
 pub fn rom() -> &'static RomLayout {
@@ -272,7 +370,7 @@ pub fn rom() -> &'static RomLayout {
         towns: Some(towns().clone()),
         characters: characters().clone(),
         protagonists: true,
-        story: crate::games::gen6::archives::owned(story_archives()),
+        story: crate::games::gen6::rom::layout::owned(story_archives()),
         moves: Some(MOVE_NAMES),
         map_chunks: Some(MAP_CHUNKS.to_string()),
         matrices: Some(MATRICES.to_string()),
@@ -284,14 +382,15 @@ pub fn rom() -> &'static RomLayout {
         languages: Some(LANGUAGE_NAMES),
         types: Some(TYPE_NAMES),
         species: Some(SPECIES_NAMES),
+        pokemon_models: Some((POKEMON_MODELS.0.to_string(), POKEMON_MODELS.1)),
         categories: Some(MOVE_CATEGORIES),
         conditions: Some(CONDITIONS),
         map_panes: Some((MAP_PANES.0.to_string(), MAP_PANES.1, MAP_PANES.2)),
         decorations: Some(DECORATION_NAMES),
         bike: Some(MACH_BIKE),
         acro: Some(ACRO_BIKE),
-        sky: Some(SKY_PLACES.to_string()),
-        touch_words: [touch_words(), bag_pockets()]
+        files: vec![sky::ARCHIVE.to_string()],
+        touch_words: [touch_words(), bag_pockets(), dexnav_words()]
             .into_iter()
             .map(|(file, lines)| {
                 (
@@ -303,6 +402,13 @@ pub fn rom() -> &'static RomLayout {
                 )
             })
             .collect(),
+        entrances: ENTRANCES.into_iter().collect(),
+        caught: CAUGHT_IMAGES
+            .iter()
+            .map(|image| image.to_string())
+            .collect(),
+        labels: vec![dexnav_labels()],
+        plain: vec![(DEXNAV_PLAIN.0, DEXNAV_PLAIN.1.to_vec())],
         ..RomLayout::new(
             "ORAS",
             text_archives(),
@@ -461,7 +567,7 @@ pub fn triggers() -> &'static IndexMap<(i64, i64), (String, String, Option<i64>)
     })
 }
 
-/// Where the field's work holds the Dowsing Machine's record (`gen6.dowsing`), found on Route 110
+/// Where the field's work holds the Dowsing Machine's record (`gen6.field.dowsing`), found on Route 110
 /// (omega_ruby_item-finder.ctm, 2026-09-29).
 pub const DOWSING: i64 = 0x1D0;
 
@@ -519,8 +625,8 @@ fn secret_bases(memory: Rc<dyn Memory>, image: &[u8]) -> Rc<dyn SecretBaseReader
     Rc::new(SecretBases::new(memory, image))
 }
 
-/// `AshPiles`, as the factory `Game.ash` holds.
-fn ash_piles(memory: Rc<dyn Memory>) -> Rc<dyn AshReader> {
+/// `lambda memory, _text: AshPiles(memory)`, as a factory `Game.features` holds.
+fn ash_piles(memory: Rc<dyn Memory>, _text: Option<&GameText>) -> Rc<dyn Feature> {
     Rc::new(AshPiles::new(memory))
 }
 
@@ -529,97 +635,9 @@ fn rotating_doors(memory: Rc<dyn Memory>) -> Rc<dyn DoorReader> {
     Rc::new(RotatingDoors::new(memory))
 }
 
-/// `AshPiles` is an `AshReader`: what the gen 6 field reads its ash piles through.
-impl AshReader for AshPiles {
-    fn classes(&self) -> Vec<&'static str> {
-        self.classes.clone()
-    }
-
-    fn track(&self, found: &Found) -> Result<()> {
-        AshPiles::track(self, found)
-    }
-
-    fn piles(&self, zone: i64) -> Result<Vec<(i64, Cell)>> {
-        AshPiles::piles(self, zone)
-    }
-}
-
-/// `RotatingDoors` is a `DoorReader`.
-impl DoorReader for RotatingDoors {
-    fn classes(&self) -> Vec<&'static str> {
-        self.classes.clone()
-    }
-
-    fn track(&self, found: &Found) -> Result<()> {
-        RotatingDoors::track(self, found)
-    }
-
-    fn doors(&self, zone: i64) -> Result<Vec<RotatingDoor>> {
-        RotatingDoors::doors(self, zone)
-    }
-}
-
 /// `IceFloors`, as the factory `Game.ice` holds.
 fn ice_floors(memory: Rc<dyn Memory>) -> Rc<dyn IceReader> {
     Rc::new(IceFloors::new(memory))
-}
-
-/// `IceFloors` is an `IceReader`.
-impl IceReader for IceFloors {
-    fn classes(&self) -> Vec<&'static str> {
-        self.classes.clone()
-    }
-
-    fn track(&self, found: &Found) -> Result<()> {
-        IceFloors::track(self, found)
-    }
-
-    fn rooms(&self, zone: i64) -> Result<Vec<IceRoom>> {
-        IceFloors::rooms(self, zone)
-    }
-}
-
-/// `SecretBases` is a `SecretBaseReader`.
-impl SecretBaseReader for SecretBases {
-    fn classes(&self) -> Vec<&'static str> {
-        self.classes.clone()
-    }
-
-    fn spots(&self) -> Vec<(i64, Cell)> {
-        self.spots.clone()
-    }
-
-    fn inside(&self) -> i64 {
-        self.inside
-    }
-
-    fn zones(&self) -> IndexSet<i64> {
-        self.zones.clone()
-    }
-
-    fn track(&self, found: &Found) -> Result<()> {
-        SecretBases::track(self, found)
-    }
-
-    fn own(&self) -> Result<Option<i64>> {
-        SecretBases::own(self)
-    }
-
-    fn furnished(&self) -> Result<bool> {
-        SecretBases::furnished(self)
-    }
-
-    fn cursor(&self) -> Result<Option<Cell>> {
-        SecretBases::cursor(self)
-    }
-
-    fn standing(&self, cell: Cell) -> Result<Vec<i64>> {
-        SecretBases::standing(self, cell)
-    }
-
-    fn solid(&self) -> Result<IndexSet<Cell>> {
-        SecretBases::solid(self)
-    }
 }
 
 /// The sprite of the game's invisible blocker, `STOPPER` among the ROM's sprite ids, drawn as
@@ -646,11 +664,13 @@ pub fn game() -> &'static Game {
         triggers: triggers().clone(),
         furniture: furniture().clone(),
         secret_bases: Some(secret_bases),
-        ash: Some(ash_piles),
+        features: vec![BerrySpots::of, ash_piles],
         doors: Some(rotating_doors),
         ice: Some(ice_floors),
         blocker: Some(STOPPER),
         stairs: HashSet::from([SOOTOPOLIS_GYM]),
+        apps: vec![Soaring::of],
+        warps: warps().clone(),
         ..Game::new(
             "Omega Ruby and Alpha Sapphire",
             [OMEGA_RUBY, ALPHA_SAPPHIRE],
@@ -662,7 +682,9 @@ pub fn game() -> &'static Game {
 }
 
 pub mod ash;
+pub mod berries;
 pub mod doors;
 pub mod hidden;
 pub mod ice;
 pub mod secret_base;
+pub mod sky;

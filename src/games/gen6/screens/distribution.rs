@@ -40,6 +40,12 @@ pub const TEXTURE_COUNT: i64 = 0x08;
 pub const IMAGE: i64 = 0x0C;
 pub const RECORDS: i64 = 0x48;
 pub const RECORD: i64 = 0x14;
+pub const STATE: i64 = 0x0C;
+/// A record's byte `STATE`: 2 for a species caught, 3 seen, 6 not seen, which the DexNav draws no
+/// icon for (spike B, movie27: Zigzagoon, Poochyena, Surskit, Masquerain and Magikarp 2, as the
+/// save's Pokédex has them caught). The byte after it is the way they are met: 0 in the grass, 1 on
+/// the water, 2 fishing, 3 the DexNav's alone.
+pub const CAUGHT: i64 = 2;
 pub const RECORD_COUNT: i64 = 0x1D8;
 /// Records the navigator has room for, from +0x48 to its count.
 pub const MAX_RECORDS: i64 = 20;
@@ -74,7 +80,31 @@ impl Distribution {
 
     /// The species a picture draws the icon of, in the game's words, or None.
     pub fn name(&self, picture: i64) -> Result<Option<String>> {
-        if self.navis.is_empty() || self.species.is_empty() {
+        let record = if self.species.is_empty() {
+            None
+        } else {
+            self.record(picture)?
+        };
+        let Some(record) = record else {
+            return Ok(None);
+        };
+        let number = u16(&record, 0)?;
+        if !(0 < number && number < self.species.len() as i64) {
+            return Ok(None);
+        }
+        Ok(Some(self.species[number as usize].clone()).filter(|name| !name.is_empty()))
+    }
+
+    /// Whether the species a picture draws the icon of is caught: the DexNav draws it in
+    /// colour, and its silhouette while it is only seen (`STATE`).
+    pub fn caught(&self, picture: i64) -> Result<bool> {
+        let record = self.record(picture)?;
+        Ok(record.is_some_and(|record| record[STATE as usize] as i64 == CAUGHT))
+    }
+
+    /// The navigator's record of the species a picture draws the icon of, or None.
+    fn record(&self, picture: i64) -> Result<Option<Vec<u8>>> {
+        if self.navis.is_empty() {
             return Ok(None);
         }
         let memory = &self.memory;
@@ -99,11 +129,7 @@ impl Distribution {
             if slot >= count.min(MAX_RECORDS) {
                 return Ok(None);
             }
-            let number = u16(&memory.read(navi + RECORDS + slot * RECORD, 2)?, 0)?;
-            if !(0 < number && number < self.species.len() as i64) {
-                return Ok(None);
-            }
-            return Ok(Some(self.species[number as usize].clone()).filter(|name| !name.is_empty()));
+            return Ok(Some(memory.read(navi + RECORDS + slot * RECORD, RECORD)?));
         }
         Ok(None)
     }

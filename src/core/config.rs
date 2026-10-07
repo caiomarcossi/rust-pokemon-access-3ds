@@ -131,6 +131,7 @@ pub struct Navigation {
     pub positions: bool,
     pub position_first: bool,
     pub turn_by_turn: bool,
+    pub guide_to_hidden: bool,
 }
 
 impl Default for Navigation {
@@ -139,6 +140,7 @@ impl Default for Navigation {
             positions: true,
             position_first: true,
             turn_by_turn: true,
+            guide_to_hidden: true,
         }
     }
 }
@@ -149,6 +151,7 @@ impl Table for Navigation {
             ("positions", Value::Bool(self.positions)),
             ("position_first", Value::Bool(self.position_first)),
             ("turn_by_turn", Value::Bool(self.turn_by_turn)),
+            ("guide_to_hidden", Value::Bool(self.guide_to_hidden)),
         ]
     }
 
@@ -157,6 +160,7 @@ impl Table for Navigation {
             ("positions", Value::Bool(value)) => self.positions = value,
             ("position_first", Value::Bool(value)) => self.position_first = value,
             ("turn_by_turn", Value::Bool(value)) => self.turn_by_turn = value,
+            ("guide_to_hidden", Value::Bool(value)) => self.guide_to_hidden = value,
             _ => {}
         }
     }
@@ -177,7 +181,7 @@ fn defaults(name: &str) -> Vec<(&'static str, Value)> {
 }
 
 /// What each setting does, as the file's comment above it says it.
-pub const EXPLAINED: [(&str, &str); 9] = [
+pub const EXPLAINED: [(&str, &str); 10] = [
     (
         "pa3ds.keys",
         "answer pa3ds's keys and bind Azahar's buttons, as keys.toml says",
@@ -220,6 +224,10 @@ pub const EXPLAINED: [(&str, &str); 9] = [
         "pa3ds.navigation.turn_by_turn",
         "once P has found the way, say each turn as it is reached; false says the way once, and P \
          again says it from where you stand",
+    ),
+    (
+        "pa3ds.navigation.guide_to_hidden",
+        "when a DexNav search finds the Pokémon searched for, or the DexNav finds one by itself          while it is open and you are in touch mode, find the way to it as P does and keep P on it,          whatever the list was on; one found while the AreaNav is open is left alone",
     ),
 ];
 

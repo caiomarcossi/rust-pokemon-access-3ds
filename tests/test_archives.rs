@@ -10,13 +10,16 @@ use super::fake_rom::{
 };
 use super::test_rail::{ACROSS, C, P2, P3, street_section, walls};
 use crate::core::rom::Rom;
-use crate::games::common::field::{CHUNK, CUT, SURF};
+use crate::games::common::field::chunk::CHUNK;
+use crate::games::common::field::ground::{CUT, SURF};
 use crate::games::common::garc::{garc_files, message_lines};
-use crate::games::gen6::archives::{
-    self, BERRY_SPOT, DOUBLE, GameText, MapChunks, PC_LINES, RomLayout, Streets,
-};
-use crate::games::gen6::field::{INFO_KIND, INFO_NAME, INFO_PARENT, INFO_SIZE, WARP_DOOR};
-use crate::games::gen6::{mapblock, rail};
+use crate::games::gen6::field::zonedata::WARP_DOOR;
+use crate::games::gen6::field::zonetable::{INFO_KIND, INFO_NAME, INFO_PARENT, INFO_SIZE};
+use crate::games::gen6::rom::archives::{self, BERRY_SPOT, GameText, PC_LINES};
+use crate::games::gen6::rom::layout::{RomLayout, TownFacilities};
+use crate::games::gen6::rom::maps::{MapChunks, Streets};
+use crate::games::gen6::rom::people::DOUBLE;
+use crate::games::{gen6::field::mapblock, gen6::field::rail};
 use crate::games::{oras, xy};
 use crate::py::Kind;
 
@@ -69,9 +72,10 @@ const TRAINER_NAMES: [&str; 16] = [
     "Tommy",
 ];
 /// (sprite, trainer) for every trainer standing in the fake towns.
-const TRAINERS_ON_THE_MAP: [(i64, i64); 9] = [
+const TRAINERS_ON_THE_MAP: [(i64, i64); 10] = [
     (0xDA, 7),
-    (0xDA, 8), // two Youngsters: the sprite is a Youngster
+    (0xDA, 8),  // two Youngsters: the sprite is a Youngster,
+    (0xDA, 11), // whatever a pair beside them is
     (0xC7, 9),
     (0xC7, 10), // two grunts, one name: "Team Magma Grunt"
     (0x10A, 11),
@@ -196,11 +200,12 @@ struct Text {
     layout: Option<&'static RomLayout>,
     moves: Option<Vec<String>>,
     items: Option<Vec<String>>,
+    species: Option<Vec<String>>,
 }
 
 /// A language's text archive; with `pc`, the PC's own file holding those lines where the game
 /// has them (`archives.PC_LINES`) and others of its own between; with `moves`, the move names;
-/// with `items`, the item names.
+/// with `items`, the item names; with `species`, the Pokémon's.
 fn text_archive(want: Text) -> Vec<u8> {
     let layout = want.layout.unwrap_or_else(oras::rom);
     let trainers = want.trainers.unwrap_or_else(|| strings(&TRAINER_NAMES));
@@ -208,6 +213,12 @@ fn text_archive(want: Text) -> Vec<u8> {
     let facilities = want.facilities.unwrap_or_else(|| strings(&FACILITIES));
     let pc_file = if want.pc.is_some() { layout.pc } else { 0 };
     let mut files: Vec<Vec<u8>> = vec![Vec::new(); (layout.places.max(pc_file) + 1) as usize];
+    if let (Some(species), Some(file)) = (&want.species, layout.species) {
+        while files.len() <= file as usize {
+            files.push(Vec::new());
+        }
+        files[file as usize] = message_file(&text_lines(species));
+    }
     if let (Some(items), Some((bike, _))) = (&want.items, layout.bike) {
         while files.len() <= bike as usize {
             files.push(Vec::new());
@@ -313,7 +324,7 @@ fn zones_archive(buildings: &[(i64, Doors)], layout: &RomLayout, sections: i64) 
 }
 
 /// What each town has, as the AreaNav lists it, or X's Town Map with `towns`.
-fn areanav_archive(listed: &Listed, towns: &archives::TownFacilities) -> Vec<u8> {
+fn areanav_archive(listed: &Listed, towns: &TownFacilities) -> Vec<u8> {
     let mut rows: Vec<u8> = Vec::new();
     for (town, lines) in listed {
         let mut row = vec![0u8; towns.row as usize];
@@ -522,7 +533,7 @@ fn zone_file(
     ]);
     entities.extend(records);
     let info = vec![0u8; INFO_SIZE as usize];
-    let header = crate::games::gen6::field::zone_header(sections);
+    let header = crate::games::gen6::field::zonedata::zone_header(sections);
     let mut offsets = vec![
         header,
         header + info.len() as i64,
@@ -657,8 +668,9 @@ fn test_a_person_is_named_by_the_trainer_their_sprite_is() {
 }
 
 /// Spike 90: two Youngsters make the sprite a Youngster, and grunts who share a name are said
-/// as the game says them in battle. Twins are a pair, one Lass is too few to go on, and a sprite
-/// standing for a Hiker and a Youngster could be either.
+/// as the game says them in battle. Twins are a pair, two people, and say nothing of a sprite,
+/// as two Mysterious Sisters said nothing of the Fairy Tale Girls' (spike A); one Lass is too few
+/// to go on, and a sprite standing for a Hiker and a Youngster could be either.
 #[test]
 fn test_a_sprite_trainers_stand_as_is_named_for_their_class() {
     let tmp_path = TmpDir::new();
@@ -669,6 +681,39 @@ fn test_a_sprite_trainers_stand_as_is_named_for_their_class() {
     assert_eq!(text.character(0x10A), None);
     assert_eq!(text.character(0xDB), None);
     assert_eq!(text.character(0xE9), None);
+}
+
+/// Spike A: the character 0x1000 + n is drawn with the field's model 0x1BE + n, whose file
+/// names the Pokémon it draws, packed or not: Machoke with the movers, Whismur beside Zinnia. A
+/// model naming two Pokémon is left out.
+#[test]
+fn test_a_pokemon_on_the_map_is_named_by_the_pokemon_its_model_draws() {
+    let tmp_path = TmpDir::new();
+    let mut species = vec![String::new(); 300];
+    species[67] = "Machoke".to_string();
+    species[293] = "Whismur".to_string();
+    let (archive, first) = oras::POKEMON_MODELS;
+    let mut models: Vec<Vec<u8>> = vec![Vec::new(); first as usize];
+    models.push(b"MM\x02\x00pm0067_00_fi".to_vec());
+    models.push(lz11_literals(b"MMpm0293_00_fi_body"));
+    models.push(b"MMpm0032_00_fipm0320_00_fi_body".to_vec());
+    let mut files = oras_files(Some(text_archive(Text {
+        species: Some(species),
+        ..Text::default()
+    })));
+    files.insert(archive.to_string(), garc_of(models));
+    let rom = open_rom(tmp_path.path(), &files, OMEGA_RUBY);
+    let text = GameText::load(&rom, "en", oras::rom()).unwrap();
+    assert_eq!(
+        (0..3)
+            .map(|n| text.character(0x1000 + n))
+            .collect::<Vec<_>>(),
+        [
+            Some("Machoke".to_string()),
+            Some("Whismur".to_string()),
+            None
+        ]
+    );
 }
 
 /// The file numbers are a fact about ORAS; a ROM they do not fit is refused, not misread.

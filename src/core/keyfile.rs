@@ -58,7 +58,7 @@ use crate::core::keys::{ORDER, PUNCTUATION};
 use crate::core::toml;
 use crate::py::{self, Error, Kind, Result};
 
-/// Mode -> key -> action, as `common.navigate` defines the modes and the actions. Nothing here
+/// Mode -> key -> action, as `common.field.navigate` defines the modes and the actions. Nothing here
 /// knows what an action means; this module only decides which keys carry them.
 pub type Bindings = IndexMap<String, IndexMap<String, String>>;
 

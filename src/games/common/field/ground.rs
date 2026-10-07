@@ -1,15 +1,5 @@
-//! The map as every game lists it: what is on it worth walking to, and the ground under it.
-//!
-//! Gen 6 reads these out of its zone files, move models and chunks (`gen6.field`), Sun out of its
-//! actors and its walls (`sm.field`); what a player walks the list of, and where pathfinding may
-//! walk, is the same in both:
-//!
-//! - **`Interactable`** — one thing worth walking to, and **`Field`**, where the player is with
-//!   everything around them; `describe` puts a listing in the log.
-//! - A place's **source**: which table it was read from, over its own number (`SOURCE_KIND`).
-//! - **`Ground`** — where the player can walk: the cells of the **chunks** loaded (`Chunk`, the
-//!   cell table gen 6's chunks keep and Sun's walls are laid out as, spike 114), less where the
-//!   matrix has no zone (gen 6's `Grid`), or a rail's corridor instead (X's Lumiose, `gen6.rail`).
+//! Where the player can walk: the chunks' cells, the grid of zones, a rail's corridor, rooms of
+//! thin ice and rotating doors, and the moves that clear the way.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -19,9 +9,15 @@ use std::rc::Rc;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::core::pathfind::{self, Box, Cell, EAST, NORTH, SOUTH, WEST};
+use crate::games::common::field::chunk::{
+    ANY_FLOOR, BLOCKED, BOARD, CHUNK, CLIMB, COUNTER, Chunk, SHORE,
+};
+use crate::games::common::field::things::{
+    Field, Interactable, POKEMON, TRIGGER_SOURCE, WARP_SOURCE, source_kind,
+};
 use crate::py::{self, Error, Result};
 
-/// What the ground asks of a rails' corridor (`gen6.rail.Corridor`): its own walls are the only
+/// What the ground asks of a rails' corridor (`gen6.field.rail.Corridor`): its own walls are the only
 /// ones there, and it is the whole of where a way may be found.
 pub trait Corridor {
     fn open(&self, cell: Cell) -> Result<bool>;
@@ -29,304 +25,17 @@ pub trait Corridor {
     fn r#box(&self) -> Result<Box>;
 }
 
-/// Cells along a chunk's side.
-pub const CHUNK: i64 = 40;
-
-/// The bit of a cell's word that is set where the player cannot walk.
-pub const BLOCKED: i64 = 0x1;
-
-/// The bit of a cell's word that is set on water, where the blocked bit is clear and only a player
-/// surfing goes. Route 109's sea is `0x3d1a0006`, and the player could not walk onto it
-/// (omega_ruby_surf.ctm, spike 136). Across every chunk in both ROMs the bit is set on every word
-/// of nine kinds and no other: the sea `0x3d`, the deep water Dive goes down through (`DIVE`),
-/// `0x42` between the sea and walls, the four `0x94` to `0x97` (currents, one a way, as ledges
-/// are), and `0x3f` and `0x40`, which are blocked as well (`FALLS`, `SHORE`). X has `0x3d`,
-/// `0x3f` and `0x40`.
-pub const WATER: i64 = 0x2;
-
-/// The kind of the strip of shore between land and the sea, one cell wide: water and blocked.
-/// Surf jumps the player over it, never onto it, getting on the water and off: on Route 122 from
-/// (22, 8) to (22, 10) over (22, 9), and from (54, 58) to (54, 56) over (54, 57), and P walled the
-/// water off at both (omega_ruby_surf3.ctm, spike 162). Of its 1,528 cells in ORAS's chunks,
-/// nearly all have land on one side and the sea on the other.
-pub const SHORE: i64 = 0x40;
-
-/// The kind of a waterfall, the other blocked water: a row of it one cell deep with water on both
-/// sides, the water above it higher. Waterfall carries the player up over it, and they go back
-/// down over it with no question asked: at the foot of Ever Grande City's, from (51, 52) to (51,
-/// 50) over (51, 51), the sea below at height 0 and the water above at 234
-/// (omega_ruby_waterfall.ctm, spike 170). All 72 cells of it in ORAS's chunks, in 8 files, are
-/// `0x3f180003`, and wherever water lies on both sides the higher is north.
-pub const FALLS: i64 = 0x3F;
-
-/// The kind of the deep water a player surfing dives through, drawn darker than the sea round it.
-/// The executable tests the cell under the player for it alone while they are on the water
-/// (`0x003d3454`). Route 128 has three patches of it in its own zone, 3-by-3 squares at (307, 175)
-/// and (339, 175) and a band of 296 cells running diagonally through a 37-by-36 box from (296,
-/// 160), and the player sat on its edge at (314, 166) (omega_ruby_route-128-dive.ctm, spike 164).
-/// Across ORAS's chunks, 45 of its patches are 3-by-3 squares and the rest are bands and blobs.
-pub const DIVE: i64 = 0x41;
-
 pub const CUT: i64 = 15;
+
 pub const SURF: i64 = 57;
+
 pub const STRENGTH: i64 = 70;
+
 pub const WATERFALL: i64 = 127;
+
 /// The moves that open a way, by their numbers, the same in every game and each its line in the
 /// move names: "Surf", "なみのり" in both ORAS and X (spike 136).
 pub const ROCK_SMASH: i64 = 249;
-
-/// What going onto water costs a path on top of the step, five steps' worth: the player faces the
-/// water, presses A, and answers the game's question before the step is taken. So a way surfing
-/// is taken over one on foot only when it saves more than that. Cutting a bush down or smashing a
-/// rock is the same face, A and answer, and costs the same.
-pub const BOARD: i64 = 10;
-
-/// Where a cell's kind sits in its word: the top byte.
-pub const KIND_SHIFT: i64 = 24;
-
-/// The floor a cell of a chunk with one floor is on, and one with floors where which is not
-/// asked: whichever is open (`Ground.floor`).
-pub const ANY_FLOOR: i64 = -1;
-
-/// How far apart two floors may be where they meet and still be walked between, a cell's worth
-/// of world units. Where a deck's cell touches the ground's in ORAS's chunks the two are 0 to 14
-/// apart where they join, and 54 or more where the deck stands over lower ground (spike 156).
-pub const CLIMB: f64 = 18.0;
-
-/// A ledge's kind -> the way it is jumped down (spike 126). The game's own function at
-/// `0x00402e74` turns these kinds into 0, 1, 2 and 3, the engine's north, south, west and east as a
-/// rail's record numbers them (spike 107). omega_ruby_ledges.ctm jumped 0x75 south three times,
-/// omega_ruby_ledges_2.ctm 0x73 west and omega_ruby_ledges_3.ctm 0x72 east; ORAS has no ledge that
-/// drops north, so 0x74 rests on the numbering.
-/// A ledge is blocked, and the player's cell goes from before it to after it in one move.
-pub const LEDGES: [(i64, &str); 4] = [(0x74, NORTH), (0x75, SOUTH), (0x73, WEST), (0x72, EAST)];
-
-/// A counter's kind: the Pokémon Center's, the Poké Mart's. The game talks across one, to the
-/// thing in the cell beyond it: the field DLL's function at `0x007175a8` reads the kind of the cell
-/// the player faces, and where the executable's test at `0x00403004` says it is this one, looks two
-/// cells ahead instead of one. No other kind is tested there. In Petalburg's Pokémon Center the
-/// Nurse stands at (19, 15) with the counter at (19, 16) and every cell beside her a counter or a
-/// wall, and P said "no path to Nurse" (poke_center_pc.ctm, 2026-10-01).
-pub const COUNTER: i64 = 0xD4;
-
-/// A sandy slope's kind -> the way it goes down, in the order the ledges' kinds go. Its cells are
-/// open, but on foot the game never lets the player onto one going up: in Granite Cave 1F
-/// (omega_ruby_cave.ctm) the player at (10, 29) faced west onto `0x69000020` at (9, 29) and (8, 29)
-/// and did not move. Only the Mach Bike rides up one, as the player did up Jagged Pass's `0x6c`
-/// slopes, north from (28, 80), sliding back down the first time (omega_ruby_bike.ctm, spike 158).
-/// Across ORAS's map chunks the ground's mesh falls the same way across every cell of a kind: all
-/// 25 of 0x69 east, all 44 of 0x6a west, 166 of 0x6c's 188 south and the rest level along its foot
-/// or top. No chunk has 0x6b, so north rests on the numbering. On foot a slope is walked down only,
-/// and on the bike either way (`Ground.bike`).
-pub const SLOPES: [(i64, &str); 4] = [(0x69, EAST), (0x6A, WEST), (0x6B, NORTH), (0x6C, SOUTH)];
-
-/// A bumpy slope's kind, the rocky step only the Acro Bike's bunny hop gets up: walled to the
-/// player, and in Jagged Pass each one stands in a row of ledges dropping south, where a ledge
-/// would be, five of them up a column at x 50 from z 86 to 73, or alone across a narrow way, as at
-/// x 25. Only in 13 of the ROM's chunk files, the Safari Zone's among them, which has bumpy slopes
-/// too (spike 159, 2026-10-03). Read off the map, not seen hopped.
-pub const BUMPY_SLOPES: [i64; 1] = [0x6F];
-
-/// The Acro Bike's rails, by their kinds, not Lumiose's (`gen6.rail`): walled to the player, and
-/// crossed only on the Acro Bike, hopping from rail to rail. Both are only in Route 119's map
-/// files, the Safari Zone's, which has rails too, and one other, and on Route 119 each runs in a
-/// line from open ground to open ground: 0x6e at (107, 219) to (114, 219), (114, 222) and (121,
-/// 222), beside the path north up the route, and 0x6d up and down the lines of 0x6e in the route's
-/// top (spike 159). Read off the map, not seen ridden.
-pub const BIKE_RAILS: [i64; 2] = [0x6D, 0x6E];
-
-/// `{n:#x}`, which writes a negative number as Python does, with its sign before the prefix.
-fn hex(n: i64) -> String {
-    let sign = if n < 0 { "-" } else { "" };
-    format!("{sign}{:#x}", n.unsigned_abs())
-}
-
-/// `table.get(kind)`, for a table in the order its Python dict was written in.
-fn way_of(table: &[(i64, &'static str)], kind: i64) -> Option<&'static str> {
-    table
-        .iter()
-        .find(|(known, _)| *known == kind)
-        .map(|&(_, way)| way)
-}
-
-/// One floor of a chunk that has more than one: its own cell table, and the height of the
-/// floor under each cell, None where none is.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Floor {
-    pub words: Vec<i64>,
-    pub heights: Vec<Option<f64>>,
-}
-
-/// One chunk's cell table, at the cells it covers.
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct Chunk {
-    /// The north-west cell.
-    pub origin: (i64, i64),
-    /// One a cell, `CHUNK` to a row.
-    pub words: Vec<i64>,
-    /// Every floor of a chunk with a deck over its ground, the ground first, or none: Mt.
-    /// Chimney's catwalk over the crater is a floor of its own, open where the ground's table has
-    /// the crater as a wall (spike 156). `words` is always the ground's.
-    pub floors: Vec<Floor>,
-    /// For a chunk flattened onto one floor a cell at a height, the height of each cell's floor,
-    /// None where none is open (`mapblock.flat`); none otherwise.
-    pub heights: Vec<Option<f64>>,
-}
-
-impl Chunk {
-    /// A chunk with no floors and no heights, which `Chunk(origin, words)` is; the rest is set
-    /// with `..Chunk::new(...)`.
-    pub fn new(origin: (i64, i64), words: Vec<i64>) -> Self {
-        Chunk {
-            origin,
-            words,
-            floors: Vec::new(),
-            heights: Vec::new(),
-        }
-    }
-
-    /// Which chunk of the matrix this is, as (column, row).
-    pub fn key(&self) -> (i64, i64) {
-        (
-            py::floordiv(self.origin.0, CHUNK),
-            py::floordiv(self.origin.1, CHUNK),
-        )
-    }
-
-    pub fn holds(&self, cell: (i64, i64)) -> bool {
-        0 <= cell.0 - self.origin.0
-            && cell.0 - self.origin.0 < CHUNK
-            && 0 <= cell.1 - self.origin.1
-            && cell.1 - self.origin.1 < CHUNK
-    }
-
-    /// `self.words[z * CHUNK + x]` for the cell, which counts from the end for a negative index
-    /// as Python's tuples do, and raises past either end. Raised for the caller, as the Python
-    /// raised it in each of the readers below.
-    #[track_caller]
-    fn word(&self, cell: (i64, i64)) -> Result<i64> {
-        let (x, z) = (cell.0 - self.origin.0, cell.1 - self.origin.1);
-        let len = self.words.len() as i64;
-        let at = z * CHUNK + x;
-        let at = if at < 0 { at + len } else { at };
-        match usize::try_from(at).ok().and_then(|at| self.words.get(at)) {
-            Some(&word) => Ok(word),
-            None => Err(Error::index("tuple index out of range")),
-        }
-    }
-
-    pub fn walkable(&self, cell: (i64, i64)) -> Result<bool> {
-        Ok(self.word(cell)? & BLOCKED == 0)
-    }
-
-    pub fn water(&self, cell: (i64, i64)) -> Result<bool> {
-        Ok(self.word(cell)? & WATER != 0)
-    }
-
-    /// Which way the cell goes down, a ledge jumped or a slope walked, or None where it is
-    /// neither.
-    pub fn ledge(&self, cell: (i64, i64)) -> Result<Option<&'static str>> {
-        match way_of(&LEDGES, self.kind(cell)?) {
-            Some(way) => Ok(Some(way)),
-            None => self.slope(cell),
-        }
-    }
-
-    /// Which way the cell goes down where it is a slope, or None.
-    pub fn slope(&self, cell: (i64, i64)) -> Result<Option<&'static str>> {
-        Ok(way_of(&SLOPES, self.kind(cell)?))
-    }
-
-    pub fn kind(&self, cell: (i64, i64)) -> Result<i64> {
-        Ok(self.word(cell)? >> KIND_SHIFT)
-    }
-
-    /// Every cell of the chunk with its kind.
-    pub fn kinds(&self) -> impl Iterator<Item = ((i64, i64), i64)> + '_ {
-        self.words.iter().enumerate().map(|(i, &word)| {
-            let i = i as i64;
-            (
-                (self.origin.0 + i % CHUNK, self.origin.1 + i / CHUNK),
-                word >> KIND_SHIFT,
-            )
-        })
-    }
-}
-
-/// The bits of a place's `source` that say which table or encoding the rest of it is in. Places
-/// are keyed by (map, source), and each kind numbers its own from zero — a sign by its index in the
-/// furniture table, a warp by its index in the warp table, a use tile by its first cell, an edge by
-/// the zone it leads to — so without a tag, two places of different kinds on one map share a name
-/// whenever their numbers happen to coincide: sign 1 and door 1 did until 2026-09-23 (renaming the
-/// sign renamed the door, and the ROM's name for the door was said for the sign), and an edge's
-/// `zone << 16` reached the bit a use tile was marked with, `1 << 24`, for any zone from `0x100` up
-/// (the same day). The tag sits above 32 bits because every number under it is built from u16s the
-/// game holds — a zone shifted by 16 at most — so nothing read from the game can reach it.
-pub const SOURCE_KIND: i64 = 0xF << 32;
-
-/// A furniture record's source is its bare index: the tag the first names were keyed under.
-pub const FURNITURE_SOURCE: i64 = 0 << 32;
-
-/// A warp's source: `WARP_SOURCE | index` in the warp table.
-pub const WARP_SOURCE: i64 = 1 << 32;
-
-/// A use tile's source: `TILE_SOURCE | x << 12 | z`, its first cell.
-pub const TILE_SOURCE: i64 = 2 << 32;
-
-/// An edge's source: `EDGE_SOURCE | zone << 16 | gap`, the zone it leads to and the gap's place
-/// along the border.
-pub const EDGE_SOURCE: i64 = 3 << 32;
-
-/// A berry spot's source: `BERRY_SOURCE | index` in the game's table of them (spike 141).
-pub const BERRY_SOURCE: i64 = 4 << 32;
-
-/// A trigger's source, one a game knows as something to walk to: `TRIGGER_SOURCE | index` in the
-/// zone's table of triggers (spike 146).
-pub const TRIGGER_SOURCE: i64 = 5 << 32;
-
-/// A Secret Base spot's source: `SECRET_BASE_SOURCE | number`, the spot's number in the game's
-/// table of them (spike 154).
-pub const SECRET_BASE_SOURCE: i64 = 6 << 32;
-
-/// An ash pile's source: `ASH_SOURCE | index` in the zone's list of them (spike 155).
-pub const ASH_SOURCE: i64 = 7 << 32;
-
-/// A slope's or a rail end's source: `BIKE_SOURCE | x << 12 | z`, its first cell.
-pub const BIKE_SOURCE: i64 = 8 << 32;
-
-/// A dive spot's source: `DIVE_SOURCE | x << 12 | z`, its patch's first cell.
-pub const DIVE_SOURCE: i64 = 9 << 32;
-
-/// A stair's source between two floors of a chunk: `STAIRS_SOURCE | x << 12 | z`, its first
-/// cell.
-pub const STAIRS_SOURCE: i64 = 10 << 32;
-
-/// A place on the sky's map: `SKY_SOURCE | index` in the list of them (`gen6.sky`, spike 166).
-pub const SKY_SOURCE: i64 = 11 << 32;
-
-/// A place's `source` from its kind's tag and its own number. The number must leave the tag's
-/// bits clear, and no u16 the game holds can reach them, so one that does is a new encoding
-/// written wider than the tag allows for: a programmer's error, refused here rather than keyed as
-/// another kind's place.
-pub fn place_source(kind: i64, payload: i64) -> Result<i64> {
-    if payload & SOURCE_KIND != 0 {
-        return Err(Error::value(format!(
-            "place payload {} reaches the kind bits",
-            hex(payload)
-        )));
-    }
-    Ok(kind | payload)
-}
-
-/// Which kind of place a source is: one of the `*_SOURCE` tags.
-pub fn source_kind(source: i64) -> i64 {
-    source & SOURCE_KIND
-}
-
-/// A place's own number under its tag: a warp's index, an edge's `zone << 16 | gap`.
-pub fn source_number(source: i64) -> i64 {
-    source & !SOURCE_KIND
-}
 
 /// Cells to a block of the matrix.
 pub const BLOCK: i64 = 10;
@@ -336,239 +45,6 @@ pub const NO_ZONE: i64 = 0xFFFF;
 /// Cells past the loaded chunks, the player and the goal that a path may go round through,
 /// none of them known.
 pub const SEARCH_MARGIN: i64 = 10;
-
-/// The category that is every category: what `Field.of` gives the whole list for.
-pub const ALL: &str = "all";
-
-pub const SPRITE: &str = "sprite";
-
-/// The two name spaces of `pa3ds.core.names`, as `Interactable.naming` chooses between them.
-pub const PLACE: &str = "place";
-
-pub const POKEMON: &str = "pokémon";
-
-/// The soil berries are planted in, a category of its own (the user, 2026-09-29).
-pub const BERRIES: &str = "berries";
-
-/// Route 113's ash piles, a category of its own (the user, 2026-10-02).
-pub const ASH: &str = "ash";
-
-/// The ground only a bike gets up or across, the Mach Bike's slopes and the Acro Bike's rails and
-/// bumpy slopes, a category of its own: the game names none of them, and the player could not find
-/// them to record them (the user, 2026-10-03).
-pub const BIKE: &str = "bike";
-
-pub const TOWNS: &str = "towns";
-pub const ROUTES: &str = "routes";
-pub const LANDMARKS: &str = "landmarks";
-/// The places on the sky's map, soaring on Latios: its towns and cities, its routes over land
-/// and sea, everything else always there, caves and islands, as the game's own table groups them,
-/// and the mirage spots it shows today (spike 166). Nothing on the field is in them.
-pub const MIRAGE: &str = "mirage spots";
-pub const SKY: [&str; 4] = [TOWNS, ROUTES, LANDMARKS, MIRAGE];
-
-/// In the order they are walked and logged.
-pub const CATEGORIES: [&str; 12] = [
-    "exits", "signs", "people", "items", BERRIES, ASH, BIKE, POKEMON, SKY[0], SKY[1], SKY[2],
-    SKY[3],
-];
-
-/// One thing worth walking to, in the player's cells.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Interactable {
-    /// One of `CATEGORIES`: `exits`, `signs`, `people`, `items`, `berries`, `ash`, `bike` or
-    /// `pokémon`, or in the sky `towns`, `routes`, `landmarks` or `mirage spots`.
-    pub category: String,
-    /// What it is, in pa3ds's own words: `door`, `sign`, `PC`, `person`, `item ball`, `edge`,
-    /// `berry spot`, `ash pile`, `hidden Pokémon`, `barrier`, `switch`, `passage`, `trapdoor`,
-    /// `geyser`, `lift`, `teleporter`, `dive spot`, `stairs`, `slope`, `bumpy slope`, `rail`, a
-    /// `flock` in the sky; or in the sky, the game's own name for a place.
-    pub kind: String,
-    pub cell: (i64, i64),
-    pub size: (i64, i64),
-    /// For an exit, the zone it leads to.
-    pub zone: Option<i64>,
-    /// The record's model code or script, a use tile's kind, or a hidden Pokémon's species, for
-    /// the log and for names later.
-    pub code: i64,
-    /// What this was read from: a model's address for a move model, with the zone and index of the
-    /// record it was built from above it in gen 6, since a slot is filled with the next zone's
-    /// people as the player walks into it (spike 131); and for a place its kind's tag
-    /// (`SOURCE_KIND`) over its own number — a furniture record's index, a warp's index, an edge's
-    /// zone with the gap's place along the border after it (`zone << 16 | gap`), a use tile's first
-    /// cell (`x << 12 | z`). With the kind, it tells the same thing apart from one press to the
-    /// next while the list is re-sorted around a moving player.
-    pub source: i64,
-    /// Whether this is a move model — someone or something standing on the map now — rather than
-    /// a record in the zone's own table. It decides which name a rename gives it (`naming`), and it
-    /// is why `source` is an address here and an index there.
-    pub move_model: bool,
-    /// For a record of a zone's table, that zone, where it is known: the one the player is in,
-    /// or on Lumiose's streets another zone of the same street (spike 107). A place is named by
-    /// it, and told apart by it from the same slot of the other zone.
-    pub home: Option<i64>,
-    /// How high in the world it stands, where the game says: a move model's, a warp's, a
-    /// trigger's, a stair's top. It says which floor of a chunk with a deck the thing is on:
-    /// Sootopolis Gym's lower floor lies under its rooms, and P led the player to a Beauty down
-    /// there by the room over her head (spike 167).
-    pub height: Option<f64>,
-}
-
-impl Interactable {
-    /// An interactable of one cell with the Python's defaults for the rest, which are set with
-    /// `..Interactable::new(...)`.
-    pub fn new(category: &str, kind: &str, cell: (i64, i64)) -> Self {
-        Interactable {
-            category: category.to_string(),
-            kind: kind.to_string(),
-            cell,
-            size: (1, 1),
-            zone: None,
-            code: 0,
-            source: 0,
-            move_model: false,
-            home: None,
-            height: None,
-        }
-    }
-
-    pub fn key(&self) -> (String, String, i64, Option<i64>) {
-        (
-            self.category.clone(),
-            self.kind.clone(),
-            self.source,
-            self.home,
-        )
-    }
-
-    /// Which name belongs to this, as (what, map, slot), or None for a thing with no name of
-    /// its own.
-    ///
-    /// A **move model is a character**, so naming the person standing in the Gym names Norman
-    /// everywhere, and names him as a speaker too: it is the same number either way
-    /// (`mmodel.character`). Everything else on the map is a **place**, a slot on one map, so a
-    /// sign named in Petalburg says nothing about a sign in Rustboro.
-    ///
-    /// The cost of that is a sprite everybody nameless shares: naming "the man in the Mart"
-    /// names every townsperson drawn as him. That is already how the shipped table works —
-    /// `0x128` is "Woman", Mrs. Birch and 27 zones of others — so it is the behaviour being
-    /// kept, not a new one.
-    ///
-    /// **A hidden Pokémon has no name.** It is a different Pokémon each time and gone in a
-    /// minute, its `source` is the record's address rather than a slot in any table, and the
-    /// game names the species itself once the DexNav has registered it — so a name here would be
-    /// a key that never matches again and would replace something the game says.
-    pub fn naming(&self, zone: i64) -> Option<(&'static str, i64, i64)> {
-        // The sky's places are named by the game itself, and a name of ours never replaces the
-        // game's (ADR-0023).
-        if self.category == POKEMON || SKY.contains(&self.category.as_str()) {
-            return None;
-        }
-        if self.move_model {
-            return Some((SPRITE, self.code, 0));
-        }
-        Some((PLACE, self.home.unwrap_or(zone), self.source))
-    }
-
-    /// Direction and distance from `origin`, as "3 east 2 north", or "here"; for a player
-    /// heading one way on a rail, from where they face: "9 ahead 8 left".
-    pub fn bearing(&self, origin: (i64, i64), heading: Option<&str>) -> Result<String> {
-        if let Some(heading) = heading {
-            return pathfind::facing(origin, self.nearest(origin), heading);
-        }
-        Ok(bearing(origin, self.nearest(origin)))
-    }
-
-    /// The cell of this that is closest to `origin`: an exit can be several cells wide.
-    pub fn nearest(&self, origin: (i64, i64)) -> (i64, i64) {
-        let x = origin.0.max(self.cell.0).min(self.cell.0 + self.size.0 - 1);
-        let z = origin.1.max(self.cell.1).min(self.cell.1 + self.size.1 - 1);
-        (x, z)
-    }
-
-    /// Every cell this covers.
-    pub fn cells(&self) -> Vec<Cell> {
-        let mut out = Vec::new();
-        for dz in 0..self.size.1 {
-            for dx in 0..self.size.0 {
-                out.push((self.cell.0 + dx, self.cell.1 + dz));
-            }
-        }
-        out
-    }
-}
-
-/// Where the player is, and what is around them.
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct Field {
-    pub zone: i64,
-    pub cell: (i64, i64),
-    pub interactables: Vec<Interactable>,
-    /// Whether the player is on a rail, as on Lumiose's boulevards, where the game keeps the
-    /// streets' walls in a map of the rail's own and the chunks mark every cell a wall, the
-    /// player's own included (spike 102). With the rails loaded, `cell` and every cell listed are
-    /// the corridor's (`Corridor`).
-    pub on_rail: bool,
-    /// On a rail, the way of the corridor up walks the player, nearest `bearing`, which is the
-    /// way their keys work from: the camera is behind them there, so up walks the way it looks,
-    /// down back from it, and left and right turn the player a quarter, the camera following only
-    /// while the key is held (spike 105).
-    pub heading: Option<&'static str>,
-    /// On a rail, the way up walks the player in the corridor, in degrees clockwise from its
-    /// north: the camera's heading, which a tap of left or right leaves anywhere (spike 105).
-    pub bearing: Option<f64>,
-    /// Whether the player is riding the Mach Bike, which rides up a sandy slope (spike 158).
-    pub on_bike: bool,
-    /// How far direction mode looks, in this map's steps each way, where not the field's ten
-    /// cells: the sky's places are far apart (`gen6.sky.REACH`).
-    pub reach: Option<i64>,
-    /// While the player is soaring, the places listed in their own frame (`gen6.sky`): the turn
-    /// to face a thing and how far it is then, which P says, since there is no ground to find a way
-    /// over.
-    pub steer: Option<Steer>,
-}
-
-/// `Callable[[Interactable], str]`, a `Field.steer`. It can raise, as the Python's reads a table by
-/// a number and rounds floats. Two fields are equal when they hold the same function, as
-/// Python compares callables.
-#[derive(Clone)]
-pub struct Steer(pub Rc<dyn Fn(&Interactable) -> Result<String>>);
-
-impl fmt::Debug for Steer {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("Steer(..)")
-    }
-}
-
-impl PartialEq for Steer {
-    fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.0, &other.0)
-    }
-}
-
-impl Field {
-    /// A field with the Python's defaults for all but where the player is, the rest set with
-    /// `..Field::new(...)`.
-    pub fn new(zone: i64, cell: (i64, i64)) -> Self {
-        Field {
-            zone,
-            cell,
-            ..Field::default()
-        }
-    }
-
-    /// This category's interactables (every one for `ALL`), nearest first.
-    pub fn of(&self, category: &str) -> Vec<Interactable> {
-        let mut items: Vec<Interactable> = self
-            .interactables
-            .iter()
-            .filter(|item| category == ALL || item.category == category)
-            .cloned()
-            .collect();
-        items.sort_by_key(|item| distance(self.cell, item.nearest(self.cell)));
-        items
-    }
-}
 
 /// The ways round, a quarter turn anticlockwise from each to the next.
 pub const ANTICLOCKWISE: [&str; 4] = [NORTH, WEST, SOUTH, EAST];
@@ -585,7 +61,9 @@ fn anticlockwise_index(way: &str) -> Result<i64> {
 /// What a cell of a room of thin ice is: a tile not yet walked onto, a tile that gives way under
 /// the next step onto it, or floor that is no ice at all.
 pub const WHOLE: i64 = 0;
+
 pub const CRACKED: i64 = 1;
+
 pub const SOLID: i64 = 2;
 
 /// One of Sootopolis Gym's rooms of thin ice, as the Gym's module keeps it (spike 167). A tile
@@ -850,6 +328,12 @@ pub struct Ground {
     /// platform in Fortree City's trees and the ground beside it, 108 below, but for its ladder
     /// (`joined`, spike 160).
     pub cliffs: IndexSet<(Cell, Cell)>,
+    /// Each step a ladder or a stair makes, each way, with how high its two ends stand: from the
+    /// floor at the first, it lands on the floor at the second, whatever floors they are
+    /// (`climb`). Outside Sky Pillar the terraces stand 108 apart on three floors, and the one
+    /// stair up to Zinnia's goes from floor 0 at 108 to floor 1 at 216; the sand runs on under the
+    /// stair from 324 down to her terrace, and is walked on as sand (spike A).
+    pub ladders: IndexMap<(Cell, Cell), (f64, f64)>,
     /// The bumpy slopes, each with the way it is hopped up on the Acro Bike, from the cell before
     /// it to the cell after, as a ledge is jumped down: walls on foot (spike 159).
     pub hops: IndexMap<Cell, &'static str>,
@@ -910,6 +394,7 @@ impl Default for Ground {
             hm: false,
             bike: false,
             cliffs: IndexSet::new(),
+            ladders: IndexMap::new(),
             hops: IndexMap::new(),
             falls: IndexMap::new(),
             doors: Vec::new(),
@@ -940,6 +425,7 @@ impl fmt::Debug for Ground {
             .field("hm", &self.hm)
             .field("bike", &self.bike)
             .field("cliffs", &self.cliffs)
+            .field("ladders", &self.ladders)
             .field("hops", &self.hops)
             .field("falls", &self.falls)
             .field("doors", &self.doors)
@@ -1080,6 +566,10 @@ impl Ground {
 
     /// On a stacked ground, each floor open in the cell, by its place among its chunk's floors,
     /// with its height there; none where the ground is not stacked or the chunk has one floor.
+    /// A floor with no height, its mesh over none of the cell, is not one where another has a
+    /// height: there is nothing there to stand on, and Fortree City's ground at the end of a bridge
+    /// was one, which P took from the bridge at 103 down onto the ground at 0
+    /// (omega_ruby_tree-city-regression.ctm, 2026-10-06).
     pub fn floors(&self, cell: Cell) -> Result<Vec<(i64, Option<f64>)>> {
         let chunk = if self.stacked {
             self.chunk(cell)?
@@ -1107,7 +597,12 @@ impl Ground {
                 out.push((k as i64, *height));
             }
         }
-        Ok(out)
+        let held: Vec<(i64, Option<f64>)> = out
+            .iter()
+            .copied()
+            .filter(|floor| floor.1.is_some())
+            .collect();
+        Ok(if held.is_empty() { out } else { held })
     }
 
     /// The cell's open floor nearest `height`, or `ANY_FLOOR` where there is none to choose: no
@@ -1187,6 +682,8 @@ impl Ground {
     /// under it has dropped to 50 (spike 159). Where either cell has no height, no step goes onto
     /// another floor: the lower floor's table has the Gym's pool's edges open with no floor under
     /// them, and P stepped off one onto the room above.
+    /// A step up or down a ladder, from the floor at its foot or its top, lands on the floor at
+    /// its other end (`ladders`).
     pub fn climb(&self, floor: i64, cell: Cell, step: Cell) -> Result<Option<i64>> {
         let there = self.floors(step)?;
         if there.is_empty() {
@@ -1197,11 +694,18 @@ impl Ground {
             .into_iter()
             .find(|&(k, _)| k == floor)
             .and_then(|(_, height)| height);
+        let ladder = self.ladders.get(&(cell, step)).copied();
+        let end = match (ladder, here) {
+            (Some((from, to)), Some(here)) if (here - from).abs() <= CLIMB => Some(to),
+            _ => None,
+        };
         let mut best: Option<i64> = None;
         let mut off = (f64::INFINITY, true);
         for (k, height) in there {
             let away;
-            if let (Some(here), Some(height)) = (here, height) {
+            if let (Some(end), Some(height)) = (end, height) {
+                away = (height - end).abs();
+            } else if let (Some(here), Some(height)) = (here, height) {
                 away = (height - here).abs();
                 if away > CLIMB && k != floor {
                     continue;
@@ -1549,103 +1053,6 @@ impl Ground {
     }
 }
 
-/// One line a category, for the log: what is there and where, nearest first, what each is
-/// `called` when it has a name, and the place an exit `leads` to when that is somewhere else. A
-/// replay presses no navigation keys, so this is where it shows which door the game's own words
-/// named (spike 86) and where each exit goes.
-///
-/// The lines are made as they are asked for, as the Python's generator makes them, so a
-/// `called` or `leads` that is never reached is never run; one that fails ends the lines.
-pub fn describe<'a>(
-    r#where: &'a Field,
-    called: Option<&'a dyn Fn(&Interactable) -> Result<Option<String>>>,
-    leads: Option<&'a dyn Fn(&Interactable) -> Result<Option<String>>>,
-) -> impl Iterator<Item = Result<String>> + 'a {
-    let mut categories = CATEGORIES.iter();
-    let mut failed = false;
-    std::iter::from_fn(move || {
-        if failed {
-            return None;
-        }
-        for category in categories.by_ref() {
-            let items = r#where.of(category);
-            if items.is_empty() {
-                continue;
-            }
-            let line = (|| -> Result<String> {
-                let mut said: Vec<String> = Vec::new();
-                for item in &items {
-                    let place = match leads {
-                        Some(leads) => leads(item)?,
-                        None => None,
-                    };
-                    let detail = detail(item, place.as_deref());
-                    let name = called_name(item, called)?;
-                    let bearing = item.bearing(r#where.cell, None)?;
-                    said.push(format!("{}{detail}{name} {bearing}", item.kind));
-                }
-                Ok(format!("{category}: {}", said.join("; ")))
-            })();
-            failed = line.is_err();
-            return Some(line);
-        }
-        None
-    })
-}
-
-fn called_name(
-    item: &Interactable,
-    called: Option<&dyn Fn(&Interactable) -> Result<Option<String>>>,
-) -> Result<String> {
-    let name = match called {
-        Some(called) => called(item)?,
-        None => None,
-    };
-    Ok(match name {
-        None => String::new(),
-        Some(name) => format!(" \"{name}\""),
-    })
-}
-
-fn detail(item: &Interactable, place: Option<&str>) -> String {
-    if let Some(zone) = item.zone {
-        return format!(" to zone {}", hex(zone))
-            + &match place {
-                None => String::new(),
-                Some(place) => format!(" ({place})"),
-            };
-    }
-    if item.category == "pokémon" {
-        return format!(" species {}", item.code);
-    }
-    String::new()
-}
-
-/// Direction and distance from `origin` to `cell`, as "3 east 2 north", or "here".
-pub fn bearing(origin: (i64, i64), cell: (i64, i64)) -> String {
-    let (dx, dz) = (cell.0 - origin.0, cell.1 - origin.1);
-    let mut parts: Vec<String> = Vec::new();
-    if dx != 0 {
-        parts.push(format!(
-            "{} {}",
-            dx.abs(),
-            if dx > 0 { "east" } else { "west" }
-        ));
-    }
-    if dz != 0 {
-        parts.push(format!(
-            "{} {}",
-            dz.abs(),
-            if dz > 0 { "south" } else { "north" }
-        ));
-    }
-    if parts.is_empty() {
-        "here".to_string()
-    } else {
-        parts.join(" ")
-    }
-}
-
 /// Whether the cell can be walked, or None when no loaded chunk holds it.
 pub fn walkable(chunks: &[Rc<Chunk>], cell: (i64, i64)) -> Result<Option<bool>> {
     for chunk in chunks {
@@ -1654,8 +1061,4 @@ pub fn walkable(chunks: &[Rc<Chunk>], cell: (i64, i64)) -> Result<Option<bool>> 
         }
     }
     Ok(None)
-}
-
-fn distance(a: (i64, i64), b: (i64, i64)) -> i64 {
-    (a.0 - b.0).abs() + (a.1 - b.1).abs()
 }

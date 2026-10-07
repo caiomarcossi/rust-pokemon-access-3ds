@@ -3,7 +3,7 @@
 use super::fake_memory::{CODE, FakeClasses, FakeMemory};
 use crate::core::rtti::ClassNames;
 use crate::games::common::pokemon;
-use crate::games::gen6::partyicons;
+use crate::games::gen6::screens::partyicons;
 
 const PARTY: i64 = 0x08CF7200;
 const PARAMS: i64 = 0x08CF723C;

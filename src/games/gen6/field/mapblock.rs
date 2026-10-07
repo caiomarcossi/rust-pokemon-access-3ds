@@ -41,8 +41,8 @@ use indexmap::IndexMap;
 
 use crate::core::binary::{f32, u16, u32};
 use crate::core::memory::Memory;
-pub use crate::games::common::field::CLIMB;
-use crate::games::common::field::{BLOCKED, CHUNK, Chunk, Floor};
+pub use crate::games::common::field::chunk::CLIMB;
+use crate::games::common::field::chunk::{BLOCKED, CHUNK, Chunk, Floor};
 use crate::py::{self, Result};
 
 /// What a sweep looks for.

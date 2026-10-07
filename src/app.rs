@@ -26,7 +26,7 @@ use crate::core::speech::{Category, Speech};
 use crate::core::tones::Tones;
 use crate::core::touch::{self, SharedLog, TouchServer};
 use crate::games::catalog;
-use crate::games::common::navigate::{Bindings, DEFAULT_BINDINGS, bound_keys};
+use crate::games::common::field::keys::{Bindings, DEFAULT_BINDINGS, bound_keys};
 use crate::games::common::session::{Session, Setup};
 use crate::py::{Error, Kind, Log, Result, time};
 use crate::tape;

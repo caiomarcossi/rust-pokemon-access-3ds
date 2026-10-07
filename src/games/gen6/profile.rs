@@ -20,43 +20,48 @@ use crate::core::names::{GamePlace, GameSprite, Names};
 use crate::core::rtti::{ClassNames, demangle};
 use crate::core::speech::{Category, Speech};
 use crate::core::tones::Tones;
-use crate::games::common::announce::{Announcements, ScreenAnnouncer, Speaker};
-use crate::games::common::cursor::CursorReader;
+use crate::games::common::announce::{Announcements, Speaker};
+use crate::games::common::cursors::reader::CursorReader;
 use crate::games::common::dialogue::{DialogueReader, Shown};
-use crate::games::common::field::{
-    Field, Ground, Interactable, WARP_SOURCE, bearing, describe, source_kind, source_number,
+use crate::games::common::field::ground::Ground;
+use crate::games::common::field::guide::FieldSource;
+use crate::games::common::field::keys::Bindings;
+use crate::games::common::field::navigate::{
+    LeadsTo, Navigator, Options as NavigatorOptions, Sides, Street,
+};
+use crate::games::common::field::things::{
+    Field, Interactable, WARP_SOURCE, bearing, describe, source_kind, source_number,
 };
 use crate::games::common::layout::Layouts;
 use crate::games::common::layout_file::{LayoutFile, LayoutFiles};
-use crate::games::common::navigate::{
-    Bindings, FieldSource, LeadsTo, Navigator, Options as NavigatorOptions, Sides, Street,
-};
+use crate::games::common::pictures::CAUGHT;
 use crate::games::common::screen::{Pictures, ScreenText, ScreenTextReader};
+use crate::games::common::screen_announce::ScreenAnnouncer;
 use crate::games::common::session::Profile;
 use crate::games::common::touch::{
     self, FileOf, Idle, ImageOf, Lists, OnScreen, PictureName, Tap, TextOf, TouchTargets,
 };
 use crate::games::common::{lyt, msgwin, pokemon, strbuf};
 use crate::games::gen6::apps::{BATTLE, FIELD, MANAGER_CLASS, RunningApp};
-use crate::games::gen6::archives::GameText;
-use crate::games::gen6::battle::{BattleReader, Battlers, GAUGE_CLASSES, Gauges};
-use crate::games::gen6::choices::{BOX_DEVICE_MANAGER, ChoiceReader, DEVICE_MANAGER_CLASS};
-use crate::games::gen6::distribution::Distribution;
-use crate::games::gen6::dowsing::Lights;
-use crate::games::gen6::field::{
-    FieldReader, MOVE_MODEL_CLASS, Options as FieldOptions, PC_TILE, Streets,
+use crate::games::gen6::field::dowsing::Lights;
+use crate::games::gen6::field::reader::{FieldReader, MOVE_MODEL_CLASS};
+use crate::games::gen6::field::speaker::SpeakerReader;
+use crate::games::gen6::field::{camera, mapblock, talk};
+use crate::games::gen6::game::{Game, OwnApp};
+use crate::games::gen6::gflheap;
+use crate::games::gen6::rom::archives::GameText;
+use crate::games::gen6::rom::textures;
+use crate::games::gen6::rom::textures::Index;
+use crate::games::gen6::screens::battle::{BattleReader, Battlers, GAUGE_CLASSES, Gauges};
+use crate::games::gen6::screens::choices::{
+    BOX_DEVICE_MANAGER, ChoiceReader, DEVICE_MANAGER_CLASS,
 };
-use crate::games::gen6::game::Game;
-use crate::games::gen6::habitat::HabitatReader;
-use crate::games::gen6::lists::{CONTROLLER_CLASS, ListReader};
-use crate::games::gen6::mapcursor::MapCursor;
-use crate::games::gen6::partyicons::PartyIcons;
-use crate::games::gen6::sky::{Place, SkySource};
-use crate::games::gen6::speaker::SpeakerReader;
-use crate::games::gen6::textures::Index;
-use crate::games::gen6::{
-    buttons, camera, distribution, gflheap, mapblock, partyicons, sky, talk, textures, townmap,
-};
+use crate::games::gen6::screens::distribution::Distribution;
+use crate::games::gen6::screens::habitat::HabitatReader;
+use crate::games::gen6::screens::lists::{CONTROLLER_CLASS, ListReader};
+use crate::games::gen6::screens::mapcursor::MapCursor;
+use crate::games::gen6::screens::partyicons::PartyIcons;
+use crate::games::gen6::screens::{buttons, distribution, partyicons, townmap};
 use crate::py::{self, Error, Log, PySet, Result};
 
 /// What the heap is swept for: message windows, list controllers, the device manager a choice box
@@ -138,7 +143,7 @@ pub struct Gen6Profile {
     pub layouts: Rc<Layouts>,
     /// Which screen the game is running, and the moment another starts (spike 99).
     ///
-    /// Shared with the sky source's `soaring`, which the Python hands as a bound method.
+    /// Shared with the own apps' `running`, which the Python hands as a bound method.
     pub apps: Rc<RefCell<RunningApp>>,
     pub dialogue: RefCell<DialogueReader>,
     /// Shared with touch mode's `lists`, which the Python hands as a bound method.
@@ -214,12 +219,9 @@ pub struct Gen6Profile {
     managers: RefCell<PySet>,
     /// The cell the Secret Base's decorating cursor was last said on, and what was there.
     decorating: RefCell<Option<((i64, i64), String)>>,
-    /// The sky's places, where the game has any (`GameText.sky`).
-    sky: Rc<Vec<Place>>,
-    /// The heading the player soared with at the last poll, and the compass point last said
-    /// for it: said again once a turn stops on another.
-    heading: Cell<Option<f64>>,
-    facing: RefCell<Option<String>>,
+    /// The game's own apps, ORAS's soaring: while one runs, the keys walk what it lists, which
+    /// the field's stale lists know nothing of (spike 166).
+    own: Rc<Vec<Rc<dyn OwnApp>>>,
 }
 
 /// `FieldReader` is what a `Navigator` reads the map through in the gen 6 games.
@@ -285,6 +287,12 @@ impl Gen6Profile {
                 .collect(),
             None,
             named_by_image.clone(),
+            text.as_ref()
+                .map(|text| text.labels.clone())
+                .unwrap_or_default(),
+            text.as_ref()
+                .map(|text| text.plain.clone())
+                .unwrap_or_default(),
         )));
         let files = Rc::new(LayoutFiles::new(memory.clone()));
         let cursors = CursorReader::with(
@@ -302,98 +310,22 @@ impl Gen6Profile {
             named.clone(),
             game.drawn,
         ));
-        let hidden = game.hidden.map(|make| make(memory.clone()));
-        // Every spot a Secret Base can be made at is listed in the executable, not in any zone's
-        // data, and which one is the player's is the save's (spike 154).
-        let bases = match game.secret_bases {
-            Some(make) if !image.is_empty() => Some(make(memory.clone(), &image)),
-            _ => None,
-        };
-        // Route 113's ash piles are in a list its own module writes as it starts (spike 155).
-        let ash = game.ash.map(|make| make(memory.clone()));
-        // Fortree Gym's doors are built by the Gym's own module as it starts (spike 161).
-        let doors = game.doors.map(|make| make(memory.clone()));
-        // Sootopolis Gym's thin ice is kept by the Gym's own module, a byte a tile (spike 167).
-        let ice = game.ice.map(|make| make(memory.clone()));
-        let words = match text.as_ref().and_then(|text| text.pc.clone()) {
-            Some(pc) if !pc.is_empty() => IndexMap::from([(PC_TILE, pc)]),
-            _ => IndexMap::new(),
-        };
-        let streets: Option<Streets> = text
-            .as_ref()
-            .and_then(|text| text.streets.clone())
-            .map(|streets| Rc::new(move |chunks: &[i64]| streets.network(chunks)) as Streets);
-        let chunks_of = text.as_ref().and_then(|text| text.map_chunks.clone());
-        let field = FieldReader::with(
+        // Each game's own readers come with it: ORAS's DexNav, its Secret Bases, whose every spot
+        // is listed in the executable (spike 154), Route 113's ash piles, and Fortree and
+        // Sootopolis Gyms' doors and ice, kept by the Gyms' own modules (spikes 155, 161, 167).
+        let field = FieldReader::new(
             memory.clone(),
-            FieldOptions {
-                words,
-                drawn: game.drawn,
-                streets,
-                outdoors: text
-                    .as_ref()
-                    .map(|text| text.outdoors.clone())
-                    .unwrap_or_default(),
-                street_records: text
-                    .as_ref()
-                    .map(|text| text.street_records.clone())
-                    .unwrap_or_default(),
-                hidden: hidden.clone(),
-                belts: game.belts.clone(),
-                far: chunks_of.clone().map(|chunks| {
-                    Rc::new(move |file: i64| chunks.cells(file))
-                        as crate::games::gen6::field::FarCells
-                }),
-                far_heights: chunks_of.clone().map(|chunks| {
-                    Rc::new(move |file: i64| chunks.heights(file))
-                        as crate::games::gen6::field::FarHeights
-                }),
-                far_floors: chunks_of.clone().map(|chunks| {
-                    Rc::new(move |file: i64| chunks.floors(file))
-                        as crate::games::gen6::field::FarFloors
-                }),
-                matrices: chunks_of.map(|chunks| {
-                    Rc::new(move |number: i64| chunks.matrix(number))
-                        as crate::games::gen6::field::FarMatrices
-                }),
-                clears: game.clears.clone(),
-                berries: text
-                    .as_ref()
-                    .map(|text| text.berries.clone())
-                    .unwrap_or_default(),
-                barriers: game.barriers.clone(),
-                triggers: game.triggers.clone(),
-                furniture: game.furniture.clone(),
-                secret_bases: bases.clone(),
-                decorations: text
-                    .as_ref()
-                    .map(|text| text.decorations.clone())
-                    .unwrap_or_default(),
-                ash: ash.clone(),
-                doors: doors.clone(),
-                blocker: game.blocker,
-                stairs: game.stairs.clone(),
-                ice: ice.clone(),
-                ..FieldOptions::default()
-            },
+            game,
+            text.as_deref(),
+            &image,
+            Rc::new(py::time::monotonic),
         );
-        let mut classes: IndexSet<String> =
-            HEAP_CLASSES.iter().map(|class| class.to_string()).collect();
-        if let Some(hidden) = &hidden {
-            classes.extend(hidden.classes().into_iter().map(String::from));
-        }
-        if let Some(bases) = &bases {
-            classes.extend(bases.classes().into_iter().map(String::from));
-        }
-        if let Some(ash) = &ash {
-            classes.extend(ash.classes().into_iter().map(String::from));
-        }
-        if let Some(doors) = &doors {
-            classes.extend(doors.classes().into_iter().map(String::from));
-        }
-        if let Some(ice) = &ice {
-            classes.extend(ice.classes().into_iter().map(String::from));
-        }
+        let classes: IndexSet<String> = HEAP_CLASSES
+            .iter()
+            .copied()
+            .chain(field.classes())
+            .map(String::from)
+            .collect();
         // The navigator says what it finds by the name it has been given, and renames it on a
         // key: the player standing in front of a sign is the only one who can name it.
         let ui = ui.unwrap_or_default();
@@ -404,17 +336,18 @@ impl Gen6Profile {
             false,
         )));
         let field = Rc::new(RefCell::new(field));
-        // Soaring on Latios, the keys walk the sky's places instead, which the field's stale
-        // lists know nothing of (spike 166).
-        let known: Rc<Vec<Place>> = Rc::new(
-            text.as_ref()
-                .map(|text| text.sky.clone())
-                .unwrap_or_default(),
-        );
-        let soaring: Rc<dyn Fn() -> Option<i64>> = {
-            let (apps, known) = (apps.clone(), known.clone());
-            Rc::new(move || soaring_of(&apps, &known))
-        };
+        // The game's own apps, ORAS's soaring: while one runs, the keys walk what it lists, which
+        // the field's stale lists know nothing of (spike 166).
+        let mut own: Vec<Rc<dyn OwnApp>> = Vec::new();
+        for make in &game.apps {
+            // Python raises out of the profile's making, which ends the runtime.
+            match make(memory.clone(), text.as_deref(), speech.clone(), log.clone()) {
+                Ok(Some(app)) => own.push(app),
+                Ok(None) => {}
+                Err(error) => panic!("{error}"),
+            }
+        }
+        let own = Rc::new(own);
 
         // Touch mode walks the bottom screen's touch areas, and taps one on the player's key
         // (`games.common.touch`, ADR-0009 as amended 2026-10-01).
@@ -465,20 +398,41 @@ impl Gen6Profile {
             let screen = screen.clone();
             Rc::new(move |r#box: i64| screen.borrow().text_of(r#box))
         };
-        // The AreaNav is the field's: elsewhere its navigators are gone, and asking cost a touch
-        // walk 1,400 reads (movie22).
+        // The DexNav draws a Pokémon caught in colour, and only those are said so: "Ralts",
+        // "Zigzagoon caught", with a comma under pauses (Orion, 2026-10-06).
+        let caught = format!("{}{CAUGHT}", if ui.pauses { ", " } else { " " });
+        let images: Option<IndexMap<String, String>> = text.as_ref().map(|text| {
+            text.touch_words
+                .iter()
+                .map(|(image, words)| {
+                    let said = if text.caught.contains(image) {
+                        format!("{words}{caught}")
+                    } else {
+                        words.clone()
+                    };
+                    (image.clone(), said)
+                })
+                .collect()
+        });
         let picture_name: PictureName = {
             let (apps, distribution, party_icons) =
                 (apps.clone(), distribution.clone(), party_icons.clone());
             Rc::new(move |pane: i64| {
-                // `(running in (FIELD, None) and distribution.name(pane)) or
-                // party_icons.name(pane)`: a name of "" or None goes on to the party's icons.
+                // The AreaNav is the field's: elsewhere its navigators are gone, and asking cost a
+                // touch walk 1,400 reads (movie22). On the field its icons are the DexNav's.
+                // A name of "" or None goes on to the party's icons.
                 let running = apps.borrow().running.clone();
                 if running.as_deref().is_none_or(|running| running == FIELD)
                     && let Some(name) = distribution.borrow().name(pane)?
                     && !name.is_empty()
                 {
-                    return Ok(Some(name));
+                    let caught_here =
+                        running.as_deref() == Some(FIELD) && distribution.borrow().caught(pane)?;
+                    return Ok(Some(if caught_here {
+                        format!("{name}{caught}")
+                    } else {
+                        name
+                    }));
                 }
                 party_icons.borrow().name(pane)
             })
@@ -499,7 +453,7 @@ impl Gen6Profile {
             file_of,
             log.clone(),
             touch::Options {
-                images: text.as_ref().map(|text| text.touch_words.clone()),
+                images,
                 tap,
                 tone: tones.clone().map(|tones| {
                     Rc::new(move |across: f64, down: f64| {
@@ -520,16 +474,17 @@ impl Gen6Profile {
                 Rc::new(move |start: (f64, f64), end: (f64, f64)| {
                     // The sound thread not starting, raised to the screen's poll in Python.
                     let _ = tones.glide(start, end);
-                }) as crate::games::gen6::mapcursor::Tone
+                }) as crate::games::gen6::screens::mapcursor::Tone
             }),
         );
         let navigator = Navigator::new(
-            Rc::new(SkySource::new(
-                memory.clone(),
-                field.borrow().clone() as Rc<dyn FieldSource>,
-                soaring,
-                known.to_vec(),
-            )),
+            Rc::new(OwnApps {
+                field: field.borrow().clone(),
+                running: {
+                    let (apps, own) = (apps.clone(), own.clone());
+                    Rc::new(move || own_running(&apps, &own))
+                },
+            }),
             speech.clone(),
             log.clone(),
             NavigatorOptions {
@@ -550,6 +505,11 @@ impl Gen6Profile {
                     Rc::new(move |player: bool| announcements.borrow().sides(player)) as Sides
                 }),
                 touch: Some(touch),
+                categories: own
+                    .iter()
+                    .flat_map(|app| app.categories())
+                    .map(String::from)
+                    .collect(),
                 ..NavigatorOptions::default()
             },
         );
@@ -621,9 +581,7 @@ impl Gen6Profile {
             speaker_wanted: Cell::new(false),
             managers: RefCell::new(PySet::new()),
             decorating: RefCell::new(None),
-            sky: known,
-            heading: Cell::new(None),
-            facing: RefCell::new(None),
+            own,
         }
     }
 
@@ -759,9 +717,9 @@ impl Gen6Profile {
         if started == BATTLE {
             self.battle.borrow_mut().begin();
         }
-        // Each flight says the way the player faces as it settles, the first included.
-        self.heading.set(None);
-        *self.facing.borrow_mut() = None;
+        for app in self.own.iter() {
+            app.started();
+        }
         Ok(true)
     }
 
@@ -970,8 +928,8 @@ impl Gen6Profile {
     /// The listing reads every model in the pool, so it is made only on a change of zone and
     /// after each sweep, not every poll.
     pub fn poll_field(&self) -> Result<()> {
-        if self.soaring().is_some() {
-            return self.poll_sky();
+        if let Some((app, process)) = own_running(&self.apps, &self.own) {
+            return phase(&*self.memory, app.name(), || app.poll(process));
         }
         let field = self.field();
         // `None` is the Python's `return` from inside the `with`.
@@ -995,7 +953,7 @@ impl Gen6Profile {
             self.poll_decorating(&at)?;
             // A hidden Pokémon shows and goes between sweeps, so its record is read every poll.
             let hiding = field.hidden(at.zone)?;
-            let key = hiding.map(|hiding| (hiding.code, hiding.cell));
+            let key = hiding.as_ref().map(|hiding| (hiding.code, hiding.cell));
             let words = field.hidden_words()?;
             if words != *self.hidden_words.borrow() {
                 (self.log)(&format!(
@@ -1004,6 +962,15 @@ impl Gen6Profile {
                 ));
                 *self.hidden_words.borrow_mut() = words;
             }
+            // Found by a search, or by the detector with the DexNav open: never one it turns up
+            // while the AreaNav is, "I'm looking for the youngster there, not a random Poochyena!"
+            // (Orion, 2026-10-06 and 07). The navigator knows whether touch mode is on.
+            let found = field.hiding();
+            let appeared = hiding.is_some()
+                && self.hiding.get().is_none()
+                && found
+                    .as_ref()
+                    .is_some_and(|found| found.searched || found.on_dexnav);
             if key != self.hiding.get() {
                 self.hiding.set(key);
                 self.relist.set(true);
@@ -1015,6 +982,14 @@ impl Gen6Profile {
                 return Ok(None);
             }
             at = field.interactables(&at)?;
+            if appeared
+                && let Some(hiding) = &hiding
+                && let Some(found) = &found
+            {
+                self.navigator
+                    .borrow_mut()
+                    .found(&at, hiding, found.searched)?;
+            }
             // Which chunks the edges were narrowed by, for the log: the blocks come and go
             // with the map, and a border listed whole is a border no chunk covers.
             let mut chunks: Vec<(i64, i64)> = field
@@ -1083,43 +1058,6 @@ impl Gen6Profile {
         Ok(())
     }
 
-    /// The sky's process while the player soars on Latios and its places are known, else None.
-    fn soaring(&self) -> Option<i64> {
-        soaring_of(&self.apps, &self.sky)
-    }
-
-    /// Say the compass point the player faces once a turn stops on another, as the bottom
-    /// screen's arrow shows it: one small read a field poll while soaring.
-    fn poll_sky(&self) -> Result<()> {
-        let Some(process) = self.soaring() else {
-            return Ok(());
-        };
-        let flight = phase(&*self.memory, "sky", || sky::read(&*self.memory, process))?;
-        let Some(flight) = flight else {
-            return Ok(());
-        };
-        let was = self.heading.replace(Some(flight.heading));
-        let Some(was) = was else {
-            return Ok(());
-        };
-        if (flight.heading - was).abs() > sky::STILL {
-            return Ok(());
-        }
-        let word = sky::facing(flight.heading)?;
-        if self.facing.borrow().as_deref() != Some(word) {
-            *self.facing.borrow_mut() = Some(word.to_string());
-            (self.log)(&format!(
-                "sky: facing {word} at ({}, {}) height {}",
-                py::fixed(flight.x, 0),
-                py::fixed(flight.z, 0),
-                py::fixed(flight.height, 0)
-            ));
-            self.speech
-                .say(&format!("facing {word}"), Category::Guidance);
-        }
-        Ok(())
-    }
-
     /// Say what the Dowsing Machine's lights show as it changes: three small reads a field
     /// poll, and nothing while no field runs.
     fn poll_dowsing(&self) -> Result<()> {
@@ -1164,7 +1102,7 @@ impl Gen6Profile {
         let Some(text) = &self.text else {
             return Ok(());
         };
-        let index = self.field().place_index(zone)?;
+        let index = self.field().zones.place_index(zone)?;
         let Some(index) = index else {
             return Ok(());
         };
@@ -1233,11 +1171,50 @@ impl Gen6Profile {
     }
 }
 
-/// `Gen6Profile._soaring`, which the sky source is handed as a callable of its own.
-fn soaring_of(apps: &RefCell<RunningApp>, known: &[Place]) -> Option<i64> {
+/// `Gen6Profile._own_running`: the game's own app running now, and its process, or None.
+fn own_running(
+    apps: &RefCell<RunningApp>,
+    own: &[Rc<dyn OwnApp>],
+) -> Option<(Rc<dyn OwnApp>, i64)> {
     let apps = apps.borrow();
-    let running = apps.running.as_deref() == Some(sky::APP) && !known.is_empty();
-    if running { apps.process } else { None }
+    let process = apps.process;
+    let app = own
+        .iter()
+        .find(|app| apps.running.as_deref() == Some(app.app()))?;
+    Some((app.clone(), process?))
+}
+
+/// What the navigator reads the map through: what one of the game's own apps lists while it
+/// runs (`OwnApp.listed`), and the field's everywhere else.
+struct OwnApps {
+    field: Rc<FieldReader>,
+    running: Rc<dyn Fn() -> Option<(Rc<dyn OwnApp>, i64)>>,
+}
+
+impl FieldSource for OwnApps {
+    fn visit(&self) -> Option<(i64, i64)> {
+        self.field.visit()
+    }
+
+    fn poll(&self) -> Result<Option<Field>> {
+        match (self.running)() {
+            None => self.field.poll(),
+            Some((app, process)) => app.listed(process),
+        }
+    }
+
+    fn interactables(&self, r#where: &Field) -> Result<Field> {
+        // An app's listing is whole, and says the way to each thing itself.
+        if r#where.steer.is_some() {
+            Ok(r#where.clone())
+        } else {
+            self.field.interactables(r#where)
+        }
+    }
+
+    fn ground(&self, r#where: &Field, height: Option<f64>) -> Result<Ground> {
+        self.field.ground(r#where, height)
+    }
 }
 
 /// `speaker.name_for`, as the `Speaker` that `Announcements` asks who is showing a window.
@@ -1280,11 +1257,14 @@ fn leads_to_of(text: Option<Rc<GameText>>, field: Rc<RefCell<Rc<FieldReader>>>) 
             return Ok(None);
         };
         let field = field.borrow().clone();
-        let (ours, theirs) = (field.place_index(here)?, field.place_index(there)?);
+        let (ours, theirs) = (
+            field.zones.place_index(here)?,
+            field.zones.place_index(there)?,
+        );
         let (Some(ours), Some(theirs)) = (ours, theirs) else {
             return Ok(None);
         };
-        if ours == theirs && !field.one_matrix(here, there)? {
+        if ours == theirs && !field.zones.one_matrix(here, there)? {
             return Ok(None);
         }
         Ok(text.place(theirs))

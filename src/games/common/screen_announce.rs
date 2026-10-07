@@ -1,0 +1,928 @@
+//! What to say of a screen: the item under its cursor, what changed, and what came on screen.
+//!
+//! The screen text reader reports pieces and the cursor reader reports the pieces under each
+//! cursor. This decides what is said of them, and in what order, by the rules the user set
+//! (2026-09-14):
+//!
+//! - **A menu is heard one item at a time, under its cursor.** A layout a cursor has been over is
+//!   a menu: what comes on screen with it, as it opens or comes back, and its rows as a list
+//!   scrolls, whether the list writes new words into them or moves them into view, are left to the
+//!   cursor. Words that come later in a menu already up, such as the options screen's "Would you
+//!   like to make these changes?", are said.
+//! - **Details follow the cursor, whole and in one order.** What changes after a cursor moves is
+//!   gathered until it has settled, then every panel that cursor's moves have changed is read, row
+//!   by row, in the order the screen built them: "The user growls… Category Power — Accuracy 100".
+//!   Saying each change as a poll caught it put a move's description before its panel or after it,
+//!   and left the panel out when two moves shared their power and accuracy (the user, 2026-09-14).
+//!   A value that changes with no move is said with its row in its own group: "Play time: 0:14".
+//! - **A screen coming back is read like a screen opening** (the user, 2026-09-14): in full,
+//!   unless it is a menu. Words coming back to a layout that kept its other words on screen bring
+//!   those with them.
+//! - **A letter deleted from a name is heard as the name that is left** (the user, 2026-09-18).
+//!   Each letter typed is a TextBox of its own, so deleting one takes a word off the screen and
+//!   says nothing at all; what remains is said instead, "R a i" for a name that read "Raiq".
+//! - **A screen revealed over several polls is said once it has arrived**, whole: what comes on
+//!   screen in a layout's first second waits while more of its words are still being written, up
+//!   to a second, and is said as it came the moment any of it changes or leaves, ahead of the
+//!   change.
+//! - The item under a cursor comes first, then its details, then what changed, then what came on
+//!   screen. Nothing interrupts unless the speech policy says so.
+//!
+//! List and choice box labels belong to their own readers and are left out everywhere.
+
+use std::collections::HashSet;
+use std::rc::Rc;
+
+use indexmap::{IndexMap, IndexSet};
+
+use crate::core::speech::{Category, Speech};
+use crate::games::common::cursors::shared::CursorItem;
+use crate::games::common::screen::{ScreenText, by_rows, distinct, in_rows, join, reading_order};
+use crate::py::{self, Log, Result};
+
+/// Polls after a cursor moves before its details are said, when none of them is still being
+/// written. The move panel changed one poll after its cursor in the user's log.
+pub const DETAIL_POLLS: i64 = 2;
+
+/// The most polls details wait for words still being written, so that a value that never holds
+/// still cannot keep them unsaid.
+pub const DETAIL_MAX_POLLS: i64 = 8;
+
+/// The most polls words that came on screen wait for the rest of their layout's words to arrive,
+/// so that a value that never holds still cannot keep them unsaid.
+pub const ARRIVAL_MAX_POLLS: i64 = 5;
+
+/// Glyphs between a label and the value it names: the level up's are five apart, a name's letters
+/// one.
+pub const LABEL_GAP: f64 = 2.0;
+
+/// Polls within which the same words from another layout are the same news: the location sign
+/// came up 0.23 s after AreaNav's words changed.
+pub const REPEAT_POLLS: i64 = 5;
+
+/// The root a place's name said from RAM counts as coming from. No layout's root is 0.
+pub const FIELD_ROOT: i64 = 0;
+
+/// Units within which two words beside each other are drawn on one line, as a table's label and
+/// value are.
+pub const ONE_LINE: f64 = 1.0;
+
+/// Polls within which a place's name on screen is the one the field has just said. AreaNav's words
+/// changed 0.6 to 0.8 s after the zone did and the location sign came 0.23 s after them (spike
+/// 87), which is five polls at the edge of `REPEAT_POLLS`; two seconds leaves room for a slow
+/// poll.
+pub const PLACE_POLLS: i64 = 10;
+
+/// Polls within which words a cursor said are old news to a choice box opening on them. The Poké
+/// Mart's Buy, Sell and No thanks are read by the cursor beside them the poll their box is shown,
+/// and by the choice reader once a sweep has found the box, as much as a second later (spike 98);
+/// two seconds leaves room for a slow one.
+pub const CURSOR_HEARD_POLLS: i64 = 10;
+
+/// A layout root and the pane a group of pieces hangs from, or the frame drawn round words hanging
+/// from the root itself (`ScreenText.group`).
+pub type Panel = (i64, i64);
+
+/// The details of the item a cursor has just moved to, gathered until they settle.
+struct Gathering {
+    cursor: i64,
+    polls: i64,
+    /// The panels of the pieces that changed, in the order they changed.
+    panels: IndexSet<Panel>,
+    /// TextBoxes said meanwhile as they came on screen, left out of the details.
+    said: HashSet<i64>,
+    /// The item has no details to say: what changes is taken in unsaid (`CursorItem.quiet`).
+    quiet: bool,
+}
+
+impl Gathering {
+    /// `_Gathering(cursor, quiet=quiet)`: `polls` at 0 and no panels or words said yet.
+    fn new(cursor: i64, quiet: bool) -> Self {
+        Gathering {
+            cursor,
+            polls: 0,
+            panels: IndexSet::new(),
+            said: HashSet::new(),
+            quiet,
+        }
+    }
+}
+
+/// Says a screen's text and its cursors' items, one poll at a time.
+pub struct ScreenAnnouncer {
+    speech: Rc<Speech>,
+    log: Log,
+    pauses: bool,
+    /// Roots of the layouts a cursor has been over, for as long as those layouts live.
+    menus: HashSet<i64>,
+    gathering: Option<Gathering>,
+    /// Cursor -> every panel its moves have changed. Ember to Scratch changes only the
+    /// description, and the move's power and accuracy went unsaid.
+    detail_panels: IndexMap<i64, IndexSet<Panel>>,
+    polls: i64,
+    /// Words a cursor said lately -> the poll it said them at (`said_by_cursor`).
+    cursor_said: IndexMap<String, i64>,
+    /// Words said lately -> (the poll they were said at, the root of the layout they came from).
+    recent: IndexMap<String, (i64, i64)>,
+    /// Layout root -> the poll its words came on screen at, for layouts with words on screen.
+    on_screen_since: IndexMap<i64, i64>,
+    /// Layout root -> the words that came on screen while more of the layout's words were still
+    /// being written, each with the poll it came at.
+    arriving: IndexMap<i64, Vec<(i64, ScreenText)>>,
+    /// The place's name the field said last, and the poll it was said at.
+    placed: Option<(String, i64)>,
+}
+
+impl ScreenAnnouncer {
+    /// `ScreenAnnouncer(speech, log)`: no pauses.
+    pub fn new(speech: Rc<Speech>, log: Log) -> Self {
+        ScreenAnnouncer::with(speech, log, false)
+    }
+
+    pub fn with(speech: Rc<Speech>, log: Log, pauses: bool) -> Self {
+        ScreenAnnouncer {
+            speech,
+            log,
+            pauses,
+            menus: HashSet::new(),
+            gathering: None,
+            detail_panels: IndexMap::new(),
+            polls: 0,
+            cursor_said: IndexMap::new(),
+            recent: IndexMap::new(),
+            on_screen_since: IndexMap::new(),
+            arriving: IndexMap::new(),
+            placed: None,
+        }
+    }
+
+    /// Did a cursor say these words a moment ago? A choice box or a list opening on them then
+    /// has no news: the Mart's boxes are read by the cursor beside their words before the choice
+    /// reader has found them, and "Buy" was heard from both (spike 98), as the save's YES was from
+    /// its cursor and then its list (movie1, 2026-09-26).
+    pub fn said_by_cursor(&mut self, text: &str) -> bool {
+        self.cursor_said = self
+            .cursor_said
+            .iter()
+            .filter(|&(_words, &poll)| self.polls - poll <= CURSOR_HEARD_POLLS)
+            .map(|(words, &poll)| (words.clone(), poll))
+            .collect();
+        self.cursor_said.contains_key(text)
+    }
+
+    /// Say the name of the place the player has just arrived in.
+    ///
+    /// It comes from RAM and the ROM (`Gen6Profile.poll_field`), 0.6 to 0.8 s before AreaNav's
+    /// words and the location sign say the same (spike 87), so those are left unsaid when they
+    /// follow it — and it is left unsaid when they came first, as they do before the field has
+    /// found the zone table.
+    pub fn place(&mut self, name: &str) {
+        if !self.fresh(name, FIELD_ROOT) {
+            (self.log)(&format!("field place, just said elsewhere: {name}"));
+            return;
+        }
+        self.placed = Some((name.to_string(), self.polls));
+        (self.log)(&format!("field place: {name}"));
+        self.speech.say(name, Category::Screen);
+    }
+
+    /// Say one poll's worth: `texts` from the screen text reader, `items` and `under` from the
+    /// cursor reader, `on_screen` everything on screen now, the list readers' `labels`, the
+    /// `roots` of every layout still alive, so a menu whose layout is gone is forgotten, and the
+    /// roots of the layouts whose words are `settling`, still being written, the pieces that have
+    /// `left` the screen, and, by layout, the TextBoxes of the list a cursor walks where the
+    /// cursor reader knows it (`CursorReader.lists`).
+    ///
+    /// A cursor that knows its list owns the list and no more of its layout. The Poké Mart draws
+    /// its list, the money, the count in the bag and the chosen item's description in one
+    /// layout, and left to the cursor as a menu's layout is, the description was never heard as
+    /// the Mart opened, nor the count as it changed (shop.ctm, 2026-09-24).
+    ///
+    /// Python's `roots`, `settling`, `left`, `listed` and `moving` default to None, nothing,
+    /// nothing, None and nothing.
+    #[allow(clippy::too_many_arguments)]
+    pub fn say(
+        &mut self,
+        texts: &[ScreenText],
+        items: &[CursorItem],
+        under: &[Vec<ScreenText>],
+        on_screen: &[ScreenText],
+        labels: &HashSet<String>,
+        roots: Option<&IndexSet<i64>>,
+        settling: &IndexSet<i64>,
+        left: &[ScreenText],
+        listed: Option<&IndexMap<i64, HashSet<i64>>>,
+        moving: &HashSet<i64>,
+    ) -> Result<()> {
+        self.polls += 1;
+        let no_lists: IndexMap<i64, HashSet<i64>> = IndexMap::new();
+        let listed = listed.unwrap_or(&no_lists);
+        let mut cursored: HashSet<i64> = HashSet::new();
+        for pieces in under {
+            if !pieces.iter().any(|p| labels.contains(&p.text)) {
+                self.menus.extend(pieces.iter().map(|p| p.root));
+                cursored.extend(pieces.iter().map(|p| p.r#box));
+            }
+        }
+        for boxes in listed.values() {
+            cursored.extend(boxes);
+        }
+        if let Some(roots) = roots {
+            self.menus.retain(|root| roots.contains(root));
+            self.detail_panels.retain(|_cursor, panels| {
+                panels.retain(|panel| roots.contains(&panel.0));
+                !panels.is_empty()
+            });
+        }
+
+        for item in items {
+            // A list window draws the same kind of cursor. Over its labels, the cursor is the
+            // list's, and what shows through behind the list is not its item: the options
+            // confirmation's cursor held "SLOW ON" from the rows under Yes and No.
+            if item.pieces.is_empty() || item.pieces.iter().any(|p| labels.contains(&p.text)) {
+                continue;
+            }
+            let text = join(&item.pieces, self.pauses);
+            (self.log)(&format!(
+                "cursor {:#010x} {}: {text}  [layout {:#x}]",
+                item.cursor,
+                if item.opened { "opened" } else { "moved" },
+                item.pieces[0].root
+            ));
+            self.speech.say(
+                &text,
+                if item.opened {
+                    Category::Prompt
+                } else {
+                    Category::Menu
+                },
+            );
+            self.cursor_said.insert(text, self.polls);
+            cursored.extend(item.pieces.iter().map(|p| p.r#box));
+            // Only a move brings up details. A cursor coming on screen comes with whatever else
+            // the key changed: the bag's cursor came back with the pocket name, and "MEDICINE"
+            // was read as the details of the Potion under it. A move drops the details of the
+            // item before it unsaid, as the player has moved on, but not the panels they were in.
+            if !item.opened {
+                if let Some(gathering) = &self.gathering {
+                    self.detail_panels
+                        .entry(gathering.cursor)
+                        .or_default()
+                        .extend(gathering.panels.iter().copied());
+                }
+                self.gathering = Some(Gathering::new(item.cursor, item.quiet));
+            }
+        }
+
+        // What a cursor is over is its own, said or not this poll: the bag's list label "Potion"
+        // settled a poll after its cursor said it and was heard again.
+        let heard: Vec<ScreenText> = texts
+            .iter()
+            .filter(|p| {
+                !labels.contains(&p.text)
+                    && !cursored.contains(&p.r#box)
+                    && !(self.menus.contains(&p.root)
+                        && !listed.contains_key(&p.root)
+                        && (p.changed || p.with_layout || p.scrolled))
+            })
+            .cloned()
+            .collect();
+        let mut changed: Vec<ScreenText> = heard.iter().filter(|p| p.changed).cloned().collect();
+        let shown: Vec<ScreenText> = heard.iter().filter(|p| !p.changed).cloned().collect();
+        let mut said: HashSet<i64> = cursored.clone();
+        let mut gathering = self.gathering.take();
+        if gathering
+            .as_ref()
+            .is_some_and(|g| moving.contains(&g.cursor))
+        {
+            // The cursor is on its way elsewhere before its details settled: they are no longer
+            // what it is over. The PC Box's pointer, held two polls on each slot, read Party 1's
+            // summary once it showed Party 2's Pokémon (spike 129).
+            if let Some(moved) = gathering.take() {
+                self.detail_panels
+                    .entry(moved.cursor)
+                    .or_default()
+                    .extend(moved.panels.iter().copied());
+            }
+        }
+        if let Some(mut gathering) = gathering {
+            gathering
+                .panels
+                .extend(changed.iter().map(ScreenText::group));
+            gathering.said.extend(shown.iter().map(|p| p.r#box));
+            changed = Vec::new();
+            if self.settled(&gathering, settling) {
+                said.extend(self.say_details(&gathering, on_screen, labels, &cursored));
+            } else {
+                gathering.polls += 1;
+                self.gathering = Some(gathering);
+            }
+        }
+
+        // What arrived before a change is said before it: the level up's gains, then its totals.
+        let changed_roots: HashSet<i64> =
+            texts.iter().filter(|p| p.changed).map(|p| p.root).collect();
+        let (moved_on, ready) = self.arrived(&shown, on_screen, settling, &changed_roots);
+        // Words arriving now are said with the rest of this poll, not taken for what moved on.
+        let coming: HashSet<i64> = ready.iter().map(|p| p.r#box).collect();
+        let kept: HashSet<i64> = cursored.union(&coming).copied().collect();
+        self.say_shown(&moved_on, on_screen, &mut said, labels, &kept);
+
+        // A changed value's row is what was already there: what comes on screen with it is said
+        // after, and was said twice when a panel took it in.
+        let arriving: HashSet<i64> = shown.iter().map(|p| p.r#box).collect();
+        let around: Vec<ScreenText> = on_screen
+            .iter()
+            .filter(|p| !arriving.contains(&p.r#box))
+            .cloned()
+            .collect();
+        for group in rows(&changed, &around, labels) {
+            let text = join(&group, self.pauses);
+            said.extend(group.iter().map(|p| p.r#box));
+            if !self.fresh(&text, group[0].root) {
+                (self.log)(&format!(
+                    "screen changed, just said elsewhere: {text}  [layout {:#x}]",
+                    group[0].root
+                ));
+                continue;
+            }
+            (self.log)(&format!(
+                "screen changed: {text}  [layout {:#x}]",
+                group[0].root
+            ));
+            self.speech.say(&text, Category::Menu);
+        }
+
+        self.say_shown(&ready, on_screen, &mut said, labels, &cursored);
+        self.say_what_is_left(left, on_screen, &mut said)
+    }
+
+    /// Say the letters left in a name a letter has just been deleted from.
+    ///
+    /// A name is typed a letter to a TextBox, so deleting one only takes words off the screen,
+    /// which says nothing at all. What is left is said instead (the user, 2026-09-18). A group of
+    /// one-character words on one row is a name being spelled out; words leaving anywhere else are
+    /// not news of their own.
+    fn say_what_is_left(
+        &mut self,
+        left: &[ScreenText],
+        on_screen: &[ScreenText],
+        said: &mut HashSet<i64>,
+    ) -> Result<()> {
+        let groups: IndexSet<(i64, i64)> = left
+            .iter()
+            .map(|piece| (piece.root, piece.parent))
+            .collect();
+        for group in groups {
+            let rest: Vec<ScreenText> = on_screen
+                .iter()
+                .filter(|piece| (piece.root, piece.parent) == group && !said.contains(&piece.r#box))
+                .cloned()
+                .collect();
+            if rest.len() < 2 || rest.iter().any(|piece| piece.text.chars().count() != 1) {
+                continue;
+            }
+            let mut rows_of: HashSet<i64> = HashSet::new();
+            for piece in &rest {
+                rows_of.insert(py::round(piece.row)?);
+            }
+            if rows_of.len() > 1 {
+                continue;
+            }
+            let text = join(&distinct(in_rows(rest.clone())), self.pauses);
+            said.extend(rest.iter().map(|piece| piece.r#box));
+            (self.log)(&format!("screen left: {text}  [layout {:#x}]", group.0));
+            self.speech.say(&text, Category::Screen);
+        }
+        Ok(())
+    }
+
+    /// Say what came on screen: one utterance per panel, queued in build order, rather than one
+    /// run for the whole poll. Two panels are two things, and the battle's HP box proved it: the
+    /// player's level and HP and the wild Pokemon's level ran together as "6 22/ 22 2".
+    fn say_shown(
+        &mut self,
+        shown: &[ScreenText],
+        on_screen: &[ScreenText],
+        said: &mut HashSet<i64>,
+        labels: &HashSet<String>,
+        kept: &HashSet<i64>,
+    ) {
+        if shown.is_empty() {
+            return;
+        }
+        let shown = with_row_mates(shown, on_screen, kept, labels);
+        let stayed = self.with_what_stayed(&shown, on_screen, said, labels);
+        for pieces in panels(&stayed, on_screen) {
+            if pieces.is_empty() {
+                continue;
+            }
+            let text = join(&pieces, self.pauses);
+            let root = pieces[0].root;
+            said.extend(pieces.iter().map(|p| p.r#box));
+            if !self.fresh(&text, root) {
+                (self.log)(&format!(
+                    "screen shown, just said elsewhere: {text}  [layout {root:#x}]"
+                ));
+                continue;
+            }
+            (self.log)(&format!("screen shown: {text}  [layout {root:#x}]"));
+            self.speech.say(&text, Category::Screen);
+        }
+    }
+
+    /// What came on screen and is ready to say, as (what its layout has moved on from, the
+    /// rest): the words of layouts no longer being written, with what came before them, or that
+    /// have waited their most polls.
+    ///
+    /// The level up reveals its rows over half a second and writes each value a poll after its
+    /// label, and said a row and a half, then a label and values out of step, then the rest: "HP",
+    /// "+ 2 ATTACK + 0 DEFENSE SP. ATK SP. DEF", "+ 1 + 1 SPEED + 1" (battles2.ctm, the user,
+    /// 2026-09-17). A layout whose words change or leave has moved on, and what arrived is said
+    /// at once, as it was: the gains were on screen for under a second before the totals replaced
+    /// them, and waiting on, then dropping what had changed, lost them all. `changed` is the roots
+    /// of the layouts with words changed this poll.
+    fn arrived(
+        &mut self,
+        shown: &[ScreenText],
+        on_screen: &[ScreenText],
+        settling: &IndexSet<i64>,
+        changed: &HashSet<i64>,
+    ) -> (Vec<ScreenText>, Vec<ScreenText>) {
+        let mut since: IndexMap<i64, i64> = IndexMap::new();
+        for piece in on_screen {
+            let at = self
+                .on_screen_since
+                .get(&piece.root)
+                .copied()
+                .unwrap_or(self.polls);
+            since.insert(piece.root, at);
+        }
+        self.on_screen_since = since;
+        let mut now: IndexMap<i64, &str> = IndexMap::new();
+        for piece in on_screen {
+            now.insert(piece.r#box, piece.text.as_str());
+        }
+        let mut moved_on: Vec<ScreenText> = Vec::new();
+        let mut ready: Vec<ScreenText> = Vec::new();
+        for piece in shown {
+            let opening = self.polls
+                - self
+                    .on_screen_since
+                    .get(&piece.root)
+                    .copied()
+                    .unwrap_or(self.polls);
+            if self.arriving.contains_key(&piece.root) || opening < ARRIVAL_MAX_POLLS {
+                self.arriving
+                    .entry(piece.root)
+                    .or_default()
+                    .push((self.polls, piece.clone()));
+            } else {
+                // A screen already up for a while is not being revealed: a letter typed into a
+                // name is said as it is typed, where holding it said "w e e" for two quick
+                // letters.
+                ready.push(piece.clone());
+            }
+        }
+        let roots: Vec<i64> = self.arriving.keys().copied().collect();
+        for root in roots {
+            let waiting = &self.arriving[&root];
+            let since = waiting[0].0;
+            let gone = changed.contains(&root)
+                || waiting
+                    .iter()
+                    .any(|(_poll, p)| now.get(&p.r#box).copied() != Some(p.text.as_str()));
+            if !gone && settling.contains(&root) && self.polls - since < ARRIVAL_MAX_POLLS - 1 {
+                continue;
+            }
+            let waiting = self.arriving.shift_remove(&root).unwrap_or_default();
+            for (poll, piece) in waiting {
+                // Words arriving with the change are part of what it brought, and follow it.
+                if gone && poll < self.polls {
+                    moved_on.push(piece);
+                } else {
+                    ready.push(piece);
+                }
+            }
+        }
+        (
+            py::sorted_by_lt(moved_on, |a, b| reading_order(a) < reading_order(b)),
+            py::sorted_by_lt(ready, |a, b| reading_order(a) < reading_order(b)),
+        )
+    }
+
+    /// Is this not what another layout said a moment ago? Remembers it when it is not.
+    ///
+    /// Walking onto Route 101 said it twice: AreaNav's words changed on the bottom screen, and the
+    /// location sign came up on the top with the same words a poll later (the user, 2026-09-14).
+    /// The same layout saying the same words again, as a description does when the cursor comes
+    /// back to a move, is heard again.
+    fn fresh(&mut self, text: &str, root: i64) -> bool {
+        if let Some((placed, at)) = &self.placed
+            && root != FIELD_ROOT
+            && text == placed
+            && self.polls - at <= PLACE_POLLS
+        {
+            return false;
+        }
+        if let Some(&(poll, where_)) = self.recent.get(text)
+            && where_ != root
+            && self.polls - poll <= REPEAT_POLLS
+        {
+            return false;
+        }
+        self.recent = self
+            .recent
+            .iter()
+            .filter(|&(_words, &(poll, _where))| self.polls - poll <= REPEAT_POLLS)
+            .map(|(words, &seen)| (words.clone(), seen))
+            .collect();
+        self.recent.insert(text.to_string(), (self.polls, root));
+        true
+    }
+
+    /// Have the details settled: waited their polls, with nothing in them still being written?
+    ///
+    /// A move's description was written a poll after its panel, and was read after the panel
+    /// where it was read before it every other time. Before any panel is known, any words still
+    /// being written anywhere may be the details, so they are waited for too.
+    fn settled(&self, gathering: &Gathering, settling: &IndexSet<i64>) -> bool {
+        if gathering.polls >= DETAIL_MAX_POLLS {
+            return true;
+        }
+        if gathering.polls < DETAIL_POLLS {
+            return false;
+        }
+        let mut panels: IndexSet<Panel> = IndexSet::new();
+        if let Some(known) = self.detail_panels.get(&gathering.cursor) {
+            panels.extend(known.iter().copied());
+        }
+        panels.extend(gathering.panels.iter().copied());
+        let roots: HashSet<i64> = panels.iter().map(|&(root, _parent)| root).collect();
+        if roots.is_empty() {
+            settling.is_empty()
+        } else {
+            !roots.iter().any(|root| settling.contains(root))
+        }
+    }
+
+    /// Say every panel the cursor's moves have changed, in the order the screen built them,
+    /// each row by row, as one line that never interrupts. Returns the TextBoxes said.
+    ///
+    /// A line a panel, said as menus are, cut off the item they belong to under `interrupt`, and
+    /// each other; the next item still cuts them off (Khai and Orion, 2026-10-05).
+    fn say_details(
+        &mut self,
+        gathering: &Gathering,
+        on_screen: &[ScreenText],
+        labels: &HashSet<String>,
+        cursored: &HashSet<i64>,
+    ) -> HashSet<i64> {
+        self.gathering = None;
+        let panels = self.detail_panels.entry(gathering.cursor).or_default();
+        panels.extend(gathering.panels.iter().copied());
+        let panels = panels.clone();
+        let mut said: HashSet<i64> = HashSet::new();
+        let mut texts: Vec<String> = Vec::new();
+        let mut roots: Vec<i64> = Vec::new();
+        let built: IndexSet<Panel> = on_screen.iter().map(ScreenText::group).collect();
+        for panel in built {
+            if !panels.contains(&panel) {
+                continue;
+            }
+            let group = distinct(by_rows(
+                on_screen
+                    .iter()
+                    .filter(|p| {
+                        p.group() == panel
+                            && !labels.contains(&p.text)
+                            && !gathering.said.contains(&p.r#box)
+                            && !cursored.contains(&p.r#box)
+                    })
+                    .cloned(),
+            ));
+            if !group.is_empty() {
+                let text = join(&group, self.pauses);
+                if gathering.quiet {
+                    (self.log)(&format!(
+                        "details, unsaid: {text}  [layout {:#x}]",
+                        group[0].root
+                    ));
+                } else {
+                    texts.push(text);
+                    roots.push(group[0].root);
+                }
+                said.extend(group.iter().map(|p| p.r#box));
+            }
+        }
+        if !texts.is_empty() {
+            let line = line(&texts);
+            let r#where = roots
+                .iter()
+                .collect::<IndexSet<_>>()
+                .iter()
+                .map(|root| format!("{root:#x}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            (self.log)(&format!("details: {line}  [layout {where}]"));
+            self.speech.say(&line, Category::Screen);
+        }
+        said
+    }
+
+    /// What came on screen, with the rest of each layout that some of it came back to.
+    ///
+    /// Returning from the move list brought back only the summary's panel that had faded, "OT wee
+    /// ID No. …", where opening the summary read its stats and name as well: the move list keeps
+    /// those on screen. A screen coming back is read as it opened (the user, 2026-09-14), so words
+    /// coming back to a layout bring what stayed in it. A menu's layout is left to its cursor, and
+    /// words new to a layout come alone, as a question does.
+    fn with_what_stayed(
+        &self,
+        shown: &[ScreenText],
+        on_screen: &[ScreenText],
+        said: &HashSet<i64>,
+        labels: &HashSet<String>,
+    ) -> Vec<ScreenText> {
+        let back: HashSet<i64> = shown
+            .iter()
+            .filter(|p| p.returned && !self.menus.contains(&p.root))
+            .map(|p| p.root)
+            .collect();
+        if back.is_empty() {
+            return shown.to_vec();
+        }
+        let boxes: HashSet<i64> = shown.iter().map(|p| p.r#box).collect();
+        let stayed = on_screen.iter().filter(|p| {
+            back.contains(&p.root)
+                && !boxes.contains(&p.r#box)
+                && !said.contains(&p.r#box)
+                && !labels.contains(&p.text)
+        });
+        let all: Vec<ScreenText> = shown.iter().chain(stayed).cloned().collect();
+        py::sorted_by_lt(all, |a, b| (!a.top, a.r#box) < (!b.top, b.r#box))
+    }
+}
+
+/// Panels said as one line, a comma between two where the first ends no sentence, for the pause
+/// a line of its own had: "In Bag: 9, A spray-type medicine for treating wounds.".
+fn line(parts: &[String]) -> String {
+    let mut out = String::new();
+    for part in parts {
+        if let Some(last) = out.chars().last() {
+            out += if ".!?…".contains(last) { " " } else { ", " };
+        }
+        out += part;
+    }
+    out
+}
+
+/// Python's `min(a, b)` on floats: `a`, unless `b < a`, so a NaN stays where Python puts it.
+fn min_of(a: f64, b: f64) -> f64 {
+    if b < a { b } else { a }
+}
+
+/// What came on screen, with the label already there beside a value that came alone. `kept` is
+/// what is not to be taken for a label: a cursor's item, and whatever else is coming this poll.
+///
+/// A value can arrive after its label was said: the level up's "SP. DEF" and "SPEED" were said
+/// with the gains, and their totals arrived alone as "12 12" (battles2.ctm replay, 2026-09-17).
+/// Each of its rows is a group of a label and a value set well apart, so a piece arriving in a
+/// group where one other piece shares its row, at least `LABEL_GAP` glyphs away, is said with that
+/// one. Words arriving in a group of their own, as a move's description does, still come alone,
+/// and so does a letter typed into a name beside the letters before it: "R a i d" for the fourth
+/// letter was the name again each time (opening.ctm replay).
+fn with_row_mates(
+    shown: &[ScreenText],
+    on_screen: &[ScreenText],
+    kept: &HashSet<i64>,
+    labels: &HashSet<String>,
+) -> Vec<ScreenText> {
+    let boxes: HashSet<i64> = shown.iter().map(|piece| piece.r#box).collect();
+    // Each mate with its place in `on_screen`: `label not in mates` finds the very object it was
+    // given before it tries `==`, which a NaN in the object never equals.
+    let mut mates: Vec<(usize, &ScreenText)> = Vec::new();
+    for piece in shown {
+        if piece.glyph <= 0.0 {
+            continue;
+        }
+        let beside: Vec<(usize, &ScreenText)> = on_screen
+            .iter()
+            .enumerate()
+            .filter(|(_at, other)| {
+                !boxes.contains(&other.r#box)
+                    && other.root == piece.root
+                    && other.parent == piece.parent
+                    && other.glyph > 0.0
+                    && (other.row - piece.row).abs() < min_of(other.glyph, piece.glyph) / 2.0
+            })
+            .collect();
+        if beside.len() != 1 {
+            continue;
+        }
+        let (at, label) = beside[0];
+        let apart = LABEL_GAP * piece.glyph;
+        if !(label.right <= piece.left - apart || label.left >= piece.right + apart) {
+            continue;
+        }
+        if !kept.contains(&label.r#box)
+            && !labels.contains(&label.text)
+            && !mates.iter().any(|&(was, mate)| was == at || mate == label)
+        {
+            mates.push((at, label));
+        }
+    }
+    if mates.is_empty() {
+        return shown.to_vec();
+    }
+    let all: Vec<ScreenText> = shown
+        .iter()
+        .cloned()
+        .chain(mates.into_iter().map(|(_at, label)| label.clone()))
+        .collect();
+    py::sorted_by_lt(all, |a, b| reading_order(a) < reading_order(b))
+}
+
+/// The pieces a panel at a time, in the order the layouts built them, runs on a row read left to
+/// right: build order put the battle's "35", "35" and "/" side by side and read "PP 3535 /"
+/// (spike 46), and reading rows across a whole layout interleaved the summary's columns (spike
+/// 47).
+///
+/// A panel, not a whole layout (the user, 2026-09-16). The battle draws both Pokemon's HP boxes in
+/// one layout, and reading the layout whole said "6 22/ 22 2" — Torchic at level 6 with 22/22 HP,
+/// and the wild Pokemon's level 2 on the end as though it were part of the same row. The game
+/// itself keeps the two apart, one pane under the root each, and so does this.
+///
+/// A panel boundary only breaks an utterance where a row boundary does too. Splitting on the panel
+/// alone cut labels off their values: the level up read "ATTACK" and "13" as two things, and a
+/// move's "PP 25/" and "25" likewise, because a screen can draw a label and its number in
+/// different panels while putting them side by side on one row. What the ear wants is the row.
+///
+/// A panel that is one column is read top to bottom (`speaking_order`).
+///
+/// Python's `on_screen` defaults to nothing.
+fn panels(pieces: &[ScreenText], on_screen: &[ScreenText]) -> Vec<Vec<ScreenText>> {
+    let mut layouts: IndexMap<i64, Vec<ScreenText>> = IndexMap::new();
+    for piece in pieces {
+        layouts.entry(piece.root).or_default().push(piece.clone());
+    }
+    let mut out: Vec<Vec<ScreenText>> = Vec::new();
+    for group in layouts.values() {
+        let mut current: Vec<ScreenText> = Vec::new();
+        for piece in distinct(speaking_order(group, on_screen)) {
+            if let Some(last) = current.last()
+                && piece.panel != last.panel
+                && !side_by_side(last, &piece)
+            {
+                out.push(std::mem::take(&mut current));
+            }
+            current.push(piece);
+        }
+        if !current.is_empty() {
+            out.push(current);
+        }
+    }
+    out
+}
+
+/// The pieces of one layout in the order to say them: each panel that is one column top to
+/// bottom, and the rest in the order the layout built them, each run on a row left to right.
+///
+/// The Pokédex's entry is one panel built out of order: the species and gender, then a table of
+/// TYPE, HEIGHT and WEIGHT built as a column of labels and a column of values, then the times
+/// encountered, and the number and name at the top built last. In build order it read "Chick
+/// Pokémon Female TYPE HEIGHT WEIGHT 1'04" 5.5 lbs. Times encountered: 1 004 Torchic"
+/// (pokedex2.ctm, the user, 2026-09-24). A panel with no words from two groups side by side on
+/// a row is one column, and read down it is "004 Torchic Chick Pokémon Female TYPE HEIGHT 1'04"
+/// WEIGHT 5.5 lbs. Times encountered: 1". A panel whose groups stand side by side, as the
+/// summary's two columns of stats do (spike 47), or whose words sit beside another panel's, as
+/// the level up's labels do beside their values, keeps its build order.
+fn speaking_order(pieces: &[ScreenText], on_screen: &[ScreenText]) -> Vec<ScreenText> {
+    let everything = if on_screen.is_empty() {
+        pieces
+    } else {
+        on_screen
+    };
+    let panels: IndexSet<i64> = pieces.iter().map(|piece| piece.panel).collect();
+    let mut column: HashSet<i64> = HashSet::new();
+    for &panel in &panels {
+        let layout: Vec<&ScreenText> = everything
+            .iter()
+            .filter(|p| p.root == pieces[0].root)
+            .collect();
+        if one_column(&layout, panel) {
+            column.insert(panel);
+        }
+    }
+    if column.is_empty() {
+        return in_rows(pieces.iter().cloned());
+    }
+    let mut ordered: Vec<ScreenText> = Vec::new();
+    for &panel in &panels {
+        let mine: Vec<ScreenText> = pieces
+            .iter()
+            .filter(|piece| piece.panel == panel)
+            .cloned()
+            .collect();
+        if column.contains(&panel) {
+            ordered.extend(by_rows(mine.iter().cloned()));
+            ordered.extend(mine.iter().filter(|piece| piece.glyph <= 0.0).cloned());
+        } else {
+            ordered.extend(in_rows(mine));
+        }
+    }
+    ordered
+}
+
+/// Is this panel one column: no word of it beside a word of another group on its row, in the
+/// whole layout, and no two of its words beside each other without sharing a line? A table's
+/// label and value are drawn on one line, the entry's HEIGHT and its value both at 10; columns
+/// side by side only come near, the summary's Dex No. and HP five units apart. A panel with
+/// fewer than two placed is not: a lone piece is no column, and the summary, which hangs every
+/// piece from its root as a panel of its own, was read piece by piece in build order, "HP / 30
+/// 30", once its "/" was heard (movie7, 2026-09-30).
+fn one_column(layout: &[&ScreenText], panel: i64) -> bool {
+    let mine: Vec<&ScreenText> = layout
+        .iter()
+        .copied()
+        .filter(|piece| piece.panel == panel && piece.glyph > 0.0)
+        .collect();
+    if mine.len() < 2 {
+        return false;
+    }
+    if mine.iter().any(|piece| {
+        layout.iter().any(|other| {
+            other.glyph > 0.0 && other.parent != piece.parent && side_by_side(piece, other)
+        })
+    }) {
+        return false;
+    }
+    !mine.iter().any(|piece| {
+        mine.iter()
+            .any(|other| side_by_side(piece, other) && (piece.row - other.row).abs() > ONE_LINE)
+    })
+}
+
+/// On the same row, so one thing to say however the layout groups them?
+fn side_by_side(one: &ScreenText, other: &ScreenText) -> bool {
+    if one.glyph <= 0.0 || other.glyph <= 0.0 {
+        return false;
+    }
+    (one.row - other.row).abs() < min_of(one.glyph, other.glyph) / 2.0
+}
+
+/// Each changed piece with what sits beside it in its group on its row, each row once.
+fn rows(
+    changed: &[ScreenText],
+    on_screen: &[ScreenText],
+    labels: &HashSet<String>,
+) -> Vec<Vec<ScreenText>> {
+    let mut rows: Vec<Vec<ScreenText>> = Vec::new();
+    let mut by_layout: IndexMap<i64, Vec<ScreenText>> = IndexMap::new();
+    for piece in changed {
+        by_layout.entry(piece.root).or_default().push(piece.clone());
+    }
+    let ordered: Vec<ScreenText> = by_layout
+        .values()
+        .flat_map(|group| speaking_order(group, on_screen))
+        .collect();
+    for piece in ordered {
+        let mut row = vec![piece.clone()];
+        if piece.glyph > 0.0 {
+            let beside: Vec<ScreenText> = on_screen
+                .iter()
+                .filter(|other| {
+                    other.root == piece.root
+                        && other.glyph > 0.0
+                        && !labels.contains(&other.text)
+                        && (other.row - piece.row).abs() < min_of(other.glyph, piece.glyph) / 2.0
+                })
+                .cloned()
+                .collect();
+            let group: Vec<ScreenText> = beside
+                .iter()
+                .filter(|other| other.parent == piece.parent)
+                .cloned()
+                .collect();
+            let found = distinct(in_rows(if group.len() > 1 { group } else { beside }));
+            if !found.is_empty() {
+                row = found;
+            }
+        }
+        rows.push(row);
+    }
+    once(rows)
+}
+
+/// The groups, each set of pieces said once however many of its pieces changed.
+fn once(groups: Vec<Vec<ScreenText>>) -> Vec<Vec<ScreenText>> {
+    let mut out: Vec<Vec<ScreenText>> = Vec::new();
+    let mut seen: HashSet<Vec<i64>> = HashSet::new();
+    for group in groups {
+        let key: Vec<i64> = group.iter().map(|p| p.r#box).collect();
+        if seen.insert(key) {
+            out.push(group);
+        }
+    }
+    out
+}

@@ -15,23 +15,41 @@ use crate::core::discovery::{ALLOCATION, Found};
 use crate::core::memory::Memory;
 use crate::core::pathfind;
 use crate::core::rtti::ClassNames;
-use crate::games::common::field::{
-    ASH_SOURCE, BERRY_SOURCE, BLOCK, BLOCKED, CHUNK, COUNTER, Chunk, EDGE_SOURCE, FURNITURE_SOURCE,
-    Field, Floor, Ground, Interactable, KIND_SHIFT, NO_ZONE, Of, RotatingDoor, SECRET_BASE_SOURCE,
-    TILE_SOURCE, WARP_SOURCE, describe, place_source, source_kind, source_number,
+use crate::games::common::field::chunk::{BLOCKED, CHUNK, COUNTER, Chunk, Floor, KIND_SHIFT};
+use crate::games::common::field::ground::{BLOCK, Ground, NO_ZONE, Of, RotatingDoor};
+use crate::games::common::field::things::{
+    ASH_SOURCE, BERRY_SOURCE, EDGE_SOURCE, FURNITURE_SOURCE, Field, Interactable,
+    SECRET_BASE_SOURCE, TILE_SOURCE, WARP_SOURCE, describe, place_source, source_kind,
+    source_number,
 };
-use crate::games::gen6::field::PC_TILE as PC_KIND;
-use crate::games::gen6::field::{
-    ASKS, ENTITY_HEADER, FURNITURE, FieldReader, INFO_KIND, INFO_MATRIX, INFO_NAME, INFO_PARENT,
-    INFO_SIZE, MAP_BLOCK_SIZE, MAP_CHUNK_FILES, MAP_CHUNKS_TALL, MAP_CHUNKS_WIDE, MAP_GRID,
-    MAP_KIND, MAP_MARK, MOVE_MODEL_CLASS, NO_CHUNK_FILE, NPC, Options, PROP_MODEL,
-    SecretBaseReader, TABLE_ASKS, TABLE_EVERY, UNDERWATER, WARP, WARP_DOOR, npc_trainers,
-    zone_header,
+use crate::games::gen6::field::features::SecretBaseReader;
+use crate::games::gen6::field::features::{Feature, HiddenReader, Tracked, ZoneAt};
+use crate::games::gen6::field::fieldmap::{
+    MAP_BLOCK_SIZE, MAP_CHUNK_FILES, MAP_CHUNKS_TALL, MAP_CHUNKS_WIDE, MAP_GRID, MAP_KIND, MAP_MARK,
 };
-use crate::games::gen6::{camera, mapblock, mmodel, rail};
+use crate::games::gen6::field::mmodel::PROP_MODEL;
+use crate::games::gen6::field::reader::PC_TILE as PC_KIND;
+use crate::games::gen6::field::reader::{
+    ASKS, FieldReader, MOVE_MODEL_CLASS, TABLE_ASKS, TABLE_EVERY,
+};
+use crate::games::gen6::field::terrain::NO_CHUNK_FILE;
+use crate::games::gen6::field::terrain::{FarCells, FarFloors, FarHeights, FarMatrices};
+use crate::games::gen6::field::zonedata::{
+    ENTITY_HEADER, FURNITURE, NPC, WARP, WARP_DOOR, npc_trainers, zone_header,
+};
+use crate::games::gen6::field::zonetable::{
+    INFO_KIND, INFO_MATRIX, INFO_NAME, INFO_PARENT, INFO_SIZE, UNDERWATER,
+};
+use crate::games::gen6::game::{FeatureFactory, Game, SecretBaseFactory};
+use crate::games::gen6::rom::archives::GameText;
+use crate::games::gen6::rom::maps::{ChunkSource, StreetSource};
+use crate::games::oras::berries::BerrySpots;
 use crate::games::oras::hidden::{self, DexNav};
 use crate::games::oras::{self, ash, doors, ice, secret_base};
 use crate::games::xy;
+use crate::games::{
+    gen6::field::camera, gen6::field::mapblock, gen6::field::mmodel, gen6::field::rail,
+};
 use crate::py::{self, Error, Kind, Result};
 
 pub(crate) const TOWN: i64 = 0x6;
@@ -61,6 +79,153 @@ pub(crate) const TOWN_CHUNK: i64 = 0x14AF3780;
 pub(crate) const ROUTE_CHUNK: i64 = 0x148F3580;
 /// The way north out of Littleroot: cells 99 to 101 of the border.
 pub(crate) const GAP: (i64, i64) = (99, 102);
+
+/// The ROM's map chunks as a test gives them, a function each.
+struct Chunks {
+    cells: FarCells,
+    heights: Option<FarHeights>,
+    floors: Option<FarFloors>,
+    matrix: Option<FarMatrices>,
+}
+
+impl std::fmt::Debug for Chunks {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Chunks")
+    }
+}
+
+impl ChunkSource for Chunks {
+    fn cells(&self, file: i64) -> Result<Option<Vec<i64>>> {
+        (self.cells)(file)
+    }
+
+    fn floors(&self, file: i64) -> Result<Vec<Floor>> {
+        match &self.floors {
+            None => Ok(Vec::new()),
+            Some(floors) => floors(file),
+        }
+    }
+
+    fn heights(&self, file: i64) -> Result<Option<Vec<Option<f64>>>> {
+        match &self.heights {
+            None => Ok(None),
+            Some(heights) => heights(file),
+        }
+    }
+
+    fn matrix(&self, number: i64) -> Result<Option<(i64, Vec<i64>)>> {
+        match &self.matrix {
+            None => Ok(None),
+            Some(matrix) => matrix(number),
+        }
+    }
+}
+
+/// Lumiose's streets as a test gives them.
+struct Streets(rail::Streets);
+
+impl std::fmt::Debug for Streets {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Streets")
+    }
+}
+
+impl StreetSource for Streets {
+    fn network(&self, chunks: &[i64]) -> Result<rail::Network> {
+        (self.0)(chunks)
+    }
+}
+
+thread_local! {
+    static GIVEN_FEATURE: RefCell<Option<Rc<dyn Feature>>> = const { RefCell::new(None) };
+    static GIVEN_BASES: RefCell<Option<Rc<dyn SecretBaseReader>>> = const { RefCell::new(None) };
+}
+
+/// `_given(reader)`: a game's reader factory that hands over the reader a test has made. A
+/// factory is a plain `fn`, so the reader waits in a thread-local for the field reader to ask.
+fn given_feature(reader: Rc<dyn Feature>) -> FeatureFactory {
+    GIVEN_FEATURE.with(|given| *given.borrow_mut() = Some(reader));
+    |_memory, _text| GIVEN_FEATURE.with(|given| given.borrow().clone().expect("a test's reader"))
+}
+
+/// `_given(bases)`, for `Game.secret_bases`.
+fn given_bases(bases: Rc<dyn SecretBaseReader>) -> SecretBaseFactory {
+    GIVEN_BASES.with(|given| *given.borrow_mut() = Some(bases));
+    |_memory, _image| GIVEN_BASES.with(|given| given.borrow().clone().expect("a test's bases"))
+}
+
+/// `DexNav`, as the factory `Game.hidden` holds.
+fn dex_nav(memory: Rc<dyn Memory>) -> Rc<dyn HiddenReader> {
+    Rc::new(DexNav::new(memory))
+}
+
+/// A gen 6 game with nothing of its own: a test gives it what it needs.
+pub(crate) fn game() -> Game {
+    Game::new("test", [], &[], oras::rom().clone(), mmodel::DRAWN)
+}
+
+/// `field_reader`'s keyword arguments that are the ROM's words and chunks, each as the Python
+/// defaults it: set what differs with `..Given::default()`. The rest are the game's fields,
+/// given as a `Game { .., ..game() }`.
+#[derive(Default)]
+pub(crate) struct Given {
+    pub words: IndexMap<i64, String>,
+    pub streets: Option<rail::Streets>,
+    pub outdoors: HashSet<i64>,
+    pub street_records: rail::Records,
+    pub berries: Vec<(i64, (i64, i64))>,
+    pub decorations: Vec<String>,
+    pub zone_table: Vec<u8>,
+    pub far: Option<FarCells>,
+    pub far_heights: Option<FarHeights>,
+    pub far_floors: Option<FarFloors>,
+    pub matrices: Option<FarMatrices>,
+    /// None is `time.monotonic`.
+    pub clock: Option<Rc<dyn Fn() -> f64>>,
+}
+
+/// A field reader of `game`, and the ROM's words and chunks given.
+pub(crate) fn field_reader(memory: Rc<FakeMemory>, given: Given, game: Game) -> Rc<FieldReader> {
+    let Given {
+        words,
+        streets,
+        outdoors,
+        street_records,
+        berries,
+        decorations,
+        zone_table,
+        far,
+        far_heights,
+        far_floors,
+        matrices,
+        clock,
+    } = given;
+    let text = GameText {
+        pc: words.get(&PC_KIND).cloned(),
+        streets: streets.map(|streets| Rc::new(Streets(streets)) as Rc<dyn StreetSource>),
+        outdoors,
+        street_records,
+        berries,
+        decorations,
+        zone_table,
+        map_chunks: far.map(|cells| {
+            Rc::new(Chunks {
+                cells,
+                heights: far_heights,
+                floors: far_floors,
+                matrix: matrices,
+            }) as Rc<dyn ChunkSource>
+        }),
+        ..GameText::default()
+    };
+    FieldReader::new(
+        memory,
+        &game,
+        Some(&text),
+        b"image",
+        clock.unwrap_or_else(|| Rc::new(py::time::monotonic)),
+    )
+}
 
 /// `struct.pack` of halfwords, signed or not: the bytes are the same.
 fn le16(values: &[i64]) -> Vec<u8> {
@@ -112,8 +277,9 @@ pub(crate) struct ZoneSpec<'a> {
     /// (model code, x, z, script), and the flag at +0x0a after them when it is not the usual
     /// 0x7d0 (3000 and up is a trainer).
     pub npcs: &'a [(i64, i64, i64, i64, Option<i64>)],
-    /// (to zone, kind, x, z) in cells.
-    pub warps: &'a [(i64, i64, i64, i64)],
+    /// (to zone, kind, x, z) in cells, then the height it stands at in world units and the warp
+    /// of the zone it goes to that it comes out at, where not 0.
+    pub warps: &'a [(i64, i64, i64, i64, Option<i64>, Option<i64>)],
     pub info: &'a [u8],
     /// ORAS's five or X's four, the third the zone's `script`.
     pub sections: i64,
@@ -139,9 +305,10 @@ impl Default for ZoneSpec<'_> {
 
 /// A zone data file: `furniture` as (script, x, z), `npcs` as (model code, x, z, script) and
 /// the flag at +0x0a after them when it is not the usual 0x7d0 (3000 and up is a trainer), and
-/// `warps` as (to zone, kind, x, z) in cells, `triggers` as (script, x, z, width) one cell
-/// tall, and the height it stands at after them where it is not 0; `sections` is ORAS's five or
-/// X's four, the third the zone's `script`.
+/// `warps` as (to zone, kind, x, z) in cells, then the height it stands at in world units and
+/// the warp of the zone it goes to that it comes out at, where not 0; `triggers` as (script,
+/// x, z, width) one cell tall, and the height it stands at after them where it is not 0;
+/// `sections` is ORAS's five or X's four, the third the zone's `script`.
 pub(crate) fn zone_file(spec: &ZoneSpec) -> Vec<u8> {
     let mut records: Vec<u8> = Vec::new();
     for &(script, x, z) in spec.furniture {
@@ -174,14 +341,14 @@ pub(crate) fn zone_file(spec: &ZoneSpec) -> Vec<u8> {
         ]));
         records.extend(f32s(&[0.0]));
     }
-    for &(to, kind, x, z) in spec.warps {
+    for &(to, kind, x, z, height, slot) in spec.warps {
         records.extend(le16(&[
             to,
-            0,
+            slot.unwrap_or(0),
             kind,
             0,
             x * 18 + 9,
-            0,
+            height.unwrap_or(0),
             z * 18 + 9,
             1,
             1,
@@ -330,7 +497,7 @@ impl Town {
             width: 0,
             heap_vtable: 0,
             core_vtable: 0,
-            reader: FieldReader::new(memory.clone()),
+            reader: field_reader(memory.clone(), Given::default(), game()),
         };
         let data = zone_file(&ZoneSpec {
             furniture: &[(0x13, 97, 171)],
@@ -339,7 +506,10 @@ impl Town {
                 (mmodel::ITEM_BALL, 100, 180, 0x51A, None),
                 (PROP_MODEL + 0x4E, 110, 170, 0x205, None),
             ],
-            warps: &[(HOUSE, WARP_DOOR, 94, 171), (0xE1, WARP_DOOR, 106, 171)],
+            warps: &[
+                (HOUSE, WARP_DOOR, 94, 171, None, None),
+                (0xE1, WARP_DOOR, 106, 171, None, None),
+            ],
             info: &town_info(),
             sections,
             ..ZoneSpec::default()
@@ -383,11 +553,12 @@ impl Town {
             town.block(TOWN_BLOCK, TOWN_CHUNK, (80, 160), &border(160));
             town.block(ROUTE_BLOCK, ROUTE_CHUNK, (80, 120), &border(159));
         }
-        town.reader = FieldReader::with(
+        town.reader = field_reader(
             memory.clone(),
-            Options {
-                hidden: Some(Rc::new(DexNav::new(memory.clone()))),
-                ..Options::default()
+            Given::default(),
+            Game {
+                hidden: Some(dex_nav),
+                ..game()
             },
         );
         let _ = ClassNames::new(memory.clone(), CODE);
@@ -462,12 +633,28 @@ impl Town {
     /// Put a Pokémon in the grass at `cell`, as the game writes its record; `up=False`
     /// leaves it as a battle does, the Pokémon still named and the slot byte 0xff.
     pub(crate) fn hide_with(&self, species: i64, level: i64, cell: (i64, i64), up: bool) {
+        self.hide_state(species, level, cell, if up { 4 } else { hidden::NONE });
+    }
+
+    /// `hide(..., state=state)`: the slot byte written as given, found by the detector.
+    pub(crate) fn hide_state(&self, species: i64, level: i64, cell: (i64, i64), state: i64) {
+        self.hide_found(species, level, cell, state, 1);
+    }
+
+    /// `hide(..., state=state, found_by=found_by)`: how it was found too, 3 by a search.
+    pub(crate) fn hide_found(
+        &self,
+        species: i64,
+        level: i64,
+        cell: (i64, i64),
+        state: i64,
+        found_by: i64,
+    ) {
         self.memory.u32(HIDDEN + hidden::SPECIES, &[species, level]);
+        self.memory
+            .write(HIDDEN + hidden::FOUND_BY, &[found_by as u8]);
         self.memory.u32(HIDDEN + hidden::SET, &[1]);
-        self.memory.write(
-            HIDDEN + hidden::SLOT,
-            &[if up { 4 } else { hidden::NONE as u8 }],
-        );
+        self.memory.write(HIDDEN + hidden::SLOT, &[state as u8]);
         self.memory
             .write(HIDDEN + hidden::WORLD_X, &f32s(&[(cell.0 * 18 + 9) as f64]));
         self.memory
@@ -652,9 +839,9 @@ fn test_a_warp_between_two_outdoor_zones_is_a_path() -> Result<()> {
     town.memory.write(TABLE + BEDROOM * INFO_SIZE, &bedroom);
     let data = zone_file(&ZoneSpec {
         warps: &[
-            (ROUTE, 0x0503, 80, 100),
-            (BEDROOM, 0x0501, 16, 9),
-            (0x2F, 0x0501, 30, 40),
+            (ROUTE, 0x0503, 80, 100, None, None),
+            (BEDROOM, 0x0501, 16, 9, None, None),
+            (0x2F, 0x0501, 30, 40, None, None),
         ],
         info: &town_info(),
         ..ZoneSpec::default()
@@ -663,8 +850,177 @@ fn test_a_warp_between_two_outdoor_zones_is_a_path() -> Result<()> {
     town.memory
         .u32(HOLDER + 8, &[0x11 | (data.len() as i64) << 8]);
     let exits = town.listing()?[0].clone();
-    assert!(exits.contains("path to zone 0x17") && exits.contains("stairs up to zone 0xe0"));
+    assert!(exits.contains("path to zone 0x17") && exits.contains("stairs to zone 0xe0"));
     assert!(exits.contains("path to zone 0x2f"));
+    Ok(())
+}
+
+/// Devon Corporation's 0x0501 at (31, 14) stands at 9 over ground 0 at (31, 15), and its
+/// zone 0x120's 0x0503 at (10, 10) at -9 over ground 0 at (11, 10): stairs up and stairs down,
+/// where Victory Road's and Seafloor Cavern's stand at the ground's own height, a passage
+/// (2026-10-06). The kind's low byte is the way it is walked into, never up or down.
+#[test]
+fn test_a_warp_walked_through_is_stairs_by_its_height_over_the_ground_it_is_walked_from()
+-> Result<()> {
+    let mut town = Town::with(false, 5, 7);
+    let mut files = vec![NO_CHUNK_FILE; 64];
+    files[4 * 8 + 2] = 7;
+    town.memory.write(MAP + MAP_CHUNK_FILES, &le16(&files));
+    let mut bedroom = vec![0u8; INFO_SIZE as usize];
+    put(&mut bedroom, INFO_PARENT, &le16(&[TOWN, 170]));
+    put(&mut bedroom, INFO_MATRIX, &le16(&[0xA5]));
+    town.memory.write(TABLE + BEDROOM * INFO_SIZE, &bedroom);
+    let heights: Vec<Option<f64>> = (0..CHUNK * CHUNK)
+        .map(|i| {
+            Some(if (i % CHUNK, i / CHUNK) == (30, 12) {
+                -54.0
+            } else {
+                0.0
+            })
+        })
+        .collect();
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given {
+            far: Some(Rc::new(|_file| Ok(None))),
+            far_heights: Some(Rc::new(move |file| {
+                Ok(if file == 7 {
+                    Some(heights.clone())
+                } else {
+                    None
+                })
+            })),
+            ..Given::default()
+        },
+        game(),
+    );
+    let data = zone_file(&ZoneSpec {
+        warps: &[
+            (BEDROOM, 0x0501, 94, 171, Some(9), None),
+            (BEDROOM, 0x0503, 100, 171, Some(-9), None),
+            (BEDROOM, 0x0501, 110, 171, Some(-54), None),
+        ],
+        info: &town_info(),
+        ..ZoneSpec::default()
+    });
+    town.memory.write(FILE, &data);
+    town.memory
+        .u32(HOLDER + 8, &[0x11 | (data.len() as i64) << 8]);
+    let kinds: HashMap<(i64, i64), String> = town
+        .r#where()?
+        .of("exits")
+        .into_iter()
+        .filter(|item| item.zone == Some(BEDROOM))
+        .map(|item| (item.cell, item.kind))
+        .collect();
+    assert_eq!(
+        kinds,
+        HashMap::from([
+            ((94, 171), "stairs up".to_string()),
+            ((100, 171), "stairs down".to_string()),
+            ((110, 171), "passage".to_string()),
+        ])
+    );
+    Ok(())
+}
+
+/// Victory Road's ladders were said "warp" (2026-10-06): 0x0b00 leads down and 0x0a01 up. A
+/// kind the table does not have is still a warp, and without a table all of them are.
+#[test]
+fn test_a_ladder_a_teleporter_and_an_entrance_are_what_the_games_table_of_kinds_says() -> Result<()>
+{
+    let mut town = Town::new();
+    let data = zone_file(&ZoneSpec {
+        warps: &[
+            (BEDROOM, 0x0B00, 94, 171, None, None),
+            (BEDROOM, 0x0A01, 100, 171, None, None),
+            (BEDROOM, 0x0F01, 106, 171, None, None),
+            (BEDROOM, 0x0999, 110, 171, None, None),
+        ],
+        info: &town_info(),
+        ..ZoneSpec::default()
+    });
+    town.memory.write(FILE, &data);
+    town.memory
+        .u32(HOLDER + 8, &[0x11 | (data.len() as i64) << 8]);
+    let kinds: HashSet<String> = town
+        .r#where()?
+        .of("exits")
+        .into_iter()
+        .filter(|item| item.zone == Some(BEDROOM))
+        .map(|item| item.kind)
+        .collect();
+    assert_eq!(kinds, HashSet::from(["warp".to_string()]));
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given::default(),
+        Game {
+            warps: oras::warps().clone(),
+            ..game()
+        },
+    );
+    let kinds: HashMap<(i64, i64), String> = town
+        .r#where()?
+        .of("exits")
+        .into_iter()
+        .filter(|item| item.zone == Some(BEDROOM))
+        .map(|item| (item.cell, item.kind))
+        .collect();
+    assert_eq!(
+        kinds,
+        HashMap::from([
+            ((94, 171), "ladder down".to_string()),
+            ((100, 171), "ladder up".to_string()),
+            ((106, 171), "entrance".to_string()),
+            ((110, 171), "warp".to_string()),
+        ])
+    );
+    Ok(())
+}
+
+/// Team Aqua's Hideout (2026-10-06): zone 0x5d's warp 1, a 0x0601 pad, comes out at its zone's
+/// warp 2, the warp its +0x02 gives; a warp into another zone says nothing of the sort.
+#[test]
+fn test_a_teleporter_into_its_own_zone_says_the_cell_it_comes_out_at() -> Result<()> {
+    let mut town = Town::new();
+    let data = zone_file(&ZoneSpec {
+        warps: &[
+            (HOUSE, WARP_DOOR, 94, 171, None, None),
+            (TOWN, 0x0601, 95, 171, Some(0), Some(2)),
+            (TOWN, 0x0601, 100, 176, Some(0), Some(1)),
+        ],
+        info: &town_info(),
+        ..ZoneSpec::default()
+    });
+    town.memory.write(FILE, &data);
+    town.memory
+        .u32(HOLDER + 8, &[0x11 | (data.len() as i64) << 8]);
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given::default(),
+        Game {
+            warps: oras::warps().clone(),
+            ..game()
+        },
+    );
+    let arrivals: HashMap<(i64, i64), Option<(i64, i64)>> = town
+        .r#where()?
+        .of("exits")
+        .into_iter()
+        .filter(|item| item.zone == Some(TOWN) || item.kind == "door")
+        .map(|item| (item.cell, item.arrival))
+        .collect();
+    assert_eq!(
+        arrivals,
+        HashMap::from([
+            ((94, 171), None),
+            ((95, 171), Some((100, 176))),
+            ((100, 176), Some((95, 171))),
+        ])
+    );
+    assert!(
+        town.listing()?[0].contains("teleporter to zone 0x6 1 east 1 north out at 6 east 4 south")
+    );
     Ok(())
 }
 
@@ -674,15 +1030,19 @@ fn test_a_warp_between_two_outdoor_zones_is_a_path() -> Result<()> {
 fn test_a_warp_off_a_street_onto_another_street_is_not_a_door() -> Result<()> {
     let plaza = 0x45;
     let mut town = Town::new();
-    town.reader = FieldReader::with(
+    town.reader = field_reader(
         town.memory.clone(),
-        Options {
+        Given {
             outdoors: HashSet::from([plaza]),
-            ..Options::default()
+            ..Given::default()
         },
+        game(),
     );
     let data = zone_file(&ZoneSpec {
-        warps: &[(plaza, 0x0701, 80, 100), (BEDROOM, 0x0702, 16, 9)],
+        warps: &[
+            (plaza, 0x0701, 80, 100, None, None),
+            (BEDROOM, 0x0702, 16, 9, None, None),
+        ],
         info: &town_info(),
         ..ZoneSpec::default()
     });
@@ -753,9 +1113,9 @@ fn test_a_file_whose_size_does_not_match_its_counts_is_not_one() -> Result<()> {
 fn test_the_zone_table_says_which_zones_are_outdoors() -> Result<()> {
     let town = Town::new();
     town.reader.track(&town.found())?;
-    assert_eq!(town.reader.outdoors(TOWN)?, Some(true));
-    assert_eq!(town.reader.outdoors(ROUTE)?, Some(true));
-    assert_eq!(town.reader.outdoors(HOUSE)?, Some(false));
+    assert_eq!(town.reader.zones.outdoors(TOWN)?, Some(true));
+    assert_eq!(town.reader.zones.outdoors(ROUTE)?, Some(true));
+    assert_eq!(town.reader.zones.outdoors(HOUSE)?, Some(false));
     Ok(())
 }
 
@@ -849,6 +1209,39 @@ fn test_a_record_whose_pokemon_has_gone_lists_none() -> Result<()> {
     town.hide_with(POOCHYENA, 5, (94, 129), false);
     town.reader.track(&town.found())?;
     assert!(town.reader.hidden(ROUTE)?.is_none());
+    Ok(())
+}
+
+/// The byte is the DexNav's state: 0xd its page with none hiding, as after a faint, and 0xe a
+/// search; 8 a search's find and 0xa near enough for its details (Orion, movie26).
+#[test]
+fn test_a_pokemon_that_fainted_or_a_search_under_way_lists_none() -> Result<()> {
+    let town = Town::new();
+    for (state, listed) in [(0x0D, false), (0x0E, false), (0x08, true), (0x0A, true)] {
+        town.hide_state(POOCHYENA, 5, (94, 129), state);
+        town.reader.track(&town.found())?;
+        assert_eq!(town.reader.hidden(ROUTE)?.is_some(), listed, "{state:#x}");
+    }
+    Ok(())
+}
+
+/// A Zigzagoon read at level 50331650, 0x03000002, went unlisted (Orion, movie27); and +0xc9
+/// is 3 for a search's find, 1 for the detector's with the DexNav open, 2 with the AreaNav
+/// (spike A).
+#[test]
+fn test_the_level_is_one_byte_and_how_it_was_found_is_another() -> Result<()> {
+    let town = Town::new();
+    town.reader.track(&town.found())?;
+    for (found_by, searched, on_dexnav) in [(3, true, false), (1, false, true), (2, false, false)] {
+        town.hide_found(POOCHYENA, 0x03000002, (94, 129), 0x08, found_by);
+        town.reader.track(&town.found())?;
+        assert!(town.reader.hidden(ROUTE)?.is_some());
+        let hiding = town.reader.hiding();
+        assert!(
+            hiding
+                .is_some_and(|hiding| (hiding.searched, hiding.on_dexnav) == (searched, on_dexnav))
+        );
+    }
     Ok(())
 }
 
@@ -1139,11 +1532,12 @@ fn test_a_conveyor_belt_is_ridden_the_way_it_runs_and_walked_round_against_it() 
             ..ZoneSpec::default()
         }),
     );
-    town.reader = FieldReader::with(
+    town.reader = field_reader(
         town.memory.clone(),
-        Options {
+        Given::default(),
+        Game {
             belts: IndexMap::from([((TOWN, 0x9), pathfind::SOUTH)]),
-            ..Options::default()
+            ..game()
         },
     );
     let ground = town.reader.ground(&town.r#where()?, None)?;
@@ -1184,11 +1578,12 @@ fn test_a_conveyor_belt_is_ridden_the_way_it_runs_and_walked_round_against_it() 
 #[test]
 fn test_a_barrier_is_listed_as_one_and_stands_across_the_way_its_model_faces() -> Result<()> {
     let mut town = Town::new();
-    town.reader = FieldReader::with(
+    town.reader = field_reader(
         town.memory.clone(),
-        Options {
+        Given::default(),
+        Game {
             barriers: HashSet::from([(TOWN, 0x138)]),
-            ..Options::default()
+            ..game()
         },
     );
     let across = town.model_sized(4, TOWN, 3, 0x138, (100, 175), (3, 1));
@@ -1223,11 +1618,12 @@ fn test_a_barrier_is_listed_as_one_and_stands_across_the_way_its_model_faces() -
 #[test]
 fn test_a_big_boulder_stands_in_four_cells_and_strength_clears_them_all() -> Result<()> {
     let mut town = Town::new();
-    town.reader = FieldReader::with(
+    town.reader = field_reader(
         town.memory.clone(),
-        Options {
+        Given::default(),
+        Game {
             clears: oras::game().clears.clone(),
-            ..Options::default()
+            ..game()
         },
     );
     town.model_sized(4, TOWN, 3, oras::BIG_BOULDER, (100, 175), (2, 2));
@@ -1271,9 +1667,10 @@ fn test_a_gyms_switches_and_passages_are_listed_and_walked_round_unless_the_goal
             ..ZoneSpec::default()
         }),
     );
-    town.reader = FieldReader::with(
+    town.reader = field_reader(
         town.memory.clone(),
-        Options {
+        Given::default(),
+        Game {
             triggers: IndexMap::from([
                 (
                     (TOWN, 0x4),
@@ -1284,7 +1681,7 @@ fn test_a_gyms_switches_and_passages_are_listed_and_walked_round_unless_the_goal
                     ("exits".to_string(), "passage".to_string(), None),
                 ),
             ]),
-            ..Options::default()
+            ..game()
         },
     );
     let r#where = town.r#where()?;
@@ -1336,14 +1733,15 @@ fn test_a_trigger_into_another_place_is_an_exit_leading_there() -> Result<()> {
             ..ZoneSpec::default()
         }),
     );
-    town.reader = FieldReader::with(
+    town.reader = field_reader(
         town.memory.clone(),
-        Options {
+        Given::default(),
+        Game {
             triggers: IndexMap::from([(
                 (TOWN, 0x5),
                 ("exits".to_string(), "entrance".to_string(), Some(0x62)),
             )]),
-            ..Options::default()
+            ..game()
         },
     );
     let r#where = town.r#where()?;
@@ -1422,9 +1820,9 @@ fn test_the_ground_where_no_chunk_is_loaded_is_the_roms_chunk_the_field_map_list
     files[4 * 8 + 2] = 7;
     town.memory.write(MAP + MAP_CHUNK_FILES, &le16(&files));
     let town_chunk = mapblock::cells(&chunk_file((80, 160), &border(160)))?.unwrap();
-    town.reader = FieldReader::with(
+    town.reader = field_reader(
         town.memory.clone(),
-        Options {
+        Given {
             far: Some(Rc::new(move |file| {
                 Ok(if file == 7 {
                     Some(town_chunk.clone())
@@ -1432,8 +1830,9 @@ fn test_the_ground_where_no_chunk_is_loaded_is_the_roms_chunk_the_field_map_list
                     None
                 })
             })),
-            ..Options::default()
+            ..Given::default()
         },
+        game(),
     );
     let ground = town.reader.ground(&town.r#where()?, None)?;
     assert!(!ground.open((80, 160))? && ground.open((99, 160))?);
@@ -1457,9 +1856,9 @@ fn test_a_drop_is_not_walked_off_but_by_its_ladder() -> Result<()> {
     let heights: Vec<Option<f64>> = (0..CHUNK * CHUNK)
         .map(|i| Some(if i / CHUNK == 10 { 108.0 } else { 0.0 }))
         .collect();
-    town.reader = FieldReader::with(
+    town.reader = field_reader(
         town.memory.clone(),
-        Options {
+        Given {
             far: Some(Rc::new(move |file| {
                 Ok(if file == 7 { Some(words.clone()) } else { None })
             })),
@@ -1470,8 +1869,9 @@ fn test_a_drop_is_not_walked_off_but_by_its_ladder() -> Result<()> {
                     None
                 })
             })),
-            ..Options::default()
+            ..Given::default()
         },
+        game(),
     );
     let data = zone_file(&ZoneSpec {
         triggers: &[(0xC, 95, 170, 1, Some(108)), (0xB, 95, 171, 1, Some(0))],
@@ -1508,12 +1908,13 @@ fn test_the_search_is_the_whole_matrix_where_the_roms_chunks_are_read() -> Resul
             south: 209
         }
     );
-    town.reader = FieldReader::with(
+    town.reader = field_reader(
         town.memory.clone(),
-        Options {
+        Given {
             far: Some(Rc::new(|_file| Ok(None))),
-            ..Options::default()
+            ..Given::default()
         },
+        game(),
     );
     let whole = town
         .reader
@@ -1737,11 +2138,12 @@ fn test_a_stair_is_where_the_ground_meets_a_floor_over_it() {
 #[test]
 fn test_the_invisible_blocker_is_nobody_and_stands_in_the_way() -> Result<()> {
     let mut town = Town::new();
-    town.reader = FieldReader::with(
+    town.reader = field_reader(
         town.memory.clone(),
-        Options {
+        Given::default(),
+        Game {
             blocker: Some(oras::STOPPER),
-            ..Options::default()
+            ..game()
         },
     );
     town.model(1, TOWN, 0, oras::STOPPER, (96, 172));
@@ -2090,9 +2492,9 @@ fn test_under_the_water_each_light_is_joined_to_those_the_sea_above_reaches() ->
     let above =
         mapblock::cells(&chunk_file_with((0, 0), &rock, &moved, 7))?.expect("a chunk's cell table");
     let tables: HashMap<i64, Vec<i64>> = HashMap::from([(7, below), (8, above)]);
-    let reader = FieldReader::with(
+    let reader = field_reader(
         town.memory.clone(),
-        Options {
+        Given {
             far: Some(Rc::new(move |file| Ok(tables.get(&file).cloned()))),
             matrices: Some(Rc::new(|number| {
                 Ok(if number == 28 {
@@ -2101,8 +2503,9 @@ fn test_under_the_water_each_light_is_joined_to_those_the_sea_above_reaches() ->
                     None
                 })
             })),
-            ..Options::default()
+            ..Given::default()
         },
+        game(),
     );
     reader.track(&town.found())?;
     let r#where = reader.poll()?.expect("the player's field");
@@ -2159,11 +2562,15 @@ fn test_a_use_tile_in_another_zone_of_the_loaded_chunks_is_not_listed() -> Resul
 #[test]
 fn test_a_berry_spot_is_listed_under_its_own_category_in_its_own_zone() -> Result<()> {
     let mut town = Town::new();
-    town.reader = FieldReader::with(
+    town.reader = field_reader(
         town.memory.clone(),
-        Options {
+        Given {
             berries: vec![(ROUTE, (90, 150)), (TOWN, (97, 175)), (TOWN, (96, 175))],
-            ..Options::default()
+            ..Given::default()
+        },
+        Game {
+            features: vec![BerrySpots::of],
+            ..game()
         },
     );
     let r#where = town.r#where()?;
@@ -2219,11 +2626,12 @@ fn test_ash_piles_are_listed_under_their_own_category_until_walked_into() -> Res
         ]),
         partial: true,
     })?;
-    town.reader = FieldReader::with(
+    town.reader = field_reader(
         town.memory.clone(),
-        Options {
-            ash: Some(Rc::new(reader)),
-            ..Options::default()
+        Given::default(),
+        Game {
+            features: vec![given_feature(Rc::new(reader))],
+            ..game()
         },
     );
     assert!(
@@ -2297,15 +2705,15 @@ fn test_a_zone_and_every_building_in_it_share_a_place() -> Result<()> {
     town.reader.track(&town.found())?;
     town.memory
         .u16(TABLE + TOWN * INFO_SIZE + INFO_NAME, 0x400 | 170);
-    assert_eq!(town.reader.place_index(TOWN)?, Some(170));
-    assert_eq!(town.reader.place_index(HOUSE)?, Some(170));
-    assert_eq!(town.reader.place_index(ROUTE)?, Some(204));
+    assert_eq!(town.reader.zones.place_index(TOWN)?, Some(170));
+    assert_eq!(town.reader.zones.place_index(HOUSE)?, Some(170));
+    assert_eq!(town.reader.zones.place_index(ROUTE)?, Some(204));
     Ok(())
 }
 
 #[test]
 fn test_no_place_without_the_zone_table() -> Result<()> {
-    assert_eq!(Town::new().reader.place_index(TOWN)?, None);
+    assert_eq!(Town::new().reader.zones.place_index(TOWN)?, None);
     Ok(())
 }
 
@@ -2317,17 +2725,18 @@ fn test_a_field_without_its_zone_table_asks_for_sweeps_until_one_finds_it() -> R
     let now = Rc::new(StdCell::new(0.0));
     let mut town = Town::new();
     let clock = now.clone();
-    town.reader = FieldReader::with(
+    town.reader = field_reader(
         town.memory.clone(),
-        Options {
-            clock: Rc::new(move || clock.get()),
-            ..Options::default()
+        Given {
+            clock: Some(Rc::new(move || clock.get())),
+            ..Given::default()
         },
+        game(),
     );
     town.memory.u32(TABLE_POINTER, &[0, 0]);
     assert!(town.reader.sweep_wanted(true)?.is_none());
     town.r#where()?;
-    assert_eq!(town.reader.place_index(TOWN)?, None);
+    assert_eq!(town.reader.zones.place_index(TOWN)?, None);
     assert!(town.reader.sweep_wanted(true)?.is_some());
     assert!(town.reader.sweep_wanted(true)?.is_none());
     now.set(now.get() + TABLE_EVERY);
@@ -2337,7 +2746,32 @@ fn test_a_field_without_its_zone_table_asks_for_sweeps_until_one_finds_it() -> R
     town.r#where()?;
     now.set(now.get() + TABLE_EVERY);
     assert!(town.reader.sweep_wanted(true)?.is_none());
-    assert!(town.reader.place_index(TOWN)?.is_some());
+    assert!(town.reader.zones.place_index(TOWN)?.is_some());
+    Ok(())
+}
+
+/// Continued from a save in Fortree City, no word a sweep read pointed at the table's start
+/// in ten sweeps, and every path out of town was said as a passage with no place
+/// (omega_ruby_tree-city-regression.ctm, 2026-10-06). The game's table is the ROM's byte for
+/// byte.
+#[test]
+fn test_a_zone_table_nothing_points_at_is_found_by_the_roms_own_bytes() -> Result<()> {
+    let mut town = Town::new();
+    town.memory.u32(TABLE_POINTER, &[0, 0]);
+    let rom = town.memory.read(TABLE, (BEDROOM + 1) * INFO_SIZE)?;
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given {
+            zone_table: rom,
+            ..Given::default()
+        },
+        Game {
+            hidden: Some(dex_nav),
+            ..game()
+        },
+    );
+    town.r#where()?;
+    assert_eq!(town.reader.zones.place_index(ROUTE)?, Some(204));
     Ok(())
 }
 
@@ -2346,12 +2780,13 @@ fn test_a_zone_table_no_sweep_finds_is_left_to_the_schedule() -> Result<()> {
     let now = Rc::new(StdCell::new(0.0));
     let mut town = Town::new();
     let clock = now.clone();
-    town.reader = FieldReader::with(
+    town.reader = field_reader(
         town.memory.clone(),
-        Options {
-            clock: Rc::new(move || clock.get()),
-            ..Options::default()
+        Given {
+            clock: Some(Rc::new(move || clock.get())),
+            ..Given::default()
         },
+        game(),
     );
     town.memory.u32(TABLE_POINTER, &[0, 0]);
     town.r#where()?;
@@ -2393,11 +2828,12 @@ fn test_a_work_object_is_whoever_it_was_filled_with() -> Result<()> {
 #[test]
 fn test_a_work_object_is_read_where_the_game_keeps_its_sprite() -> Result<()> {
     let mut town = Town::new();
-    town.reader = FieldReader::with(
+    town.reader = field_reader(
         town.memory.clone(),
-        Options {
+        Given::default(),
+        Game {
             drawn: xy::DRAWN,
-            ..Options::default()
+            ..game()
         },
     );
     let rival = town.model(1, TOWN, 3, 0x7A, (104, 179));
@@ -2450,8 +2886,8 @@ fn test_the_zone_table_is_found_by_its_start_from_a_row_across_two_pages() -> Re
     town.memory
         .u32(TABLE_POINTER, &[table + HOUSE * INFO_SIZE, table]);
     town.reader.track(&town.found())?;
-    assert_eq!(town.reader.outdoors(TOWN)?, Some(true));
-    assert_eq!(town.reader.outdoors(HOUSE)?, Some(false));
+    assert_eq!(town.reader.zones.outdoors(TOWN)?, Some(true));
+    assert_eq!(town.reader.zones.outdoors(HOUSE)?, Some(false));
     Ok(())
 }
 
@@ -2598,12 +3034,13 @@ fn test_a_place_whose_number_reaches_the_tag_is_refused() -> Result<()> {
 #[test]
 fn test_the_pc_is_called_what_the_game_calls_it() -> Result<()> {
     let mut town = Town::new();
-    town.reader = FieldReader::with(
+    town.reader = field_reader(
         town.memory.clone(),
-        Options {
+        Given {
             words: IndexMap::from([(PC_KIND, "パソコン".to_string())]),
-            ..Options::default()
+            ..Given::default()
         },
+        game(),
     );
     town.block_tiles(
         TOWN_BLOCK,
@@ -2663,7 +3100,10 @@ fn test_a_sign_or_a_warp_on_a_rail_is_not_listed_and_keeps_its_slot() -> Result<
     let town = Town::new();
     let data = zone_file(&ZoneSpec {
         furniture: &[(0x13, 97, 171), (0x14, 0xD991, 0x0504)],
-        warps: &[(HOUSE, WARP_DOOR, 94, 171), (0xE1, WARP_DOOR, 106, 171)],
+        warps: &[
+            (HOUSE, WARP_DOOR, 94, 171, None, None),
+            (0xE1, WARP_DOOR, 106, 171, None, None),
+        ],
         info: &town_info(),
         ..ZoneSpec::default()
     });
@@ -2757,7 +3197,7 @@ fn test_on_the_rails_everything_is_in_the_corridor_and_its_walls_are_the_ground(
             .u32(POOL + slot * MODEL_STRIDE + mmodel::IN_USE, &[0]);
     }
     let door = zone_file(&ZoneSpec {
-        warps: &[(0x56, 0x0703, 0, 0)],
+        warps: &[(0x56, 0x0703, 0, 0, None, None)],
         info: &town_info(),
         ..ZoneSpec::default()
     });
@@ -2884,7 +3324,7 @@ fn test_a_line_the_table_misses_for_a_poll_stays_in_the_corridor() -> Result<()>
     town.memory
         .write(player + mmodel::PLACE_X, &f32s(&[0.0, 0.0, 162.0, 0.0]));
     let door = zone_file(&ZoneSpec {
-        warps: &[(0x56, 0x0703, 0, 0)],
+        warps: &[(0x56, 0x0703, 0, 0, None, None)],
         info: &town_info(),
         ..ZoneSpec::default()
     });
@@ -2938,12 +3378,13 @@ fn test_a_door_on_a_line_the_game_has_not_loaded_is_listed_from_the_rom() -> Res
             places: IndexMap::new(),
         })
     };
-    town.reader = FieldReader::with(
+    town.reader = field_reader(
         town.memory.clone(),
-        Options {
+        Given {
             streets: Some(Rc::new(streets)),
-            ..Options::default()
+            ..Given::default()
         },
+        game(),
     );
     town.memory
         .write(MAP + MAP_CHUNK_FILES, &le16(&[0, 700, 701]));
@@ -2953,7 +3394,7 @@ fn test_a_door_on_a_line_the_game_has_not_loaded_is_listed_from_the_rom() -> Res
     town.memory
         .write(player + mmodel::PLACE_X, &f32s(&[0.0, 0.0, 36.0, 0.0]));
     let door = zone_file(&ZoneSpec {
-        warps: &[(0x53, 0x0703, 0, 0)],
+        warps: &[(0x53, 0x0703, 0, 0, None, None)],
         info: &town_info(),
         ..ZoneSpec::default()
     });
@@ -3009,15 +3450,16 @@ fn test_on_a_street_the_other_zones_of_its_map_are_listed_by_their_own_zone() ->
         .concat()
     };
 
-    town.reader = FieldReader::with(
+    town.reader = field_reader(
         town.memory.clone(),
-        Options {
+        Given {
             street_records: IndexMap::from([
                 (other, (Vec::new(), vec![door_on(A, 5, 0x7D)])),
                 (elsewhere, (Vec::new(), vec![door_on(C, 1, 0x59)])),
             ]),
-            ..Options::default()
+            ..Given::default()
         },
+        game(),
     );
     let player = town.model(0, TOWN, mmodel::PLAYER_INDEX, 0xAC, (94, 172));
     town.memory.u32(player + mmodel::CELL_X, &[B]);
@@ -3025,7 +3467,7 @@ fn test_on_a_street_the_other_zones_of_its_map_are_listed_by_their_own_zone() ->
     town.memory
         .write(player + mmodel::PLACE_X, &f32s(&[0.0, 0.0, 36.0, 0.0]));
     let mut data = zone_file(&ZoneSpec {
-        warps: &[(0x53, 0x0703, 0, 0)],
+        warps: &[(0x53, 0x0703, 0, 0, None, None)],
         info: &town_row,
         ..ZoneSpec::default()
     });
@@ -3132,29 +3574,27 @@ impl Bases {
     }
 }
 
-impl SecretBaseReader for Bases {
+/// Python's `Bases` subclasses `SecretBases`, and keeps its `classes`, `track` and `listed`;
+/// here `listed` is the same function the real reader's is.
+impl Tracked for Bases {
     fn classes(&self) -> Vec<&'static str> {
         vec![secret_base::SAVE_CLASS]
-    }
-
-    fn spots(&self) -> Vec<(i64, (i64, i64))> {
-        self.spots.clone()
-    }
-
-    fn inside(&self) -> i64 {
-        secret_base::INSIDE
-    }
-
-    fn zones(&self) -> IndexSet<i64> {
-        IndexSet::from([TOWN])
     }
 
     fn track(&self, _found: &Found) -> Result<()> {
         Ok(())
     }
+}
 
-    fn own(&self) -> Result<Option<i64>> {
-        Ok(self.own)
+impl Feature for Bases {
+    fn listed(&self, zone: i64, _zone_at: ZoneAt) -> Result<Vec<Interactable>> {
+        secret_base::spots_in(&self.spots, self.own, secret_base::INSIDE, zone)
+    }
+}
+
+impl SecretBaseReader for Bases {
+    fn zones(&self) -> IndexSet<i64> {
+        IndexSet::from([TOWN])
     }
 
     fn furnished(&self) -> Result<bool> {
@@ -3180,16 +3620,17 @@ impl SecretBaseReader for Bases {
 #[test]
 fn test_secret_base_spots_are_exits_and_the_players_own_leads_inside() -> Result<()> {
     let mut town = Town::new();
-    town.reader = FieldReader::with(
+    town.reader = field_reader(
         town.memory.clone(),
-        Options {
-            secret_bases: Some(Bases::new(
+        Given::default(),
+        Game {
+            secret_bases: Some(given_bases(Bases::new(
                 &[(ROUTE, (90, 150)), (TOWN, (97, 175)), (TOWN, (100, 165))],
                 Some(1),
                 &[],
                 &[],
-            )),
-            ..Options::default()
+            ))),
+            ..game()
         },
     );
     let exits: Vec<Interactable> = town
@@ -3235,10 +3676,13 @@ fn test_a_secret_bases_pc_flag_and_way_out_are_listed_as_what_they_are() -> Resu
             ..ZoneSpec::default()
         }),
     );
-    town.reader = FieldReader::with(
+    town.reader = field_reader(
         town.memory.clone(),
-        Options {
+        Given {
             words: IndexMap::from([(PC_KIND, "パソコン".to_string())]),
+            ..Given::default()
+        },
+        Game {
             triggers: IndexMap::from([(
                 (TOWN, oras::WAY_OUT),
                 ("exits".to_string(), "way out".to_string(), None),
@@ -3247,7 +3691,7 @@ fn test_a_secret_bases_pc_flag_and_way_out_are_listed_as_what_they_are() -> Resu
                 ((TOWN, oras::BASE_PC), "PC".to_string()),
                 ((TOWN, oras::BASE_FLAG), "flag".to_string()),
             ]),
-            ..Options::default()
+            ..game()
         },
     );
     let r#where = town.r#where()?;
@@ -3323,13 +3767,16 @@ fn test_the_decorating_cursor_says_what_stands_under_it() -> Result<()> {
     let mut decorations: Vec<String> = vec!["Small Desk".to_string()];
     decorations.extend(std::iter::repeat_n(String::new(), 9));
     decorations.push("Small Chair".to_string());
-    town.reader = FieldReader::with(
+    town.reader = field_reader(
         town.memory.clone(),
-        Options {
-            secret_bases: Some(bases.clone()),
-            furniture: IndexMap::from([((TOWN, oras::BASE_PC), "PC".to_string())]),
+        Given {
             decorations,
-            ..Options::default()
+            ..Given::default()
+        },
+        Game {
+            secret_bases: Some(given_bases(bases.clone())),
+            furniture: IndexMap::from([((TOWN, oras::BASE_PC), "PC".to_string())]),
+            ..game()
         },
     );
     let r#where = town.r#where()?;
@@ -3357,11 +3804,12 @@ fn test_the_decorating_cursor_says_what_stands_under_it() -> Result<()> {
 #[test]
 fn test_p_goes_round_a_decoration_the_cell_table_has_as_floor() -> Result<()> {
     let mut town = Town::new();
-    town.reader = FieldReader::with(
+    town.reader = field_reader(
         town.memory.clone(),
-        Options {
-            secret_bases: Some(Bases::new(&[], None, &[], &[(95, 172)])),
-            ..Options::default()
+        Given::default(),
+        Game {
+            secret_bases: Some(given_bases(Bases::new(&[], None, &[], &[(95, 172)]))),
+            ..game()
         },
     );
     let ground = town.reader.ground(&town.r#where()?, None)?;

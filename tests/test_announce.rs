@@ -8,14 +8,15 @@ use indexmap::{IndexMap, IndexSet};
 
 use super::fake_speech::Recorder;
 use crate::core::speech::{Category, Speech};
-use crate::games::common::announce::{
-    ARRIVAL_MAX_POLLS, Announcements, CURSOR_HEARD_POLLS, DETAIL_MAX_POLLS, DETAIL_POLLS,
-    FOCUS_HEARD_POLLS, Focus, PLACE_POLLS, REPEAT_POLLS, SPEAKER_POLLS, ScreenAnnouncer,
-};
+use crate::games::common::announce::{Announcements, FOCUS_HEARD_POLLS, Focus, SPEAKER_POLLS};
 use crate::games::common::battle::Battler;
-use crate::games::common::cursor::CursorItem;
+use crate::games::common::cursors::shared::CursorItem;
 use crate::games::common::dialogue::{PageShown, Shown};
 use crate::games::common::screen::ScreenText;
+use crate::games::common::screen_announce::{
+    ARRIVAL_MAX_POLLS, CURSOR_HEARD_POLLS, DETAIL_MAX_POLLS, DETAIL_POLLS, PLACE_POLLS,
+    REPEAT_POLLS, ScreenAnnouncer,
+};
 use crate::py::Log;
 
 const MENU: i64 = 0x08100000;

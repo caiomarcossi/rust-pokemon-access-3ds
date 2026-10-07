@@ -72,6 +72,17 @@ might come back into the same object.
 - `with cache.phase("name"): ...` is `memory::phase(&cache, "name", || { ...; Ok(()) })?`.
 - A Python object one owner mutates stays a plain struct with `&mut self` methods.
 - A thread gets `Arc` and `Mutex`, only where the Python has a thread.
+- A bound method one object hands another is a closure over what the method reads. Where it
+  reads its holder's own state, that part is lifted into a struct both keep an `Rc` of: the
+  navigator's naming methods, which its `Guide` is handed, are `navigate::Naming`.
+- Where a Python object keeps another to consult as it polls, and both are kept by a third, the
+  third hands the one to the other's `poll` instead: the kinds of cursor in `CursorReader`.
+- A factory a `Game` holds (`Game.features`, `Game.apps`) is a plain `fn`, since a `Game` lives
+  in a `static`. A test that hands over a reader it made parks it in a thread-local for the
+  factory to return (`test_field`'s `given_feature`).
+- What Python duck-types is a trait: `GameText.map_chunks` and `GameText.streets` are
+  `ChunkSource` and `StreetSource`, so a test gives its own as Python's tests subclass. A method a
+  test's subclass inherits becomes a function both call (`secret_base::spots_in`).
 
 ## Exceptions
 

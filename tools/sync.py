@@ -139,7 +139,7 @@ def layout() -> int:
         if missing:
             text = text.rstrip("\n") + ("\n\n" if text.strip() else "")
             text += "".join(f"pub mod {c};\n" for c in missing)
-            parent.write_text(text, encoding="utf-8")
+            parent.write_text(text, encoding="utf-8", newline="\n")
             created += len(missing)
     tests = ROOT / "tests"
     test_mods = sorted(p.stem for p in tests.glob("*.rs") if p.name != "mod.rs")
@@ -149,7 +149,7 @@ def layout() -> int:
     if missing:
         text = text.rstrip("\n") + ("\n" if text.strip() else "")
         text += "".join(f"mod {m};\n" for m in missing)
-        mod_rs.write_text(text, encoding="utf-8")
+        mod_rs.write_text(text, encoding="utf-8", newline="\n")
     print(f"layout: {created} files or declarations added")
     return 0
 
@@ -207,7 +207,7 @@ def mark(commit: str) -> int:
     sha = git("rev-parse", commit).strip()
     text = MANIFEST.read_text(encoding="utf-8")
     text = re.sub(r'^upstream = "[0-9a-f]+"', f'upstream = "{sha}"', text, count=1, flags=re.M)
-    MANIFEST.write_text(text, encoding="utf-8")
+    MANIFEST.write_text(text, encoding="utf-8", newline="\n")
     print(f"port.toml now matches {sha[:9]}")
     return 0
 

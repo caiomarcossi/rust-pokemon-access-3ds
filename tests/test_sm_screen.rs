@@ -5,10 +5,12 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::rc::Rc;
 
+use indexmap::IndexMap;
+
 use super::fake_layouts::FakeLayouts;
 use super::fake_memory::{CODE, FakeClasses, FakeMemory};
 use crate::core::rtti::ClassNames;
-use crate::games::common::cursor::CursorReader;
+use crate::games::common::cursors::reader::CursorReader;
 use crate::games::common::lyt;
 use crate::games::common::screen::{ScreenText, ScreenTextReader, join};
 use crate::games::sm::lyt::SHAPE;
@@ -84,6 +86,8 @@ impl Title {
             msgwin::CLASSES.iter().map(|c| c.to_string()).collect(),
             None,
             None,
+            IndexMap::new(),
+            HashSet::new(),
         );
         let reader = CursorReader::with(fake.layouts.clone(), names, None, true, None);
         let mut title = Title {
@@ -472,6 +476,8 @@ fn test_the_party_screens_level_glyph_is_said_as_the_games_words_for_a_level() {
         msgwin::CLASSES.iter().map(|c| c.to_string()).collect(),
         Some("Lv.".to_string()),
         None,
+        IndexMap::new(),
+        HashSet::new(),
     );
     screen.track(title.boxes.borrow().clone());
     screen.poll(&HashSet::new(), false).unwrap();

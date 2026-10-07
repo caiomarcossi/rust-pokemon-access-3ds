@@ -23,7 +23,7 @@ use std::rc::Rc;
 use crate::core::binary::u32;
 use crate::core::memory::Memory;
 use crate::core::names::Names;
-use crate::games::gen6::{mmodel, talk};
+use crate::games::{gen6::field::mmodel, gen6::field::talk};
 use crate::py::Result;
 
 /// Tracks the field's talk objects and says who is speaking a window.

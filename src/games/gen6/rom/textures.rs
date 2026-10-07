@@ -38,8 +38,8 @@ use crate::core::rom::{Rom, lz11};
 use crate::core::toml;
 use crate::games::common::garc::{GARC_MAGIC, garc_variants};
 use crate::games::common::layout_file::{TEXTURE, darc_entries};
-use crate::games::common::lyt;
-use crate::games::gen6::archives::GameText;
+use crate::games::common::{lyt, pictures};
+use crate::games::gen6::rom::archives::GameText;
 use crate::py::{self, Kind, Result};
 
 /// Bits a pixel by the GPU's texture format, the number a material keeps (`lyt.MATERIAL_FORMAT`):
@@ -355,6 +355,9 @@ pub fn names(
 pub fn said(textures: &[impl AsRef<str>], text: &GameText) -> Result<Option<String>> {
     for texture in textures {
         let texture = texture.as_ref();
+        if let Some(sign) = pictures::drawn(texture) {
+            return Ok(Some(sign.to_string()));
+        }
         let (index, words): (i64, &[String]);
         let tab = TAB
             .captures(texture)

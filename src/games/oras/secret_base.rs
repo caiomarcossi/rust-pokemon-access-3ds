@@ -51,7 +51,17 @@ use crate::core::binary::{self, s16, u16, u32};
 use crate::core::discovery::{Found, HEAP_SPAN, within};
 use crate::core::memory::Memory;
 use crate::core::pathfind::Cell;
+use crate::games::common::field::things::{Interactable, SECRET_BASE_SOURCE, place_source};
+use crate::games::gen6::field::features::{Feature, SecretBaseReader, Tracked, ZoneAt};
 use crate::py::{Error, Result};
+
+/// What a spot a Secret Base can be made at is called: the game draws a mark on the wall, the tree
+/// or the bush, and says what it is on facing it, but never names the spot (spike 154).
+pub const BASE_SPOT: &str = "secret base spot";
+
+/// What the player's own Secret Base's spot is called, said with the place it leads into, as an
+/// exit is: "entrance to Secret Base".
+pub const ENTRANCE: &str = "entrance";
 
 /// `struct.Struct("<HBBiiiHH")`: a spot's number, kind, shape, x, z, height, zone and the last
 /// word.
@@ -390,6 +400,13 @@ impl SecretBases {
 
     /// The number of the player's own spot, or None while the player has none or the save is
     /// not found yet.
+    /// The zone's spots: the player's own base as its entrance, leading inside, and every other
+    /// spot as a spot (spike 154). A spot is a tree, a wall or a bush, walked up to and faced as a
+    /// sign is.
+    pub fn listed(&self, zone: i64, _zone_at: ZoneAt) -> Result<Vec<Interactable>> {
+        spots_in(&self.spots, self.own()?, self.inside, zone)
+    }
+
     pub fn own(&self) -> Result<Option<i64>> {
         let Some(save) = self.save.get() else {
             return Ok(None);
@@ -411,4 +428,74 @@ fn index(cell: Cell) -> Option<i64> {
     } else {
         None
     }
+}
+
+impl Tracked for SecretBases {
+    fn classes(&self) -> Vec<&'static str> {
+        self.classes.clone()
+    }
+
+    fn track(&self, found: &Found) -> Result<()> {
+        SecretBases::track(self, found)
+    }
+}
+
+impl Feature for SecretBases {
+    fn listed(&self, zone: i64, zone_at: ZoneAt) -> Result<Vec<Interactable>> {
+        SecretBases::listed(self, zone, zone_at)
+    }
+}
+
+impl SecretBaseReader for SecretBases {
+    fn zones(&self) -> IndexSet<i64> {
+        self.zones.clone()
+    }
+
+    fn furnished(&self) -> Result<bool> {
+        SecretBases::furnished(self)
+    }
+
+    fn cursor(&self) -> Result<Option<Cell>> {
+        SecretBases::cursor(self)
+    }
+
+    fn standing(&self, cell: Cell) -> Result<Vec<i64>> {
+        SecretBases::standing(self, cell)
+    }
+
+    fn solid(&self) -> Result<IndexSet<Cell>> {
+        SecretBases::solid(self)
+    }
+}
+
+/// `SecretBases.listed` of every spot, the player's own and the zone inside: a function of its
+/// own, since the tests' Secret Bases, which subclass `SecretBases` in Python, list theirs so too.
+pub fn spots_in(
+    spots: &[(i64, Cell)],
+    own: Option<i64>,
+    inside: i64,
+    zone: i64,
+) -> Result<Vec<Interactable>> {
+    let mut out: Vec<Interactable> = Vec::new();
+    for (number, &(home, cell)) in spots.iter().enumerate() {
+        let number = number as i64;
+        if home != zone {
+            continue;
+        }
+        out.push(if Some(number) == own {
+            Interactable {
+                zone: Some(inside),
+                source: place_source(SECRET_BASE_SOURCE, number)?,
+                home: Some(home),
+                ..Interactable::new("exits", ENTRANCE, cell)
+            }
+        } else {
+            Interactable {
+                source: place_source(SECRET_BASE_SOURCE, number)?,
+                home: Some(home),
+                ..Interactable::new("exits", BASE_SPOT, cell)
+            }
+        });
+    }
+    Ok(out)
 }

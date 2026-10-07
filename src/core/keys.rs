@@ -10,7 +10,7 @@
 //! The hook runs on a thread of its own with the message loop Windows requires of it; the runtime
 //! takes the keys pressed at each poll (`pressed`), by name. Nothing here knows what a key means:
 //! the same key means one thing in one navigation mode and another in the other, so the lookup is
-//! the navigator's (`common.navigate`).
+//! the navigator's (`common.field.navigate`).
 //!
 //! A name may carry modifiers — `shift+k` — because one key is not enough for both reading a thing
 //! and renaming it. Which keys pa3ds is given, and which buttons the emulator is left, is

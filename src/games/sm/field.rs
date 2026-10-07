@@ -55,8 +55,9 @@ use crate::core::discovery::Found;
 use crate::core::heaps::ReadEach;
 use crate::core::memory::Memory;
 use crate::core::rtti::ClassNames;
-use crate::games::common::field::{
-    FURNITURE_SOURCE, Field, Ground, Interactable, Of, WARP_SOURCE, place_source,
+use crate::games::common::field::ground::{Ground, Of};
+use crate::games::common::field::things::{
+    FURNITURE_SOURCE, Field, Interactable, WARP_SOURCE, place_source,
 };
 use crate::games::sm::camera::{self, turned, turned_box, unturned};
 use crate::games::sm::heaps::{self, Blocks};

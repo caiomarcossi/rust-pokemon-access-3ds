@@ -23,10 +23,14 @@
 "0xd7" = "LeBelle"                    # Looker: the "Looker Ticket" (system 114:712)
 "0xc1" = "Ben"                        # Tate: "Liza and Tate" (system 123:107), the boy named first but in English
 "0xc2" = "Svenja"                     # Liza: the same, the girl
-"0x103f" = "Maschock"                 # Machoke, from the species names
+"0xd2" = "Xenia"                      # Lisia: "That performance by Lisia and Ali just now was amazing!" (story 39:7)
+"0x134" = "Mr. Miteinander"           # Mr. Bonding: "I'm Mr. Bonding, the expert on O-Powers!" (story 570:43)
+"0x139" = "Spieldirektor"             # Game Director: "I'm the Game Director." (story 530:0)
+"0x1030" = "Wailmer"                  # Wailmer: its model names Nidoran♂ too, and draws Wailmer's body
 
-# The game's own words for the story's people and for kinds of trainer, as `archives`
-# reads them (findings, spike 90): spikes/91_names_in_languages.py table de.
+# The game's own words for the story's people, for kinds of trainer and for the Pokémon on
+# the map, as `archives` reads them (findings, spikes 90 and 193):
+# spikes/91_names_in_languages.py table de.
 "0xb4" = "Heiko"
 "0xb5" = "Heiko"
 "0xb6" = "Troy"
@@ -48,6 +52,7 @@
 "0xca" = "Wolfgang"
 "0xcb" = "Kordula"
 "0xd3" = "Johnson"
+"0xd4" = "Amalia"
 "0x13a" = "Maike"
 "0x13b" = "Brix"
 "0x13c" = "Maike"
@@ -75,6 +80,7 @@
 "0xe7" = "Gentleman"
 "0xe8" = "Matrose"
 "0xe9" = "Wanderer"
+"0xec" = "Schwarzgurt"
 "0xed" = "Kämpferin"
 "0xee" = "Pokémon-Sammler"
 "0xf0" = "Pokémaniac"
@@ -97,7 +103,10 @@
 "0x102" = "Triathlet"
 "0x103" = "Triathlet"
 "0x104" = "Ass-Trainer"
+"0x105" = "Ass-Trainer"
+"0x106" = "Experte"
 "0x107" = "Expertin"
+"0x110" = "Träumerin"
 "0x111" = "Ass-Trainer"
 "0x112" = "Ass-Trainer"
 "0x113" = "Backpacker"
@@ -106,5 +115,41 @@
 "0x116" = "Taucher"
 "0x117" = "Taucherin"
 "0x158" = "Angler"
+"0x159" = "Schwimmerin"
 "0x15a" = "Schwimmer"
 "0x15b" = "Planscher"
+"0x1006" = "Rihorn"
+"0x1009" = "Lucario"
+"0x100f" = "Rihorn"
+"0x1013" = "Marill"
+"0x1014" = "Rihorn"
+"0x101b" = "Groudon"
+"0x101d" = "Kyogre"
+"0x101f" = "Rayquaza"
+"0x1021" = "Latias"
+"0x1022" = "Latios"
+"0x1023" = "Latias"
+"0x1024" = "Latios"
+"0x1025" = "Maschock"
+"0x1026" = "Wingull"
+"0x1029" = "Kecleon"
+"0x102a" = "Regirock"
+"0x102b" = "Regice"
+"0x102c" = "Registeel"
+"0x102d" = "Fiffyen"
+"0x102e" = "Eneco"
+"0x102f" = "Zigzachs"
+"0x1031" = "Plusle"
+"0x1032" = "Minun"
+"0x1033" = "Meditie"
+"0x1034" = "Knilz"
+"0x1035" = "Bummelz"
+"0x1036" = "Roselia"
+"0x1037" = "Schwalbini"
+"0x1039" = "Flurmel"
+"0x103a" = "Frizelbliz"
+"0x103b" = "Altaria"
+"0x103c" = "Fiffyen"
+"0x103d" = "Groudon"
+"0x103e" = "Kyogre"
+"0x103f" = "Maschock"

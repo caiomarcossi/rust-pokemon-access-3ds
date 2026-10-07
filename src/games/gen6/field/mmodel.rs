@@ -90,6 +90,10 @@ pub const DRAWN: i64 = 0x898;
 pub const WORK_OBJECTS: Range<i64> = 0x7A..0x8A;
 /// The character of a Poké Ball lying on the ground, seen on Route 102 (spike 78).
 pub const ITEM_BALL: i64 = 0x2000;
+/// Model codes from here up to `PROP_MODEL` are Pokémon: the movers' Machoke `0x103f`.
+pub const POKEMON_MODEL: i64 = 0x1000;
+/// Model codes from here up are things, not people: a doll in the bedroom, a Poké Ball.
+pub const PROP_MODEL: i64 = 0x2000;
 
 /// `head[index]`: the byte, or the `IndexError` Python raises past the end of `bytes`.
 #[track_caller]

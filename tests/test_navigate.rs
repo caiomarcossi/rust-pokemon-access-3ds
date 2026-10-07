@@ -12,15 +12,19 @@ use crate::core::keys::key_name;
 use crate::core::names::Names;
 use crate::core::pathfind::{self, Cell, nearest};
 use crate::core::speech::{Backend, Category, Speech, default_interrupts};
-use crate::games::common::field::{
-    BLOCKED, CHUNK, CUT, Chunk, FURNITURE_SOURCE, Field, Floor, Ground, IceRoom, Interactable, Of,
-    ROCK_SMASH, RotatingDoor, STRENGTH, SURF, WARP_SOURCE, WATERFALL, place_source,
+use crate::games::common::field::chunk::{BLOCKED, CHUNK, Chunk, Floor};
+use crate::games::common::field::ground::{
+    CUT, Ground, IceRoom, Of, ROCK_SMASH, RotatingDoor, STRENGTH, SURF, WATERFALL,
 };
-use crate::games::common::navigate::{
-    CATEGORY_NEXT, CATEGORY_PREVIOUS, DEFAULT_BINDINGS, DIRECTION, EAST, ENEMY_SIDE, FieldSource,
-    Guidance, ITEM_NEXT, ITEM_PREVIOUS, ITEM_READ, LIST, LeadsTo, MODE_TOGGLE, NORTH, Navigator,
-    OUR_SIDE, Options, PATHFIND, PATHFIND_HM, RENAME, RENAME_SPEAKER, SOUTH, Sides, Street, TOUCH,
-    WEST, bound_keys,
+use crate::games::common::field::guide::{FieldSource, Guidance};
+use crate::games::common::field::keys::{
+    CATEGORY_NEXT, CATEGORY_PREVIOUS, DEFAULT_BINDINGS, DIRECTION, EAST, ENEMY_SIDE, ITEM_NEXT,
+    ITEM_PREVIOUS, ITEM_READ, LIST, MODE_TOGGLE, NORTH, OUR_SIDE, PATHFIND, PATHFIND_HM, RENAME,
+    RENAME_SPEAKER, SOUTH, TOUCH, WEST, bound_keys,
+};
+use crate::games::common::field::navigate::{LeadsTo, Navigator, Options, Sides, Street};
+use crate::games::common::field::things::{
+    FURNITURE_SOURCE, Field, Interactable, WARP_SOURCE, place_source,
 };
 use crate::games::common::touch::{ROW_NEXT, ROW_PREVIOUS, TAP};
 use crate::games::oras::{self, BIG_BOULDER, BUSH, CRACKED_BOULDER};
@@ -80,8 +84,12 @@ struct FakeField {
     /// A stacked ground's cells, each with its lower floor's height and its upper's, None where
     /// that floor is closed; no cell, and the ground is not stacked.
     floors: RefCell<IndexMap<Cell, (Option<f64>, Option<f64>)>>,
+    /// A cell and one of its floors, open there with no height: its mesh over none of it.
+    bare: RefCell<HashSet<(Cell, usize)>>,
     /// The player's height on a stacked ground.
     level: Slot<Option<f64>>,
+    /// A stacked ground's ladders, each step with the heights it leaves and lands at.
+    ladders: RefCell<IndexMap<(Cell, Cell), (f64, f64)>>,
     ice: RefCell<Vec<IceRoom>>,
     visit: Slot<Option<(i64, i64)>>,
     edit: RefCell<Option<Edit>>,
@@ -107,7 +115,9 @@ impl FakeField {
             decks: RefCell::new(Vec::new()),
             surfaces: RefCell::new(IndexMap::new()),
             floors: RefCell::new(IndexMap::new()),
+            bare: RefCell::new(HashSet::new()),
             level: Slot::new(None),
+            ladders: RefCell::new(IndexMap::new()),
             ice: RefCell::new(Vec::new()),
             visit: Slot::new(Some((0x08D209B8, 0x6))),
             edit: RefCell::new(None),
@@ -190,7 +200,13 @@ impl FieldSource for FakeField {
                 .map(|k| Floor {
                     words: cells
                         .iter()
-                        .map(|cell| if one(cell, k).is_some() { 0 } else { BLOCKED })
+                        .map(|cell| {
+                            if one(cell, k).is_some() || self.bare.borrow().contains(&(*cell, k)) {
+                                0
+                            } else {
+                                BLOCKED
+                            }
+                        })
                         .collect(),
                     heights: cells.iter().map(|cell| one(cell, k)).collect(),
                 })
@@ -217,6 +233,7 @@ impl FieldSource for FakeField {
             );
             ground.stacked = true;
             ground.level = self.level.get();
+            ground.ladders = self.ladders.borrow().clone();
             return Ok(ground);
         }
         let mut ground = Ground::of(
@@ -444,7 +461,7 @@ fn step(rig: &mut Rig, cells: &[Cell]) {
 }
 
 fn guidance(rig: &Rig) -> Option<Rc<RefCell<Guidance>>> {
-    rig.nav.guidance.clone()
+    rig.nav.guide.guidance.clone()
 }
 
 /// The cells of the way being walked.
@@ -702,6 +719,30 @@ fn test_an_exit_within_one_place_says_the_street_it_comes_out_on() {
             "door to Vernal Avenue, 1 of 2, 1 north",
             "edge, 2 of 2, 13 north"
         ]
+    );
+}
+
+/// Team Aqua's Hideout (2026-10-06): both bearings are from the player.
+#[test]
+fn test_a_teleporter_says_where_it_comes_out_after_the_way_to_it() {
+    let pad = Interactable {
+        zone: Some(town().zone),
+        source: 0,
+        arrival: Some((111, 180)),
+        ..Interactable::new("exits", "teleporter", (97, 172))
+    };
+    let mut rig = navigator(Want {
+        r#where: Some(Field {
+            interactables: vec![pad],
+            ..Field::new(town().zone, town().cell)
+        }),
+        exits: true,
+        ..Want::default()
+    });
+    rig.press(ITEM_READ);
+    assert_eq!(
+        said(&rig.backend),
+        ["teleporter, 1 of 1, 3 east, out at 17 east 8 south"]
     );
 }
 
@@ -1100,7 +1141,10 @@ fn test_a_ledge_on_the_way_is_jumped_and_the_jump_followed() {
     walked.extend([(100, 176), (100, 178)]);
     step(&mut rig, &walked);
     assert!(
-        Rc::ptr_eq(way.as_ref().unwrap(), rig.nav.guidance.as_ref().unwrap()),
+        Rc::ptr_eq(
+            way.as_ref().unwrap(),
+            rig.nav.guide.guidance.as_ref().unwrap()
+        ),
         "the way was found again"
     );
     step(&mut rig, &[(100, 179)]);
@@ -1666,6 +1710,110 @@ fn test_floor_over_floor_each_is_walked_as_itself_and_joined_by_the_stairs() {
     assert_eq!(last(&rig.backend), "12 south");
 }
 
+/// Spike A: outside Sky Pillar the terraces stand 108 apart on three floors, and the one stair
+/// up to Zinnia's goes from floor 0 at 108 onto floor 1 at 216. P went only as far as the sand
+/// under her, "then can't continue".
+#[test]
+fn test_a_ladder_climbs_from_one_floor_onto_another() {
+    let zinnia = Interactable {
+        source: 0x08D269E8,
+        move_model: true,
+        height: Some(216.0),
+        ..Interactable::new("people", "person", (105, 174))
+    };
+    let mut rig = navigator(on(Field {
+        interactables: vec![zinnia],
+        ..Field::new(0xB0, (98, 175))
+    }));
+    {
+        let mut floors = rig.field.floors.borrow_mut();
+        for x in 96..101 {
+            floors.insert((x, 175), (Some(108.0), None));
+        }
+        for x in 101..106 {
+            floors.insert((x, 175), (None, Some(216.0)));
+        }
+        floors.insert((105, 174), (None, Some(216.0)));
+    }
+    rig.field.level.set(Some(108.0));
+    rig.press(CATEGORY_NEXT);
+    rig.backend.spoken.borrow_mut().clear();
+    rig.press(PATHFIND);
+    assert_eq!(said(&rig.backend), ["2 east, then can't continue"]);
+    rig.field.ladders.borrow_mut().extend([
+        (((100, 175), (101, 175)), (108.0, 216.0)),
+        (((101, 175), (100, 175)), (216.0, 108.0)),
+    ]);
+    rig.press(PATHFIND);
+    assert_eq!(last(&rig.backend), "7 east");
+}
+
+/// Fortree City's bridge at 103 ends on a platform at 103, and under its last cell the ground
+/// is open with no height. P went onto the platform and back onto the ground under the bridge,
+/// "8 east, 2 west, 9 north" (omega_ruby_tree-city-regression.ctm, 2026-10-06).
+#[test]
+fn test_a_way_does_not_drop_off_a_bridge_through_a_floor_with_no_height() {
+    let girl = Interactable {
+        source: 0x08D269E8,
+        move_model: true,
+        height: Some(0.0),
+        ..Interactable::new("people", "person", (99, 172))
+    };
+    let mut rig = navigator(on(Field {
+        interactables: vec![girl],
+        ..Field::new(0x11, (97, 175))
+    }));
+    {
+        let mut floors = rig.field.floors.borrow_mut();
+        for x in 96..101 {
+            floors.insert((x, 175), (Some(0.0), Some(103.0)));
+        }
+        floors.insert((100, 175), (None, Some(103.0)));
+        rig.field.bare.borrow_mut().insert(((100, 175), 0));
+        for x in 101..104 {
+            floors.insert((x, 175), (Some(103.0), None));
+        }
+        floors.insert((99, 174), (Some(0.0), None));
+        floors.insert((99, 173), (Some(0.0), None));
+    }
+    rig.field.level.set(Some(103.0));
+    rig.press(CATEGORY_NEXT);
+    rig.backend.spoken.borrow_mut().clear();
+    rig.press(PATHFIND);
+    assert_eq!(said(&rig.backend), ["3 east, then can't continue"]);
+}
+
+/// Spike A: outside Sky Pillar the sand runs on under the stair from the terrace at 324 down to
+/// Zinnia's at 216, and P walked up the sand and onto her terrace by that stair, "6 south".
+#[test]
+fn test_a_ladder_is_not_climbed_from_the_floor_under_it() {
+    let zinnia = Interactable {
+        source: 0x08D269E8,
+        move_model: true,
+        height: Some(216.0),
+        ..Interactable::new("people", "person", (105, 174))
+    };
+    let mut rig = navigator(on(Field {
+        interactables: vec![zinnia],
+        ..Field::new(0xB0, (105, 177))
+    }));
+    rig.field.floors.borrow_mut().extend([
+        ((105, 177), (Some(0.0), None)),
+        ((105, 176), (Some(0.0), Some(324.0))),
+        ((105, 175), (Some(0.0), Some(216.0))),
+        ((105, 174), (None, Some(216.0))),
+    ]);
+    rig.field.ladders.borrow_mut().extend([
+        (((105, 176), (105, 175)), (324.0, 216.0)),
+        (((105, 175), (105, 176)), (216.0, 324.0)),
+    ]);
+    rig.field.level.set(Some(0.0));
+    rig.press(CATEGORY_NEXT);
+    rig.backend.spoken.borrow_mut().clear();
+    rig.press(PATHFIND);
+    assert_eq!(said(&rig.backend), ["2 north, then can't continue"]);
+}
+
 /// Spike 167: each of Sootopolis Gym's corridors up to Wallace is shut until the room of thin ice
 /// below it is cleared, by stepping on every tile once and last on an exit, and P to him stopped
 /// at the shut corridor. The way goes over the ice instead, round the floor in its middle that is
@@ -1788,6 +1936,78 @@ fn test_p_walks_through_a_rotating_door_and_says_the_push() {
     assert!(last(&rig.backend).contains("push 1 south"));
 }
 
+/// A Linoone the DexNav found on Route 120 (movie26).
+fn hidden() -> Interactable {
+    Interactable {
+        code: 264,
+        source: 0x08D374E4,
+        ..Interactable::new("pokémon", "hidden Pokémon", (98, 175))
+    }
+}
+
+/// `replace(TOWN, interactables=(*TOWN.interactables, HIDDEN))`.
+fn town_and_hidden() -> Field {
+    let mut where_ = town();
+    where_.interactables.push(hidden());
+    where_
+}
+
+/// Orion, movie26: out of touch mode and along the list to it took long enough to lose it.
+#[test]
+fn test_a_hidden_pokemon_found_is_guided_to_and_p_is_on_it() {
+    let r#where = town_and_hidden();
+    let mut rig = navigator(Want {
+        r#where: Some(r#where.clone()),
+        exits: true,
+        ..Want::default()
+    });
+    rig.nav.found(&r#where, &hidden(), true).unwrap();
+    let spoken = rig.backend.spoken.borrow().clone();
+    assert_eq!(spoken.len(), 1);
+    let (first, interrupted) = &spoken[0];
+    assert!(first.starts_with("hidden Pokémon, ") && !interrupted);
+    assert!(rig.nav.guiding());
+    rig.press(PATHFIND);
+    assert_eq!(
+        last(&rig.backend),
+        first.strip_prefix("hidden Pokémon, ").unwrap()
+    );
+}
+
+/// Walking away from a hidden Pokémon the DexNav found said a new way at every step
+/// (movie26's replay); P asks for it, and is answered.
+#[test]
+fn test_walking_off_a_way_nobody_asked_for_finds_it_again_quietly() {
+    let r#where = town_and_hidden();
+    let mut rig = navigator(on(r#where.clone()));
+    rig.nav.found(&r#where, &hidden(), true).unwrap();
+    step(&mut rig, &[(93, 172), (92, 172)]);
+    assert!(rig.backend.spoken.borrow().len() == 1 && rig.nav.guiding());
+    assert!(
+        rig.log
+            .borrow()
+            .iter()
+            .any(|line| line.starts_with("path, quietly: "))
+    );
+    rig.press(PATHFIND);
+    assert_eq!(rig.backend.spoken.borrow().len(), 2);
+}
+
+#[test]
+fn test_a_hidden_pokemon_found_is_left_alone_unless_asked() {
+    let r#where = town_and_hidden();
+    let mut rig = navigator(Want {
+        r#where: Some(r#where.clone()),
+        navigation: Some(Navigation {
+            guide_to_hidden: false,
+            ..Navigation::default()
+        }),
+        ..Want::default()
+    });
+    rig.nav.found(&r#where, &hidden(), true).unwrap();
+    assert!(rig.backend.spoken.borrow().is_empty() && !rig.nav.guiding());
+}
+
 #[test]
 fn test_with_nowhere_nearer_p_says_there_is_no_path() {
     let mut walls = house_front();
@@ -1828,7 +2048,7 @@ fn test_p_again_that_finds_no_way_keeps_the_way_being_walked_and_says_the_rest()
     // Not in the Python: with the real `find` P again finds the same way anew and says the same
     // words, so only the way kept tells the branch the test is for from the one beside it.
     assert!(
-        Rc::ptr_eq(&held, rig.nav.guidance.as_ref().unwrap()),
+        Rc::ptr_eq(&held, rig.nav.guide.guidance.as_ref().unwrap()),
         "the way being walked is kept"
     );
     step(&mut rig, &[(94, 175), (95, 175)]);

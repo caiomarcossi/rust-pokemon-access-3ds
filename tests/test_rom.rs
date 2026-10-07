@@ -153,6 +153,20 @@ fn test_lz11_undoes_literals_and_references_back() {
     assert_eq!(rom::lz11(&packed).unwrap(), b"abbbb");
 }
 
+/// Spike 193: a field model names its Pokémon in its first 12 KB, and only that is unpacked.
+#[test]
+fn test_lz11_stops_at_its_limit() {
+    assert_eq!(
+        rom::lz11_limit(&lz11_literals(b"ZO in the clear"), Some(5)).unwrap(),
+        b"ZO in"
+    );
+    let mut packed = vec![0x11, 5, 0, 0, 0b00100000];
+    packed.extend(b"ab");
+    packed.extend([0x20, 0x00]);
+    assert_eq!(rom::lz11_limit(&packed, Some(3)).unwrap(), b"abb");
+    assert_eq!(rom::lz11_limit(&packed, Some(99)).unwrap(), b"abbbb");
+}
+
 #[test]
 fn test_lz11_that_does_not_hold_together_is_a_rom_error() {
     assert!(

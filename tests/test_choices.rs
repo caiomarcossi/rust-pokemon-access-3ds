@@ -7,7 +7,7 @@ use super::fake_memory::{CODE, FakeClasses, FakeMemory};
 use crate::core::rtti::ClassNames;
 use crate::games::common::announce::Focus;
 use crate::games::common::strbuf;
-use crate::games::gen6::choices::{
+use crate::games::gen6::screens::choices::{
     BOX_COUNT, BOX_CURSOR, BOX_DEVICE_MANAGER, BOX_ENTRIES, BOX_STATE, ChoiceReader,
     DEVICE_MANAGER_CLASS, ENTRY,
 };

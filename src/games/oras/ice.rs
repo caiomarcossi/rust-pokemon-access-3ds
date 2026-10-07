@@ -30,7 +30,9 @@ use std::rc::Rc;
 use crate::core::binary::{s32, u32};
 use crate::core::discovery::{Found, HEAP_SPAN, within};
 use crate::core::memory::Memory;
-use crate::games::common::field::{CHUNK, CRACKED, IceRoom, SOLID, WHOLE};
+use crate::games::common::field::chunk::CHUNK;
+use crate::games::common::field::ground::{CRACKED, IceRoom, SOLID, WHOLE};
+use crate::games::gen6::field::features::{IceReader, Tracked};
 use crate::py::Result;
 
 pub const CLASS: &str = "N5field27FieldUniqueSequenceGymWaterE";
@@ -166,5 +168,21 @@ impl IceFloors {
             });
         }
         Ok(out)
+    }
+}
+
+impl Tracked for IceFloors {
+    fn classes(&self) -> Vec<&'static str> {
+        self.classes.clone()
+    }
+
+    fn track(&self, found: &Found) -> Result<()> {
+        IceFloors::track(self, found)
+    }
+}
+
+impl IceReader for IceFloors {
+    fn rooms(&self, zone: i64) -> Result<Vec<IceRoom>> {
+        IceFloors::rooms(self, zone)
     }
 }

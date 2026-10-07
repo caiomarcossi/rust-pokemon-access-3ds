@@ -10,9 +10,9 @@ use super::fake_memory::{CODE, FakeClasses, FakeMemory};
 use crate::core::memory::Memory;
 use crate::core::rtti::ClassNames;
 use crate::games::common::screen::{
-    Pictures, ScreenText, ScreenTextReader, after_the_name, in_rows, join,
+    self, Pictures, ScreenText, ScreenTextReader, after_the_name, in_rows, join,
 };
-use crate::games::common::{lyt, msgwin};
+use crate::games::common::{lyt, msgwin, pictures};
 
 const LEFT: i64 = 0;
 const CENTRE: i64 = 1;
@@ -56,6 +56,8 @@ fn reader_with(game: &Game, pictures: Pictures) -> ScreenTextReader {
         msgwin::CLASSES.iter().map(|c| c.to_string()).collect(),
         None,
         Some(pictures),
+        IndexMap::new(),
+        HashSet::new(),
     )
 }
 
@@ -632,6 +634,158 @@ fn measured(pieces: &[(&str, f64, f64, f64, f64)]) -> Vec<ScreenText> {
             ScreenText::placed(r#box as i64, text, false, left, right, row, glyph)
         })
         .collect()
+}
+
+/// The DexNav's page, where pauses read "Found Pokémon: Search Level, 64, Name, Zigzagoon"
+/// and "Pokédex: SEARCH": its labels sit over their values, and its title and buttons are where
+/// a label could be (spike B). Its words say which is which.
+#[test]
+fn test_the_games_own_labels_are_labels_wherever_they_are_drawn() {
+    let measured_ = measured(&[
+        ("Found Pokémon", -155.0, -95.0, 104.0, 12.5),
+        ("Search Level", 40.0, 100.0, 104.0, 12.5),
+        ("64", 120.0, 132.0, 104.0, 14.0),
+        ("Name", -155.0, -130.0, 86.0, 12.5),
+        ("Zigzagoon", -155.0, -100.0, 68.0, 12.5),
+        ("Type", 60.0, 85.0, 86.0, 12.5),
+        ("Normal", 60.0, 95.0, 68.0, 12.5),
+        ("Pokédex", -150.0, -110.0, -70.0, 12.5),
+        ("SEARCH", -20.0, 20.0, -70.0, 12.5),
+    ]);
+    let [
+        title,
+        level,
+        number,
+        name,
+        species,
+        kind,
+        normal,
+        dex,
+        search,
+    ]: [ScreenText; 9] = measured_.try_into().unwrap();
+    let page = vec![
+        ScreenText {
+            plain: true,
+            ..title
+        },
+        ScreenText {
+            label: true,
+            ..level
+        },
+        number.clone(),
+        ScreenText {
+            label: true,
+            ..name
+        },
+        species,
+        ScreenText {
+            label: true,
+            ..kind
+        },
+        normal,
+        ScreenText { plain: true, ..dex },
+        ScreenText {
+            plain: true,
+            ..search
+        },
+    ];
+    assert_eq!(
+        join(&page, true),
+        "Found Pokémon, Search Level: 64, Name: Zigzagoon, Type: Normal, Pokédex, SEARCH"
+    );
+    assert_eq!(
+        join(&page, false),
+        "Found Pokémon Search Level 64 Name Zigzagoon Type Normal Pokédex SEARCH"
+    );
+    // A label touching its value is one still: "Search Level5" was said as one word.
+    let touching = ScreenText {
+        text: "5".to_string(),
+        left: 101.0,
+        right: 108.0,
+        ..number
+    };
+    assert_eq!(
+        join(&[page[1].clone(), touching.clone()], true),
+        "Search Level: 5"
+    );
+    assert_eq!(join(&[page[1].clone(), touching], false), "Search Level 5");
+}
+
+/// "Potential: 2 stars", "First move: tackle, egg move" under pauses, and spaces otherwise
+/// (Orion, 2026-10-06): the stars are three pictures, filled or not, and the red mark is drawn
+/// beside First Move's label, built before it (spike B).
+#[test]
+fn test_the_dexnav_s_stars_are_counted_and_its_mark_said_after_what_it_marks() {
+    let pieces = measured(&[
+        ("Level", -155.0, -125.0, 60.0, 12.5),
+        ("Lv.", -145.0, -128.0, 40.0, 12.5),
+        ("3", -126.0, -119.0, 40.0, 14.0),
+        ("Potential", 60.0, 110.0, 40.0, 12.5),
+        ("First Move", -140.0, -80.0, 10.0, 12.5),
+        ("Helping Hand", -155.0, -85.0, -10.0, 12.5),
+        ("Held Item", 50.0, 100.0, 10.0, 12.5),
+        ("Revive", 30.0, 65.0, -10.0, 12.5),
+    ]);
+    let groups = [0x100, 0x100, 0x100, 0x200, 0x300, 0x300, 0x400, 0x400];
+    let labels: IndexMap<String, String> = [
+        ("Level", pictures::HIGHER_LEVEL),
+        ("Potential", ""),
+        ("First Move", pictures::EGG_MOVE),
+        ("Held Item", ""),
+    ]
+    .into_iter()
+    .map(|(label, mark)| (label.to_string(), mark.to_string()))
+    .collect();
+    let words: Vec<ScreenText> = pieces
+        .into_iter()
+        .enumerate()
+        .map(|(i, piece)| ScreenText {
+            r#box: 0x40 + 4 * i as i64,
+            parent: groups[i],
+            label: labels.contains_key(&piece.text),
+            ..piece
+        })
+        .collect();
+    let stars: IndexMap<i64, ScreenText> = [
+        (0x90, pictures::STAR, 77.0),
+        (0x94, pictures::STAR, 91.0),
+        (0x98, pictures::NO_STAR, 105.0),
+    ]
+    .into_iter()
+    .map(|(r#box, sign, left)| {
+        (
+            r#box,
+            ScreenText {
+                parent: 0x200,
+                picture: true,
+                ..ScreenText::placed(r#box, sign, false, left, left + 16.0, 25.0, 16.0)
+            },
+        )
+    })
+    .collect();
+    let mark = ScreenText {
+        parent: 0x300,
+        picture: true,
+        ..ScreenText::placed(0x30, pictures::SPECIAL, false, -160.0, -144.0, 10.0, 16.0)
+    };
+    let mut found: IndexMap<i64, ScreenText> = words
+        .into_iter()
+        .map(|piece| (piece.r#box, piece))
+        .collect();
+    found.extend(screen::counted_stars(&stars));
+    found.insert(mark.r#box, mark);
+    let mut said: Vec<ScreenText> = screen::by_their_labels(&found, &labels)
+        .into_values()
+        .collect();
+    said.sort_by_key(|piece| piece.r#box);
+    assert_eq!(
+        join(&said, true),
+        "Level: Lv.3, Potential: 2 stars, First Move: Helping Hand, egg move, Held Item: Revive"
+    );
+    assert_eq!(
+        join(&said, false),
+        "Level Lv.3 Potential 2 stars First Move Helping Hand egg move Held Item Revive"
+    );
 }
 
 /// The main menu's CONTINUE panel (movie11, 2026-10-01): "Badges:, 0" before.
@@ -1213,6 +1367,92 @@ fn test_two_icons_side_by_side_are_said_with_a_slash_between() {
         game.heard(),
         words(&[("TYPE", false), ("Bug/Water", false)])
     );
+}
+
+/// The Pokédex entry's group of Name holds its value and the type icon, and moved after the
+/// label, the icon read "Name Fire Torchic" (movie7, after "Name" became one of the labels the
+/// game's text names).
+#[test]
+fn test_a_label_with_a_value_of_its_own_keeps_its_group_s_picture_where_it_is() {
+    let pieces = measured(&[
+        ("Name", -150.0, -125.0, 20.0, 12.5),
+        ("Torchic", -110.0, -70.0, 20.0, 12.5),
+    ]);
+    let fire = ScreenText {
+        parent: 0x100,
+        picture: true,
+        ..ScreenText::placed(0x90, "Fire", false, 20.0, 70.0, 20.0, 20.0)
+    };
+    let found: IndexMap<i64, ScreenText> = IndexMap::from([
+        (
+            0x40,
+            ScreenText {
+                r#box: 0x40,
+                parent: 0x100,
+                label: true,
+                ..pieces[0].clone()
+            },
+        ),
+        (
+            0x44,
+            ScreenText {
+                r#box: 0x44,
+                parent: 0x100,
+                ..pieces[1].clone()
+            },
+        ),
+        (0x90, fire),
+    ]);
+    let labels = IndexMap::from([("Name".to_string(), String::new())]);
+    let moved = screen::by_their_labels(&found, &labels);
+    assert_eq!(moved, found);
+}
+
+/// The red mark is drawn beside First Move's label, its move on the row below, and was heard
+/// "First Move: egg move, Helping Hand" once the battle's rule for a group's one picture had
+/// moved it (spike B).
+#[test]
+fn test_the_dexnav_s_mark_is_read_after_the_move_it_marks() {
+    let mut game = Game::new();
+    let picture =
+        FakeClasses::starting(game.memory.clone(), CODE.0 + 0x8000).add(lyt::PICTURE_CLASS);
+    let (_work, group) = game.screen(BOTTOM);
+    let mark = BOTTOM + 0x0E00;
+    game.fake.pane_with_vtable(mark, group, Some(picture));
+    write_floats(
+        &game.memory,
+        mark,
+        &[
+            (lyt::X, -100.0),
+            (lyt::Y, 10.0),
+            (lyt::WIDTH, 16.0),
+            (lyt::HEIGHT, 16.0),
+            (lyt::SCALE_X, 1.0),
+            (lyt::SCALE_Y, 1.0),
+        ],
+    );
+    let label = game.text_box(BOTTOM + 0x1000, group, "First Move");
+    game.place(label, (-50.0, 10.0), 80.0, 12.5);
+    let r#move = game.text_box(BOTTOM + 0x1200, group, "Helping Hand");
+    game.place(r#move, (-50.0, -10.0), 100.0, 12.5);
+    game.memory.u32(BOTTOM + 0x400 + lyt::CHILD_COUNT, &[1]);
+    game.memory.u32(group + lyt::CHILD_COUNT, &[3]);
+    game.reader = ScreenTextReader::with(
+        game.memory.clone(),
+        Rc::new(ClassNames::new(game.memory.clone(), CODE)),
+        game.fake.layouts.clone(),
+        msgwin::CLASSES.iter().map(|c| c.to_string()).collect(),
+        None,
+        Some(Rc::new(move |pane| {
+            Ok((pane == mark).then(|| pictures::SPECIAL.to_string()))
+        })),
+        IndexMap::from([("First Move".to_string(), pictures::EGG_MOVE.to_string())]),
+        HashSet::new(),
+    );
+    game.sweep();
+    let said = in_rows(game.reader.poll(&none(), false).unwrap());
+    assert_eq!(join(&said, false), "First Move Helping Hand egg move");
+    assert_eq!(join(&said, true), "First Move: Helping Hand, egg move");
 }
 
 /// The battle's move list draws the type icon left of the PP in its left column and right of

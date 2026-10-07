@@ -8,7 +8,8 @@ use std::sync::{Arc, Mutex};
 use indexmap::IndexMap;
 
 use crate::core::pathfind::{self, Options};
-use crate::games::common::field::{CHUNK, Chunk, Ground};
+use crate::games::common::field::chunk::{CHUNK, Chunk};
+use crate::games::common::field::ground::Ground;
 use crate::games::sm::walls::{self, AreaWalls, SunWalls};
 use crate::games::sm::zones::{AREA_FILES, EVENTS};
 use crate::py::{Error, Kind, Result};

@@ -25,8 +25,8 @@ use indexmap::{IndexMap, IndexSet};
 use crate::core::binary::{s16, u16, u32};
 use crate::core::pathfind::Cell;
 use crate::games::common::text::{self, Token};
-use crate::games::gen6::field as gen6_field;
-use crate::games::gen6::{rail, script};
+use crate::games::gen6::field::{rail, zonedata};
+use crate::games::gen6::rom::script;
 use crate::py::{self, Error, Kind, Result};
 
 pub const NEAR: i64 = 6;
@@ -36,8 +36,6 @@ pub const APART: f64 = 1.5;
 /// A zone-table row's +0x06: the zone's file in the story text archive, which its script's
 /// messages are lines of.
 pub const INFO_STORY: i64 = 0x06;
-/// A warp record's +0x02: which of the warps of the zone it goes to it comes out at.
-pub const WARP_TO_SLOT: i64 = 0x02;
 pub const MARK: i64 = 0x18;
 pub const MARK_STREET: i64 = 0x02;
 pub const MARK_PLACEMENT: i64 = 0x08;
@@ -69,22 +67,35 @@ fn item<T>(items: &[T], index: i64) -> Result<&T> {
 pub fn outdoors(zones: &IndexMap<i64, Zone>, table: &[u8]) -> Result<HashSet<i64>> {
     let mut out: HashSet<i64> = HashSet::new();
     for &zone in zones.keys() {
-        if row(table, zone, gen6_field::INFO_PARENT)? == zone {
+        if row(
+            table,
+            zone,
+            crate::games::gen6::field::zonetable::INFO_PARENT,
+        )? == zone
+        {
             out.insert(zone);
         }
     }
 
     let of_the_town = |zone: i64| -> Result<bool> {
-        let parent = row(table, zone, gen6_field::INFO_PARENT)?;
+        let parent = row(
+            table,
+            zone,
+            crate::games::gen6::field::zonetable::INFO_PARENT,
+        )?;
         Ok(place(table, zone)? == place(table, parent)?
-            && row(table, zone, gen6_field::INFO_KIND)?
-                == row(table, parent, gen6_field::INFO_KIND)?)
+            && row(table, zone, crate::games::gen6::field::zonetable::INFO_KIND)?
+                == row(
+                    table,
+                    parent,
+                    crate::games::gen6::field::zonetable::INFO_KIND,
+                )?)
     };
 
     for (&zone, (_data, furniture, warps)) in zones {
         let mut on_streets = false;
         for record in furniture.iter().chain(warps) {
-            if gen6_field::on_rail(record)? {
+            if zonedata::on_rail(record)? {
                 on_streets = true;
                 break;
             }
@@ -94,7 +105,7 @@ pub fn outdoors(zones: &IndexMap<i64, Zone>, table: &[u8]) -> Result<HashSet<i64
         }
         for record in warps {
             let to = u16(record, 0)?;
-            if u16(record, 4)? == gen6_field::WARP_OUT
+            if u16(record, 4)? == crate::games::gen6::field::zonedata::WARP_OUT
                 && zones.contains_key(&to)
                 && of_the_town(to)?
             {
@@ -140,22 +151,8 @@ pub fn plate_names(
         if doors.is_empty() {
             continue;
         }
-        for record in furniture {
-            let mut shown: IndexSet<i64> = IndexSet::new();
-            for (line, style) in script::sign_lines(&code, u16(record, 0)?)? {
-                if style == script::PLATE {
-                    shown.insert(line);
-                }
-            }
-            if shown.len() != 1 {
-                continue;
-            }
-            let line = shown.pop().expect("one line is shown");
-            let words = if line < lines.len() as i64 {
-                first_page(item(&lines, line)?)?
-            } else {
-                None
-            };
+        for (record, line) in plates_of(&code, furniture, &lines)? {
+            let words = first_page(item(&lines, line)?)?;
             let Some(mut words) = words.filter(|words| !words.is_empty()) else {
                 continue;
             };
@@ -196,6 +193,126 @@ pub fn plate_names(
         .collect())
 }
 
+/// (zone, warp slot) -> the facility of its town's list a landmark's entrance is, for the
+/// entrances no plate or table has named. `entrances` is the warp kinds each used by one
+/// building's way in alone (`RomLayout.entrances`), `listed` is place -> what its town's list
+/// calls each facility, `doors` the names already found (`plate_names`, `GameText.doors`).
+///
+/// A place with exactly one such entrance in from its outdoors into a zone of its own place, and
+/// no name for it yet, has it named from the facilities left over. A facility is **claimed** when
+/// a door name of the place holds it, spaces left out (`_held`). Then:
+///
+/// 1. The plates of the place, the furniture its zones' scripts show in a plate's style, that
+///    each hold exactly one unclaimed facility: if together they name one facility, it is the
+///    entrance's. Devon Corporation's plate, "The Devon Corporation / For all your living
+///    needs...", stands 18 cells from its doors, past the Gym's, so `plate_names` cannot pair it
+///    by distance, but holds "Devon Corporation" and no other facility.
+/// 2. Only where no plate holds exactly one: the one facility of the list neither claimed nor
+///    held by any plate. Route 112's list has "Cable Car Base Station" and no plate holds it.
+///
+/// Rules that find two facilities, or none, leave the entrance unnamed: Lilycove's museum has no
+/// plate but the town's sign, which holds "Harbor" and "Lilycove Museum" both, so each is held
+/// and neither is left over. An entrance into another place, Cave of Origin's and New Mauville's,
+/// is left to the place it leads to. Against the ROM (2026-10-06) Rustboro's entrance is "Devon
+/// Corporation" and Route 112's "Cable Car Base Station", Lilycove's has none, and every
+/// entrance the plates named is as it was.
+#[allow(clippy::too_many_arguments)]
+pub fn entrance_names(
+    zones: &IndexMap<i64, Zone>,
+    table: &[u8],
+    story: &dyn Fn(i64) -> Result<Vec<Vec<u8>>>,
+    outside: &HashSet<i64>,
+    listed: &IndexMap<i64, Vec<String>>,
+    doors: &IndexMap<(i64, i64), String>,
+    entrances: &HashSet<i64>,
+) -> Result<IndexMap<(i64, i64), String>> {
+    let mut outdoors: Vec<i64> = outside.iter().copied().collect();
+    outdoors.sort();
+    let mut entering: IndexMap<i64, Vec<(i64, i64)>> = IndexMap::new();
+    for &zone in &outdoors {
+        let Some(found) = zones.get(&zone) else {
+            continue;
+        };
+        for (slot, record) in found.2.iter().enumerate() {
+            let to = u16(record, 0)?;
+            if entrances.contains(&u16(record, 4)?)
+                && zones.contains_key(&to)
+                && !outside.contains(&to)
+                && place(table, to)? == place(table, zone)?
+                && !doors.contains_key(&(zone, slot as i64))
+            {
+                entering
+                    .entry(place(table, zone)?)
+                    .or_default()
+                    .push((zone, slot as i64));
+            }
+        }
+    }
+    let mut out: IndexMap<(i64, i64), String> = IndexMap::new();
+    for (&here, found) in &entering {
+        let facilities: HashSet<&String> = listed
+            .get(&here)
+            .map_or(&[][..], Vec::as_slice)
+            .iter()
+            .filter(|name| !name.is_empty())
+            .collect();
+        if found.len() != 1 || facilities.is_empty() {
+            continue;
+        }
+        let mut names: Vec<&String> = Vec::new();
+        for (&(zone, _slot), name) in doors {
+            if place(table, zone)? == here {
+                names.push(name);
+            }
+        }
+        let claimed: HashSet<&String> = facilities
+            .iter()
+            .copied()
+            .filter(|name| names.iter().any(|said| holds(said, name)))
+            .collect();
+        let mut held: Vec<HashSet<&String>> = Vec::new();
+        for &zone in &outdoors {
+            let Some((data, furniture, _warps)) = zones.get(&zone) else {
+                continue;
+            };
+            if place(table, zone)? != here {
+                continue;
+            }
+            let code = script_of(data)?;
+            let lines = story(row(table, zone, INFO_STORY)?)?;
+            if let Some(code) = code {
+                for (_record, line) in plates_of(&code, furniture, &lines)? {
+                    held.push(held_in(&words_of(item(&lines, line)?)?, &facilities));
+                }
+            }
+        }
+        let unclaimed: Vec<HashSet<&String>> = held
+            .iter()
+            .map(|plate| plate.difference(&claimed).copied().collect())
+            .collect();
+        let mut named: HashSet<&String> = unclaimed
+            .iter()
+            .filter(|left| left.len() == 1)
+            .flatten()
+            .copied()
+            .collect();
+        if named.is_empty() {
+            named = facilities
+                .iter()
+                .copied()
+                .filter(|name| {
+                    !claimed.contains(name) && !held.iter().any(|plate| plate.contains(name))
+                })
+                .collect();
+        }
+        if named.len() == 1 {
+            let name = named.into_iter().next().expect("one facility");
+            out.insert(found[0], name.clone());
+        }
+    }
+    Ok(out)
+}
+
 /// (zone, warp slot) -> the street a warp between two zones of one place comes out on, where
 /// the zone it goes to has marks on the line it comes out on. `marks` is the street marks'
 /// files, a zone's each, and `names` the lines of their text file.
@@ -217,8 +334,8 @@ pub fn street_names(
                 continue;
             }
             let arrivals = &zones[&to].2;
-            let back = u16(record, WARP_TO_SLOT)?;
-            if back >= arrivals.len() as i64 || !gen6_field::on_rail(&arrivals[back as usize])? {
+            let back = u16(record, crate::games::gen6::field::zonedata::WARP_TO_SLOT)?;
+            if back >= arrivals.len() as i64 || !zonedata::on_rail(&arrivals[back as usize])? {
                 continue;
             }
             let (line, a, x, width, height) = rail::placed(&arrivals[back as usize])?;
@@ -268,7 +385,7 @@ fn marks_by_zone(
     for (&zone, (_data, furniture, warps)) in zones {
         let mut lines: HashSet<i64> = HashSet::new();
         for r in furniture.iter().chain(warps) {
-            if gen6_field::on_rail(r)? {
+            if zonedata::on_rail(r)? {
                 lines.insert(rail::placed(r)?.0);
             }
         }
@@ -306,7 +423,9 @@ fn marks_of(blob: &[u8]) -> Result<Vec<(i64, i64, [i64; 4])>> {
     let count = u32(blob, 0)?;
     for i in 0..count {
         let at = 4 + i * MARK;
-        if at + MARK > blob.len() as i64 || u16(blob, at + MARK_PLACEMENT)? != gen6_field::ON_RAIL {
+        if at + MARK > blob.len() as i64
+            || u16(blob, at + MARK_PLACEMENT)? != crate::games::gen6::field::zonedata::ON_RAIL
+        {
             continue;
         }
         out.push((
@@ -340,10 +459,10 @@ fn gap(first: &[i64], second: &[i64]) -> i64 {
 /// Cells between a sign and a door at their nearest, on the grid or on one line of the
 /// streets; None where one is on the grid and the other on a street, or they are on two lines.
 fn apart(sign: &[u8], door: &[u8]) -> Result<Option<i64>> {
-    if gen6_field::on_rail(sign)? != gen6_field::on_rail(door)? {
+    if zonedata::on_rail(sign)? != zonedata::on_rail(door)? {
         return Ok(None);
     }
-    if !gen6_field::on_rail(sign)? {
+    if !zonedata::on_rail(sign)? {
         return Ok(nearest(&grid_cells(sign, true)?, &grid_cells(door, false)?));
     }
     let (on, a, x, width, height) = rail::placed(sign)?;
@@ -365,8 +484,8 @@ fn grid_cells(record: &[u8], furniture: bool) -> Result<Vec<Cell>> {
         )
     } else {
         (
-            gen6_field::from_world(s16(record, 8)?),
-            gen6_field::from_world(s16(record, 12)?),
+            crate::games::gen6::field::zonedata::from_world(s16(record, 8)?),
+            crate::games::gen6::field::zonedata::from_world(s16(record, 12)?),
             u16(record, 14)?,
             u16(record, 16)?,
         )
@@ -424,27 +543,60 @@ fn first_page(raw: &[u8]) -> Result<Option<String>> {
 /// "Move Tutor House", "Pokémon Trainers' School". Spaces are left out of the match, since
 /// the Japanese and Korean break a name over two lines.
 fn facility(said: &str, listed: &[String]) -> Option<String> {
-    let squeezed = |name: &str| py::split(name).concat();
-    let flat = squeezed(said);
-    let held: IndexSet<&String> = listed
-        .iter()
-        .filter(|name| !name.is_empty() && flat.contains(&squeezed(name)))
-        .collect();
-    // "Pokémon Day Care" is inside "Pokémon Day Care Annex": the longer one is the plate's.
-    let held: IndexSet<&String> = held
-        .iter()
-        .copied()
-        .filter(|name| {
-            !held
-                .iter()
-                .any(|other| *name != *other && squeezed(other).contains(&squeezed(name)))
-        })
-        .collect();
+    let listed: Vec<&String> = listed.iter().collect();
+    let held = held_in(said, &listed);
     if held.len() == 1 {
         held.into_iter().next().cloned()
     } else {
         None
     }
+}
+
+/// The facilities of a town's list a plate's words hold, spaces left out of the match.
+/// (Python's `_held`.)
+fn held_in<'a>(
+    said: &str,
+    listed: impl IntoIterator<Item = &'a &'a String>,
+) -> HashSet<&'a String> {
+    let held: HashSet<&String> = listed
+        .into_iter()
+        .copied()
+        .filter(|name| !name.is_empty() && holds(said, name))
+        .collect();
+    // "Pokémon Day Care" is inside "Pokémon Day Care Annex": the longer one is the plate's.
+    held.iter()
+        .copied()
+        .filter(|name| !held.iter().any(|other| name != other && holds(other, name)))
+        .collect()
+}
+
+fn holds(said: &str, name: &str) -> bool {
+    py::split(said).concat().contains(&py::split(name).concat())
+}
+
+/// Each furniture record the zone's script shows a plate for, with the line of the story
+/// text it shows: a record that shows one line in a plate's style, and no other.
+fn plates_of<'a>(
+    code: &script::Script,
+    furniture: &'a [Vec<u8>],
+    lines: &[Vec<u8>],
+) -> Result<Vec<(&'a Vec<u8>, i64)>> {
+    let mut out = Vec::new();
+    for record in furniture {
+        let mut shown: IndexSet<i64> = IndexSet::new();
+        for (line, style) in script::sign_lines(code, u16(record, 0)?)? {
+            if style == script::PLATE {
+                shown.insert(line);
+            }
+        }
+        if shown.len() == 1 {
+            let line = shown.pop().expect("one line is shown");
+            if line < lines.len() as i64 {
+                out.push((record, line));
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// A message's first page as it is laid out, its line breaks kept.
@@ -480,21 +632,21 @@ fn words_of(raw: &[u8]) -> Result<String> {
 }
 
 fn script_of(data: &[u8]) -> Result<Option<script::Script>> {
-    let Some(zone) = gen6_field::zone_file(data)? else {
+    let Some(zone) = crate::games::gen6::field::zonedata::zone_file(data)? else {
         return Ok(None);
     };
-    if zone.offsets.len() as i64 <= gen6_field::ZONE_SCRIPT + 1 {
+    if zone.offsets.len() as i64 <= crate::games::gen6::field::zonedata::ZONE_SCRIPT + 1 {
         return Ok(None);
     }
     let (start, end) = (
-        zone.offsets[gen6_field::ZONE_SCRIPT as usize],
-        zone.offsets[gen6_field::ZONE_SCRIPT as usize + 1],
+        zone.offsets[crate::games::gen6::field::zonedata::ZONE_SCRIPT as usize],
+        zone.offsets[crate::games::gen6::field::zonedata::ZONE_SCRIPT as usize + 1],
     );
     script::read(py::slice(data, start, end))
 }
 
 fn row(table: &[u8], zone: i64, at: i64) -> Result<i64> {
-    let offset = zone * gen6_field::INFO_SIZE + at;
+    let offset = zone * crate::games::gen6::field::zonetable::INFO_SIZE + at;
     if offset + 2 <= table.len() as i64 {
         u16(table, offset)
     } else {
@@ -503,5 +655,8 @@ fn row(table: &[u8], zone: i64, at: i64) -> Result<i64> {
 }
 
 fn place(table: &[u8], zone: i64) -> Result<i64> {
-    Ok(row(table, zone, gen6_field::INFO_NAME)? & gen6_field::NAME_MASK)
+    Ok(
+        row(table, zone, crate::games::gen6::field::zonetable::INFO_NAME)?
+            & crate::games::gen6::field::zonetable::NAME_MASK,
+    )
 }

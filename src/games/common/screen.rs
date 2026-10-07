@@ -28,6 +28,7 @@ use crate::core::binary::{f32, u16, u32};
 use crate::core::memory::Memory;
 use crate::core::rtti::ClassNames;
 use crate::games::common::layout::Layouts;
+use crate::games::common::pictures::{NO_STAR, SPECIAL, STAR, stars};
 use crate::games::common::text::pages;
 use crate::games::common::{lyt, msgwin};
 use crate::py::{self, Error, Kind, PySet, Result, sorted_by_lt};
@@ -90,7 +91,7 @@ pub struct ScreenText {
     pub with_layout: bool,
     /// It came back on screen with the words it left with.
     pub returned: bool,
-    /// Its words are what the game calls what a picture draws (`gen6.textures`): a type's icon,
+    /// Its words are what the game calls what a picture draws (`gen6.rom.textures`): a type's icon,
     /// a status condition's.
     pub picture: bool,
     /// Read first in its row, wherever it is drawn in it (`after_the_name`).
@@ -103,6 +104,12 @@ pub struct ScreenText {
     /// stats and the chosen move's alike, and groups them only by the frames it draws: one round
     /// CATEGORY, POWER and ACCURACY, one round the description (spike 139).
     pub frame: i64,
+    /// Its words are what the game's text says a screen draws as a label (`GameText.labels`):
+    /// a label of what follows it however it is drawn, under `pauses`.
+    pub label: bool,
+    /// Its words are a title's or a button's, no label however they are drawn
+    /// (`GameText.plain`).
+    pub plain: bool,
 }
 
 impl ScreenText {
@@ -126,6 +133,8 @@ impl ScreenText {
             leads: false,
             scrolled: false,
             frame: 0,
+            label: false,
+            plain: false,
         }
     }
 
@@ -253,6 +262,11 @@ pub fn distinct(pieces: impl IntoIterator<Item = ScreenText>) -> Vec<ScreenText>
 /// is followed by a space: "Badges: 0", not "Badges:, 0". A value is no label of what follows
 /// it: "ITEM: Potion, Sand Attack", "Name: Raiden, ID No.: 16285".
 ///
+/// Words the game's text names a label (`ScreenText.label`) are one wherever they are drawn,
+/// touching their value or over it, and a title's or a button's (`ScreenText.plain`) never are:
+/// the DexNav's "Found Pokémon, Search Level: 64, Name: Zigzagoon" was "Found Pokémon: Search
+/// Level, 64, Name, Zigzagoon", and "Search Level5" is "Search Level 5" (spike B).
+///
 /// Python's `pauses` defaults to False.
 pub fn join(pieces: &[ScreenText], pauses: bool) -> String {
     let mut out = String::new();
@@ -266,14 +280,17 @@ pub fn join(pieces: &[ScreenText], pauses: bool) -> String {
         let mut labelled = false;
         match before {
             None => out = piece.text.clone(),
-            Some(before) if touching(before, piece) => out.push_str(&piece.text),
+            Some(before) if touching(before, piece) && !before.label => out.push_str(&piece.text),
             Some(before) if !pauses || before.text.ends_with(':') => {
                 out.push(' ');
                 out.push_str(&piece.text);
                 labelled = pauses;
             }
             Some(before) => {
-                labelled = !valued && labels(before, piece);
+                labelled = !valued
+                    && !before.plain
+                    && !piece.label
+                    && (before.label || labels(before, piece));
                 out.push_str(if labelled { ": " } else { ", " });
                 out.push_str(&piece.text);
             }
@@ -342,7 +359,7 @@ fn touching(first: &ScreenText, second: &ScreenText) -> bool {
 type Frame = (i64, f64, f64, f64, f64);
 
 /// `pictures: Callable[[int], str | None]`: what the game calls what a picture draws now, by its
-/// image (`gen6.textures`). It reads the emulator, so it can raise, and the Rust one returns a
+/// image (`gen6.rom.textures`). It reads the emulator, so it can raise, and the Rust one returns a
 /// `Result` for that.
 pub type Pictures = Rc<dyn Fn(i64) -> Result<Option<String>>>;
 
@@ -358,6 +375,10 @@ fn get(map: &IndexMap<i64, i64>, key: i64) -> Result<i64> {
 pub struct ScreenTextReader {
     level_mark: Option<String>,
     pictures: Option<Pictures>,
+    /// A label's words -> what a mark in its group says, or "" (`GameText.labels`).
+    labels: IndexMap<String, String>,
+    /// Words a screen draws as no label (`GameText.plain`).
+    plain: HashSet<String>,
     memory: Rc<dyn Memory>,
     names: Rc<ClassNames>,
     layouts: Rc<Layouts>,
@@ -410,13 +431,18 @@ impl ScreenTextReader {
             msgwin::CLASSES.iter().map(|c| c.to_string()).collect(),
             None,
             None,
+            IndexMap::new(),
+            HashSet::new(),
         )
     }
 
     /// `windows` are the game's message window classes, whose lines this leaves out.
     /// `level_mark` is the game's own words for the level mark Sun draws as a glyph
     /// (`LEVEL_GLYPH`), which are said in its place. `pictures` says what the game calls what a
-    /// picture draws now, by its image (`gen6.textures`), or None.
+    /// picture draws now, by its image (`gen6.rom.textures`), or None. `labels` are the words the
+    /// game's text draws as labels, each with what a mark in its group says, and `plain` its
+    /// titles and buttons (`GameText.labels`, `GameText.plain`).
+    #[allow(clippy::too_many_arguments)]
     pub fn with(
         memory: Rc<dyn Memory>,
         names: Rc<ClassNames>,
@@ -424,10 +450,14 @@ impl ScreenTextReader {
         windows: Vec<String>,
         level_mark: Option<String>,
         pictures: Option<Pictures>,
+        labels: IndexMap<String, String>,
+        plain: HashSet<String>,
     ) -> Self {
         ScreenTextReader {
             level_mark,
             pictures,
+            labels,
+            plain,
             memory,
             names,
             layouts,
@@ -544,6 +574,9 @@ impl ScreenTextReader {
             found.insert(r#box, piece);
         }
         found = after_the_name(&found);
+        // After it: a group's one picture is read first in its row, and the DexNav's mark is no
+        // such picture: "First Move: egg move, Helping Hand" (spike B).
+        found = by_their_labels(&found, &self.labels);
         if let Some(level_mark) = &self.level_mark {
             found = level_marks(&found, level_mark);
         }
@@ -671,6 +704,8 @@ impl ScreenTextReader {
             root: placement.root,
             panel: placement.panel,
             parent,
+            label: self.labels.contains_key(&text),
+            plain: self.plain.contains(&text),
             ..placed
         };
         let root = self.layouts.pane(placement.root)?;
@@ -744,7 +779,7 @@ impl ScreenTextReader {
                 );
             }
         }
-        Ok(side_by_side(&out))
+        Ok(side_by_side(&counted_stars(&out)))
     }
 
     /// The window shown in the piece's layout whose rectangle holds the words' middle, or 0.
@@ -951,6 +986,128 @@ pub fn after_the_name(found: &IndexMap<i64, ScreenText>) -> IndexMap<i64, Screen
                 },
             );
         }
+    }
+    out
+}
+
+/// Each group's stars as one piece, how many are filled: the DexNav's Potential draws three,
+/// filled or not, "Potential 2 stars" (Orion, 2026-10-06; spike B). Side by side, three stars
+/// alike were one picture drawn three times.
+pub(crate) fn counted_stars(pictures: &IndexMap<i64, ScreenText>) -> IndexMap<i64, ScreenText> {
+    let star = |piece: &ScreenText| piece.text == STAR || piece.text == NO_STAR;
+    let mut groups: IndexMap<(i64, i64), Vec<&ScreenText>> = IndexMap::new();
+    for piece in pictures.values() {
+        if star(piece) {
+            groups
+                .entry((piece.root, piece.parent))
+                .or_default()
+                .push(piece);
+        }
+    }
+    let mut out: IndexMap<i64, ScreenText> = pictures
+        .iter()
+        .filter(|(_, piece)| !star(piece))
+        .map(|(&r#box, piece)| (r#box, piece.clone()))
+        .collect();
+    for group in groups.values() {
+        // `min(group, key=left)` and `max(right ...)`: the first of equals, and a NaN never
+        // smaller or larger.
+        let mut first = group[0];
+        let mut right = group[0].right;
+        for &piece in &group[1..] {
+            if piece.left < first.left {
+                first = piece;
+            }
+            if piece.right > right {
+                right = piece.right;
+            }
+        }
+        let filled = group.iter().filter(|piece| piece.text == STAR).count() as i64;
+        out.insert(
+            first.r#box,
+            ScreenText {
+                text: stars(filled),
+                right,
+                ..first.clone()
+            },
+        );
+    }
+    out
+}
+
+/// The pictures of a group whose label the game's text names, and nothing else, read straight
+/// after the label: the DexNav's Potential and its stars, "Potential 2 stars", which as built
+/// were read last of its box. And the DexNav's red mark as what it marks, by its group's label,
+/// read straight after the group's value: "First Move Helping Hand egg move" (spike B); a mark
+/// in a group whose label has no word for it is left unsaid.
+///
+/// A piece moved is put just after the one it follows in the order pieces are read, apart from
+/// it on its row: a pane's address is a multiple of four, so the next few are no pane's.
+pub(crate) fn by_their_labels(
+    found: &IndexMap<i64, ScreenText>,
+    labels: &IndexMap<String, String>,
+) -> IndexMap<i64, ScreenText> {
+    let mut out = found.clone();
+    for (&r#box, picture) in found {
+        if !picture.picture {
+            continue;
+        }
+        let group: Vec<&ScreenText> = found
+            .iter()
+            .filter(|&(&other, piece)| {
+                piece.parent == picture.parent && piece.root == picture.root && other != r#box
+            })
+            .map(|(_, piece)| piece)
+            .collect();
+        let label = group.iter().copied().find(|piece| piece.label);
+        let (after, moved): (&ScreenText, ScreenText);
+        // A picture's alone: "!" is a key of Sun's name entry keyboard too.
+        if picture.text == SPECIAL {
+            out.shift_remove(&r#box);
+            let mut values: Vec<&ScreenText> = group
+                .iter()
+                .copied()
+                .filter(|piece| !piece.label && !piece.picture)
+                .collect();
+            values.sort_by_key(|piece| piece.r#box);
+            let word = label
+                .and_then(|label| labels.get(&label.text))
+                .filter(|word| !word.is_empty());
+            let (Some(word), Some(&last)) = (word, values.last()) else {
+                continue;
+            };
+            after = last;
+            moved = ScreenText {
+                text: word.clone(),
+                ..picture.clone()
+            };
+        } else if let Some(label) = label
+            && group.iter().all(|piece| piece.label || piece.picture)
+        {
+            // A label its pictures alone are the value of: the Pokédex entry's group of Name
+            // holds Name's value and the type icon, "Name Fire Torchic" once moved (movie7).
+            out.shift_remove(&r#box);
+            after = label;
+            moved = picture.clone();
+        } else {
+            continue;
+        }
+        let mut at = after.r#box + 1;
+        while out.contains_key(&at) {
+            at += 1;
+        }
+        out.insert(
+            at,
+            ScreenText {
+                r#box: at,
+                row: after.row,
+                left: after.right + 2.0 * after.glyph,
+                right: after.right + 3.0 * after.glyph,
+                glyph: after.glyph,
+                leads: false,
+                ..moved
+            },
+        );
     }
     out
 }

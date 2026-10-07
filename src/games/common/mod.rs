@@ -22,7 +22,7 @@
 
 pub mod announce;
 pub mod battle;
-pub mod cursor;
+pub mod cursors;
 pub mod dialogue;
 pub mod field;
 pub mod garc;
@@ -30,10 +30,10 @@ pub mod layout;
 pub mod layout_file;
 pub mod lyt;
 pub mod msgwin;
-pub mod navigate;
 pub mod pictures;
 pub mod pokemon;
 pub mod screen;
+pub mod screen_announce;
 pub mod session;
 pub mod slots;
 pub mod strbuf;

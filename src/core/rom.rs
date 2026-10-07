@@ -234,13 +234,19 @@ pub fn azahar_roms(config: &str) -> Vec<PathBuf> {
     out
 }
 
+/// `lz11(blob)`: the whole of it.
+pub fn lz11(blob: &[u8]) -> Result<Vec<u8>> {
+    lz11_limit(blob, None)
+}
+
 /// Decompress Nintendo's LZ11, written from the format as it is documented. A zone's data
-/// file is kept in the ROM this way (spike 86).
+/// file is kept in the ROM this way (spike 86). With `limit`, no more than its first `limit`
+/// bytes: a field model names its Pokémon in its first 12 KB of up to 218 (spike 193).
 ///
 /// 0x11, then the size in 24 bits, or in the 32 after them when those are zero. Then a flag byte
 /// before every eight blocks, high bit first: a clear bit is one literal byte, a set bit a
 /// reference back into what is already out, whose first nibble says how wide its length is.
-pub fn lz11(blob: &[u8]) -> Result<Vec<u8>> {
+pub fn lz11_limit(blob: &[u8], limit: Option<i64>) -> Result<Vec<u8>> {
     if blob.is_empty() || blob[0] as i64 != LZ11 {
         return Err(Error::new(Kind::RomError, "not LZ11"));
     }
@@ -249,6 +255,9 @@ pub fn lz11(blob: &[u8]) -> Result<Vec<u8>> {
     if size == 0 {
         size = binary::u32(blob, 4)?;
         at = 8;
+    }
+    if let Some(limit) = limit {
+        size = size.min(limit);
     }
     let mut out = lz11_blocks(blob, size, &mut at).map_err(|error| {
         if error.is(Kind::IndexError) {

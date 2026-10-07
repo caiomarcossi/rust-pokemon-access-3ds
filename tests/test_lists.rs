@@ -6,7 +6,7 @@ use std::rc::Rc;
 use super::fake_memory::{CODE, FakeClasses, FakeMemory};
 use crate::core::rtti::ClassNames;
 use crate::games::common::announce::Focus;
-use crate::games::gen6::lists::{
+use crate::games::gen6::screens::lists::{
     CONTROLLER_DRAWER, DRAWER_CONTROLLER, DRAWER_ITEM_STATE, DRAWER_ITEM_STRIDE, DRAWER_WINDOW,
     ITEM_LABEL, ITEM_RECORD, ListReader, WINDOW_CURSOR, WINDOW_HEIGHT, WINDOW_ITEMS, WINDOW_WIDTH,
 };

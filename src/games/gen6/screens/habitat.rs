@@ -30,7 +30,7 @@ use crate::games::common::layout::Layouts;
 use crate::games::common::layout_file::{LayoutFile, LayoutFiles};
 use crate::games::common::lyt;
 use crate::games::common::screen::ScreenText;
-use crate::games::gen6::textures;
+use crate::games::gen6::rom::textures;
 use crate::py::{self, Error, Log, Result};
 
 /// What the map draws over a place the Pokémon lives in: a touch area's own picture, two of them

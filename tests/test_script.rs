@@ -2,7 +2,7 @@
 
 use indexmap::IndexMap;
 
-use crate::games::gen6::script;
+use crate::games::gen6::rom::script;
 
 /// A zone's script as the game compiles one: the entry point switches on a sign's number to
 /// a case calling a function of the sign's own, which shows each of its messages, (line,

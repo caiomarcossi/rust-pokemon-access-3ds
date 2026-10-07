@@ -11,8 +11,8 @@ use crate::core::memory::Memory;
 use crate::core::rom::Rom;
 use crate::games::common::garc::{garc_files, garc_variants};
 use crate::games::common::{layout_file, lyt};
-use crate::games::gen6::archives::GameText;
-use crate::games::gen6::textures;
+use crate::games::gen6::rom::archives::GameText;
+use crate::games::gen6::rom::textures;
 use crate::py::Result;
 
 const TITLE: i64 = 0x000400000011C400;

@@ -13,8 +13,8 @@ use crate::core::rtti::ClassNames;
 use crate::games::common::battle::{GAUGE_RECORD, MAX_ASKS, REASK, RECORD_PARAM};
 use crate::games::common::screen::ScreenText;
 use crate::games::common::{lyt, pokemon, strbuf};
-use crate::games::gen6::battle as hp;
-use crate::games::gen6::battle::{BattleReader, Battlers, Gauges};
+use crate::games::gen6::screens::battle as hp;
+use crate::games::gen6::screens::battle::{BattleReader, Battlers, Gauges};
 
 const CODE: (i64, i64) = (0x00100000, 0x01000000);
 /// The HP box's layout root, as battles.ctm built it.

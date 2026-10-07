@@ -9,13 +9,16 @@ use super::fake_memory::{FakeClasses, FakeMemory};
 use super::fake_speech::Recorder;
 use crate::core::rtti::ClassNames;
 use crate::core::speech::Speech;
-use crate::games::common::field::{Field, Ground, LANDMARKS, MIRAGE, POKEMON, ROUTES, TOWNS};
-use crate::games::common::navigate::{
-    CATEGORY_NEXT, EAST as EAST_KEY, FieldSource, ITEM_READ, MODE_TOGGLE, Navigator, Options,
-    PATHFIND, SOUTH as SOUTH_KEY,
+use crate::games::common::field::ground::Ground;
+use crate::games::common::field::guide::FieldSource;
+use crate::games::common::field::keys::{
+    CATEGORY_NEXT, EAST as EAST_KEY, ITEM_READ, MODE_TOGGLE, PATHFIND, SOUTH as SOUTH_KEY,
 };
+use crate::games::common::field::navigate::{Navigator, Options};
+use crate::games::common::field::things::{Field, POKEMON};
 use crate::games::gen6::apps::LOADED_CODE;
-use crate::games::gen6::sky;
+use crate::games::oras::sky;
+use crate::games::oras::sky::{LANDMARKS, MIRAGE, ROUTES, TOWNS};
 use crate::py::Result;
 
 const WHITE: i64 = 0xFFFFFFFF;
@@ -359,7 +362,8 @@ fn test_the_flight_is_read_through_the_skys_process_but_not_before_its_camera_is
     ));
 }
 
-/// Stands in for `sky.SkySource` with the player soaring as `flight` says.
+/// Stands in for the profile's source of what the keys walk, with the player soaring as
+/// `flight` says.
 struct Sky {
     flight: sky::Flight,
 }
@@ -401,7 +405,13 @@ fn test_the_keys_walk_the_skys_places_and_p_says_the_turn() {
         }),
         Rc::new(Speech::plain(backend.clone())),
         Rc::new(|_line: &str| {}),
-        Options::default(),
+        Options {
+            categories: sky::SKY
+                .iter()
+                .map(|category| category.to_string())
+                .collect(),
+            ..Options::default()
+        },
     );
     nav.press(CATEGORY_NEXT).unwrap();
     nav.press(CATEGORY_NEXT).unwrap();
@@ -434,7 +444,13 @@ fn test_direction_mode_looks_round_the_player_and_says_so_in_their_frame() {
         }),
         Rc::new(Speech::plain(backend.clone())),
         Rc::new(|_line: &str| {}),
-        Options::default(),
+        Options {
+            categories: sky::SKY
+                .iter()
+                .map(|category| category.to_string())
+                .collect(),
+            ..Options::default()
+        },
     );
     nav.press(MODE_TOGGLE).unwrap();
     nav.press(EAST_KEY).unwrap();

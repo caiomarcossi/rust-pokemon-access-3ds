@@ -5,7 +5,8 @@
 //! mark, is said as the Unicode sign it draws, which the screen reader names. Every such name is
 //! here, so a screen's picture is said the same way wherever a reader meets it.
 //!
-//! **English only, for now** (Orion, 2026-09-29). A texture's name is an English word whatever the
+//! **English only, for now** (Orion, 2026-09-29; on 2026-10-06 he was "increasingly convinced we
+//! need to start making per-language tables"). A texture's name is an English word whatever the
 //! ROM's language, and "empty", "on" and "off" are pa3ds's own, so a player in French hears "fight"
 //! and "female" as written here. A table per language, in code or in a data file beside the names
 //! (`pa3ds.core.names`), is where they would go when someone asks; the signs need none.
@@ -36,7 +37,10 @@ pub const BUTTON_PREFIX: &str = "btn";
 /// items used (Orion, 2026-10-02, movie21); the PC Box's three modes, `mode01` to `mode03`, are its
 /// red tab (a Poké Ball), its blue (two balls and an arrow both ways) and its green (a grid and an
 /// arrow), which as Gen 6's PC is known pick a Pokémon up as usual, move one with a press, and
-/// select a group (Orion, 2026-10-02, movie22).
+/// select a group (Orion, 2026-10-02, movie22). The DexNav's crown for an area's Pokémon caught,
+/// `complete0` to `complete3`, is each by its colour, decoded from the ROM: brown, grey, yellow and
+/// a paler grey, bronze to platinum; tapped, it says "Good job! You've caught them all!" (Orion,
+/// movie28: the gold for Route 101, all of whose Pokémon are in the grass).
 pub fn own_words() -> &'static IndexMap<&'static str, &'static str> {
     static OWN_WORDS: OnceLock<IndexMap<&'static str, &'static str>> = OnceLock::new();
     OWN_WORDS.get_or_init(|| {
@@ -47,6 +51,10 @@ pub fn own_words() -> &'static IndexMap<&'static str, &'static str> {
             ("mode01", "normal mode"),
             ("mode02", "swap mode"),
             ("mode03", "multi-select mode"),
+            ("complete0", "bronze crown"),
+            ("complete1", "silver crown"),
+            ("complete2", "gold crown"),
+            ("complete3", "platinum crown"),
         ])
     })
 }
@@ -84,6 +92,40 @@ pub fn marks() -> &'static IndexMap<&'static str, &'static str> {
 pub const ON: &str = "on";
 /// A mark set or not: the game says so only by drawing it solid.
 pub const OFF: &str = "off";
+
+pub const STAR: &str = "★";
+pub const NO_STAR: &str = "☆";
+pub const SPECIAL: &str = "!";
+/// What a picture shows, where the DexNav draws it in place of words: a star of Potential filled
+/// or not, three in a row, and the red mark beside what is better than usual, its level, its first
+/// move, its ability (spike B). Signs for the screen text reader to say in words of its own
+/// (`stars`, the `SPECIAL` marks), never said as signs.
+pub const DRAWN: [(&str, &str); 3] = [("star01", STAR), ("star02", NO_STAR), ("sp_mark", SPECIAL)];
+pub const HIGHER_LEVEL: &str = "higher level";
+pub const EGG_MOVE: &str = "egg move";
+/// What the DexNav's mark says beside a level above the area's, a first move that is an egg move,
+/// and the hidden ability, as the guides read it (docs/plans/dexnav.md); the game says none of it.
+pub const HIDDEN_ABILITY: &str = "hidden ability";
+/// Said after a Pokémon the DexNav shows in colour, caught, where the rest are its silhouettes:
+/// only the caught are said so (Orion, 2026-10-06).
+pub const CAUGHT: &str = "caught";
+
+/// `DRAWN.get(texture)`.
+pub fn drawn(texture: &str) -> Option<&'static str> {
+    DRAWN
+        .iter()
+        .find(|(held, _)| *held == texture)
+        .map(|(_, sign)| *sign)
+}
+
+/// Potential's stars as words: "2 stars", "1 star", "0 stars".
+pub fn stars(filled: i64) -> String {
+    if filled == 1 {
+        format!("{filled} star")
+    } else {
+        format!("{filled} stars")
+    }
+}
 
 /// A texture's name as words: `fight_button.bclim` is "fight".
 ///

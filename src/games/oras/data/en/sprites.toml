@@ -15,7 +15,6 @@
 "0x13e" = "Professor Birch"           # opening.ctm: "Halloo! You over there! Please! Help me out!"
 "0xb3" = "Professor Birch"            # HAKASE_RS: Birch on Route 101 in movie3 (spike 52)
 "0x12a" = "Nurse"                     # wally.ctm: "Welcome to the Pokémon Center", in two Centers on two saves
-"0x103f" = "Machoke"                  # both openings: "Graoh, graoh, graoh..." with the movers
 "0x11b" = "Mr. Briney"                # HAGI_RS: Dewford, Routes 104 and 109, the S.S. Tidal
 "0x135" = "Captain Stern"             # KUSUNOKI_RS: Slateport and Lilycove
 "0x136" = "Professor Cozmo"           # SORAISI_RS: Fallarbor, Meteor Falls, Mossdeep
@@ -24,12 +23,16 @@
 "0xd7" = "Looker"                     # HANDSOME_RS: the Battle Resort
 "0xc1" = "Tate"                       # LEADER7_M_RS: Mossdeep; the ROM names only "Liza & Tate"
 "0xc2" = "Liza"                       # LEADER7_F_RS: Mossdeep
+"0xd2" = "Lisia"                      # CONTEST_RS: beside Ali in every Contest Hall, "That performance by Lisia and Ali just now was amazing!" (story 39:7)
+"0x134" = "Mr. Bonding"               # KIZUNA_RS: Mauville, "I'm Mr. Bonding, the expert on O-Powers!" (story 570:43)
+"0x139" = "Game Director"             # DIRECTOR_RS: Lilycove, "I'm the Game Director." (story 530:0)
+"0x1030" = "Wailmer"                  # EV_POKE35: Lilycove's three; its model names Nidoran♂ too, and draws Wailmer's body
 
 # Shared looks the game never names, called what the ROM's own id for the sprite says they are
 # (file 94, `spikes/85_rom_names.py sprite`), since everyone drawn as one hears the same word:
 # WOMAN_RS is Mrs. Birch in Littleroot and a woman in 27 other zones. A `_ROOM_RS` sprite is
-# the same look indoors. Every one here stands on ORAS's maps; those whose id says too little
-# (ELDER_RS, JUNIOR_RS, ZAZAKO_RS, CONTEST_RS, KIZUNA_RS, DIRECTOR_RS, STOPPER3) are left out.
+# the same look indoors. Every one here stands on ORAS's maps; STOPPER3, an invisible blocker
+# outside Mauville Gym, is left out.
 "0x119" = "Young man"                 # BROTHER_RS: Littleroot and Route 101
 "0x11c" = "Little boy"                # CHILDBOY_RS
 "0x150" = "Little boy"                # CHILDBOY_ROOM_RS
@@ -75,6 +78,8 @@
 "0x141" = "Boy playing a game"        # GAMEBOY_RS
 "0x108" = "Reporter"                  # REPORTER_RS
 "0x109" = "Cameraman"                 # CAMERAMAN_RS
+"0x10e" = "Older teammate"            # ELDER_RS: the elder of each pair of Teammates, Anna & Meg and three more (spike 193)
+"0x10f" = "Younger teammate"          # JUNIOR_RS: and the younger
 
 # Trainers' looks the ROM leaves unnamed, one trainer or none of a class standing as each, or a
 # pair class beside the class (spike 90); called by the class their id and their trainers share.
@@ -86,17 +91,13 @@
 "0x147" = "Hiker"                     # MOUNTMAN_ROOM_RS
 "0x148" = "Aroma Lady"                # AROMA_ROOM_RS
 "0xe5" = "Swimmer ♂"                  # SWIMMER_M_RS
-"0x159" = "Swimmer ♀"                 # SWIMMER_W2_RS
 "0x15c" = "Tuber"                     # UKIWA_W2_RS
 "0xea" = "Pokémon Breeder"            # BREADER_M_RS
 "0xeb" = "Pokémon Breeder"            # BREADER_W_RS
-"0xec" = "Black Belt"                 # FIGHTER_M_RS
 "0xef" = "Fisherman"                  # FISHING_RS
 "0x101" = "Triathlete"                # TRIRUN_M_RS
-"0x105" = "Ace Trainer"               # ELITE_F_RS
 "0x149" = "Ace Trainer"               # ELITE_M_ROOM_RS
 "0x14a" = "Ace Trainer"               # ELITE_F_ROOM_RS
-"0x106" = "Expert"                    # VETERAN_M_RS
 "0x14b" = "Expert"                    # VETERAN_M_ROOM_RS
 "0x14c" = "Expert"                    # VETERAN_F_ROOM_RS
 "0x14d" = "Street Thug"               # SCARY_M_ROOM_RS
@@ -131,6 +132,7 @@
 "0xca" = "Matt"                       # AQUAKANBU_M_RS
 "0xcb" = "Shelly"                     # AQUAKANBU_F_RS
 "0xd3" = "Aarune"                     # HIMITU_RS
+"0xd4" = "Zinnia"                     # ZAZAKO_RS: Lorekeeper Zinnia, outside Sky Pillar (spike 193)
 "0x13a" = "May"                       # SUPPORT_F_RS, drawn into work object 0x7a (spike 89)
 "0x13b" = "Brendan"                   # SUPPORT_M_RS, likewise
 "0x13c" = "May"                       # SUPPORT_F_BIKE_RS, by the ROM's own id; no replay yet
@@ -180,6 +182,11 @@
 "0x102" = "Triathlete"                # TRIBIKE_M_RS
 "0x103" = "Triathlete"                # TRISWIM_M_RS
 "0x104" = "Ace Trainer"               # ELITE_M_RS
+"0x159" = "Swimmer ♀"                 # SWIMMER_W2_RS
+"0xec" = "Black Belt"                 # FIGHTER_M_RS
+"0x105" = "Ace Trainer"               # ELITE_F_RS
+"0x106" = "Expert"                    # VETERAN_M_RS
+"0x110" = "Fairy Tale Girl"           # FAIRYTALE_RS, beside two pairs of Mysterious Sisters (spike 193)
 "0x107" = "Expert"                    # VETERAN_F_RS
 "0x111" = "Ace Trainer"               # NAMINORI_M_RS
 "0x112" = "Ace Trainer"               # NAMINORI_F_RS
@@ -191,3 +198,41 @@
 "0x158" = "Fisherman"                 # FISHING2_RS
 "0x15a" = "Swimmer ♂"                 # SWIMMER_M2_RS
 "0x15b" = "Tuber"                     # UKIWA_M2_RS
+
+# The Pokémon on the map, by the Pokémon each one's model draws (spike 193); with the ROM, its
+# own species names.
+"0x1006" = "Rhyhorn"                  # RIDE_POKE01
+"0x1009" = "Lucario"                  # EV_POKE07
+"0x100f" = "Rhyhorn"                  # RIDE_POKE05
+"0x1013" = "Marill"                   # EV_POKE15
+"0x1014" = "Rhyhorn"                  # RIDE_POKE01_EX
+"0x101b" = "Groudon"                  # EV_POKE20
+"0x101d" = "Kyogre"                   # EV_POKE21
+"0x101f" = "Rayquaza"                 # EV_POKE22
+"0x1021" = "Latias"                   # EV_POKE23
+"0x1022" = "Latios"                   # EV_POKE24
+"0x1023" = "Latias"                   # RIDE_POKE13
+"0x1024" = "Latios"                   # RIDE_POKE14
+"0x1025" = "Machoke"                  # EV_POKE25
+"0x1026" = "Wingull"                  # EV_POKE26
+"0x1029" = "Kecleon"                  # EV_POKE28
+"0x102a" = "Regirock"                 # EV_POKE29
+"0x102b" = "Regice"                   # EV_POKE30
+"0x102c" = "Registeel"                # EV_POKE31
+"0x102d" = "Poochyena"                # EV_POKE32
+"0x102e" = "Skitty"                   # EV_POKE33
+"0x102f" = "Zigzagoon"                # EV_POKE34
+"0x1031" = "Plusle"                   # EV_POKE36
+"0x1032" = "Minun"                    # EV_POKE37
+"0x1033" = "Meditite"                 # EV_POKE38
+"0x1034" = "Shroomish"                # EV_POKE39
+"0x1035" = "Slakoth"                  # EV_POKE40
+"0x1036" = "Roselia"                  # EV_POKE41
+"0x1037" = "Taillow"                  # EV_POKE42
+"0x1039" = "Whismur"                  # EV_POKE44
+"0x103a" = "Electrike"                # EV_POKE45
+"0x103b" = "Altaria"                  # EV_POKE46
+"0x103c" = "Poochyena"                # EV_POKE47
+"0x103d" = "Groudon"                  # EV_POKE48
+"0x103e" = "Kyogre"                   # EV_POKE49
+"0x103f" = "Machoke"                  # EV_POKE50

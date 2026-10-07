@@ -1,0 +1,186 @@
+//! The navigation keys: the modes, the actions, and which key does which in each mode, as the
+//! keys file says (`<pa3ds>\user\keys.toml`, ADR-0022).
+
+use std::collections::HashSet;
+use std::sync::LazyLock;
+
+use indexmap::IndexMap;
+
+use crate::games::common::touch::{ROW_NEXT, ROW_PREVIOUS, TAP};
+
+pub const LIST: &str = "list";
+
+pub const DIRECTION: &str = "direction";
+
+/// Touch mode: the navigation keys walk the bottom screen's touch targets, and one taps the one
+/// said (`games.common.touch`, docs/plans/pokenav-and-touch.md).
+pub const TOUCH: &str = "touch";
+
+/// What the mode key steps through, in turn (Orion, 2026-10-02: one key for all three).
+pub const MODES: [&str; 3] = [LIST, DIRECTION, TOUCH];
+
+pub const CATEGORY_PREVIOUS: &str = "category previous";
+
+pub const CATEGORY_NEXT: &str = "category next";
+
+pub const ITEM_PREVIOUS: &str = "item previous";
+
+pub const ITEM_NEXT: &str = "item next";
+
+pub const ITEM_READ: &str = "item read";
+
+pub const NORTH: &str = "north";
+
+pub const EAST: &str = "east";
+
+pub const SOUTH: &str = "south";
+
+pub const WEST: &str = "west";
+
+pub const DIRECTIONS: [&str; 4] = [NORTH, EAST, SOUTH, WEST];
+
+pub const MODE_TOGGLE: &str = "mode";
+
+/// Name whatever is chosen. One key for both name spaces, because which one a thing belongs to is
+/// the thing's business and not the player's (`Interactable.naming`).
+pub const RENAME: &str = "rename";
+
+/// Name whoever last spoke. pa3ds's own, not Pokemon Access's, because pa3ds knows who is
+/// speaking and Pokemon Access does not — and because the moment a player knows who somebody is
+/// is the moment they have just heard them, not the moment they find them in a list.
+pub const RENAME_SPEAKER: &str = "rename speaker";
+
+/// Find the way on foot to whatever is chosen, say it, and guide the player along it.
+pub const PATHFIND: &str = "pathfind";
+
+/// The same, over water and through bushes, rocks and boulders too, each leg on the water or
+/// through one said with the move that crosses it: "Surf 12 south", "Cut 1 east", "Rock Smash 1
+/// east", "Strength 2 west". P alone keeps to land and goes round a bush, a rock or a boulder,
+/// since a way across water is no way to a player who cannot surf yet (the user, 2026-09-28).
+/// Up a sandy slope too, said with the bike that rides up it, "Mach Bike 6 north", where the
+/// player is not riding it already; P goes up one only on the bike (the user, 2026-10-03). Up a
+/// bumpy slope as well, the Acro Bike's, said with it, "Acro Bike 2 north", by P too on the bike,
+/// since the player's model is the same on either (spike 159). Up a waterfall, said with the move,
+/// "Waterfall 2 north", and down one; P keeps off it either way (the user, 2026-10-05, spike 170).
+pub const PATHFIND_HM: &str = "pathfind with HMs";
+
+pub const OUR_SIDE: &str = "our side";
+
+/// Say a side of the battle again, as it was last said: "Blaze♂ L10 20/30", "Zigzagoon♂ L2 50%".
+/// For when the line was missed, and while the HP box is off the screen, in the move list or the
+/// Bag (ADR-0015). "no battle" outside one.
+pub const ENEMY_SIDE: &str = "enemy side";
+
+/// What the keys file says above an action's key, where its name does not say it all. The
+/// horde's order is Orion's, heard by fainting the bottom left Zigzagoon and the fifth going to 0%
+/// (movie16, 2026-10-01): the enemy side is said by battle position (`gen6.screens.battle`).
+pub const EXPLAINED: [(&str, &str); 3] = [
+    (
+        ENEMY_SIDE,
+        "The enemy's Pokémon are said in the order the battle places them. In a horde of five that \
+         is round a half circle from the bottom right: bottom right, top right, top middle, top \
+         left, bottom left.",
+    ),
+    (
+        MODE_TOGGLE,
+        "Steps through list mode, direction mode and touch mode, which walks the buttons of the \
+         bottom screen, the PokéNav's among them, and taps the one said.",
+    ),
+    (
+        TAP,
+        "Touches the button touch mode last said, and nothing else.",
+    ),
+];
+
+/// Mode -> key -> action. Keys are single characters, as `pa3ds.core.keys.key_name` gives them.
+pub type Bindings = IndexMap<String, IndexMap<String, String>>;
+
+fn keys(pairs: &[(&str, &str)]) -> IndexMap<String, String> {
+    pairs
+        .iter()
+        .map(|(key, action)| (key.to_string(), action.to_string()))
+        .collect()
+}
+
+/// The user's choice of keys: I, O, J, L and K for the list (2026-09-21); O, semicolon, L and K
+/// laid out as a compass for the directions; the brackets for the category, and the apostrophe for
+/// the mode, beside the semicolon that is already east; P for the way there in both (2026-09-24),
+/// Pokemon Access's mnemonic. The mode was M until 2026-09-22, when `pa3ds.core.keyfile` reported
+/// what M costs: it is the emulator's Start button, and a key pa3ds takes is a button the player
+/// has lost.
+///
+/// Shift and K renames what K reads, as Pokemon Access does it, and shift and J renames whoever
+/// last spoke. Shift and P is the way there with HMs (2026-09-28). R says the player's side of a
+/// battle again and shift and R the enemy's (2026-09-29). The apostrophe steps on to touch mode
+/// after direction mode (Orion, 2026-10-02; it was shift and T for a day), where J and L walk the
+/// bottom screen's buttons, I and O a row at a time, K says the one chosen again and Enter taps it.
+/// All of these are the player's to change in `<pa3ds>\user\keys.toml`.
+pub static DEFAULT_BINDINGS: LazyLock<Bindings> = LazyLock::new(|| {
+    IndexMap::from([
+        (
+            LIST.to_string(),
+            keys(&[
+                ("i", CATEGORY_PREVIOUS),
+                ("o", CATEGORY_NEXT),
+                ("j", ITEM_PREVIOUS),
+                ("l", ITEM_NEXT),
+                ("k", ITEM_READ),
+                ("[", CATEGORY_PREVIOUS),
+                ("]", CATEGORY_NEXT),
+                ("'", MODE_TOGGLE),
+                ("shift+k", RENAME),
+                ("shift+j", RENAME_SPEAKER),
+                ("p", PATHFIND),
+                ("shift+p", PATHFIND_HM),
+                ("r", OUR_SIDE),
+                ("shift+r", ENEMY_SIDE),
+            ]),
+        ),
+        (
+            DIRECTION.to_string(),
+            keys(&[
+                ("o", NORTH),
+                (";", EAST),
+                ("l", SOUTH),
+                ("k", WEST),
+                ("[", CATEGORY_PREVIOUS),
+                ("]", CATEGORY_NEXT),
+                ("'", MODE_TOGGLE),
+                ("shift+k", RENAME),
+                ("shift+j", RENAME_SPEAKER),
+                ("p", PATHFIND),
+                ("shift+p", PATHFIND_HM),
+                ("r", OUR_SIDE),
+                ("shift+r", ENEMY_SIDE),
+            ]),
+        ),
+        (
+            TOUCH.to_string(),
+            keys(&[
+                ("j", ITEM_PREVIOUS),
+                ("l", ITEM_NEXT),
+                ("i", ROW_PREVIOUS),
+                ("o", ROW_NEXT),
+                ("k", ITEM_READ),
+                ("enter", TAP),
+                ("[", CATEGORY_PREVIOUS),
+                ("]", CATEGORY_NEXT),
+                ("'", MODE_TOGGLE),
+                ("shift+k", RENAME),
+                ("shift+j", RENAME_SPEAKER),
+                ("p", PATHFIND),
+                ("shift+p", PATHFIND_HM),
+                ("r", OUR_SIDE),
+                ("shift+r", ENEMY_SIDE),
+            ]),
+        ),
+    ])
+});
+
+/// Every key bound in any mode: what the hook keeps from the emulator.
+pub fn bound_keys(bindings: &Bindings) -> HashSet<String> {
+    bindings
+        .values()
+        .flat_map(|keys| keys.keys().cloned())
+        .collect()
+}

@@ -16,7 +16,7 @@ use crate::core::memory::{self, Cache, ExactCache, Memory, RpcMemory};
 use crate::core::rpc::{MAX_READ, Process, Rpc, UdpRpc};
 use crate::core::rtti::ClassNames;
 use crate::core::speech::Speech;
-use crate::games::common::field::Field;
+use crate::games::common::field::things::Field;
 use crate::games::common::session::Profile;
 use crate::games::sm::camera;
 use crate::games::sm::field::{self, SunFieldReader, Walls};

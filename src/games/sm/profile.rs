@@ -18,6 +18,8 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::rc::Rc;
 
+use indexmap::IndexMap;
+
 use crate::core::config::{Navigation, Ui};
 use crate::core::discovery::{Discovery, Found};
 use crate::core::heaps::ReadEach;
@@ -25,14 +27,18 @@ use crate::core::memory::{self, Cache, Memory};
 use crate::core::names::Names;
 use crate::core::rtti::{ClassNames, demangle};
 use crate::core::speech::{Category, Speech};
-use crate::games::common::announce::{Announcements, ScreenAnnouncer};
-use crate::games::common::cursor::CursorReader;
+use crate::games::common::announce::Announcements;
+use crate::games::common::cursors::reader::CursorReader;
 use crate::games::common::dialogue::DialogueReader;
-use crate::games::common::field::{Field, Ground, Interactable, describe};
+use crate::games::common::field::ground::Ground;
+use crate::games::common::field::guide::FieldSource;
+use crate::games::common::field::keys::Bindings;
+use crate::games::common::field::navigate::{self, Navigator};
+use crate::games::common::field::things::{Field, Interactable, describe};
 use crate::games::common::layout::Layouts;
 use crate::games::common::lyt as common_lyt;
-use crate::games::common::navigate::{self, Bindings, FieldSource, Navigator};
 use crate::games::common::screen::{ScreenText, ScreenTextReader};
+use crate::games::common::screen_announce::ScreenAnnouncer;
 use crate::games::common::session::Profile;
 use crate::games::sm::apps::{self, RunningApp};
 use crate::games::sm::battle::{self, SunBattleReader};
@@ -209,6 +215,8 @@ impl SunProfile {
             text.as_ref()
                 .and_then(|text| text.line(lyt::LEVEL_WORDS.0, lyt::LEVEL_WORDS.1)),
             None,
+            IndexMap::new(),
+            HashSet::new(),
         );
         let cursors = CursorReader::with(layouts.clone(), names.clone(), None, true, None);
         let ui = ui.unwrap_or_default();

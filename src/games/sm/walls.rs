@@ -56,7 +56,7 @@ use indexmap::IndexMap;
 use crate::core::binary::{self, u16, u32};
 use crate::core::pathfind::Box;
 use crate::core::rom::Rom;
-use crate::games::common::field::{BLOCKED, CHUNK, Chunk};
+use crate::games::common::field::chunk::{BLOCKED, CHUNK, Chunk};
 use crate::games::common::garc::garc_spans;
 use crate::games::sm::camera::{turned, turned_box, unturned};
 use crate::games::sm::zones::{AREA_FILES, EVENTS, pack, pack_with, unpacked};

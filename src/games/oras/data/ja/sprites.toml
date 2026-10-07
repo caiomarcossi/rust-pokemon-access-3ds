@@ -23,10 +23,14 @@
 "0xd7" = "ハンサム"                       # Looker: the "Looker Ticket" (system 114:712)
 "0xc1" = "フウ"                         # Tate: "Liza and Tate" (system 123:107), the boy named first but in English
 "0xc2" = "ラン"                         # Liza: the same, the girl
-"0x103f" = "ゴーリキー"                    # Machoke, from the species names
+"0xd2" = "ルチア"                        # Lisia: "That performance by Lisia and Ali just now was amazing!" (story 39:7)
+"0x134" = "キズナおやじ"                    # Mr. Bonding: "I'm Mr. Bonding, the expert on O-Powers!" (story 570:43)
+"0x139" = "ゲームディレクター"                 # Game Director: "I'm the Game Director." (story 530:0)
+"0x1030" = "ホエルコ"                     # Wailmer: its model names Nidoran♂ too, and draws Wailmer's body
 
-# The game's own words for the story's people and for kinds of trainer, as `archives`
-# reads them (findings, spike 90): spikes/91_names_in_languages.py table ja.
+# The game's own words for the story's people, for kinds of trainer and for the Pokémon on
+# the map, as `archives` reads them (findings, spikes 90 and 193):
+# spikes/91_names_in_languages.py table ja.
 "0xb4" = "ミツル"
 "0xb5" = "ミツル"
 "0xb6" = "ダイゴ"
@@ -48,6 +52,7 @@
 "0xca" = "ウシオ"
 "0xcb" = "イズミ"
 "0xd3" = "ギリー"
+"0xd4" = "ヒガナ"
 "0x13a" = "ハルカ"
 "0x13b" = "ユウキ"
 "0x13c" = "ハルカ"
@@ -75,6 +80,7 @@
 "0xe7" = "ジェントルマン"
 "0xe8" = "ふなのり"
 "0xe9" = "やまおとこ"
+"0xec" = "カラテおう"
 "0xed" = "バトルガール"
 "0xee" = "ポケモンコレクター"
 "0xf0" = "かいじゅうマニア"
@@ -97,7 +103,10 @@
 "0x102" = "トライアスリート"
 "0x103" = "トライアスリート"
 "0x104" = "エリートトレーナー"
+"0x105" = "エリートトレーナー"
+"0x106" = "たつじん"
 "0x107" = "たつじん"
+"0x110" = "メルヘンしょうじょ"
 "0x111" = "エリートトレーナー"
 "0x112" = "エリートトレーナー"
 "0x113" = "バックパッカー"
@@ -106,5 +115,41 @@
 "0x116" = "ダイバー"
 "0x117" = "あまさん"
 "0x158" = "つりびと"
+"0x159" = "ビキニのおねえさん"
 "0x15a" = "かいパンやろう"
 "0x15b" = "うきわボーイ"
+"0x1006" = "サイホーン"
+"0x1009" = "ルカリオ"
+"0x100f" = "サイホーン"
+"0x1013" = "マリル"
+"0x1014" = "サイホーン"
+"0x101b" = "グラードン"
+"0x101d" = "カイオーガ"
+"0x101f" = "レックウザ"
+"0x1021" = "ラティアス"
+"0x1022" = "ラティオス"
+"0x1023" = "ラティアス"
+"0x1024" = "ラティオス"
+"0x1025" = "ゴーリキー"
+"0x1026" = "キャモメ"
+"0x1029" = "カクレオン"
+"0x102a" = "レジロック"
+"0x102b" = "レジアイス"
+"0x102c" = "レジスチル"
+"0x102d" = "ポチエナ"
+"0x102e" = "エネコ"
+"0x102f" = "ジグザグマ"
+"0x1031" = "プラスル"
+"0x1032" = "マイナン"
+"0x1033" = "アサナン"
+"0x1034" = "キノココ"
+"0x1035" = "ナマケロ"
+"0x1036" = "ロゼリア"
+"0x1037" = "スバメ"
+"0x1039" = "ゴニョニョ"
+"0x103a" = "ラクライ"
+"0x103b" = "チルタリス"
+"0x103c" = "ポチエナ"
+"0x103d" = "グラードン"
+"0x103e" = "カイオーガ"
+"0x103f" = "ゴーリキー"
