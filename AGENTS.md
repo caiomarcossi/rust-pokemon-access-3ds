@@ -6,7 +6,7 @@ their own movies and saves. Orion is blind and cannot check your work by looking
 you cannot see the screen either: tests, snapshots, tapes and screenshots are the only shared
 evidence.
 
-**This repository is a port.** The Python pa3ds (https://github.com/KenzonYeoh/pokemon-access-3ds)
+**This repository is a port.** The Python pa3ds (https://github.com/pa3ds/pokemon-access-3ds)
 is upstream: features are found and built there first, with its spikes and movie rig, and arrive
 here as a port of the commit `port.toml` names. Each Python file has one Rust file at the same
 path (`docs/porting.md`), so an upstream change is a change to the files it maps to.
@@ -26,10 +26,10 @@ in a comment or doc here means the Python checkout's. This repository's only doc
   `sync.py status`, and a push here that brings `port.toml` level with upstream closes it.
 - **A bug found in the Python while porting** is ported as it is (below) and filed as an issue in
   the Python repository, labelled `from-port`:
-  `gh issue create --repo <owner>/pokemon-access-3ds --label from-port --title ... --body ...`,
+  `gh issue create --repo pa3ds/pokemon-access-3ds --label from-port --title ... --body ...`,
   naming the file, the upstream commit it was found at, and what goes wrong. Upstream fixes it
   there; the fix then arrives here like any other change. Search first
-  (`gh issue list --repo <owner>/pokemon-access-3ds --label from-port --state all`) so a bug is
+  (`gh issue list --repo pa3ds/pokemon-access-3ds --label from-port --state all`) so a bug is
   filed once.
 
 ## Hard constraints
@@ -105,6 +105,10 @@ The Python checkout is `PA3DS_PYTHON`, or `../pokemon-access-3ds` beside this on
 
 Conventional Commits: `type(scope): summary`, with `feat`, `fix`, `docs`, `refactor`, `test`,
 `chore`, and a scope naming the area (`battle`, `rig`, `speech`, `port`).
+
+Nothing runs the checks on push, so run them before anything reaches the default branch:
+`cargo test --lib`, `cargo clippy --all-targets` with no warnings, `cargo fmt --check` and
+`python tools/sync.py tests`.
 
 ## The README is the player's manual
 

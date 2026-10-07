@@ -242,7 +242,7 @@ were doing.
 
 ## For developers
 
-This is a port of [the Python pa3ds](https://github.com/KenzonYeoh/pokemon-access-3ds) to Rust, so
+This is a port of [the Python pa3ds](https://github.com/pa3ds/pokemon-access-3ds) to Rust, so
 that a player runs one `pa3ds.exe` with nothing to install. The Python repository is where
 features are built first; this one follows it module for module (`port.toml` names the commit it
 matches) and is checked against it line for line on recorded replays (`tools/tape/`). The
