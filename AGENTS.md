@@ -95,6 +95,12 @@ The Python checkout is `PA3DS_PYTHON`, or `../pokemon-access-3ds` beside this on
 1. `status`, then for each file listed to port by hand, read its upstream diff
    (`git -C ../pokemon-access-3ds diff <port.toml's commit>..HEAD -- <path>`) and make the same
    change to its Rust file, following `docs/porting.md`. Port the change to its tests too.
+   Go an upstream commit at a time (`git -C ../pokemon-access-3ds log --reverse <port.toml's
+   commit>..HEAD`), and commit each one, or each coherent group, on its own on a `sync/` branch:
+   twenty small commits are easier to dissect than one of 15,000 lines (Orion, 2026-10-08).
+   A rename upstream (`R` in `status`) is a `git mv` here. A file split into several shows only as
+   new files, so read the commit that split it; after the split, the new Rust files' lines add up
+   to the old file's, and `cargo check` passes before the next split begins.
 2. `mirror` for the data files; rewrite this file, `README.md` or `CLAUDE.md` by hand where
    upstream's changed in a way that applies here.
 3. `cargo test --lib`, `cargo clippy --all-targets`, `sync.py tests`.
@@ -104,7 +110,8 @@ The Python checkout is `PA3DS_PYTHON`, or `../pokemon-access-3ds` beside this on
    Every tape must say "identical to the Python runtime's". This is the proof; the tests alone
    are not. Tapes recorded on an older upstream commit are re-referenced first by replaying them
    through the new Python (`tools/tape/py.py replay`), since what the Python says has changed.
-5. `mark`, and commit: `feat(port): <what upstream did> (upstream <short sha>)`.
+5. `mark`, in a commit of its own once every tape is identical. Each port commit reads
+   `feat(port): <what upstream did> (upstream <short sha>)`.
 
 ## Commits
 

@@ -18,7 +18,8 @@ The reference ports show every rule below in use: `src/core/rpc.rs`, `src/core/m
 
 - `src/pa3ds/<path>.py` is `src/<path>.rs`; a package's `__init__.py` is its `mod.rs`;
   `tests/<name>.py` is `tests/<name>.rs`. `python tools/sync.py layout` made every file and every
-  `mod` declaration already. Do not add, remove or rename modules.
+  `mod` declaration already. Add, remove or rename a module only where upstream did, in a sync
+  (`AGENTS.md`, "Keeping up with upstream").
 - Fill in only the files you were given. If a module you depend on needs a small change (an item
   made `pub`, a missing accessor), make the smallest change and list it in your report.
 - `src/py.rs` holds what Python does differently from Rust (below). Do not edit it; ask for what
