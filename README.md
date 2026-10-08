@@ -262,8 +262,10 @@ decisions, the evidence behind them and the vocabulary are the Python repository
 cargo build --release
 ```
 
-Building needs Visual Studio 2026 (its C and C++ compiler) and CMake 4.2 or newer, since Prism is
-compiled into pa3ds; the first build takes about a minute longer for it.
+Building needs Rust's MSVC toolchain (rustup's default on Windows), Visual Studio 2022 or newer
+with its C and C++ compiler and ATL (the Build Tools are enough), and CMake 4.2 or newer on the
+path, since Prism is compiled into pa3ds; the first build takes about a minute longer for it.
+Visual Studio's own CMake is 3.31, which is too old.
 `target\release\pa3ds.exe` is the whole program. To pack it with its licences into one zip a
 player unpacks and runs:
 

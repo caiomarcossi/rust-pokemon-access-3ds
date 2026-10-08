@@ -72,8 +72,10 @@ of whoever is at the machine, over whatever they are doing. `--no-log` keeps a r
 the live logs in `user\logs\` beside pa3ds.
 
 `pa3ds.exe` needs nothing installed: Prism, which reaches the screen reader, is built into it by
-the `prismer` crate's static build. Building pa3ds therefore needs Visual Studio 2026 (its C and
-C++ compiler) and CMake 4.2 or newer on the path; the first build compiles Prism, about a minute.
+the `prismer` crate's static build. Building pa3ds therefore needs Rust's MSVC toolchain, Visual
+Studio 2022 or newer with its C and C++ compiler and ATL, and CMake 4.2 or newer on the path
+(Visual Studio's own 3.31 is too old for Prism's C23); the first build compiles Prism, about a
+minute. Without ATL, Prism's SAPI, JAWS, System Access and ZoomText backends do not compile.
 
 Change files with the Edit tool, which keeps a file's line endings. The checkout is LF
 (`.gitattributes`), and on Windows a Python script's `write_text` rewrites a whole file as CRLF.
