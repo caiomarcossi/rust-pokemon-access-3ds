@@ -3,3 +3,4 @@
 * text=auto eol=lf
 *.dll binary
 *.lib binary
+*.bat text eol=crlf

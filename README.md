@@ -271,5 +271,5 @@ player unpacks and runs:
 powershell -ExecutionPolicy Bypass -File tools\package.ps1
 ```
 
-which runs the tests, builds the release, checks it starts, and writes
+(or `tools\package.bat`, which runs the same), which runs the tests, builds the release, checks it starts, and writes
 `target\package\pa3ds-<version>-windows.zip`.
