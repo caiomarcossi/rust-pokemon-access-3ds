@@ -200,25 +200,6 @@ fn test_a_menu_opening_says_only_the_item_under_its_cursor() {
     assert_eq!(screen.say(args(&menu, vec![item], &menu)), ["BAG"]);
 }
 
-/// The Bag's sign before an item's count.
-const TIMES: &str = "\u{00d7}";
-
-#[test]
-fn test_an_item_with_no_letter_or_digit_is_empty() {
-    // The battle's Bag draws an empty slot dimmed with its sign still in it, and the cursor on
-    // it said "Times" (movie29, Orion, 2026-10-08).
-    let mut screen = Screen::new();
-    let slot = vec![piece(1, TIMES, -100.0, 17.0, MENU)];
-    assert_eq!(
-        screen.say(args(
-            &[],
-            vec![CursorItem::new(0x0C, slot.clone(), false)],
-            &slot
-        )),
-        ["empty"]
-    );
-}
-
 #[test]
 fn test_a_menu_coming_back_without_its_cursor_says_nothing() {
     // Backing out of a menu read "POKÉMON BAG wee SAVE OPTIONS" (the user, 2026-09-14).

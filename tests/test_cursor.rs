@@ -670,6 +670,19 @@ fn test_a_button_with_words_says_its_words_rather_than_its_picture() {
     assert_eq!(battle.heard_with(&[scratch]), said(&[(&["Scratch"], true)]));
 }
 
+/// The battle's Bag draws an empty slot dimmed with its times sign still in it, and the cursor
+/// on it said "Times" (movie29, Orion, 2026-10-08).
+#[test]
+fn test_a_button_whose_words_have_no_letter_or_digit_is_empty() {
+    let mut battle = Battle::new();
+    battle.r#move(-95.0, 67.0);
+    let sign = ScreenText {
+        root: COMMAND + 0x400,
+        ..ScreenText::placed(SCRATCH, "\u{d7}", false, -100.0, -92.0, 61.0, 16.0)
+    };
+    assert_eq!(battle.heard_with(&[sign]), said(&[(&["empty"], true)]));
+}
+
 /// The move list's empty fourth slot was read "waza plate 00" (battles.ctm replay).
 #[test]
 fn test_an_empty_plate_like_those_words_are_written_on_is_said_as_empty() {

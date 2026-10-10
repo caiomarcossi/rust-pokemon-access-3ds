@@ -14,8 +14,9 @@ use crate::games::common::cursors::shared::{
 };
 use crate::games::common::layout::Layouts;
 use crate::games::common::lyt;
+use crate::games::common::pictures::EMPTY;
 use crate::games::common::screen::{ScreenText, distinct, in_rows};
-use crate::py::{Error, Result};
+use crate::py::{self, Error, Result};
 
 /// The battle's cursors: a small picture alone in a layout, placed on a pane of its button.
 pub struct PictureCursors {
@@ -188,6 +189,17 @@ impl PictureCursors {
             }
         }
         let inside = distinct(in_rows(under));
+        if !inside.is_empty() && !inside.iter().any(|p| p.text.chars().any(py::is_alnum)) {
+            // Words with no letter or digit are no item: the battle's Bag draws an empty slot
+            // dimmed with its times sign still in it, and Orion heard "Times" (movie29, spike
+            // 196).
+            return Ok(vec![ScreenText {
+                top,
+                root: spot.root,
+                parent: group,
+                ..ScreenText::new(group, EMPTY, false)
+            }]);
+        }
         if !inside.is_empty() {
             return Ok(inside);
         }
