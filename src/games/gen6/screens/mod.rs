@@ -12,4 +12,5 @@ pub mod habitat;
 pub mod lists;
 pub mod mapcursor;
 pub mod partyicons;
+pub mod summary;
 pub mod townmap;

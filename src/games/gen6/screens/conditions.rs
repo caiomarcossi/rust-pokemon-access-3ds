@@ -28,13 +28,10 @@ use crate::games::common::pokemon;
 use crate::games::common::screen::ScreenText;
 use crate::games::gen6::apps::RunningApp;
 use crate::games::gen6::screens::partyicons::SLOTS;
+use crate::games::gen6::screens::summary;
 use crate::py::{Log, Result};
 
-pub const SUMMARY: &str = "N3app6status7ProcessE";
 pub const CASE: &str = "N3app10poroc_case4ProcE";
-/// The summary's process -> the `PokemonParam` it shows, a copy of the party member's (spike
-/// 196).
-pub const SHOWN: i64 = 0x78;
 /// The Pokéblock Case's process -> the party's list, six `PokemonParam`s (spike 196).
 pub const PARTY: i64 = 0x130;
 /// The star's outline, drawn wherever the conditions are (spike 196).
@@ -160,8 +157,8 @@ impl ConditionsReader {
         let Some(process) = process else {
             return Ok(None);
         };
-        if running.as_deref() == Some(SUMMARY) {
-            return Ok(Some(u32(&self.memory.read(process + SHOWN, 4)?, 0)?));
+        if running.as_deref() == Some(summary::SUMMARY) {
+            return summary::shown(&*self.memory, &self.apps.borrow());
         }
         if running.as_deref() != Some(CASE) {
             return Ok(None);
