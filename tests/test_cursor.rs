@@ -378,6 +378,51 @@ fn test_a_menu_cursor_sitting_on_a_pane_says_the_words_under_that_pane() {
     assert_eq!(menu.heard_with(&pieces), said(&[(&["5"], true)]));
 }
 
+/// A summary keeps its battle page's moves and its contest page's on screen at one place,
+/// and its cursor said the battle page's on the contest page (movie32).
+#[test]
+fn test_one_item_drawn_by_two_layouts_at_one_place_is_said_whole() {
+    let mut menu = Menu::new();
+    let mut pieces: Vec<ScreenText> = Vec::new();
+    for (base, words) in [
+        (0x08400000, ["Meteor Mash", "Steel"]),
+        (0x08500000, ["Meteor Mash", "Coolness"]),
+    ] {
+        let (_work, root) = menu.fake.screen_with(base, false, false);
+        let row = base + 0x1000;
+        menu.fake.pane(row, root);
+        for (offset, value) in [
+            (lyt::X, -80.0),
+            (lyt::Y, 60.0),
+            (lyt::WIDTH, 150.0),
+            (lyt::HEIGHT, 40.0),
+        ] {
+            put(&menu.memory, row + offset, &[value]);
+        }
+        for (i, text) in words.into_iter().enumerate() {
+            let i = i as i64;
+            pieces.push(ScreenText {
+                root,
+                parent: row,
+                ..ScreenText::placed(
+                    base + 0x2000 + 0x100 * i,
+                    text,
+                    false,
+                    -140.0 + 50.0 * i as f64,
+                    -100.0 + 50.0 * i as f64,
+                    62.0 - 12.0 * i as f64,
+                    12.5,
+                )
+            });
+        }
+    }
+    menu.fake.track().unwrap();
+    assert_eq!(
+        menu.heard_with(&pieces),
+        said(&[(&["Meteor Mash", "Steel", "Coolness"], true)])
+    );
+}
+
 /// Confirming a language said "Spanish French Begin game": the list panel was still on screen
 /// behind the confirmation panel, and the cursor covered rows of both (opening.ctm, spike 68). The
 /// cursor ran from -76 to -34, "Begin game" sat at -55, and the list's rows at -40 and -70.

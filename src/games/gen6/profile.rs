@@ -277,6 +277,38 @@ impl Gen6Profile {
             let memory = memory.clone();
             Rc::new(move |pane: i64| pictures.said(&*memory, pane)) as Pictures
         });
+        let species: Vec<String> = text
+            .as_ref()
+            .map(|text| text.species.clone())
+            .unwrap_or_default();
+        // The Bag draws each party member's icon, and says nothing of whose it is. Made here,
+        // before the screen text reader that asks it, where Python makes it later and reaches it
+        // through `self`; making it reads nothing.
+        let party_icons = Rc::new(RefCell::new(PartyIcons::new(
+            memory.clone(),
+            names.clone(),
+            species.clone(),
+            {
+                let apps = apps.clone();
+                Rc::new(move || apps.borrow().running.clone())
+            },
+        )));
+        // The Bag's party draws each member as an icon beside its level, or, for an evolution
+        // stone, beside "ABLE!" or "UNABLE!": "Metagross UNABLE!" (movie31).
+        let on_screen_named: Pictures = {
+            let (named_by_image, party_icons) = (named_by_image.clone(), party_icons.clone());
+            Rc::new(move |pane: i64| {
+                let by_image = match &named_by_image {
+                    Some(named) => named(pane)?,
+                    None => None,
+                };
+                // Python's `or`: a name of "" or None goes on to the party's icons.
+                match by_image {
+                    Some(name) if !name.is_empty() => Ok(Some(name)),
+                    _ => party_icons.borrow().name(pane),
+                }
+            })
+        };
         let screen = Rc::new(RefCell::new(ScreenTextReader::with(
             memory.clone(),
             names.clone(),
@@ -286,7 +318,7 @@ impl Gen6Profile {
                 .map(|class| class.to_string())
                 .collect(),
             None,
-            named_by_image.clone(),
+            Some(on_screen_named),
             text.as_ref()
                 .map(|text| text.labels.clone())
                 .unwrap_or_default(),
@@ -366,30 +398,16 @@ impl Gen6Profile {
             })
         };
 
-        let species: Vec<String> = text
-            .as_ref()
-            .map(|text| text.species.clone())
-            .unwrap_or_default();
         // The AreaNav's Pokémon Distribution draws each Pokémon's icon, which no file names.
         let distribution = Rc::new(RefCell::new(Distribution::new(
             memory.clone(),
             names.clone(),
-            species.clone(),
+            species,
         )));
         // The AreaNav keeps the layouts of a screen it has left as they were; its views say.
         let views = townmap::Views::new(memory.clone(), names.clone());
         // The game's button managers say whose buttons take taps (spike 189).
         let buttons = Rc::new(RefCell::new(buttons::Buttons::new(memory.clone())));
-        // The Bag draws each party member's icon, and says nothing of whose it is.
-        let party_icons = Rc::new(RefCell::new(PartyIcons::new(
-            memory.clone(),
-            names.clone(),
-            species,
-            {
-                let apps = apps.clone();
-                Rc::new(move || apps.borrow().running.clone())
-            },
-        )));
         let on_screen: OnScreen = {
             let screen = screen.clone();
             Rc::new(move || screen.borrow().on_screen())

@@ -15,7 +15,10 @@
 //!
 //! Only while the Bag runs: another screen's icons are not the party's in its order.
 
+use std::cell::RefCell;
 use std::rc::Rc;
+
+use indexmap::IndexMap;
 
 use crate::core::binary::u32;
 use crate::core::memory::Memory;
@@ -64,6 +67,9 @@ pub struct PartyIcons {
     running: Rc<dyn Fn() -> Option<String>>,
     party: Option<i64>,
     icons: PySet,
+    /// Image -> the species it draws, until the next sweep: screen text asks of every
+    /// picture at every poll, and naming one reads the party member's record.
+    named: RefCell<IndexMap<i64, Option<String>>>,
 }
 
 impl PartyIcons {
@@ -80,6 +86,7 @@ impl PartyIcons {
             running,
             party: None,
             icons: PySet::new(),
+            named: RefCell::new(IndexMap::new()),
         }
     }
 
@@ -96,6 +103,7 @@ impl PartyIcons {
         } else {
             PySet::of(icons)
         };
+        self.named.borrow_mut().clear();
         if !params.is_empty() && (self.party.is_none() || !adding) {
             let found = party_of(holders(params)?, &*self.memory, &self.names)?;
             self.party = match found {
@@ -111,15 +119,28 @@ impl PartyIcons {
         if (self.running)().as_deref() != Some(BAG) || self.species.is_empty() {
             return Ok(None);
         }
-        let Some(party_at) = self.party else {
+        if self.party.is_none() {
             return Ok(None);
-        };
+        }
         let memory = &self.memory;
         let material = u32(&memory.read(picture + lyt::PICTURE_MATERIAL, 4)?, 0)?;
         if material == 0 {
             return Ok(None);
         }
         let image = u32(&memory.read(material + lyt::MATERIAL_TEXTURE, 4)?, 0)?;
+        if !self.named.borrow().contains_key(&image) {
+            let drawn = self.species_drawn(image)?;
+            self.named.borrow_mut().insert(image, drawn);
+        }
+        Ok(self.named.borrow()[&image].clone())
+    }
+
+    /// The species of the party member whose icon is drawn from this image, or None.
+    fn species_drawn(&self, image: i64) -> Result<Option<String>> {
+        let memory = &self.memory;
+        let Some(party_at) = self.party else {
+            return Ok(None);
+        };
         for icon in self.icons.iter() {
             if self.names.of_object(icon)?.as_deref() != Some(ICON_CLASS) {
                 continue;

@@ -816,6 +816,44 @@ fn test_words_coming_back_to_a_menu_come_alone() {
 }
 
 #[test]
+fn test_words_coming_back_to_a_menu_in_place_of_words_just_gone_are_its_own() {
+    // The Bag's party draws "UNABLE!" for an evolution stone in place of each level, and the
+    // levels coming back as the cursor moved on were read again, "L45, L48..." (movie31).
+    let mut screen = Screen::new();
+    let item = vec![piece(1, "Sun Stone", 77.0, 0.0, MENU)];
+    let unable = piece_kw(2, "UNABLE!", -91.0, 68.0, MENU, Kw { parent: 5, ..PLAIN });
+    screen.say(args(
+        &item,
+        vec![CursorItem::new(0x0C, item.clone(), true)],
+        &cat(&[&item, &one(&unable)]),
+    ));
+    let level = ScreenText {
+        returned: true,
+        ..piece_kw(
+            3,
+            "L45",
+            -91.0,
+            68.0,
+            MENU,
+            Kw {
+                parent: 5,
+                with_layout: false,
+                ..PLAIN
+            },
+        )
+    };
+    screen.say(Args {
+        on_screen: item.clone(),
+        left: vec![unable],
+        ..Args::default()
+    });
+    assert_eq!(
+        screen.say(args(&one(&level), vec![], &cat(&[&item, &one(&level)]))),
+        NOTHING
+    );
+}
+
+#[test]
 fn test_a_changed_value_is_said_with_its_row() {
     let mut screen = Screen::new();
     let parent = |parent| Kw { parent, ..PLAIN };
@@ -1110,6 +1148,41 @@ fn test_details_of_words_hanging_from_the_root_are_the_frames_their_changes_are_
         screen.on(&all);
     }
     assert_eq!(screen.on(&all), ["Category Power 40 Accuracy 100"]);
+}
+
+#[test]
+fn test_details_are_read_only_from_the_layouts_this_move_changed() {
+    // A summary keeps its other page's panel on screen as that page last showed it, and Zen
+    // Headbutt's details on the contest page were read with Iron Defense's (movie32).
+    let mut screen = Screen::new();
+    let battle = description("The user hardens its body.");
+    let contest = piece_kw(
+        30,
+        "Quite an appealing move.",
+        -150.0,
+        45.0,
+        PANEL,
+        Kw { parent: 8, ..PLAIN },
+    );
+    let headbutt = vec![piece(1, "Zen Headbutt", -120.0, 70.0, MENU)];
+    let everything = cat(&[&headbutt, &one(&battle), &one(&contest)]);
+    screen.say(args(
+        &[changed(&battle)],
+        vec![CursorItem::new(0x0C, headbutt.clone(), false)],
+        &everything,
+    ));
+    for _ in 0..DETAIL_POLLS {
+        screen.on(&everything);
+    }
+    let mut said = screen.say(args(
+        &[changed(&contest)],
+        vec![CursorItem::new(0x0C, headbutt.clone(), false)],
+        &everything,
+    ));
+    for _ in 0..DETAIL_POLLS {
+        said.extend(screen.on(&everything));
+    }
+    assert_eq!(said, ["Zen Headbutt", "Quite an appealing move."]);
 }
 
 #[test]

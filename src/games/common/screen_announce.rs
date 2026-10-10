@@ -134,6 +134,8 @@ pub struct ScreenAnnouncer {
     /// Layout root -> the words that came on screen while more of the layout's words were still
     /// being written, each with the poll it came at.
     arriving: IndexMap<i64, Vec<(i64, ScreenText)>>,
+    /// (layout root, group) -> the poll words last left it at, for `REPEAT_POLLS`.
+    left_groups: IndexMap<(i64, i64), i64>,
     /// The place's name the field said last, and the poll it was said at.
     placed: Option<(String, i64)>,
 }
@@ -157,6 +159,7 @@ impl ScreenAnnouncer {
             recent: IndexMap::new(),
             on_screen_since: IndexMap::new(),
             arriving: IndexMap::new(),
+            left_groups: IndexMap::new(),
             placed: None,
         }
     }
@@ -301,6 +304,15 @@ impl ScreenAnnouncer {
         // alone, what changes beside a menu's rows names it: the Pokéblock Case writes the chosen
         // block's name under its grid (movie30, spike 196). Not otherwise: the PC Box rewrites its
         // box's name as its menu's cursor moves, "BOX 1" each time (movie9).
+        // Words coming back to a menu as they left, in place of words that have just left, are
+        // its own too: the Bag's party draws its levels again after an evolution stone's
+        // "UNABLE!", and they were read again (movie31). A question coming back is said.
+        let polls = self.polls;
+        self.left_groups
+            .retain(|_group, &mut poll| polls - poll <= REPEAT_POLLS);
+        for p in left {
+            self.left_groups.insert((p.root, p.parent), self.polls);
+        }
         let counting = self
             .gathering
             .as_ref()
@@ -321,7 +333,10 @@ impl ScreenAnnouncer {
                     && !cursored.contains(&p.r#box)
                     && !(self.menus.contains(&p.root)
                         && !listed.contains_key(&p.root)
-                        && ((p.changed && !rowed.contains(&p.root)) || p.with_layout || p.scrolled))
+                        && ((p.changed && !rowed.contains(&p.root))
+                            || p.with_layout
+                            || p.scrolled
+                            || (p.returned && self.left_groups.contains_key(&(p.root, p.parent)))))
             })
             .cloned()
             .collect();
@@ -620,12 +635,20 @@ impl ScreenAnnouncer {
         let panels = self.detail_panels.entry(gathering.cursor).or_default();
         panels.extend(gathering.panels.iter().copied());
         let panels = panels.clone();
+        // Only the layouts this move changed: a summary keeps its other page's panel on screen,
+        // left as that page last showed it, and Zen Headbutt's details on the contest page were
+        // read with Iron Defense's from the battle page (movie32).
+        let changed: HashSet<i64> = gathering
+            .panels
+            .iter()
+            .map(|&(root, _group)| root)
+            .collect();
         let mut said: HashSet<i64> = HashSet::new();
         let mut texts: Vec<String> = Vec::new();
         let mut roots: Vec<i64> = Vec::new();
         let built: IndexSet<Panel> = on_screen.iter().map(ScreenText::group).collect();
         for panel in built {
-            if !panels.contains(&panel) {
+            if !panels.contains(&panel) || (!changed.is_empty() && !changed.contains(&panel.0)) {
                 continue;
             }
             let group = distinct(by_rows(

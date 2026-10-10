@@ -834,6 +834,14 @@ fn test_a_contest_moves_hearts_are_counted() {
     );
 }
 
+/// A status move's power is a dash, and under pauses it read "Power, —" (movie32).
+#[test]
+fn test_a_dash_is_a_labels_value() {
+    let power = ScreenText::placed(1, "Power", false, -210.0, -180.0, -10.0, 12.5);
+    let dash = ScreenText::placed(2, "—", false, -122.0, -118.0, -10.0, 12.5);
+    assert_eq!(join(&[power, dash], true), "Power: —");
+}
+
 /// The main menu's CONTINUE panel (movie11, 2026-10-01): "Badges:, 0" before.
 #[test]
 fn test_a_label_with_a_colon_of_its_own_is_followed_by_a_space() {

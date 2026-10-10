@@ -339,9 +339,14 @@ fn labels(first: &ScreenText, second: &ScreenText) -> bool {
     }
     let below = first.row - second.row > glyph / 2.0;
     // A sign is no value: the party slot draws the gender sign at a place of its own, far past a
-    // short name.
+    // short name. A dash is one: a status move's Power and Accuracy, "Power, —" (movie32).
+    let valued = second.text.chars().any(|c| {
+        py::is_alnum(c)
+            || unicode_general_category::get_general_category(c)
+                == unicode_general_category::GeneralCategory::DashPunctuation
+    });
     py::split(&first.text).len() <= LABEL_WORDS
-        && second.text.chars().any(py::is_alnum)
+        && valued
         && second.left
             >= (if below {
                 first.right
@@ -590,8 +595,17 @@ impl ScreenTextReader {
         let roots: Vec<i64> = PySet::of(found.values().chain(designed.values()).map(|p| p.root))
             .iter()
             .collect();
-        for (r#box, piece) in self.named_pictures(&roots)? {
-            found.insert(r#box, piece);
+        let named = self.named_pictures(&roots)?;
+        // A picture naming what its group writes says nothing new: the Bag's select bar draws a
+        // Pokémon's icon beside its name (movie31).
+        let written: HashSet<(i64, i64, String)> = found
+            .values()
+            .map(|p| (p.root, p.parent, p.text.clone()))
+            .collect();
+        for (r#box, piece) in named {
+            if !written.contains(&(piece.root, piece.parent, piece.text.clone())) {
+                found.insert(r#box, piece);
+            }
         }
         found = after_the_name(&found);
         // After it: a group's one picture is read first in its row, and the DexNav's mark is no

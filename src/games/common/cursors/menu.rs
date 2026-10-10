@@ -155,8 +155,25 @@ impl MenuCursors {
                 }
             }
         }
-        Ok(if found.len() == 1 {
-            found.into_values().next().unwrap_or_default()
+        let items: Vec<Vec<ScreenText>> = found.into_values().collect();
+        let firsts: HashSet<&str> = items.iter().map(|item| item[0].text.as_str()).collect();
+        if items.len() > 1 && firsts.len() == 1 {
+            // One item drawn by two layouts at one place, one of them not shown, which nothing
+            // read so far tells: a summary's moves, its battle page's and its contest page's
+            // (movie32, spike 196). Said whole once, "Meteor Mash Steel PP 10/10 Coolness".
+            let texts: HashSet<&str> = items[0].iter().map(|piece| piece.text.as_str()).collect();
+            let mut whole = items[0].clone();
+            for item in &items[1..] {
+                for piece in item {
+                    if !texts.contains(piece.text.as_str()) {
+                        whole.push(piece.clone());
+                    }
+                }
+            }
+            return Ok(whole);
+        }
+        Ok(if items.len() == 1 {
+            items[0].clone()
         } else {
             Vec::new()
         })
