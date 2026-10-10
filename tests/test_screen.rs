@@ -379,6 +379,31 @@ fn test_words_missing_for_a_single_poll_are_taken_as_still_there() {
     assert_eq!(game.heard(), words(&[]));
 }
 
+/// The Mart's list, wrapping to its end, wrote "Quit" into a row and hid the row's price in
+/// one frame, and its cursor read "Quit $ 2,500", the price the row had (movie35).
+#[test]
+fn test_words_hidden_as_their_row_is_rewritten_are_not_taken_as_still_there() {
+    let mut game = Game::new();
+    let (_work, group) = game.screen(BOTTOM);
+    let name = game.text_box(BOTTOM + 0x1000, group, "Max Potion");
+    let price = game.text_box(BOTTOM + 0x1200, group, "$ 2,500");
+    game.place(name, (-55.0, -30.0), 160.0, 12.5);
+    game.place(price, (137.0, -30.0), 104.0, 14.0);
+    game.sweep();
+    game.heard();
+    game.heard();
+    game.write(name, "Quit");
+    game.fake.visible(price, false);
+    game.heard();
+    let texts: Vec<String> = game
+        .reader
+        .on_screen()
+        .into_iter()
+        .map(|p| p.text)
+        .collect();
+    assert_eq!(texts, ["Quit"]);
+}
+
 #[test]
 fn test_a_destroyed_textbox_is_silent_and_one_rebuilt_there_is_heard() {
     let (mut game, _work, _group, value) = settled();

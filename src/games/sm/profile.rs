@@ -345,6 +345,7 @@ impl SunProfile {
                 Some(&lists),
                 &HashSet::new(),
                 &rows,
+                None,
             )?;
         }
         self.announcements.borrow_mut().battlers(&sides);

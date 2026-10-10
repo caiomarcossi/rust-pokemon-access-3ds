@@ -27,7 +27,10 @@ to install.
 
 - **Dialogue**, a page at a time as it starts to type, with who is speaking where pa3ds knows.
 - **Menus**: the item under the cursor, then its details, such as a description or a count.
-- **Screen text**: labels, options and questions as they appear and when they change.
+- **Screen text**: labels, options and questions as they appear and when they change. A screen
+  that changes all at once, as the summary does turning to another Pokémon or the Pokédex to
+  another entry, says its first line at once, the Pokémon's name where it can, and the rest as
+  one line once it has finished changing.
 - **Name entry**: the key under the cursor.
 - **Battles**: the battle text, and each side's Pokémon with its name, gender, level and HP. Your
   HP is said exactly; the enemy's as a percentage, because a bar is all the game shows.

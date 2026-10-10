@@ -17,7 +17,7 @@ use crate::games::common::screen_announce::{
     ARRIVAL_MAX_POLLS, CURSOR_HEARD_POLLS, DETAIL_MAX_POLLS, DETAIL_POLLS, PLACE_POLLS,
     REPEAT_POLLS, ScreenAnnouncer,
 };
-use crate::py::Log;
+use crate::py::{Log, Result};
 
 const MENU: i64 = 0x08100000;
 const PANEL: i64 = 0x08200000;
@@ -94,6 +94,7 @@ struct Args {
     left: Vec<ScreenText>,
     moving: HashSet<i64>,
     rows: HashSet<i64>,
+    subject: Option<Box<dyn Fn() -> Result<Option<String>>>>,
 }
 
 fn args(texts: &[ScreenText], items: Vec<CursorItem>, on_screen: &[ScreenText]) -> Args {
@@ -146,6 +147,7 @@ impl Screen {
                 None,
                 &given.moving,
                 &given.rows,
+                given.subject.as_deref(),
             )
             .unwrap();
         self.backend.spoken()[before..].to_vec()
@@ -1420,8 +1422,10 @@ fn test_what_changes_as_a_cursor_comes_on_screen_is_not_its_details() {
 }
 
 #[test]
-fn test_a_panel_leaves_what_comes_on_screen_with_it_to_be_said_after() {
-    // The bag read its pocket name with the Potion's panel, then the Potion's panel again.
+fn test_words_coming_on_screen_as_details_gather_are_part_of_them() {
+    // The Mart's count and description came back as its cursor left Quit and were said as two
+    // lines, and a contest's move panel, shown afresh for each move, half written (the audit,
+    // 2026-10-10).
     let mut screen = Screen::new();
     let growl = vec![piece(1, "Growl", -120.0, 70.0, MENU)];
     let power = changed(&move_panel("40")[3]);
@@ -1447,9 +1451,9 @@ fn test_a_panel_leaves_what_comes_on_screen_with_it_to_be_said_after() {
         vec![CursorItem::new(0x0C, growl.clone(), false)],
         &everything,
     ));
-    assert_eq!(said, ["Growl", "Hard claws."]);
+    assert_eq!(said, ["Growl"]);
     assert_eq!(screen.on(&everything), NOTHING);
-    assert_eq!(screen.on(&everything), ["Category Power 40"]);
+    assert_eq!(screen.on(&everything), ["Hard claws. Category Power 40"]);
 }
 
 #[test]
@@ -1491,6 +1495,7 @@ fn test_words_under_a_cursor_that_settle_after_it_spoke_are_not_said_again() {
             None,
             &HashSet::new(),
             &HashSet::new(),
+            None,
         )
         .unwrap();
     assert_eq!(screen.backend.spoken()[before..], NOTHING);
@@ -1839,6 +1844,7 @@ fn listed(
             Some(&lists),
             &HashSet::new(),
             &HashSet::new(),
+            None,
         )
         .unwrap();
     screen.backend.spoken()[before..].to_vec()
@@ -2012,19 +2018,492 @@ fn test_an_entry_of_one_column_is_read_top_to_bottom() {
 }
 
 #[test]
-fn test_an_entry_changing_says_its_rows_top_to_bottom() {
+fn test_an_entry_rewritten_says_its_first_row_then_the_rest_as_one_line() {
+    // Up and down in the Pokédex said the entry a row a line, "007 Mudkip", "????? Pokémon",
+    // each cutting off the one before under `interrupt` (the audit, 2026-10-10).
     let mut screen = Screen::new();
     let shown = torchic_entry();
     screen.say(args(&shown, vec![], &shown));
     let now = entry("????? Pokémon", "???'??\"", ("007", "Mudkip"));
-    let altered: Vec<ScreenText> = now
-        .iter()
+    let altered = altered_from(&shown, &now);
+    assert_eq!(screen.say(args(&altered, vec![], &now)), ["007 Mudkip"]);
+    assert_eq!(screen.on(&now), NOTHING);
+    assert_eq!(
+        screen.on(&now),
+        ["????? Pokémon Female TYPE HEIGHT ???'??\" WEIGHT 5.5 lbs. Times encountered: 1"]
+    );
+}
+
+/// `[replace(p, changed=True) for p in now if p.text != shown[p.box - 1].text]`.
+fn altered_from(shown: &[ScreenText], now: &[ScreenText]) -> Vec<ScreenText> {
+    now.iter()
         .filter(|p| p.text != shown[(p.r#box - 1) as usize].text)
         .map(changed)
+        .collect()
+}
+
+/// `piece(box, text, x, y, root, parent=parent, with_layout=False)`.
+fn later(r#box: i64, text: &str, x: f64, y: f64, root: i64, parent: i64) -> ScreenText {
+    piece_kw(
+        r#box,
+        text,
+        x,
+        y,
+        root,
+        Kw {
+            parent,
+            with_layout: false,
+            ..PLAIN
+        },
+    )
+}
+
+/// One cursor move to `item` with `texts` changed, then `DETAIL_POLLS` polls of `everything`:
+/// what was said.
+fn moved_and_settled(
+    screen: &mut Screen,
+    texts: &[ScreenText],
+    item: &[ScreenText],
+    everything: &[ScreenText],
+) -> Vec<String> {
+    let mut said = screen.say(args(
+        texts,
+        vec![CursorItem::new(0x0C, item.to_vec(), false)],
+        everything,
+    ));
+    for _ in 0..DETAIL_POLLS {
+        said.extend(screen.on(everything));
+    }
+    said
+}
+
+#[test]
+fn test_details_drawn_side_by_side_in_two_groups_are_read_as_one_table() {
+    // The Bag's TM pocket hangs a move's numbers apart from their labels, and they were said
+    // after them, "TYPE Normal POWER CATEGORY SPECIAL ACCURACY PP, 15, 100, 40" (movie30).
+    let mut screen = Screen::new();
+    let tm = vec![piece(1, "Echoed Voice", 80.0, 90.0, MENU)];
+    let names = vec![
+        later(10, "POWER", 20.0, 40.0, PANEL, 5),
+        later(11, "PP", 20.0, 20.0, PANEL, 5),
+    ];
+    let values = vec![
+        later(12, "40", 120.0, 40.0, PANEL, 6),
+        later(13, "15", 120.0, 20.0, PANEL, 7),
+    ];
+    let everything = cat(&[&tm, &names, &values]);
+    let said = moved_and_settled(&mut screen, &cat(&[&names, &values]), &tm, &everything);
+    assert_eq!(said, ["Echoed Voice", "POWER 40 PP 15"]);
+}
+
+#[test]
+fn test_a_group_of_its_own_rows_is_not_read_into_a_table_beside_one_of_them() {
+    // A summary's move panel, one row of it beside the contest page's labels, was read in among
+    // them, "Type Dark Effect Appeal 4 hearts Jamming Cleverness Cuteness" (movie7).
+    let mut screen = Screen::new();
+    let r#move = vec![piece(1, "Ember", 80.0, 90.0, MENU)];
+    let page = vec![
+        later(10, "Type", -195.0, 40.0, PANEL, 5),
+        later(11, "Cuteness", 142.0, -34.0, PANEL, 5),
+    ];
+    let panel = vec![
+        later(12, "Effect", -195.0, 13.0, PANEL, 6),
+        later(13, "Jamming", -195.0, -33.0, PANEL, 6),
+    ];
+    let everything = cat(&[&r#move, &page, &panel]);
+    let said = moved_and_settled(&mut screen, &cat(&[&page, &panel]), &r#move, &everything);
+    assert_eq!(said, ["Ember", "Type Cuteness, Effect Jamming"]);
+}
+
+#[test]
+fn test_two_groups_beside_each_other_on_one_row_are_read_apart() {
+    // The PC Box's summary draws a Pokémon's name and its level, a little higher, side by side,
+    // and read as one table it put the level first, "Lv.5 Umbra" (movie6).
+    let mut screen = Screen::new();
+    let slot = vec![piece(1, "Party 2", 80.0, 90.0, MENU)];
+    let name = later(10, "Umbra", -150.0, 100.0, PANEL, 5);
+    let level = later(11, "Lv.5", -60.0, 104.0, PANEL, 6);
+    let everything = cat(&[&slot, &one(&name), &one(&level)]);
+    let said = moved_and_settled(&mut screen, &[name, level], &slot, &everything);
+    assert_eq!(said, ["Party 2", "Umbra, Lv.5"]);
+}
+
+#[test]
+fn test_a_rewrite_leaves_out_what_a_cursor_has_just_said() {
+    // Changing pocket brought the Bag's cursor back on Exp. Share, and the panel's rewrite said
+    // it again (movie30).
+    let mut screen = Screen::new();
+    let at = |r#box: i64, text: &str, y: f64, parent: i64| {
+        piece_kw(
+            r#box,
+            text,
+            0.0,
+            y,
+            PANEL,
+            Kw {
+                parent,
+                panel: parent,
+                ..PLAIN
+            },
+        )
+    };
+    let shown = vec![
+        at(1, "BERRIES", 110.0, 2),
+        at(3, "Pecha Berry", 75.0, 4),
+        at(5, "A Berry.", -15.0, 6),
+    ];
+    screen.say(args(&shown, vec![], &shown));
+    let item = vec![piece(9, "Exp. Share", 80.0, 90.0, MENU)];
+    let now = vec![
+        rewritten(&shown[0], "KEY ITEMS"),
+        rewritten(&shown[1], "Exp. Share"),
+        rewritten(&shown[2], "A device."),
+    ];
+    let unchanged: Vec<ScreenText> = now
+        .iter()
+        .map(|p| ScreenText {
+            changed: false,
+            ..p.clone()
+        })
         .collect();
+    let everything = cat(&[&item, &unchanged]);
+    let mut said = screen.say(args(
+        &now,
+        vec![CursorItem::new(0x0C, item.clone(), true)],
+        &everything,
+    ));
+    for _ in 0..DETAIL_POLLS {
+        said.extend(screen.on(&everything));
+    }
+    assert_eq!(said, ["Exp. Share", "KEY ITEMS", "A device."]);
+}
+
+#[test]
+fn test_words_that_came_on_screen_are_details_of_that_move_alone() {
+    // The PC Box's "Potion selected." came back as its menu's cursor moved, joined the move's
+    // details, and was said again after every move of the menu (movie11).
+    let mut screen = Screen::new();
+    let r#move = vec![piece(1, "MOVE", 100.0, 50.0, MENU)];
+    let bag = vec![piece(2, "BAG", 100.0, 20.0, MENU)];
+    let words = later(3, "Potion selected.", -100.0, -100.0, PANEL, 0);
+    let everything = cat(&[&r#move, &bag, &one(&words)]);
+    let mut said = moved_and_settled(&mut screen, &one(&words), &r#move, &everything);
+    said.extend(moved_and_settled(&mut screen, &[], &bag, &everything));
+    assert_eq!(said, ["MOVE", "Potion selected.", "BAG"]);
+}
+
+#[test]
+fn test_a_rewrite_s_first_row_written_again_is_said_with_the_rest() {
+    // The Sell screen's count and price change together; a second press before the price was
+    // said would have left the new count out.
+    let times = "\u{00d7}";
+    let mut screen = Screen::new();
+    let shown = vec![
+        piece_kw(
+            1,
+            &format!("{times}1"),
+            -50.0,
+            0.0,
+            PANEL,
+            Kw { parent: 2, ..PLAIN },
+        ),
+        piece_kw(3, "$150", 50.0, -20.0, PANEL, Kw { parent: 4, ..PLAIN }),
+    ];
+    screen.say(args(&shown, vec![], &shown));
+    let two = vec![
+        rewritten(&shown[0], &format!("{times}2")),
+        rewritten(&shown[1], "$300"),
+    ];
+    let mut said = screen.say(args(&two, vec![], &two));
+    let three = vec![
+        rewritten(&shown[0], &format!("{times}3")),
+        rewritten(&shown[1], "$450"),
+    ];
+    said.extend(screen.say(args(&three, vec![], &three)));
+    for _ in 0..DETAIL_POLLS {
+        said.extend(screen.on(&three));
+    }
+    assert_eq!(said, [format!("{times}2"), format!("{times}3 $450")]);
+}
+
+#[test]
+fn test_a_cursor_moving_drops_the_rest_of_a_rewrite_unsaid() {
+    // The Bag's cursor moved on while its panel was rewritten, and the rest, said as it stood,
+    // read the next item's name with the last one's count (movie33).
+    let mut screen = Screen::new();
+    let shown = torchic_entry();
+    screen.say(args(&shown, vec![], &shown));
+    let now = entry("????? Pokémon", "1'04\"", ("007", "Mudkip"));
+    let altered = altered_from(&shown, &now);
+    let mut said = screen.say(args(&altered, vec![], &now));
+    let row = vec![piece(30, "Ether", 80.0, 90.0, MENU)];
+    let everything = cat(&[&now, &row]);
+    said.extend(moved_and_settled(&mut screen, &[], &row, &everything));
+    assert_eq!(said, ["007 Mudkip", "Ether"]);
+}
+
+#[test]
+fn test_a_sentence_never_leads_a_rewrite() {
+    // The Pokédex's other languages put the entry's description first, and the rewrite led with
+    // it rather than the Pokémon's number and name (movie7).
+    let mut screen = Screen::new();
+    let words = piece(30, "Torchic sticks with its Trainer.", 0.0, 100.0, MENU);
+    let shown = cat(&[&one(&words), &torchic_entry()]);
+    screen.say(args(&shown, vec![], &shown));
+    let now = cat(&[
+        &one(&ScreenText {
+            text: "At first sight, Poochyena takes a bite.".to_string(),
+            ..words.clone()
+        }),
+        &entry("Bite Pokémon", "1'04\"", ("010", "Poochyena")),
+    ]);
+    let before: std::collections::HashMap<i64, String> =
+        shown.iter().map(|p| (p.r#box, p.text.clone())).collect();
+    let altered: Vec<ScreenText> = now
+        .iter()
+        .filter(|p| p.text != before[&p.r#box])
+        .map(changed)
+        .collect();
+    assert_eq!(screen.say(args(&altered, vec![], &now)), ["010 Poochyena"]);
+}
+
+#[test]
+fn test_the_rest_of_a_rewrite_never_cuts_off_its_first_row() {
+    let mut screen = Screen::new();
+    screen.announcer = ScreenAnnouncer::new(
+        Rc::new(Speech::new(
+            screen.backend.clone(),
+            HashSet::from([Category::Key, Category::Menu]),
+            None,
+        )),
+        Rc::new(|_line: &str| {}),
+    );
+    let shown = torchic_entry();
+    screen.say(args(&shown, vec![], &shown));
+    let now = entry("????? Pokémon", "1'04\"", ("007", "Mudkip"));
+    let altered = altered_from(&shown, &now);
+    screen.say(args(&altered, vec![], &now));
+    for _ in 0..DETAIL_POLLS {
+        screen.on(&now);
+    }
+    assert_eq!(screen.backend.interrupting(), ["007 Mudkip"]);
+}
+
+/// `subject=lambda: name`.
+fn subject_of(name: &'static str) -> Option<Box<dyn Fn() -> Result<Option<String>>>> {
+    Some(Box::new(move || Ok(Some(name.to_string()))))
+}
+
+#[test]
+fn test_a_screen_rewritten_is_led_by_what_names_it() {
+    // The summary's stats are on the top screen and built first, its Pokémon's name and level on
+    // the bottom: the name leads (Orion, 2026-10-10).
+    let mut screen = Screen::new();
+    let stats = vec![
+        piece(1, "HP", -100.0, 85.0, SUMMARY),
+        piece(2, "19/19", 0.0, 85.0, SUMMARY),
+    ];
+    let name = vec![
+        piece(3, "Umbra", -150.0, 110.0, MENU),
+        piece(4, "Lv.5", -150.0, 90.0, MENU),
+    ];
+    let unchanged = |p: &ScreenText, text: &str| ScreenText {
+        text: text.to_string(),
+        ..p.clone()
+    };
+    let old = vec![
+        stats[0].clone(),
+        unchanged(&stats[1], "30/30"),
+        unchanged(&name[0], "Blaze"),
+        unchanged(&name[1], "Lv.10"),
+    ];
+    screen.say(args(&old, vec![], &old));
+    let altered: Vec<ScreenText> = [&stats[1], &name[0], &name[1]]
+        .into_iter()
+        .map(changed)
+        .collect();
+    let everything = cat(&[&stats, &name]);
+    let mut said = screen.say(Args {
+        subject: subject_of("Umbra"),
+        ..args(&altered, vec![], &everything)
+    });
+    for _ in 0..DETAIL_POLLS {
+        said.extend(screen.say(Args {
+            on_screen: everything.clone(),
+            subject: subject_of("Umbra"),
+            ..Args::default()
+        }));
+    }
+    assert_eq!(said, ["Umbra", "Lv.5, HP 19/19"]);
+}
+
+#[test]
+fn test_a_screen_rewritten_says_words_two_layouts_draw_alike_once() {
+    // The summary keeps its other pages on screen, and both said "Name Poochyena".
+    let mut screen = Screen::new();
+    let one_page = vec![
+        piece(1, "Name", -195.0, 60.0, SUMMARY),
+        piece(2, "Torchic", -86.0, 60.0, SUMMARY),
+    ];
+    let two_page = vec![
+        piece(3, "Name", -195.0, 60.0, PANEL),
+        piece(4, "Torchic", -86.0, 60.0, PANEL),
+    ];
+    let both = cat(&[&one_page, &two_page]);
+    screen.say(args(&both, vec![], &both));
+    let now = vec![
+        one_page[0].clone(),
+        ScreenText {
+            text: "Poochyena".to_string(),
+            ..one_page[1].clone()
+        },
+        two_page[0].clone(),
+        ScreenText {
+            text: "Poochyena".to_string(),
+            ..two_page[1].clone()
+        },
+    ];
+    let mut said = screen.say(args(&[changed(&now[1]), changed(&now[3])], vec![], &now));
+    for _ in 0..DETAIL_POLLS {
+        said.extend(screen.on(&now));
+    }
+    assert_eq!(said, ["Name Poochyena"]);
+}
+
+#[test]
+fn test_one_row_changing_alone_is_said_at_once() {
+    let mut screen = Screen::new();
+    let time = vec![
+        piece(1, "Play time:", -100.0, 0.0, OPTIONS),
+        piece(2, "0:13", 50.0, 0.0, OPTIONS),
+    ];
+    screen.say(args(&time, vec![], &time));
+    let now = vec![time[0].clone(), rewritten(&time[1], "0:14")];
     assert_eq!(
-        screen.say(args(&altered, vec![], &now)),
-        ["007 Mudkip", "????? Pokémon", "HEIGHT ???'??\""]
+        screen.say(args(&one(&now[1]), vec![], &now)),
+        ["Play time: 0:14"]
+    );
+}
+
+#[test]
+fn test_a_rewrite_takes_in_words_coming_on_screen_a_poll_later() {
+    // The Pokédex wrote its entry and then its description, said apart a poll later.
+    let mut screen = Screen::new();
+    let shown = torchic_entry();
+    screen.say(args(&shown, vec![], &shown));
+    let now = entry("Mud Fish Pokémon", "1'04\"", ("258", "Mudkip"));
+    let altered = altered_from(&shown, &now);
+    let words = later(30, "Mudkip's fin.", 0.0, -80.0, PANEL, 0);
+    let mut said = screen.say(Args {
+        settling: set(&[PANEL]),
+        ..args(&altered, vec![], &now)
+    });
+    let everything = cat(&[&now, &one(&words)]);
+    said.extend(screen.say(args(&one(&words), vec![], &everything)));
+    said.extend(screen.on(&everything));
+    said.extend(screen.on(&everything));
+    assert_eq!(
+        said,
+        [
+            "258 Mudkip",
+            "Mud Fish Pokémon Female Times encountered: 1, Mudkip's fin."
+        ]
+    );
+}
+
+#[test]
+fn test_a_rewrite_reads_every_panel_its_rewrites_have_changed() {
+    // Two Pokémon of one height and weight leave the entry's table as it was, and it went
+    // unsaid, as a move's power did between two moves of one power (2026-09-14).
+    let mut screen = Screen::new();
+    let mut shown = torchic_entry();
+    screen.say(args(&shown, vec![], &shown));
+    let mut said: Vec<String> = Vec::new();
+    for now in [
+        entry("Mud Fish Pokémon", "1'08\"", ("258", "Mudkip")),
+        entry("Chick Pokémon", "1'08\"", ("255", "Torchic")),
+    ] {
+        let altered = altered_from(&shown, &now);
+        said = screen.say(args(&altered, vec![], &now));
+        for _ in 0..DETAIL_POLLS {
+            said.extend(screen.on(&now));
+        }
+        shown = now;
+    }
+    assert_eq!(
+        said,
+        [
+            "255 Torchic",
+            "Chick Pokémon Female TYPE HEIGHT 1'08\" WEIGHT 5.5 lbs. Times encountered: 1"
+        ]
+    );
+}
+
+#[test]
+fn test_two_cursors_over_one_item_say_it_once() {
+    // A summary's battle page and contest page each keep a cursor, and both said the move
+    // (movie32, the audit, 2026-10-10).
+    let mut screen = Screen::new();
+    let r#move = vec![piece(1, "Hold Back", -1.0, 100.0, MENU)];
+    let said = screen.say(args(
+        &[],
+        vec![
+            CursorItem::new(0x0C, r#move.clone(), false),
+            CursorItem::new(0x0D, r#move.clone(), true),
+        ],
+        &r#move,
+    ));
+    assert_eq!(said, ["Hold Back"]);
+}
+
+#[test]
+fn test_a_cursor_sliding_into_place_as_it_opens_is_said_once() {
+    // The Bag's said "Pokéblock Kit" as it opened, and again 0.2 s later (movie30).
+    let mut screen = Screen::new();
+    let kit = vec![piece(1, "Pokéblock Kit", 80.0, 90.0, MENU)];
+    assert_eq!(
+        screen.say(args(
+            &[],
+            vec![CursorItem::new(0x0C, kit.clone(), true)],
+            &kit
+        )),
+        ["Pokéblock Kit"]
+    );
+    assert_eq!(
+        screen.say(args(
+            &[],
+            vec![CursorItem::new(0x0C, kit.clone(), false)],
+            &kit
+        )),
+        NOTHING
+    );
+    let moved = vec![ScreenText {
+        text: "Contest Costume".to_string(),
+        ..kit[0].clone()
+    }];
+    assert_eq!(
+        screen.say(args(
+            &[],
+            vec![CursorItem::new(0x0C, moved.clone(), false)],
+            &moved
+        )),
+        ["Contest Costume"]
+    );
+}
+
+#[test]
+fn test_a_number_with_a_leading_zero_is_no_count() {
+    // X's Pokédex numbers its rows "002", and taken for a count it was said after the entry's
+    // first row, "SEEN 2 OBTAINED 1 002" (x/movie2, the audit, 2026-10-10).
+    let mut screen = Screen::new();
+    let row = vec![piece(1, "002", 80.0, 90.0, MENU)];
+    assert_eq!(
+        screen.say(args(
+            &[],
+            vec![CursorItem::new(0x0C, row.clone(), false)],
+            &row
+        )),
+        ["002"]
     );
 }
 

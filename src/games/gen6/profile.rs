@@ -62,7 +62,7 @@ use crate::games::gen6::screens::habitat::HabitatReader;
 use crate::games::gen6::screens::lists::{CONTROLLER_CLASS, ListReader};
 use crate::games::gen6::screens::mapcursor::MapCursor;
 use crate::games::gen6::screens::partyicons::PartyIcons;
-use crate::games::gen6::screens::{buttons, contest, distribution, partyicons, townmap};
+use crate::games::gen6::screens::{buttons, contest, distribution, partyicons, summary, townmap};
 use crate::py::{self, Error, Log, PySet, Result};
 
 /// What the heap is swept for: message windows, list controllers, the device manager a choice box
@@ -139,6 +139,7 @@ pub struct Options {
 /// answers keys).
 pub struct Gen6Profile {
     memory: Rc<dyn Cache>,
+    names: Rc<ClassNames>,
     /// The game's own words out of the player's ROM, or None when it could not be read.
     text: Option<Rc<GameText>>,
     /// The place-name index of the zone the player was last polled in.
@@ -609,6 +610,7 @@ impl Gen6Profile {
         named.use_game(Some(sprite), Some(place));
         Gen6Profile {
             memory: cache,
+            names: names.clone(),
             text,
             place: Cell::new(None),
             layouts,
@@ -944,6 +946,7 @@ impl Gen6Profile {
         let listed = self.cursors.borrow().lists();
         let moving = self.cursors.borrow().moving();
         let rows = self.cursors.borrow().rows();
+        let subject = || summary::name(&*self.memory, &self.names, &self.apps.borrow());
         self.screen_announcer.borrow_mut().say(
             &kept,
             &items,
@@ -956,6 +959,7 @@ impl Gen6Profile {
             Some(&listed),
             &moving,
             &rows,
+            Some(&subject),
         )?;
         if let Some(conditions) = &self.conditions {
             // After the screen's words, and once a cursor's details are said, so they come last.

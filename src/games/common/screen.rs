@@ -440,6 +440,8 @@ pub struct ScreenTextReader {
     window_tags: IndexMap<i64, bool>,
     /// TextBoxes a message window was typing into at the last poll.
     message_lines: PySet,
+    /// TextBoxes of a layout still tracked that were hidden at the last poll.
+    hidden: HashSet<i64>,
     /// TextBox -> its words, for TextBoxes drawn outside their screen at the last poll.
     outside: IndexMap<i64, String>,
     /// TextBox -> its words, for TextBoxes that moved onto their screen and are not reported
@@ -507,6 +509,7 @@ impl ScreenTextReader {
             box_since: IndexMap::new(),
             window_tags: IndexMap::new(),
             message_lines: PySet::new(),
+            hidden: HashSet::new(),
             outside: IndexMap::new(),
             scrolled: IndexMap::new(),
             frames: IndexMap::new(),
@@ -569,6 +572,7 @@ impl ScreenTextReader {
         self.layouts.refresh();
         self.polls += 1;
         self.message_lines.clear();
+        self.hidden.clear();
         self.frames.clear();
         let outside = std::mem::take(&mut self.outside);
         let mut found: IndexMap<i64, ScreenText> = IndexMap::new();
@@ -622,14 +626,37 @@ impl ScreenTextReader {
         }
         // A pane read while the game rewrites it can sit 1,000 units off for one poll (spike 50),
         // and the move list read "Growl PP 40/" and then "3535" as its pieces came back. Words
-        // missing for a single poll are taken as still there.
+        // missing for a single poll are taken as still there, but not words hidden as their row
+        // is rewritten: the Mart's list, wrapping to its end, wrote "Quit" into a row and hid the
+        // row's price in one frame, and carried, the price was read with it, "Quit $ 2,500"
+        // (movie35).
+        let rewritten: Vec<&ScreenText> = found
+            .iter()
+            .filter(|&(r#box, piece)| {
+                self.last
+                    .get(r#box)
+                    .is_some_and(|last| last.text != piece.text)
+            })
+            .map(|(_, piece)| piece)
+            .collect();
         let carried: IndexMap<i64, ScreenText> = self
             .last
             .iter()
-            .filter(|&(r#box, _)| {
+            .filter(|&(r#box, piece)| {
                 !found.contains_key(r#box)
                     && !exclude.contains(r#box)
                     && !self.carried.contains(r#box)
+                    && !(self.hidden.contains(r#box)
+                        && rewritten.iter().any(|other| {
+                            // `max(other.glyph, piece.glyph)`: the first unless the second is
+                            // greater.
+                            let glyph = if piece.glyph > other.glyph {
+                                piece.glyph
+                            } else {
+                                other.glyph
+                            };
+                            other.root == piece.root && (other.row - piece.row).abs() < glyph / 2.0
+                        }))
             })
             .map(|(&r#box, piece)| (r#box, piece.clone()))
             .collect();
@@ -731,6 +758,9 @@ impl ScreenTextReader {
         }
         let placement = self.layouts.placement(r#box)?;
         let Some(placement) = placement.filter(|placement| placement.shown) else {
+            if placement.is_some() {
+                self.hidden.insert(r#box);
+            }
             return Ok((None, false));
         };
         let text = self.text(&head)?;
