@@ -136,6 +136,9 @@ pub struct ScreenAnnouncer {
     arriving: IndexMap<i64, Vec<(i64, ScreenText)>>,
     /// (layout root, group) -> the poll words last left it at, for `REPEAT_POLLS`.
     left_groups: IndexMap<(i64, i64), i64>,
+    /// TextBox -> its layout's root, for words that came on screen with their layout, while
+    /// that layout lives.
+    opened_with: IndexMap<i64, i64>,
     /// The place's name the field said last, and the poll it was said at.
     placed: Option<(String, i64)>,
 }
@@ -160,6 +163,7 @@ impl ScreenAnnouncer {
             on_screen_since: IndexMap::new(),
             arriving: IndexMap::new(),
             left_groups: IndexMap::new(),
+            opened_with: IndexMap::new(),
             placed: None,
         }
     }
@@ -304,14 +308,21 @@ impl ScreenAnnouncer {
         // alone, what changes beside a menu's rows names it: the Pokéblock Case writes the chosen
         // block's name under its grid (movie30, spike 196). Not otherwise: the PC Box rewrites its
         // box's name as its menu's cursor moves, "BOX 1" each time (movie9).
-        // Words coming back to a menu as they left, in place of words that have just left, are
-        // its own too: the Bag's party draws its levels again after an evolution stone's
-        // "UNABLE!", and they were read again (movie31). A question coming back is said.
+        // Words the menu opened with, coming back as they left in place of words that have just
+        // left, are its own too: the Bag's party draws its levels again after an evolution
+        // stone's "UNABLE!", and they were read again (movie31). The "UNABLE!" coming back is
+        // said, and so is a question.
         let polls = self.polls;
         self.left_groups
             .retain(|_group, &mut poll| polls - poll <= REPEAT_POLLS);
         for p in left {
             self.left_groups.insert((p.root, p.parent), self.polls);
+        }
+        for p in texts.iter().filter(|p| p.with_layout) {
+            self.opened_with.insert(p.r#box, p.root);
+        }
+        if let Some(roots) = roots {
+            self.opened_with.retain(|_box, root| roots.contains(root));
         }
         let counting = self
             .gathering
@@ -336,7 +347,9 @@ impl ScreenAnnouncer {
                         && ((p.changed && !rowed.contains(&p.root))
                             || p.with_layout
                             || p.scrolled
-                            || (p.returned && self.left_groups.contains_key(&(p.root, p.parent)))))
+                            || (p.returned
+                                && self.opened_with.contains_key(&p.r#box)
+                                && self.left_groups.contains_key(&(p.root, p.parent)))))
             })
             .cloned()
             .collect();

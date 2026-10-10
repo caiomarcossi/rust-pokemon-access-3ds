@@ -816,41 +816,99 @@ fn test_words_coming_back_to_a_menu_come_alone() {
 }
 
 #[test]
-fn test_words_coming_back_to_a_menu_in_place_of_words_just_gone_are_its_own() {
+fn test_words_a_menu_opened_with_coming_back_in_place_of_words_just_gone_are_its_own() {
     // The Bag's party draws "UNABLE!" for an evolution stone in place of each level, and the
-    // levels coming back as the cursor moved on were read again, "L45, L48..." (movie31).
+    // levels coming back as the cursor moved on were read again, "L45, L48..." (movie31); the
+    // "UNABLE!" coming back to the stone is said.
     let mut screen = Screen::new();
-    let item = vec![piece(1, "Sun Stone", 77.0, 0.0, MENU)];
-    let unable = piece_kw(2, "UNABLE!", -91.0, 68.0, MENU, Kw { parent: 5, ..PLAIN });
+    let stone = vec![piece(1, "Sun Stone", 77.0, 0.0, MENU)];
+    let level = piece_kw(3, "L45", -91.0, 68.0, MENU, Kw { parent: 5, ..PLAIN });
     screen.say(args(
-        &item,
-        vec![CursorItem::new(0x0C, item.clone(), true)],
-        &cat(&[&item, &one(&unable)]),
+        &cat(&[&stone, &one(&level)]),
+        vec![CursorItem::new(0x0C, stone.clone(), true)],
+        &cat(&[&stone, &one(&level)]),
     ));
-    let level = ScreenText {
-        returned: true,
-        ..piece_kw(
-            3,
-            "L45",
-            -91.0,
-            68.0,
-            MENU,
-            Kw {
-                parent: 5,
-                with_layout: false,
-                ..PLAIN
-            },
-        )
-    };
-    screen.say(Args {
-        on_screen: item.clone(),
-        left: vec![unable],
-        ..Args::default()
-    });
+    let unable = piece_kw(
+        2,
+        "UNABLE!",
+        -91.0,
+        68.0,
+        MENU,
+        Kw {
+            parent: 5,
+            with_layout: false,
+            ..PLAIN
+        },
+    );
     assert_eq!(
-        screen.say(args(&one(&level), vec![], &cat(&[&item, &one(&level)]))),
+        screen.say(Args {
+            left: vec![level.clone()],
+            ..args(&one(&unable), vec![], &cat(&[&stone, &one(&unable)]))
+        }),
+        ["UNABLE!"]
+    );
+    let back = ScreenText {
+        with_layout: false,
+        returned: true,
+        ..level.clone()
+    };
+    assert_eq!(
+        screen.say(Args {
+            left: vec![unable.clone()],
+            ..args(&one(&back), vec![], &cat(&[&stone, &one(&back)]))
+        }),
         NOTHING
     );
+    let again = ScreenText {
+        returned: true,
+        ..unable.clone()
+    };
+    assert_eq!(
+        screen.say(Args {
+            left: vec![level.clone()],
+            ..args(&one(&again), vec![], &cat(&[&stone, &one(&again)]))
+        }),
+        ["UNABLE!"]
+    );
+}
+
+#[test]
+fn test_a_place_revealed_after_its_entrant_is_said_with_it() {
+    // The contest's results reveal each place a while after the entrants' names, and said alone
+    // it was "third place", nobody's (movie30, Orion, 2026-10-09).
+    let mut screen = Screen::new();
+    let names = piece_kw(
+        1,
+        "Raiden & Metagross",
+        -75.0,
+        -45.0,
+        PANEL,
+        Kw { parent: 7, ..PLAIN },
+    );
+    screen.say(args(&one(&names), vec![], &one(&names)));
+    for _ in 0..ARRIVAL_MAX_POLLS {
+        screen.on(&one(&names));
+    }
+    let place = ScreenText {
+        root: PANEL,
+        parent: 7,
+        picture: true,
+        ..ScreenText::placed(
+            2,
+            "third place",
+            false,
+            names.right + 2.5 * 12.5,
+            names.right + 3.5 * 12.5,
+            -45.0,
+            12.5,
+        )
+    };
+    let said = screen.say(args(
+        &one(&place),
+        vec![],
+        &cat(&[&one(&names), &one(&place)]),
+    ));
+    assert_eq!(said, ["Raiden & Metagross third place"]);
 }
 
 #[test]

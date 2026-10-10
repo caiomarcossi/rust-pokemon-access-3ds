@@ -44,6 +44,9 @@ pub const FRACTION: [f64; 3] = [0.0, 0.5, 1.0];
 /// An average glyph's width across, as a share of the TextBox's glyph width. An estimate:
 /// "Torchic", seven glyphs at 12.5, drew about 44 units wide in spike 31's party screen picture.
 pub const GLYPH_ADVANCE: f64 = 0.5;
+/// Glyphs past its entrant's words a contest's place is taken to stand (`_places_last`): past
+/// `LABEL_GAP`, the gap at which a value arriving alone is said with its label.
+pub const PLACE_AFTER: f64 = 2.5;
 /// Units a hidden heart is taken to stand past the words it hangs from, and to be wide and tall:
 /// a contest's hearts are 10 by 10, 10 apart (spike 196).
 pub const GLYPH_SPOT: f64 = 10.0;
@@ -1208,7 +1211,9 @@ pub(crate) fn by_their_labels(
 /// picture saying what the one beside it says is one thing drawn twice, as each Pokédex language
 /// tab is.
 /// A contest's place, drawn left of its entrant, read after the entrant's words: "Raiden &
-/// Metagross third place" (Orion, 2026-10-09; spike 196).
+/// Metagross third place" (Orion, 2026-10-09; spike 196). The results reveal the places one at
+/// a time after the names, so a place stands far enough past its entrant's words to be said
+/// with them as a value is with its label (`LABEL_GAP`).
 pub(crate) fn places_last(found: &IndexMap<i64, ScreenText>) -> IndexMap<i64, ScreenText> {
     let places: HashSet<&str> = PLACES.iter().map(|&(_, words)| words).collect();
     let mut out = found.clone();
@@ -1237,8 +1242,8 @@ pub(crate) fn places_last(found: &IndexMap<i64, ScreenText>) -> IndexMap<i64, Sc
             ScreenText {
                 row: after.row,
                 glyph: after.glyph,
-                left: after.right + after.glyph,
-                right: after.right + 2.0 * after.glyph,
+                left: after.right + PLACE_AFTER * after.glyph,
+                right: after.right + (PLACE_AFTER + 1.0) * after.glyph,
                 ..piece.clone()
             },
         );
