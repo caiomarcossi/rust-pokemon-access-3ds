@@ -28,7 +28,9 @@ use crate::core::binary::{f32, u16, u32};
 use crate::core::memory::Memory;
 use crate::core::rtti::ClassNames;
 use crate::games::common::layout::Layouts;
-use crate::games::common::pictures::{HEART, NO_HEART, NO_STAR, SPECIAL, STAR, hearts, stars};
+use crate::games::common::pictures::{
+    HEART, NO_HEART, NO_STAR, PLACES, SPECIAL, STAR, hearts, stars,
+};
 use crate::games::common::text::pages;
 use crate::games::common::{lyt, msgwin};
 use crate::py::{self, Error, Kind, PySet, Result, sorted_by_lt};
@@ -611,6 +613,7 @@ impl ScreenTextReader {
         // After it: a group's one picture is read first in its row, and the DexNav's mark is no
         // such picture: "First Move: egg move, Helping Hand" (spike B).
         found = by_their_labels(&found, &self.labels);
+        found = places_last(&found);
         if let Some(level_mark) = &self.level_mark {
             found = level_marks(&found, level_mark);
         }
@@ -1204,6 +1207,45 @@ pub(crate) fn by_their_labels(
 /// types is "Bug/Water" (Orion, 2026-09-29), where joined as drawn they read "BugWater". A
 /// picture saying what the one beside it says is one thing drawn twice, as each Pokédex language
 /// tab is.
+/// A contest's place, drawn left of its entrant, read after the entrant's words: "Raiden &
+/// Metagross third place" (Orion, 2026-10-09; spike 196).
+pub(crate) fn places_last(found: &IndexMap<i64, ScreenText>) -> IndexMap<i64, ScreenText> {
+    let places: HashSet<&str> = PLACES.iter().map(|&(_, words)| words).collect();
+    let mut out = found.clone();
+    for (&r#box, piece) in found {
+        if !piece.picture || !places.contains(piece.text.as_str()) {
+            continue;
+        }
+        let words: Vec<&ScreenText> = found
+            .values()
+            .filter(|p| {
+                p.root == piece.root && p.parent == piece.parent && !p.picture && p.glyph > 0.0
+            })
+            .collect();
+        // `max(words, key=right)`: the first of equals.
+        let Some(&first) = words.first() else {
+            continue;
+        };
+        let mut after = first;
+        for &p in &words[1..] {
+            if p.right > after.right {
+                after = p;
+            }
+        }
+        out.insert(
+            r#box,
+            ScreenText {
+                row: after.row,
+                glyph: after.glyph,
+                left: after.right + after.glyph,
+                right: after.right + 2.0 * after.glyph,
+                ..piece.clone()
+            },
+        );
+    }
+    out
+}
+
 fn side_by_side(pictures: &IndexMap<i64, ScreenText>) -> IndexMap<i64, ScreenText> {
     let mut out: IndexMap<i64, ScreenText> = IndexMap::new();
     let mut last: Option<ScreenText> = None;

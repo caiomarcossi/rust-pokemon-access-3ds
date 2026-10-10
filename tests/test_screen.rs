@@ -834,6 +834,28 @@ fn test_a_contest_moves_hearts_are_counted() {
     );
 }
 
+/// The results draw each entrant's place as a picture left of "Raiden & Metagross" (spike
+/// 196): "Raiden & Metagross: third place" under pauses (Orion, 2026-10-09).
+#[test]
+fn test_a_contests_place_is_read_after_its_entrant() {
+    let names = ScreenText {
+        parent: 7,
+        ..ScreenText::placed(0x20, "Raiden & Metagross", false, -75.0, 37.5, -45.0, 12.5)
+    };
+    let place = ScreenText {
+        parent: 7,
+        picture: true,
+        ..ScreenText::placed(0x10, "third place", false, -154.0, -124.0, -55.0, 30.0)
+    };
+    assert_eq!(pictures::place("three"), Some(place.text.as_str()));
+    let found: IndexMap<i64, ScreenText> = IndexMap::from([(0x10, place), (0x20, names)]);
+    let mut placed: Vec<ScreenText> = screen::places_last(&found).into_values().collect();
+    placed.sort_by_key(|piece| piece.r#box);
+    let said = in_rows(placed);
+    assert_eq!(join(&said, true), "Raiden & Metagross: third place");
+    assert_eq!(join(&said, false), "Raiden & Metagross third place");
+}
+
 /// A status move's power is a dash, and under pauses it read "Power, —" (movie32).
 #[test]
 fn test_a_dash_is_a_labels_value() {

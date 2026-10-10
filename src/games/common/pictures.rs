@@ -110,6 +110,15 @@ pub const DRAWN: [(&str, &str); 4] = [
     ("sp_mark", SPECIAL),
     ("heart", HEART),
 ];
+/// A contest's places, which its results draw as pictures beside each entrant, `one` to `four`
+/// (spike 196), in words of pa3ds's own, said after the entrant: "Raiden & Metagross third
+/// place" (Orion, 2026-10-09).
+pub const PLACES: [(&str, &str); 4] = [
+    ("one", "first place"),
+    ("two", "second place"),
+    ("three", "third place"),
+    ("four", "fourth place"),
+];
 pub const HIGHER_LEVEL: &str = "higher level";
 pub const EGG_MOVE: &str = "egg move";
 /// What the DexNav's mark says beside a level above the area's, a first move that is an egg move,
@@ -125,6 +134,14 @@ pub fn drawn(texture: &str) -> Option<&'static str> {
         .iter()
         .find(|(held, _)| *held == texture)
         .map(|(_, sign)| *sign)
+}
+
+/// `PLACES.get(texture)`.
+pub fn place(texture: &str) -> Option<&'static str> {
+    PLACES
+        .iter()
+        .find(|(held, _)| *held == texture)
+        .map(|(_, words)| *words)
 }
 
 /// Potential's stars as words: "2 stars", "1 star", "0 stars".

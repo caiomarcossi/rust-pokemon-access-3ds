@@ -365,6 +365,9 @@ pub fn said(textures: &[impl AsRef<str>], text: &GameText) -> Result<Option<Stri
         if let Some(sign) = pictures::drawn(texture) {
             return Ok(Some(sign.to_string()));
         }
+        if let Some(place) = pictures::place(texture) {
+            return Ok(Some(place.to_string()));
+        }
         let (index, words): (i64, &[String]);
         let tab = TAB
             .captures(texture)

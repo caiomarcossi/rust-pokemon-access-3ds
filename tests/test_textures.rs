@@ -377,6 +377,10 @@ fn test_a_contest_moves_category_is_said_as_the_contest_names_it() {
         Some(pictures::HEART.to_string())
     );
     assert_eq!(textures::said(&["mini_heart"], &english()).unwrap(), None);
+    assert_eq!(
+        textures::said(&["three"], &english()).unwrap(),
+        Some("third place".to_string())
+    );
 }
 
 #[test]
