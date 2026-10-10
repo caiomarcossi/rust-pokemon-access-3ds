@@ -718,7 +718,7 @@ impl ScreenTextReader {
             return Ok((None, false));
         }
         let placed = placed(r#box, &text, &head, &shape)?;
-        let parent = self.group_of(u32(&head, lyt::PARENT)?)?;
+        let parent = self.group_of(u32(&head, lyt::PARENT)?, true)?;
         let mut piece = ScreenText {
             top: placement.top,
             root: placement.root,
@@ -762,10 +762,11 @@ impl ScreenTextReader {
                     // A contest hides the hearts of Jamming a move does not have, and said bare,
                     // "Jamming" sounded cut off: hidden under words shown, they are counted empty
                     // (spike 196).
+                    if !placement.drawn || self.group_of(parent, false)? == parent {
+                        continue;
+                    }
                     let above = self.layouts.placement(parent)?;
-                    if !placement.drawn
-                        || !above.is_some_and(|above| above.shown)
-                        || self.group_of(parent)? == parent
+                    if !above.is_some_and(|above| above.shown)
                         || pictures(pane)?.as_deref() != Some(HEART)
                     {
                         continue;
@@ -823,26 +824,30 @@ impl ScreenTextReader {
         let counted = side_by_side(&counted_stars(&out));
         let mut grouped: IndexMap<i64, ScreenText> = IndexMap::new();
         for (r#box, piece) in counted {
-            let parent = self.group_of(piece.parent)?;
+            let parent = self.group_of(piece.parent, false)?;
             grouped.insert(r#box, ScreenText { parent, ..piece });
         }
         Ok(grouped)
     }
 
-    /// The pane words hanging from `parent` are grouped by: their parent, or where that is a
-    /// TextBox, the TextBox's. The Bag hangs an item's count under its times sign, and as a
-    /// group of its own it was read after the description; a contest hangs a move's hearts under
-    /// "Appeal" (movie29, movie30, spike 196).
-    fn group_of(&self, parent: i64) -> Result<i64> {
-        if self
-            .names
-            .of_vtable(u32(&self.layouts.pane(parent)?, 0)?)?
-            .as_deref()
-            == Some(lyt::TEXTBOX_CLASS)
-        {
-            return u32(&self.layouts.pane(parent)?, lyt::PARENT);
+    /// The pane what hangs from `parent` is grouped by: its parent, or where that is a
+    /// TextBox, the TextBox's. A contest hangs a move's hearts under "Appeal" (movie30, spike
+    /// 196). Other `words` only under a TextBox hanging from its layout's root: the Bag hangs an
+    /// item's count under its times sign, and as a group of its own it was read after the
+    /// description (movie29); the PC Box's list, regrouped under words of its rows, read its rows
+    /// as new (movie9).
+    ///
+    /// Python's `words` defaults to False.
+    fn group_of(&self, parent: i64, words: bool) -> Result<i64> {
+        let head = self.layouts.pane(parent)?;
+        if self.names.of_vtable(u32(&head, 0)?)?.as_deref() != Some(lyt::TEXTBOX_CLASS) {
+            return Ok(parent);
         }
-        Ok(parent)
+        let above = u32(&head, lyt::PARENT)?;
+        if words && u32(&self.layouts.pane(above)?, lyt::PARENT)? != 0 {
+            return Ok(parent);
+        }
+        Ok(above)
     }
 
     /// The window shown in the piece's layout whose rectangle holds the words' middle, or 0.
