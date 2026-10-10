@@ -112,6 +112,12 @@ impl CursorReader {
         self.lists.lists()
     }
 
+    /// The TextBoxes of the rows drawn like those an app menu's cursor is over
+    /// (`MenuCursors.rows`): its list's, which are its to say.
+    pub fn rows(&self) -> HashSet<i64> {
+        self.menus.rows.clone()
+    }
+
     /// What each cursor on screen is over, whenever that changed.
     ///
     /// `on_screen` is every piece of screen text on screen, from a screen text poll in the same

@@ -251,8 +251,15 @@ impl ListCursors {
             }
             // The Bag's select bar carries the chosen Pokémon's name, level and ABLE! over the
             // slot's own ABLE!, which lies nearer its middle (spike 139).
+            let button = if walks && own.is_empty() {
+                self.on_empty_pane(holder, root, on_screen)?
+            } else {
+                Vec::new()
+            };
             let mut inside: Vec<ScreenText> = if !own.is_empty() {
                 distinct(in_rows(own.clone()))
+            } else if !button.is_empty() {
+                button.clone()
             } else {
                 framed(on_screen, &rect)
             };
@@ -325,10 +332,14 @@ impl ListCursors {
                 }
                 self.said.steady.borrow_mut().shift_remove(&other);
             }
+            // A button's cursor walks a grid of buttons alike, the contest's two columns of moves.
             let mut rows: HashSet<(i64, i64)> = HashSet::new();
             if walks && !at_slot {
                 for piece in &inside {
-                    for row in self.alike(piece.root, piece.parent)? {
+                    for row in self
+                        .panes
+                        .alike(piece.root, piece.parent, button.is_empty())?
+                    {
                         rows.insert((piece.root, row));
                     }
                 }
@@ -375,6 +386,46 @@ impl ListCursors {
             }
         }
         Ok(())
+    }
+
+    /// The words of the button whose empty pane a cursor picture sits on, as the battle's
+    /// does (`PictureCursors.item`): a contest draws `cursor.bclim` over the chosen move, on a
+    /// 20 by 20 pane at the top of the move's button, its words below it, and said nothing
+    /// (movie30, spike 196).
+    fn on_empty_pane(
+        &self,
+        holder: i64,
+        root: i64,
+        on_screen: &[ScreenText],
+    ) -> Result<Vec<ScreenText>> {
+        let (x, y) = self.panes.place(holder)?;
+        let tree = self.layouts.tree(root);
+        // A Secret Base's list moves a plain pane holding its cursor onto the row, where the
+        // list's own empty panes stand too (spike 154): only a picture marks a button so.
+        if class_of(&tree, holder) != Some(lyt::PICTURE_CLASS) {
+            return Ok(Vec::new());
+        }
+        for (&pane, name) in &tree {
+            if name != lyt::PANE_CLASS
+                || pane == holder
+                || pane == root
+                || !self.layouts.children(root, pane).is_empty()
+                || !(near(self.panes.place(pane)?.0, x) && near(self.panes.place(pane)?.1, y))
+            {
+                continue;
+            }
+            let group = u32(&self.layouts.pane(pane)?, lyt::PARENT)?;
+            let mut words: Vec<ScreenText> = Vec::new();
+            for piece in on_screen {
+                if piece.root == root && self.panes.below(piece.parent, group)? {
+                    words.push(piece.clone());
+                }
+            }
+            if group != root && !words.is_empty() {
+                return Ok(distinct(in_rows(words)));
+            }
+        }
+        Ok(Vec::new())
     }
 
     /// Pane -> (root, whether it walks a list), for every pane shown that is drawn as a
@@ -520,25 +571,5 @@ impl ListCursors {
             || rect.left - x > half_width
             || rect.high - y < -SCREEN_HALF_HEIGHT
             || rect.low - y > SCREEN_HALF_HEIGHT)
-    }
-
-    /// A row of a list and the rows drawn like it: its parent's children of its class, at its
-    /// x and of its size. The Poké Mart's rows share one window; each row of the PC Box's menu for
-    /// a chosen Pokémon is a picture of its own (or/movie6_pc, 2026-09-27).
-    fn alike(&self, root: i64, row: i64) -> Result<HashSet<i64>> {
-        let tree = self.layouts.tree(root);
-        let parent = self.panes.parent(row)?;
-        let ((x, _y), (width, height)) = (self.panes.place(row)?, self.panes.size(row)?);
-        let mut alike: HashSet<i64> = HashSet::from([row]);
-        for pane in self.layouts.children(root, parent) {
-            if class_of(&tree, pane) == class_of(&tree, row)
-                && near(self.panes.place(pane)?.0, x)
-                && near(self.panes.size(pane)?.0, width)
-                && near(self.panes.size(pane)?.1, height)
-            {
-                alike.insert(pane);
-            }
-        }
-        Ok(alike)
     }
 }

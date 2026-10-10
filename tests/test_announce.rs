@@ -93,6 +93,7 @@ struct Args {
     settling: IndexSet<i64>,
     left: Vec<ScreenText>,
     moving: HashSet<i64>,
+    rows: HashSet<i64>,
 }
 
 fn args(texts: &[ScreenText], items: Vec<CursorItem>, on_screen: &[ScreenText]) -> Args {
@@ -144,6 +145,7 @@ impl Screen {
                 &given.left,
                 None,
                 &given.moving,
+                &given.rows,
             )
             .unwrap();
         self.backend.spoken()[before..].to_vec()
@@ -1265,6 +1267,7 @@ fn test_words_under_a_cursor_that_settle_after_it_spoke_are_not_said_again() {
             &[],
             None,
             &HashSet::new(),
+            &HashSet::new(),
         )
         .unwrap();
     assert_eq!(screen.backend.spoken()[before..], NOTHING);
@@ -1611,6 +1614,7 @@ fn listed(
             &IndexSet::new(),
             &[],
             Some(&lists),
+            &HashSet::new(),
             &HashSet::new(),
         )
         .unwrap();

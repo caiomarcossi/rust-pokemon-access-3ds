@@ -788,6 +788,39 @@ fn test_the_dexnav_s_stars_are_counted_and_its_mark_said_after_what_it_marks() {
     );
 }
 
+/// A contest draws a move's appeal as hearts under "Appeal", four for Hold Back (spike 196).
+#[test]
+fn test_a_contest_moves_hearts_are_counted() {
+    let hearts: IndexMap<i64, ScreenText> =
+        [(0x90, -30.0), (0x94, -20.0), (0x98, -10.0), (0x9C, 0.0)]
+            .into_iter()
+            .map(|(r#box, left)| {
+                (
+                    r#box,
+                    ScreenText {
+                        parent: 0x200,
+                        picture: true,
+                        ..ScreenText::placed(
+                            r#box,
+                            pictures::HEART,
+                            false,
+                            left,
+                            left + 10.0,
+                            -65.0,
+                            10.0,
+                        )
+                    },
+                )
+            })
+            .collect();
+    let counted: Vec<ScreenText> = screen::counted_stars(&hearts).into_values().collect();
+    let [counted] = counted.try_into().unwrap();
+    assert_eq!(
+        (counted.text.as_str(), counted.left, counted.right),
+        ("4 hearts", -30.0, 10.0)
+    );
+}
+
 /// The main menu's CONTINUE panel (movie11, 2026-10-01): "Badges:, 0" before.
 #[test]
 fn test_a_label_with_a_colon_of_its_own_is_followed_by_a_space() {
@@ -1287,6 +1320,33 @@ fn test_words_hanging_from_the_root_are_framed_by_the_window_drawn_round_them() 
         frames,
         HashMap::from([("POWER".to_string(), frame), ("ATTACK".to_string(), 0)])
     );
+}
+
+/// The Bag's sign before an item's count.
+const TIMES: &str = "\u{00d7}";
+
+/// The Bag hangs an item's count under its times sign, which hangs from the root with the
+/// item's name and description; as a group of its own the count was read after the description
+/// (movie29, spike 196).
+#[test]
+fn test_words_hung_under_other_words_are_of_their_group() {
+    let mut game = Game::new();
+    let (_work, root) = game.fake.screen_with(TOP, true, false);
+    let times = game.text_box(TOP + 0x1000, root, TIMES);
+    game.place(times, (30.0, 46.0), 20.0, 12.5);
+    let count = game.text_box(TOP + 0x1200, times, "5");
+    game.place(count, (55.0, 45.0), 30.0, 14.0);
+    game.sweep();
+    game.heard();
+    let groups: HashMap<String, (i64, i64)> = game
+        .reader
+        .poll(&none(), true)
+        .unwrap()
+        .into_iter()
+        .map(|piece| (piece.text.clone(), piece.group()))
+        .collect();
+    assert_eq!(groups["5"], groups[TIMES]);
+    assert_eq!(groups[TIMES], (root, root));
 }
 
 /// The Pokédex entry's type is an icon beside the word TYPE, heard as the game names the type

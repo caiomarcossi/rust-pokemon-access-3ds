@@ -13,17 +13,24 @@
 //! Sun's name entry keyboard builds its cursor the same way, as a window alone under a Parts pane, a
 //! layout built into the keys' own (spike 112).
 
+use std::collections::HashSet;
 use std::rc::Rc;
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 
 use crate::core::binary::u32;
 use crate::core::rtti::ClassNames;
-use crate::games::common::cursors::shared::{CursorItem, Panes, Rect, Said, framed, place_of};
+use crate::games::common::cursors::shared::{
+    CursorItem, Panes, Rect, Said, framed, near, place_of,
+};
 use crate::games::common::layout::Layouts;
 use crate::games::common::lyt;
-use crate::games::common::screen::ScreenText;
+use crate::games::common::screen::{ScreenText, distinct, in_rows};
 use crate::py::Result;
+
+/// Units a cursor's width or height may differ from the pane it sits on: the Bag's is 157 by 42
+/// on rows of 150 by 30, the Pokéblock Case's 52 by 52 on cells of 50 by 50 (spike 196).
+pub const ON_PANE: f64 = 16.0;
 
 /// The windows that are an app menu's cursor, each read on every poll once found.
 pub struct MenuCursors {
@@ -33,6 +40,10 @@ pub struct MenuCursors {
     names: Rc<ClassNames>,
     /// The cursors found so far.
     pub windows: Vec<i64>,
+    /// The TextBoxes of the rows drawn like the ones the cursors are over, as of the last
+    /// poll: the Bag's list writes an item into a row as it scrolls it into view, and "Soft
+    /// Sand" was said as new beside the cursor's "Quick Claw" (movie29, spike 196).
+    pub rows: HashSet<i64>,
 }
 
 impl MenuCursors {
@@ -43,6 +54,7 @@ impl MenuCursors {
             said,
             names,
             windows: Vec::new(),
+            rows: HashSet::new(),
         }
     }
 
@@ -61,7 +73,8 @@ impl MenuCursors {
     }
 
     /// Report the item under each menu cursor on screen.
-    pub fn poll(&self, on_screen: &[ScreenText], items: &mut Vec<CursorItem>) -> Result<()> {
+    pub fn poll(&mut self, on_screen: &[ScreenText], items: &mut Vec<CursorItem>) -> Result<()> {
+        self.rows = HashSet::new();
         for &cursor in &self.windows {
             let Some(rect) = self.rect(cursor)? else {
                 self.said.forget(cursor);
@@ -75,14 +88,78 @@ impl MenuCursors {
                 .filter(|piece| own.is_none() || own == Some(piece.root))
                 .cloned()
                 .collect();
-            let mut inside = framed(&theirs, &rect);
+            let mut inside = self.on_pane(&theirs, &rect)?;
+            if inside.is_empty() {
+                inside = framed(&theirs, &rect);
+            }
             if inside.is_empty() {
                 inside = self.pictures_inside(&rect)?;
             }
+            let mut rows: HashSet<(i64, i64)> = HashSet::new();
+            for piece in &inside {
+                if piece.parent != piece.root {
+                    for row in self.panes.alike(piece.root, piece.parent, false)? {
+                        rows.insert((piece.root, row));
+                    }
+                }
+            }
+            self.rows.extend(
+                on_screen
+                    .iter()
+                    .filter(|piece| rows.contains(&(piece.root, piece.parent)))
+                    .map(|piece| piece.r#box),
+            );
             let at = place_of(&rect)?;
             self.said.report(cursor, inside, items, at, false);
         }
         Ok(())
+    }
+
+    /// The words under the one pane the cursor sits on, centred where it is and of about its
+    /// size, or none when no layout, or more than one, has such a pane with words under it.
+    ///
+    /// The Pokéblock Kit draws its case's grid over the Berry Blender's, both shown, and the
+    /// case's cursor sat on a block's cell, 50 by 50 where it is 52 by 52, its count just below
+    /// its frame; framed, it said the count of the blender's cell behind, nearer its middle
+    /// (movie30, spike 196).
+    fn on_pane(&self, pieces: &[ScreenText], rect: &Rect) -> Result<Vec<ScreenText>> {
+        let (x, y) = ((rect.left + rect.right) / 2.0, (rect.low + rect.high) / 2.0);
+        let (width, height) = (rect.right - rect.left, rect.high - rect.low);
+        let mut found: IndexMap<i64, Vec<ScreenText>> = IndexMap::new();
+        let roots: IndexSet<i64> = pieces
+            .iter()
+            .filter(|piece| piece.top == rect.top)
+            .map(|piece| piece.root)
+            .collect();
+        for root in roots {
+            let mine: Vec<&ScreenText> = pieces.iter().filter(|piece| piece.root == root).collect();
+            for &pane in self.layouts.tree(root).keys() {
+                if pane == root
+                    || !(near(self.panes.place(pane)?.0, x) && near(self.panes.place(pane)?.1, y))
+                {
+                    continue;
+                }
+                let (pane_width, pane_height) = self.panes.size(pane)?;
+                if (pane_width - width).abs() > ON_PANE || (pane_height - height).abs() > ON_PANE {
+                    continue;
+                }
+                let mut under: Vec<ScreenText> = Vec::new();
+                for piece in &mine {
+                    if self.panes.below(piece.parent, pane)? {
+                        under.push((*piece).clone());
+                    }
+                }
+                if !under.is_empty() {
+                    found.insert(root, distinct(in_rows(under)));
+                    break;
+                }
+            }
+        }
+        Ok(if found.len() == 1 {
+            found.into_values().next().unwrap_or_default()
+        } else {
+            Vec::new()
+        })
     }
 
     /// Is this a window alone under the root of its layout, holding nothing of its own? In

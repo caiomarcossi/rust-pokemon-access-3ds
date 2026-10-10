@@ -28,7 +28,7 @@ use crate::core::binary::{f32, u16, u32};
 use crate::core::memory::Memory;
 use crate::core::rtti::ClassNames;
 use crate::games::common::layout::Layouts;
-use crate::games::common::pictures::{NO_STAR, SPECIAL, STAR, stars};
+use crate::games::common::pictures::{HEART, NO_HEART, NO_STAR, SPECIAL, STAR, hearts, stars};
 use crate::games::common::text::pages;
 use crate::games::common::{lyt, msgwin};
 use crate::py::{self, Error, Kind, PySet, Result, sorted_by_lt};
@@ -42,6 +42,9 @@ pub const FRACTION: [f64; 3] = [0.0, 0.5, 1.0];
 /// An average glyph's width across, as a share of the TextBox's glyph width. An estimate:
 /// "Torchic", seven glyphs at 12.5, drew about 44 units wide in spike 31's party screen picture.
 pub const GLYPH_ADVANCE: f64 = 0.5;
+/// Units a hidden heart is taken to stand past the words it hangs from, and to be wide and tall:
+/// a contest's hearts are 10 by 10, 10 apart (spike 196).
+pub const GLYPH_SPOT: f64 = 10.0;
 /// Units within which two pieces with the same words are one drawn twice.
 pub const SAME_PLACE: f64 = 2.0;
 /// Pieces whose words come closer than this many glyph widths are one piece: "L5" and "19/19" are
@@ -698,7 +701,7 @@ impl ScreenTextReader {
             return Ok((None, false));
         }
         let placed = placed(r#box, &text, &head, &shape)?;
-        let parent = u32(&head, lyt::PARENT)?;
+        let parent = self.group_of(u32(&head, lyt::PARENT)?)?;
         let mut piece = ScreenText {
             top: placement.top,
             root: placement.root,
@@ -732,22 +735,42 @@ impl ScreenTextReader {
             let root_head = self.layouts.pane(root)?;
             for (pane, kind) in self.layouts.tree(root) {
                 let placement = self.layouts.placement(pane)?;
-                let Some(placement) = placement.filter(|placement| placement.shown) else {
+                let Some(placement) = placement.filter(|_| kind == lyt::PICTURE_CLASS) else {
                     continue;
                 };
-                if kind != lyt::PICTURE_CLASS {
-                    continue;
+                let mut head = self.layouts.pane(pane)?;
+                let parent = u32(&head, lyt::PARENT)?;
+                let words: String;
+                if !placement.shown {
+                    // A contest hides the hearts of Jamming a move does not have, and said bare,
+                    // "Jamming" sounded cut off: hidden under words shown, they are counted empty
+                    // (spike 196).
+                    let above = self.layouts.placement(parent)?;
+                    if !placement.drawn
+                        || !above.is_some_and(|above| above.shown)
+                        || self.group_of(parent)? == parent
+                        || pictures(pane)?.as_deref() != Some(HEART)
+                    {
+                        continue;
+                    }
+                    words = NO_HEART.to_string();
+                    head = self.layouts.pane(parent)?;
+                } else {
+                    match pictures(pane)?.filter(|words| !words.is_empty()) {
+                        Some(found) => words = found,
+                        None => continue,
+                    }
                 }
-                let head = self.layouts.pane(pane)?;
-                let width = f32(&head, shape.width)? * f32(&head, shape.scale_x)?;
-                let height = f32(&head, shape.height)? * f32(&head, shape.scale_y)?;
+                let mut width = f32(&head, shape.width)? * f32(&head, shape.scale_x)?;
+                let mut height = f32(&head, shape.height)? * f32(&head, shape.scale_y)?;
                 if width <= 0.0 || height <= 0.0 {
                     continue;
                 }
-                let Some(words) = pictures(pane)?.filter(|words| !words.is_empty()) else {
-                    continue;
-                };
-                let (x, y) = (f32(&head, shape.x)?, f32(&head, shape.y)?);
+                let (mut x, y) = (f32(&head, shape.x)?, f32(&head, shape.y)?);
+                if words == NO_HEART {
+                    // Hidden, its own place is not kept up: it stands just past its words.
+                    (x, width, height) = (x + width / 2.0 + GLYPH_SPOT, GLYPH_SPOT, GLYPH_SPOT);
+                }
                 // Wholly off its screen is not on it: the summary keeps a fifth move's type icon
                 // 140 above the bottom screen's middle, 130 to 150, its edge at 120 (movie7).
                 let across = (x - f32(&root_head, shape.x)?).abs() - width / 2.0;
@@ -764,7 +787,7 @@ impl ScreenTextReader {
                         top: placement.top,
                         root: placement.root,
                         panel: placement.panel,
-                        parent: u32(&head, lyt::PARENT)?,
+                        parent,
                         picture: true,
                         ..ScreenText::placed(
                             pane,
@@ -779,7 +802,30 @@ impl ScreenTextReader {
                 );
             }
         }
-        Ok(side_by_side(&counted_stars(&out)))
+        // Counted under the words they hang from, then grouped as those words are.
+        let counted = side_by_side(&counted_stars(&out));
+        let mut grouped: IndexMap<i64, ScreenText> = IndexMap::new();
+        for (r#box, piece) in counted {
+            let parent = self.group_of(piece.parent)?;
+            grouped.insert(r#box, ScreenText { parent, ..piece });
+        }
+        Ok(grouped)
+    }
+
+    /// The pane words hanging from `parent` are grouped by: their parent, or where that is a
+    /// TextBox, the TextBox's. The Bag hangs an item's count under its times sign, and as a
+    /// group of its own it was read after the description; a contest hangs a move's hearts under
+    /// "Appeal" (movie29, movie30, spike 196).
+    fn group_of(&self, parent: i64) -> Result<i64> {
+        if self
+            .names
+            .of_vtable(u32(&self.layouts.pane(parent)?, 0)?)?
+            .as_deref()
+            == Some(lyt::TEXTBOX_CLASS)
+        {
+            return u32(&self.layouts.pane(parent)?, lyt::PARENT);
+        }
+        Ok(parent)
     }
 
     /// The window shown in the piece's layout whose rectangle holds the words' middle, or 0.
@@ -991,25 +1037,27 @@ pub fn after_the_name(found: &IndexMap<i64, ScreenText>) -> IndexMap<i64, Screen
 }
 
 /// Each group's stars as one piece, how many are filled: the DexNav's Potential draws three,
-/// filled or not, "Potential 2 stars" (Orion, 2026-10-06; spike B). Side by side, three stars
-/// alike were one picture drawn three times.
+/// filled or not, "Potential 2 stars" (Orion, 2026-10-06; spike 195). Side by side, three stars
+/// alike were one picture drawn three times. A contest move's hearts likewise, as many as are
+/// drawn: "Appeal 4 hearts" (spike 196).
 pub(crate) fn counted_stars(pictures: &IndexMap<i64, ScreenText>) -> IndexMap<i64, ScreenText> {
-    let star = |piece: &ScreenText| piece.text == STAR || piece.text == NO_STAR;
-    let mut groups: IndexMap<(i64, i64), Vec<&ScreenText>> = IndexMap::new();
+    let counted = |piece: &ScreenText| [STAR, NO_STAR, HEART, NO_HEART].contains(&&*piece.text);
+    let mut groups: IndexMap<(i64, i64, bool), Vec<&ScreenText>> = IndexMap::new();
     for piece in pictures.values() {
-        if star(piece) {
+        if counted(piece) {
+            let heart = piece.text == HEART || piece.text == NO_HEART;
             groups
-                .entry((piece.root, piece.parent))
+                .entry((piece.root, piece.parent, heart))
                 .or_default()
                 .push(piece);
         }
     }
     let mut out: IndexMap<i64, ScreenText> = pictures
         .iter()
-        .filter(|(_, piece)| !star(piece))
+        .filter(|(_, piece)| !counted(piece))
         .map(|(&r#box, piece)| (r#box, piece.clone()))
         .collect();
-    for group in groups.values() {
+    for (&(_root, _parent, heart), group) in &groups {
         // `min(group, key=left)` and `max(right ...)`: the first of equals, and a NaN never
         // smaller or larger.
         let mut first = group[0];
@@ -1022,11 +1070,15 @@ pub(crate) fn counted_stars(pictures: &IndexMap<i64, ScreenText>) -> IndexMap<i6
                 right = piece.right;
             }
         }
-        let filled = group.iter().filter(|piece| piece.text == STAR).count() as i64;
+        let text = if heart {
+            hearts(group.iter().filter(|piece| piece.text == HEART).count() as i64)
+        } else {
+            stars(group.iter().filter(|piece| piece.text == STAR).count() as i64)
+        };
         out.insert(
             first.r#box,
             ScreenText {
-                text: stars(filled),
+                text,
                 right,
                 ..first.clone()
             },

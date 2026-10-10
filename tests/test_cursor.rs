@@ -287,6 +287,97 @@ fn test_words_reaching_out_from_under_the_cursor_are_the_item_when_nothing_else_
     );
 }
 
+/// The Bag's list is a pane a row, each holding its item's words, under a layout of its own;
+/// it writes an item into a row as it scrolls it into view, and "Soft Sand" was said as new
+/// beside the cursor's "Quick Claw" (movie29, spike 196). The pocket's name, hanging from the
+/// root, is no row.
+#[test]
+fn test_a_menu_cursors_rows_are_the_row_it_is_over_and_the_rows_drawn_like_it() {
+    let mut menu = Menu::new();
+    let (_work, root) = menu.fake.screen_with(0x08400000, false, false);
+    let mut pieces: Vec<ScreenText> = Vec::new();
+    for (i, (text, y)) in [
+        ("Quick Claw", 60.0),
+        ("Escape Rope", 30.0),
+        ("Soft Sand", 0.0),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let row = 0x08401000 + i as i64 * 0x100;
+        menu.fake.pane(row, root);
+        for (offset, value) in [
+            (lyt::X, -80.0),
+            (lyt::Y, y),
+            (lyt::WIDTH, 150.0),
+            (lyt::HEIGHT, 30.0),
+        ] {
+            put(&menu.memory, row + offset, &[value]);
+        }
+        pieces.push(ScreenText {
+            root,
+            parent: row,
+            ..ScreenText::placed(
+                0x08402000 + i as i64 * 0x100,
+                text,
+                false,
+                -120.0,
+                -40.0,
+                y,
+                12.5,
+            )
+        });
+    }
+    let pocket = ScreenText {
+        root,
+        parent: root,
+        ..ScreenText::placed(0x08403000, "ITEMS", false, -120.0, -60.0, 110.0, 12.5)
+    };
+    menu.fake.track().unwrap();
+    let mut all = pieces.clone();
+    all.push(pocket);
+    assert_eq!(menu.heard_with(&all), said(&[(&["Quick Claw"], true)]));
+    assert_eq!(
+        menu.reader.rows(),
+        pieces
+            .iter()
+            .map(|piece| piece.r#box)
+            .collect::<HashSet<i64>>()
+    );
+}
+
+/// The Pokéblock Case's cursor sits on a block's cell, its count just below its frame, over
+/// the Berry Blender's grid, whose cell sits off its middle with its count inside the frame:
+/// framed, the case said the blender's "16" for its own "5" (movie30, spike 196).
+#[test]
+fn test_a_menu_cursor_sitting_on_a_pane_says_the_words_under_that_pane() {
+    let mut menu = Menu::new();
+    let mut pieces: Vec<ScreenText> = Vec::new();
+    for (base, (x, y), text, row) in [
+        (0x08400000, (-80.0, 60.0), "5", 36.0),
+        (0x08500000, (-75.0, 70.0), "16", 58.0),
+    ] {
+        let (_work, root) = menu.fake.screen_with(base, false, false);
+        let cell = base + 0x1000;
+        menu.fake.pane(cell, root);
+        for (offset, value) in [
+            (lyt::X, x),
+            (lyt::Y, y),
+            (lyt::WIDTH, 150.0),
+            (lyt::HEIGHT, 40.0),
+        ] {
+            put(&menu.memory, cell + offset, &[value]);
+        }
+        pieces.push(ScreenText {
+            root,
+            parent: cell,
+            ..ScreenText::placed(base + 0x2000, text, false, -90.0, -80.0, row, 12.5)
+        });
+    }
+    menu.fake.track().unwrap();
+    assert_eq!(menu.heard_with(&pieces), said(&[(&["5"], true)]));
+}
+
 /// Confirming a language said "Spanish French Begin game": the list panel was still on screen
 /// behind the confirmation panel, and the cursor covered rows of both (opening.ctm, spike 68). The
 /// cursor ran from -76 to -34, "Begin game" sat at -55, and the list's rows at -40 and -70.
@@ -1707,6 +1798,130 @@ impl Mart {
         self.fake.layouts.refresh();
         heard_of(self.reader.poll(&self.pieces).unwrap())
     }
+}
+
+const CONTEST: i64 = 0x08600000;
+const CONTEST_FILE: i64 = 0x08620000;
+const CONTEST_MOVES: [(&str, f64, f64); 4] = [
+    ("Hold Back", -80.0, 10.0),
+    ("Meteor Mash", 80.0, 10.0),
+    ("Zen Headbutt", -80.0, -36.0),
+    ("Iron Defense", 80.0, -36.0),
+];
+
+/// A contest's moves as spike 196 read them: a button a move, 148 by 43, holding an empty 20
+/// by 20 pane near its top and its name below it, and `cursor.bclim` drawn on the chosen
+/// button's empty pane.
+struct Contest {
+    memory: Rc<FakeMemory>,
+    fake: FakeLayouts,
+    root: i64,
+    pieces: Vec<ScreenText>,
+    cursor: i64,
+    reader: CursorReader,
+}
+
+impl Contest {
+    fn new() -> Contest {
+        let memory = FakeMemory::new();
+        let classes = FakeClasses::new(memory.clone());
+        let picture = classes.add(lyt::PICTURE_CLASS);
+        let fake = FakeLayouts::new(&memory, &classes);
+        let (work, root) = fake.screen_with(CONTEST, false, false);
+        fake.project(work, 320.0);
+        let place = |pane: i64, x: f64, y: f64, width: f64, height: f64| {
+            Contest::place_in(&memory, pane, x, y, width, height)
+        };
+        let mut panes: Vec<(String, i64)> = vec![("RootPane".to_string(), root)];
+        let mut pieces: Vec<ScreenText> = Vec::new();
+        for (index, (r#move, x, y)) in CONTEST_MOVES.into_iter().enumerate() {
+            let index = index as i64;
+            let button = CONTEST + 0x1000 * (index + 1);
+            fake.pane(button, root);
+            place(button, x, y, 148.0, 43.0);
+            fake.pane(button + 0x200, button);
+            place(button + 0x200, x, y + 15.0, 20.0, 20.0);
+            fake.pane(button + 0x400, button);
+            panes.extend([
+                (format!("b{index}"), button),
+                (format!("s{index}"), button + 0x200),
+                (format!("t{index}"), button + 0x400),
+            ]);
+            pieces.push(ScreenText {
+                root,
+                parent: button,
+                ..ScreenText::placed(
+                    button + 0x400,
+                    r#move,
+                    false,
+                    x - 40.0,
+                    x + 40.0,
+                    y + 10.0,
+                    12.5,
+                )
+            });
+        }
+        let cursor = CONTEST + 0x8000;
+        fake.pane_with_vtable(cursor, root, Some(picture));
+        place(cursor, -80.0, 25.0, 16.0, 16.0);
+        panes.push(("7c".to_string(), cursor));
+        for (name, pane) in &panes {
+            write_name(&memory, *pane, name);
+        }
+        fake.track().unwrap();
+        let mut sections = vec![
+            clyt::section(b"txl1", &clyt::names_table(&["cursor.bclim"])),
+            clyt::section(b"mat1", &clyt::materials(&[clyt::material("7c", &[0])])),
+        ];
+        for (name, _pane) in &panes {
+            let kind: &[u8] = if name == "7c" { b"pic1" } else { b"pan1" };
+            sections.push(clyt::pane_with(kind, name, 0));
+        }
+        memory.write(CONTEST_FILE, &layout_archive(sections));
+        let files = Rc::new(LayoutFiles::new(memory.clone()));
+        files.add_archive(CONTEST_FILE).unwrap();
+        let reader = reader_with_files(&fake, &memory, &files);
+        Contest {
+            memory,
+            fake,
+            root,
+            pieces,
+            cursor,
+            reader,
+        }
+    }
+
+    fn place_in(memory: &FakeMemory, pane: i64, x: f64, y: f64, width: f64, height: f64) {
+        put(memory, pane + lyt::X, &[x]);
+        put(memory, pane + lyt::Y, &[y]);
+        put(memory, pane + lyt::WIDTH, &[width, height]);
+        put(memory, pane + lyt::SCALE_X, &[1.0]);
+        put(memory, pane + lyt::SCALE_Y, &[1.0]);
+    }
+
+    fn place(&self, pane: i64, x: f64, y: f64, width: f64, height: f64) {
+        Contest::place_in(&self.memory, pane, x, y, width, height);
+    }
+
+    fn heard(&mut self) -> Vec<(Vec<String>, bool)> {
+        self.fake.layouts.refresh();
+        heard_of(self.reader.poll(&self.pieces).unwrap())
+    }
+}
+
+/// A contest's moves read as "Hold Back: Meteor Mash, Zen Headbutt: Iron Defense", and the
+/// cursor between them said nothing (movie30, Orion, 2026-10-08): it sits on an empty pane at
+/// the top of the chosen move's button, its name below it. Its list is all four buttons.
+#[test]
+fn test_a_cursor_picture_on_an_empty_pane_says_its_buttons_words() {
+    let mut contest = Contest::new();
+    assert_eq!(contest.heard(), said(&[(&["Hold Back"], true)]));
+    contest.place(contest.cursor, 80.0, -21.0, 16.0, 16.0);
+    assert_eq!(contest.heard(), said(&[(&["Iron Defense"], false)]));
+    assert_eq!(
+        contest.reader.lists(),
+        lists_of(contest.root, contest.pieces.iter().map(|p| p.r#box))
+    );
 }
 
 /// The Mart read its whole list, and at each move only the count in the bag and the

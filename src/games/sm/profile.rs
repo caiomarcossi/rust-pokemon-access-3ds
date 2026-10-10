@@ -332,6 +332,7 @@ impl SunProfile {
             let settling = self.screen.borrow().settling();
             let left = self.screen.borrow().left();
             let lists = self.cursors.borrow().lists();
+            let rows = self.cursors.borrow().rows();
             self.screen_announcer.borrow_mut().say(
                 &texts,
                 &items,
@@ -343,6 +344,7 @@ impl SunProfile {
                 &left,
                 Some(&lists),
                 &HashSet::new(),
+                &rows,
             )?;
         }
         self.announcements.borrow_mut().battlers(&sides);

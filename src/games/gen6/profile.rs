@@ -866,6 +866,7 @@ impl Gen6Profile {
         let left = self.screen.borrow().left();
         let listed = self.cursors.borrow().lists();
         let moving = self.cursors.borrow().moving();
+        let rows = self.cursors.borrow().rows();
         self.screen_announcer.borrow_mut().say(
             &kept,
             &items,
@@ -877,6 +878,7 @@ impl Gen6Profile {
             &left,
             Some(&listed),
             &moving,
+            &rows,
         )?;
         self.announcements.borrow_mut().battlers(&sides);
         self.announcements.borrow_mut().screen_polled();

@@ -93,17 +93,22 @@ struct Gathering {
     said: HashSet<i64>,
     /// The item has no details to say: what changes is taken in unsaid (`CursorItem.quiet`).
     quiet: bool,
+    /// The item is a count alone, said after the first row of its details, which name what it
+    /// counts (`ScreenAnnouncer._say_details`).
+    count: String,
 }
 
 impl Gathering {
-    /// `_Gathering(cursor, quiet=quiet)`: `polls` at 0 and no panels or words said yet.
-    fn new(cursor: i64, quiet: bool) -> Self {
+    /// `_Gathering(cursor, quiet=quiet, count=count)`: `polls` at 0 and no panels or words said
+    /// yet.
+    fn new(cursor: i64, quiet: bool, count: String) -> Self {
         Gathering {
             cursor,
             polls: 0,
             panels: IndexSet::new(),
             said: HashSet::new(),
             quiet,
+            count,
         }
     }
 }
@@ -191,15 +196,16 @@ impl ScreenAnnouncer {
     /// `roots` of every layout still alive, so a menu whose layout is gone is forgotten, and the
     /// roots of the layouts whose words are `settling`, still being written, the pieces that have
     /// `left` the screen, and, by layout, the TextBoxes of the list a cursor walks where the
-    /// cursor reader knows it (`CursorReader.lists`).
+    /// cursor reader knows it (`CursorReader.lists`), and the `rows` of an app menu's list,
+    /// which are its cursor's however they come on screen (`CursorReader.rows`).
     ///
     /// A cursor that knows its list owns the list and no more of its layout. The Poké Mart draws
     /// its list, the money, the count in the bag and the chosen item's description in one
     /// layout, and left to the cursor as a menu's layout is, the description was never heard as
     /// the Mart opened, nor the count as it changed (shop.ctm, 2026-09-24).
     ///
-    /// Python's `roots`, `settling`, `left`, `listed` and `moving` default to None, nothing,
-    /// nothing, None and nothing.
+    /// Python's `roots`, `settling`, `left`, `listed`, `moving` and `rows` default to None,
+    /// nothing, nothing, None, nothing and nothing.
     #[allow(clippy::too_many_arguments)]
     pub fn say(
         &mut self,
@@ -213,11 +219,12 @@ impl ScreenAnnouncer {
         left: &[ScreenText],
         listed: Option<&IndexMap<i64, HashSet<i64>>>,
         moving: &HashSet<i64>,
+        rows: &HashSet<i64>,
     ) -> Result<()> {
         self.polls += 1;
         let no_lists: IndexMap<i64, HashSet<i64>> = IndexMap::new();
         let listed = listed.unwrap_or(&no_lists);
-        let mut cursored: HashSet<i64> = HashSet::new();
+        let mut cursored: HashSet<i64> = rows.clone();
         for pieces in under {
             if !pieces.iter().any(|p| labels.contains(&p.text)) {
                 self.menus.extend(pieces.iter().map(|p| p.root));
@@ -243,20 +250,35 @@ impl ScreenAnnouncer {
                 continue;
             }
             let text = join(&item.pieces, self.pauses);
+            // A count alone names nothing: the Pokéblock Kit's cursor sits on a picture of a
+            // berry or a block and its count, and the screen writes what it is elsewhere, "16"
+            // then "Cheri Berry Red" (movie30, spike 196). It is said after that, with it.
+            let count = if py::isdigit(&text) && !item.opened && !item.quiet {
+                text.clone()
+            } else {
+                String::new()
+            };
             (self.log)(&format!(
-                "cursor {:#010x} {}: {text}  [layout {:#x}]",
+                "cursor {:#010x} {}: {text}{}  [layout {:#x}]",
                 item.cursor,
                 if item.opened { "opened" } else { "moved" },
+                if count.is_empty() {
+                    ""
+                } else {
+                    " (said with its details)"
+                },
                 item.pieces[0].root
             ));
-            self.speech.say(
-                &text,
-                if item.opened {
-                    Category::Prompt
-                } else {
-                    Category::Menu
-                },
-            );
+            if count.is_empty() {
+                self.speech.say(
+                    &text,
+                    if item.opened {
+                        Category::Prompt
+                    } else {
+                        Category::Menu
+                    },
+                );
+            }
             self.cursor_said.insert(text, self.polls);
             cursored.extend(item.pieces.iter().map(|p| p.r#box));
             // Only a move brings up details. A cursor coming on screen comes with whatever else
@@ -270,12 +292,19 @@ impl ScreenAnnouncer {
                         .or_default()
                         .extend(gathering.panels.iter().copied());
                 }
-                self.gathering = Some(Gathering::new(item.cursor, item.quiet));
+                self.gathering = Some(Gathering::new(item.cursor, item.quiet, count));
             }
         }
 
         // What a cursor is over is its own, said or not this poll: the bag's list label "Potion"
-        // settled a poll after its cursor said it and was heard again.
+        // settled a poll after its cursor said it and was heard again. Where a menu's rows are
+        // known, what changes beside them is the item's: the Pokéblock Case writes the chosen
+        // block's name under its grid (movie30, spike 196).
+        let rowed: HashSet<i64> = on_screen
+            .iter()
+            .filter(|p| rows.contains(&p.r#box))
+            .map(|p| p.root)
+            .collect();
         let heard: Vec<ScreenText> = texts
             .iter()
             .filter(|p| {
@@ -283,7 +312,7 @@ impl ScreenAnnouncer {
                     && !cursored.contains(&p.r#box)
                     && !(self.menus.contains(&p.root)
                         && !listed.contains_key(&p.root)
-                        && (p.changed || p.with_layout || p.scrolled))
+                        && ((p.changed && !rowed.contains(&p.root)) || p.with_layout || p.scrolled))
             })
             .cloned()
             .collect();
@@ -336,7 +365,7 @@ impl ScreenAnnouncer {
             .filter(|p| !arriving.contains(&p.r#box))
             .cloned()
             .collect();
-        for group in rows(&changed, &around, labels) {
+        for group in self::rows(&changed, &around, labels) {
             let text = join(&group, self.pauses);
             said.extend(group.iter().map(|p| p.r#box));
             if !self.fresh(&text, group[0].root) {
@@ -602,7 +631,19 @@ impl ScreenAnnouncer {
                     .cloned(),
             ));
             if !group.is_empty() {
-                let text = join(&group, self.pauses);
+                let mut text = join(&group, self.pauses);
+                if !gathering.count.is_empty() && texts.is_empty() {
+                    let first: Vec<ScreenText> = group
+                        .iter()
+                        .filter(|p| (p.row - group[0].row).abs() < group[0].glyph / 2.0)
+                        .cloned()
+                        .collect();
+                    let rest = py::slice_from(&group, first.len() as i64).to_vec();
+                    text = format!("{} {}", join(&first, self.pauses), gathering.count);
+                    if !rest.is_empty() {
+                        text = line(&[text, join(&rest, self.pauses)]);
+                    }
+                }
                 if gathering.quiet {
                     (self.log)(&format!(
                         "details, unsaid: {text}  [layout {:#x}]",
@@ -614,6 +655,10 @@ impl ScreenAnnouncer {
                 }
                 said.extend(group.iter().map(|p| p.r#box));
             }
+        }
+        if texts.is_empty() && !gathering.count.is_empty() {
+            // Nothing names it: the count is said alone, late rather than never.
+            (texts, roots) = (vec![gathering.count.clone()], vec![0]);
         }
         if !texts.is_empty() {
             let line = line(&texts);
