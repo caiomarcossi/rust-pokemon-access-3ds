@@ -133,7 +133,7 @@ pub fn characters() -> &'static IndexMap<i64, i64> {
             (0xCB, 688), // AQUABOSS_RS, AQUAKANBU_M_RS, _F_RS: Archie, Matt, Shelly
             (0xD3, 856), // HIMITU_RS, where the Secret Bases are: Aarune
             (0xD4, 713), // ZAZAKO_RS, outside Sky Pillar and wherever her Whismur
-                         // stands beside her (spike A): Lorekeeper Zinnia
+                         // stands beside her (spike 193): Lorekeeper Zinnia
         ])
     })
 }
@@ -204,7 +204,8 @@ pub fn touch_words() -> &'static (i64, IndexMap<&'static str, i64>) {
 /// up: drawn as a picture alone, and tapped to show that Pokémon's box, so named by its title there,
 /// line 12 of text file 84, "Hidden Pokémon". It covers the icons under it, which a tap cannot reach
 /// meanwhile (movie27, 279 s: "search get" by its file's name). Its archive has two: `get`, with a
-/// Poké Ball on it, seen over a caught Surskit, and `check`, not seen, for one not caught (spike B).
+/// Poké Ball on it, seen over a caught Surskit, and `check`, not seen, for one not caught (spike
+/// 195).
 pub fn dexnav_words() -> &'static (i64, IndexMap<&'static str, i64>) {
     static DEXNAV_WORDS: OnceLock<(i64, IndexMap<&'static str, i64>)> = OnceLock::new();
     DEXNAV_WORDS.get_or_init(|| {
@@ -221,7 +222,7 @@ pub fn dexnav_words() -> &'static (i64, IndexMap<&'static str, i64>) {
 pub const CAUGHT_IMAGES: [&str; 1] = ["search_get_button.bclim"];
 /// The DexNav's labels, each over its value or beside it: Name, Search Level, Level, Type,
 /// Potential, First Move, Ability, Held Item; and what its red mark says in the group of each it
-/// marks (spike B: in First Move's for an egg move, Helping Hand, movie27).
+/// marks (spike 195: in First Move's for an egg move, Helping Hand, movie27).
 pub fn dexnav_labels() -> (i64, IndexMap<i64, String>) {
     (
         84,
@@ -242,7 +243,7 @@ pub fn dexnav_labels() -> (i64, IndexMap<i64, String>) {
 }
 /// The DexNav's titles and buttons, no label of what follows: Nearby, Found, Last seen and Hidden
 /// Pokémon, SEARCH, Pokédex. "Found Pokémon: Search Level" and "Pokédex: SEARCH" were said under
-/// `pauses` (spike B).
+/// `pauses` (spike 195).
 pub const DEXNAV_PLAIN: (i64, [i64; 6]) = (84, [9, 10, 11, 12, 28, 61]);
 /// The Bag's pockets, drawn as icons alone, by the icon each draws (its `_l` copy while it is the
 /// pocket open), and the line of text file 163 the game names the pocket with: ITEMS, MEDICINE,
@@ -301,7 +302,7 @@ pub const TYPE_NAMES: i64 = 18;
 pub const SPECIES_NAMES: i64 = 98;
 /// The field's models, a file a model by the id the ROM's sprite list gives it (544 of each), and
 /// the first Pokémon's, `EV_POKE01`: the character `0x1000 + n` is drawn with model `0x1BE + n`, as
-/// each move model's record of its sprite says at +0x14 (spike A).
+/// each move model's record of its sprite says at +0x14 (spike 193).
 pub const POKEMON_MODELS: (&str, i64) = ("a/0/2/1", 0x1BE);
 /// STATUS, PHYSICAL, SPECIAL: the summary's words, in the category icons' order (spike 147).
 pub const MOVE_CATEGORIES: (i64, i64) = (150, 17);

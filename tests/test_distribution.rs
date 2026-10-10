@@ -89,7 +89,7 @@ fn test_a_picture_is_named_by_the_record_of_the_texture_it_draws() {
     );
 }
 
-/// 2 caught, 3 seen, as the save's Pokédex had Zigzagoon and Ralts (spike B, movie27).
+/// 2 caught, 3 seen, as the save's Pokédex had Zigzagoon and Ralts (spike 195, movie27).
 #[test]
 fn test_a_record_says_whether_its_species_is_caught() {
     let (memory, found) = route_101();

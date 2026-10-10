@@ -88,7 +88,7 @@ pub const MODEL_NAMES: i64 = 0x4000;
 
 /// Character -> national number, for each Pokémon the field can draw: the character
 /// `field.POKEMON_MODEL` + n is the archive's model `first` + n, whose file names the Pokémon
-/// it draws (spike A). Machoke's `0x103f` is model 509, `pm0067`; Whismur's beside Zinnia
+/// it draws (spike 193). Machoke's `0x103f` is model 509, `pm0067`; Whismur's beside Zinnia
 /// `0x1039` is 503, `pm0293`; Rayquaza's in Sky Pillar `0x101f` is 477, `pm0384`. A model
 /// naming no Pokémon or more than one is left out, and so is one LZ11 cannot unpack: most are
 /// packed, Lisia's Altaria's among them.
@@ -136,7 +136,7 @@ pub fn pokemon_models(rom: &Rom, archive: &str, first: i64) -> Result<IndexMap<i
 ///
 /// A trainer of a pair class says nothing of the sprite, since "Teammates" is two people and the
 /// old man drawn as one of them in town is neither: the sprite is named by its other trainers,
-/// as the Fairy Tale Girls' four are beside two pairs of Mysterious Sisters (spike A). Left
+/// as the Fairy Tale Girls' four are beside two pairs of Mysterious Sisters (spike 193). Left
 /// out: a sprite whose other trainers are of more than one class, which the sprite is cannot be
 /// told; and a sprite fewer than two of them stand as, which may be a look everybody shares that
 /// happens to battle once.

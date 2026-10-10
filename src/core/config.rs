@@ -249,8 +249,8 @@ pub const EXPLAINED: [(&str, &str); 11] = [
     (
         "pa3ds.navigation.guide_to_hidden",
         "when a DexNav search finds the Pokémon searched for, or the DexNav finds one by itself \
-         while it is open and you are in touch mode, find the way to it as P does and keep P on it, \
-         whatever the list was on; one found while the AreaNav is open is left alone",
+         while it is open and you are in touch mode, find the way to it as P does and keep P on \
+         it, whatever the list was on; one found while the AreaNav is open is left alone",
     ),
     (
         "pa3ds.extras.conditions",

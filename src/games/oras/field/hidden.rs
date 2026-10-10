@@ -28,7 +28,7 @@
 //!            after running from a battle, and while a zone change has left it stale (spike 80,
 //!            movies 26 and 27)
 //! +0xc9 u8   how it was found: 3 by a search, 1 by the detector with the DexNav open, 2 with
-//!            it closed (spike A: three searches and seven detections over movies 4, 26, 27)
+//!            it closed (spike 194: three searches and seven detections over movies 4, 26, 27)
 //! ```
 //!
 //! The record is found through the one `field::PlayerWork`, which holds its address at +0x6c, told

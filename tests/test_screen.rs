@@ -676,7 +676,7 @@ fn measured(pieces: &[(&str, f64, f64, f64, f64)]) -> Vec<ScreenText> {
 
 /// The DexNav's page, where pauses read "Found Pokémon: Search Level, 64, Name, Zigzagoon"
 /// and "Pokédex: SEARCH": its labels sit over their values, and its title and buttons are where
-/// a label could be (spike B). Its words say which is which.
+/// a label could be (spike 195). Its words say which is which.
 #[test]
 fn test_the_games_own_labels_are_labels_wherever_they_are_drawn() {
     let measured_ = measured(&[
@@ -751,7 +751,7 @@ fn test_the_games_own_labels_are_labels_wherever_they_are_drawn() {
 
 /// "Potential: 2 stars", "First move: tackle, egg move" under pauses, and spaces otherwise
 /// (Orion, 2026-10-06): the stars are three pictures, filled or not, and the red mark is drawn
-/// beside First Move's label, built before it (spike B).
+/// beside First Move's label, built before it (spike 195).
 #[test]
 fn test_the_dexnav_s_stars_are_counted_and_its_mark_said_after_what_it_marks() {
     let pieces = measured(&[
@@ -1590,7 +1590,7 @@ fn test_a_label_with_a_value_of_its_own_keeps_its_group_s_picture_where_it_is() 
 
 /// The red mark is drawn beside First Move's label, its move on the row below, and was heard
 /// "First Move: egg move, Helping Hand" once the battle's rule for a group's one picture had
-/// moved it (spike B).
+/// moved it (spike 195).
 #[test]
 fn test_the_dexnav_s_mark_is_read_after_the_move_it_marks() {
     let mut game = Game::new();

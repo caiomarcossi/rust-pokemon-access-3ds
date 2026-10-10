@@ -1228,7 +1228,7 @@ fn test_a_pokemon_that_fainted_or_a_search_under_way_lists_none() -> Result<()> 
 
 /// A Zigzagoon read at level 50331650, 0x03000002, went unlisted (Orion, movie27); and +0xc9
 /// is 3 for a search's find, 1 for the detector's with the DexNav open, 2 with the AreaNav
-/// (spike A).
+/// (spike 194).
 #[test]
 fn test_the_level_is_one_byte_and_how_it_was_found_is_another() -> Result<()> {
     let town = Town::new();

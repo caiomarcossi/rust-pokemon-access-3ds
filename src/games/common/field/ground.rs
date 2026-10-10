@@ -332,7 +332,7 @@ pub struct Ground {
     /// floor at the first, it lands on the floor at the second, whatever floors they are
     /// (`climb`). Outside Sky Pillar the terraces stand 108 apart on three floors, and the one
     /// stair up to Zinnia's goes from floor 0 at 108 to floor 1 at 216; the sand runs on under the
-    /// stair from 324 down to her terrace, and is walked on as sand (spike A).
+    /// stair from 324 down to her terrace, and is walked on as sand (spike 193).
     pub ladders: IndexMap<(Cell, Cell), (f64, f64)>,
     /// The bumpy slopes, each with the way it is hopped up on the Acro Bike, from the cell before
     /// it to the cell after, as a ledge is jumped down: walls on foot (spike 159).

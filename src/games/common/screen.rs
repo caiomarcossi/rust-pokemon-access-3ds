@@ -273,7 +273,7 @@ pub fn distinct(pieces: impl IntoIterator<Item = ScreenText>) -> Vec<ScreenText>
 /// Words the game's text names a label (`ScreenText.label`) are one wherever they are drawn,
 /// touching their value or over it, and a title's or a button's (`ScreenText.plain`) never are:
 /// the DexNav's "Found Pokémon, Search Level: 64, Name: Zigzagoon" was "Found Pokémon: Search
-/// Level, 64, Name, Zigzagoon", and "Search Level5" is "Search Level 5" (spike B).
+/// Level, 64, Name, Zigzagoon", and "Search Level5" is "Search Level 5" (spike 195).
 ///
 /// Python's `pauses` defaults to False.
 pub fn join(pieces: &[ScreenText], pauses: bool) -> String {
@@ -618,7 +618,7 @@ impl ScreenTextReader {
         }
         found = after_the_name(&found);
         // After it: a group's one picture is read first in its row, and the DexNav's mark is no
-        // such picture: "First Move: egg move, Helping Hand" (spike B).
+        // such picture: "First Move: egg move, Helping Hand" (spike 195).
         found = by_their_labels(&found, &self.labels);
         found = places_last(&found);
         if let Some(level_mark) = &self.level_mark {
@@ -1172,7 +1172,7 @@ pub(crate) fn counted_stars(
 /// The pictures of a group whose label the game's text names, and nothing else, read straight
 /// after the label: the DexNav's Potential and its stars, "Potential 2 stars", which as built
 /// were read last of its box. And the DexNav's red mark as what it marks, by its group's label,
-/// read straight after the group's value: "First Move Helping Hand egg move" (spike B); a mark
+/// read straight after the group's value: "First Move Helping Hand egg move" (spike 195); a mark
 /// in a group whose label has no word for it is left unsaid.
 ///
 /// A piece moved is put just after the one it follows in the order pieces are read, apart from

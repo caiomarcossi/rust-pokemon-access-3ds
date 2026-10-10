@@ -42,7 +42,7 @@ pub const RECORDS: i64 = 0x48;
 pub const RECORD: i64 = 0x14;
 pub const STATE: i64 = 0x0C;
 /// A record's byte `STATE`: 2 for a species caught, 3 seen, 6 not seen, which the DexNav draws no
-/// icon for (spike B, movie27: Zigzagoon, Poochyena, Surskit, Masquerain and Magikarp 2, as the
+/// icon for (spike 195, movie27: Zigzagoon, Poochyena, Surskit, Masquerain and Magikarp 2, as the
 /// save's Pokédex has them caught). The byte after it is the way they are met: 0 in the grass, 1 on
 /// the water, 2 fishing, 3 the DexNav's alone.
 pub const CAUGHT: i64 = 2;

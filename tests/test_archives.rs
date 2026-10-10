@@ -669,7 +669,7 @@ fn test_a_person_is_named_by_the_trainer_their_sprite_is() {
 
 /// Spike 90: two Youngsters make the sprite a Youngster, and grunts who share a name are said
 /// as the game says them in battle. Twins are a pair, two people, and say nothing of a sprite,
-/// as two Mysterious Sisters said nothing of the Fairy Tale Girls' (spike A); one Lass is too few
+/// as two Mysterious Sisters said nothing of the Fairy Tale Girls' (spike 193); one Lass is too few
 /// to go on, and a sprite standing for a Hiker and a Youngster could be either.
 #[test]
 fn test_a_sprite_trainers_stand_as_is_named_for_their_class() {
