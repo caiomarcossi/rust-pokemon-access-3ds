@@ -2286,14 +2286,14 @@ fn test_the_way_is_said_again_once_the_camera_stops_somewhere_new() {
 fn test_r_says_our_side_again_and_shift_r_the_enemys() {
     let backend = Rc::new(Recorder::default());
     let sides: Sides = Rc::new(|ours: bool| {
-        Some(
+        Ok(Some(
             if ours {
                 "Blaze♂ L10 20/30"
             } else {
                 "Zigzagoon♂ L2 50%"
             }
             .to_string(),
-        )
+        ))
     });
     let mut nav = Navigator::new(
         Rc::new(FakeField::new(Some(town()), &[], &[], &[], &[])),

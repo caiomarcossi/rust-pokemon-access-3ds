@@ -61,7 +61,7 @@ use crate::games::gen6::screens::habitat::HabitatReader;
 use crate::games::gen6::screens::lists::{CONTROLLER_CLASS, ListReader};
 use crate::games::gen6::screens::mapcursor::MapCursor;
 use crate::games::gen6::screens::partyicons::PartyIcons;
-use crate::games::gen6::screens::{buttons, distribution, partyicons, townmap};
+use crate::games::gen6::screens::{buttons, contest, distribution, partyicons, townmap};
 use crate::py::{self, Error, Log, PySet, Result};
 
 /// What the heap is swept for: message windows, list controllers, the device manager a choice box
@@ -178,6 +178,7 @@ pub struct Gen6Profile {
     pub views: RefCell<townmap::Views>,
     pub buttons: Rc<RefCell<buttons::Buttons>>,
     pub party_icons: Rc<RefCell<PartyIcons>>,
+    pub standings: Rc<RefCell<contest::Standings>>,
     pub map_cursor: RefCell<MapCursor>,
     /// Python's `self.touch` is the navigator's `touch`, which it owns here.
     pub navigator: RefCell<Navigator>,
@@ -408,6 +409,31 @@ impl Gen6Profile {
         let views = townmap::Views::new(memory.clone(), names.clone());
         // The game's button managers say whose buttons take taps (spike 189).
         let buttons = Rc::new(RefCell::new(buttons::Buttons::new(memory.clone())));
+        // A contest's appeals draw who stands where as portraits, said on the keys that say a
+        // battle's sides (Orion, 2026-10-09).
+        let standings = Rc::new(RefCell::new(contest::Standings::new(
+            memory.clone(),
+            layouts.clone(),
+            files.clone(),
+            text.as_ref()
+                .map(|text| text.contest_entrant.clone())
+                .unwrap_or_default(),
+            {
+                let apps = apps.clone();
+                Rc::new(move || apps.borrow().running.clone())
+            },
+        )));
+        let pauses = ui.pauses;
+        let sides: Sides = {
+            let (standings, announcements) = (standings.clone(), announcements.clone());
+            Rc::new(move |player: bool| {
+                // Python's `or`: a standing of "" or None goes on to the battle's sides.
+                match standings.borrow().said(player, pauses)? {
+                    Some(said) if !said.is_empty() => Ok(Some(said)),
+                    _ => Ok(announcements.borrow().sides(player)),
+                }
+            })
+        };
         let on_screen: OnScreen = {
             let screen = screen.clone();
             Rc::new(move || screen.borrow().on_screen())
@@ -518,10 +544,7 @@ impl Gen6Profile {
                 moves: text.as_ref().map(|text| text.moves.clone()),
                 bike: text.as_ref().and_then(|text| text.bike.clone()),
                 acro: text.as_ref().and_then(|text| text.acro.clone()),
-                sides: Some({
-                    let announcements = announcements.clone();
-                    Rc::new(move |player: bool| announcements.borrow().sides(player)) as Sides
-                }),
+                sides: Some(sides),
                 touch: Some(touch),
                 categories: own
                     .iter()
@@ -579,6 +602,7 @@ impl Gen6Profile {
             views: RefCell::new(views),
             buttons,
             party_icons,
+            standings,
             map_cursor: RefCell::new(map_cursor),
             navigator: RefCell::new(navigator),
             log,
@@ -859,6 +883,7 @@ impl Gen6Profile {
             // The HP box is the battle reader's to say, whole and once it holds still.
             let sides = self.battle.borrow_mut().poll(&on_screen)?;
             self.habitat.borrow_mut().poll(&on_screen)?;
+            self.standings.borrow_mut().poll(&on_screen)?;
             self.map_cursor.borrow_mut().poll()?;
             let items = self.cursors.borrow_mut().poll(&on_screen)?;
             Ok((texts, on_screen, sides, items))

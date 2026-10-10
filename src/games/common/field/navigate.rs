@@ -116,7 +116,8 @@ pub type Street = Rc<dyn Fn(i64, i64) -> Result<Option<String>>>;
 /// `Callable[[], int | None]`: the character that last spoke.
 pub type Speaker = Rc<dyn Fn() -> Option<i64>>;
 /// `Callable[[bool], str | None]`: the player's side of the battle as last said, or the enemy's.
-pub type Sides = Rc<dyn Fn(bool) -> Option<String>>;
+/// It reads a contest's portraits (`gen6.screens.contest`), so it can raise.
+pub type Sides = Rc<dyn Fn(bool) -> Result<Option<String>>>;
 
 /// `Navigator.__init__`'s arguments after `field`, `speech` and `log`, each as the Python
 /// defaults it: set what differs with `..Options::default()`.
@@ -330,7 +331,7 @@ impl Navigator {
             naming,
             asker: asker.unwrap_or_default(),
             speaker: speaker.unwrap_or_else(|| Rc::new(|| None)),
-            sides: sides.unwrap_or_else(|| Rc::new(|_player| None)),
+            sides: sides.unwrap_or_else(|| Rc::new(|_player| Ok(None))),
             renaming: None,
             mode: LIST,
             category: 0,
@@ -370,7 +371,7 @@ impl Navigator {
         }
         // A battle's sides are the battle's, whatever the field says.
         if action == OUR_SIDE || action == ENEMY_SIDE {
-            let text = match (self.sides)(action == OUR_SIDE) {
+            let text = match (self.sides)(action == OUR_SIDE)? {
                 Some(text) if !text.is_empty() => text,
                 _ => "no battle".to_string(),
             };

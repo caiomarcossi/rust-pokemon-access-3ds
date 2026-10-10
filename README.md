@@ -32,6 +32,14 @@ to install.
 - **Battles**: the battle text, and each side's Pokémon with its name, gender, level and HP. Your
   HP is said exactly; the enemy's as a percentage, because a bar is all the game shows.
 - **The PC Box, the party, the Bag and the Pokédex**, including the habitat map.
+- **The Pokéblock Kit**: each berry or block with how many you have ("Chesto Berry Blue 4").
+- **Contests**: each move under the cursor, then its category, its appeal and jamming hearts
+  and its description ("Hold Back", "Coolness, Appeal 4 hearts, Jamming 0 hearts"); the
+  results say each entrant's place ("Raiden & Metagross third place"). A Pokémon's summary
+  says each move with its type, PP and contest category ("Meteor Mash Steel PP 10/10
+  Coolness"), on either page.
+- **The Bag's party** for an evolution stone: whether each Pokémon can use it, in party order
+  ("UNABLE!"), with its species where pa3ds has found your party ("Metagross UNABLE!").
 - **Where you are**: the place name when you arrive somewhere new.
 - **The map**: exits, signs, people, items, berry spots and more, each with its direction and
   distance ("door, 1 of 3, 3 east 2 north"), and the way to any of them on foot. An exit says
@@ -124,8 +132,8 @@ The map's list has three **modes**. The apostrophe steps through them.
 | `[` and `]` | Previous and next category of the map's list. |
 | `P` | Find the way on foot to the chosen thing, and guide you along it turn by turn. |
 | `Shift+P` | The same, but also using Surf, Cut, Rock Smash, Strength, Waterfall and the bikes. |
-| `R` | Say your side of the battle again. |
-| `Shift+R` | Say the enemy's side of the battle again. |
+| `R` | Say your side of the battle again. In a contest's appeals, your place ("Raiden & Pikachu first place"). |
+| `Shift+R` | Say the enemy's side of the battle again. In a contest's appeals, everyone else's place, in order. An entrant is named once you have moved the cursor onto their portrait. |
 | `Shift+K` | Give the chosen thing a name of your own. |
 | `Shift+J` | Give whoever spoke last a name of your own. |
 

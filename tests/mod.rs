@@ -15,6 +15,7 @@ mod test_buttons;
 mod test_catalog;
 mod test_choices;
 mod test_config;
+mod test_contest;
 mod test_cursor;
 mod test_dialogue;
 mod test_discovery;

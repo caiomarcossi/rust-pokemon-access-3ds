@@ -1,0 +1,346 @@
+//! A contest's standings during its appeals, said on the keys that say a battle's sides.
+//!
+//! The appeals draw the four entrants as portraits along the bottom screen's top (spike 196,
+//! movie33): each a pane holding its background, `contest_player_bg_01.bclim`, its appeal so far
+//! as a bar, `appeal_bar_filler.bclim`, as wide as the appeal, and the Pokémon's icon,
+//! `poke_icon.bclim`. The game keeps them sorted by appeal, the leader on the left, moving the
+//! icons from portrait to portrait as the order changes, and draws the player's portrait on a
+//! background image of its own. No word names an entrant but on the panel under the move list,
+//! "Pokémon: Pikachu, Trainer: Raiden", for the portrait the cursor is on; each name is learned
+//! so, by the image of the icon in that portrait, and said as the entry cards wrote it,
+//! "Raiden & Pikachu", where they did.
+
+use std::rc::Rc;
+
+use indexmap::{IndexMap, IndexSet};
+
+use crate::core::binary::{f32, u32};
+use crate::core::memory::Memory;
+use crate::games::common::layout::Layouts;
+use crate::games::common::layout_file::LayoutFiles;
+use crate::games::common::lyt;
+use crate::games::common::pictures::PLACES;
+use crate::games::common::screen::ScreenText;
+use crate::games::gen6::rom::textures;
+use crate::py::{self, Result};
+
+/// The appeals' app (spike 196).
+pub const APP: &str = "N7contest11OhiromeProcE";
+pub const BACKGROUND: &str = "contest_player_bg_01.bclim";
+pub const BAR: &str = "appeal_bar_filler.bclim";
+pub const ICON: &str = "poke_icon.bclim";
+pub const CURSOR: &str = "cursor.bclim";
+pub const ENTRANTS: usize = 4;
+/// Where the cursor stands on a portrait from its middle: on an empty pane at its top right
+/// (spike 196).
+pub const CURSOR_AT: (f64, f64) = (10.0, 20.0);
+/// Units within which the cursor stands where `CURSOR_AT` says.
+pub const NEAR: f64 = 6.0;
+/// Between a trainer and a Pokémon, where no entry card wrote the two together.
+pub const JOIN: &str = " & ";
+
+/// A picture's first texture, by its pane's name in its layout's file.
+fn texture_of(
+    layouts: &Layouts,
+    drawn: &IndexMap<String, Vec<String>>,
+    pane: i64,
+) -> Result<Option<String>> {
+    let raw = layouts.name(pane)?;
+    let end = raw.iter().position(|&byte| byte == 0).unwrap_or(raw.len());
+    let name = py::decode_ascii(&raw[..end]);
+    Ok(drawn.get(&name).and_then(|found| found.first().cloned()))
+}
+
+/// The player's place, or each other entrant's in order, by the bars, the player's being
+/// the portrait whose background is unlike the others': "Raiden & Pikachu first place".
+///
+/// Python's `pauses` defaults to False. `name` returns `Result`, as Python's raises where it
+/// reads the icon's image.
+pub fn standings(
+    portraits: &[Portrait],
+    name: &dyn Fn(&Portrait) -> Result<Option<String>>,
+    player: bool,
+    pauses: bool,
+) -> Result<Option<String>> {
+    let backgrounds: Vec<Option<i64>> = portraits.iter().map(|p| p.background).collect();
+    let mine = portraits.iter().position(|p| {
+        backgrounds
+            .iter()
+            .filter(|&&background| background == p.background)
+            .count()
+            == 1
+    });
+    // `sorted(portraits, key=lambda p: (-p.appeal, p.x))`, kept with each one's index so that
+    // `portrait is mine` is asked of the same one.
+    let ranked = py::sorted_by_lt(
+        portraits.iter().enumerate().collect::<Vec<_>>(),
+        |(_, a), (_, b)| {
+            if -a.appeal != -b.appeal {
+                return -a.appeal < -b.appeal;
+            }
+            a.x < b.x
+        },
+    );
+    let places: Vec<&str> = PLACES.iter().map(|&(_, words)| words).collect();
+    let mut lines: Vec<String> = Vec::new();
+    for (at, (index, portrait)) in ranked.into_iter().enumerate() {
+        if (Some(index) == mine) != player {
+            continue;
+        }
+        let place = if at < places.len() {
+            places[at].to_string()
+        } else {
+            (at + 1).to_string()
+        };
+        let named = name(portrait)?;
+        lines.push(match named {
+            Some(named) if !named.is_empty() => {
+                format!("{named}{}{place}", if pauses { ": " } else { " " })
+            }
+            _ => place,
+        });
+    }
+    let joined = lines.join(", ");
+    Ok(if joined.is_empty() {
+        None
+    } else {
+        Some(joined)
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Portrait {
+    pub x: f64,
+    pub y: f64,
+    /// The bar's width: the appeal so far.
+    pub appeal: f64,
+    /// The picture of the Pokémon's icon.
+    pub icon: i64,
+    /// The image the background draws: the player's is the one unlike the others'.
+    pub background: Option<i64>,
+}
+
+/// The four portraits, and where the cursor stands.
+type Found = (Vec<Portrait>, Option<(f64, f64)>);
+
+/// Who stands where in a contest's appeals, from its portraits.
+pub struct Standings {
+    memory: Rc<dyn Memory>,
+    layouts: Rc<Layouts>,
+    files: Rc<LayoutFiles>,
+    /// The game's "Pokémon:" and "Trainer:".
+    labels: Vec<String>,
+    running: Rc<dyn Fn() -> Option<String>>,
+    /// Icon image digest -> the entrant it is, learned from the panel.
+    names: IndexMap<String, String>,
+    /// Words the contest has shown, to say an entrant as its entry card did.
+    ///
+    /// Python's is a set of strings, which it iterates in an order that changes every run: kept
+    /// here in the order the words were first shown.
+    written: IndexSet<String>,
+    /// The portrait the cursor is on, by its place across, or None.
+    at: Option<f64>,
+    /// What the panel named as the cursor came to that portrait.
+    arrived_with: Option<String>,
+    /// What the panel named at the last poll.
+    last: Option<String>,
+}
+
+impl Standings {
+    pub fn new(
+        memory: Rc<dyn Memory>,
+        layouts: Rc<Layouts>,
+        files: Rc<LayoutFiles>,
+        labels: Vec<String>,
+        running: Rc<dyn Fn() -> Option<String>>,
+    ) -> Self {
+        Standings {
+            memory,
+            layouts,
+            files,
+            labels,
+            running,
+            names: IndexMap::new(),
+            written: IndexSet::new(),
+            at: None,
+            arrived_with: None,
+            last: None,
+        }
+    }
+
+    /// Learn the entrant the panel names, by the icon in the portrait the cursor is on.
+    pub fn poll(&mut self, on_screen: &[ScreenText]) -> Result<()> {
+        if (self.running)().as_deref() != Some(APP) {
+            self.names.clear();
+            self.written.clear();
+            return Ok(());
+        }
+        self.written
+            .extend(on_screen.iter().map(|piece| piece.text.clone()));
+        let named = self.named(on_screen);
+        let found = self.portraits()?;
+        let mut on: Vec<Portrait> = Vec::new();
+        if let Some((portraits, Some((x, y)))) = &found {
+            on = portraits
+                .iter()
+                .filter(|p| {
+                    (p.x + CURSOR_AT.0 - x).abs() <= NEAR && (p.y + CURSOR_AT.1 - y).abs() <= NEAR
+                })
+                .copied()
+                .collect();
+        }
+        let at = if on.len() == 1 { Some(on[0].x) } else { None };
+        if at != self.at {
+            // The panel names the portrait the cursor left for a second and a half after it
+            // moves (movie33): only words it shows once the cursor is here are this one's. Come
+            // up from the moves, where the panel is not shown, what it shows is.
+            self.arrived_with = if self.at.is_some() {
+                named.clone()
+            } else {
+                None
+            };
+            self.at = at;
+        }
+        // Read the same on two polls: caught as the panel is rewritten, the player's portrait
+        // was taken for Gianna & Tailster's (movie33).
+        let steady = named == self.last;
+        self.last = named.clone();
+        if at.is_some() && named.is_some() && named != self.arrived_with && steady {
+            if let Some(icon) = self.icon(&on[0])? {
+                self.names.insert(icon, named.clone().unwrap_or_default());
+            }
+            self.arrived_with = named;
+        }
+        Ok(())
+    }
+
+    /// The player's place, or each other entrant's in order, "Raiden & Pikachu first place";
+    /// None outside the appeals or where the portraits are not found.
+    ///
+    /// Python's `pauses` defaults to False.
+    pub fn said(&self, player: bool, pauses: bool) -> Result<Option<String>> {
+        if (self.running)().as_deref() != Some(APP) {
+            return Ok(None);
+        }
+        let Some((portraits, _at)) = self.portraits()? else {
+            return Ok(None);
+        };
+        let name = |portrait: &Portrait| -> Result<Option<String>> {
+            let icon = self.icon(portrait)?.unwrap_or_default();
+            Ok(self.names.get(&icon).cloned())
+        };
+        standings(&portraits, &name, player, pauses)
+    }
+
+    /// The digest of the image the portrait's icon draws, or None.
+    fn icon(&self, portrait: &Portrait) -> Result<Option<String>> {
+        let image = textures::image(&*self.memory, portrait.icon)?;
+        Ok(image
+            .filter(|image| !image.is_empty())
+            .map(|image| textures::digest(&image)))
+    }
+
+    /// The entrant the panel names now, as its entry card wrote it, or None.
+    fn named(&self, on_screen: &[ScreenText]) -> Option<String> {
+        if self.labels.len() < 2 {
+            return None;
+        }
+        let mut values: Vec<String> = Vec::new();
+        for label in &self.labels[..2] {
+            let labelled = on_screen.iter().find(|p| &p.text == label)?;
+            let value = on_screen.iter().find(|p| {
+                p.root == labelled.root
+                    && p.parent == labelled.parent
+                    && p.left > labelled.right
+                    && (p.row - labelled.row).abs() < labelled.glyph / 2.0
+                    && !self.labels.contains(&p.text)
+            })?;
+            values.push(value.text.clone());
+        }
+        let (pokemon, trainer) = (&values[0], &values[1]);
+        let most = trainer.chars().count() + pokemon.chars().count() + JOIN.chars().count() + 2;
+        let carded = self.written.iter().find(|words| {
+            words.starts_with(trainer.as_str())
+                && words.ends_with(pokemon.as_str())
+                && words.chars().count() <= most
+        });
+        Some(match carded {
+            Some(words) => words.clone(),
+            None => format!("{trainer}{JOIN}{pokemon}"),
+        })
+    }
+
+    /// The four portraits, and where the cursor stands, or None where they are not shown.
+    fn portraits(&self) -> Result<Option<Found>> {
+        let (layouts, shape) = (&self.layouts, self.layouts.shape);
+        for root in layouts.roots() {
+            let placement = layouts.placement(root)?;
+            if !placement.is_some_and(|placement| placement.shown) {
+                continue;
+            }
+            let Some(file) = self.files.matching(&layouts.pane_names(root)) else {
+                continue;
+            };
+            let texture = |pane: i64| texture_of(layouts, &file.textures, pane);
+            let mut portraits: Vec<Portrait> = Vec::new();
+            for panel in layouts.children(root, root) {
+                let Some((bar, icon, background)) = self.parts(root, panel, &texture)? else {
+                    continue;
+                };
+                let (head, place) = (layouts.pane(bar)?, layouts.pane(panel)?);
+                portraits.push(Portrait {
+                    x: f32(&place, shape.x)?,
+                    y: f32(&place, shape.y)?,
+                    appeal: f32(&head, shape.width)? * f32(&head, shape.scale_x)?,
+                    icon,
+                    background: textures::drawn_at(&*self.memory, background)?,
+                });
+            }
+            if portraits.len() != ENTRANTS {
+                continue;
+            }
+            let mut cursor = None;
+            for (pane, kind) in layouts.tree(root) {
+                if kind == lyt::PICTURE_CLASS && texture(pane)?.as_deref() == Some(CURSOR) {
+                    cursor = Some(pane);
+                    break;
+                }
+            }
+            let mut at = None;
+            if let Some(cursor) = cursor {
+                let head = layouts.pane(cursor)?;
+                at = Some((f32(&head, shape.x)?, f32(&head, shape.y)?));
+            }
+            return Ok(Some((portraits, at)));
+        }
+        Ok(None)
+    }
+
+    /// A portrait's bar, icon and background, or None for a pane that is no portrait.
+    fn parts(
+        &self,
+        root: i64,
+        panel: i64,
+        texture: &dyn Fn(i64) -> Result<Option<String>>,
+    ) -> Result<Option<(i64, i64, i64)>> {
+        let (mut bar, mut icon, mut background) = (None, None, None);
+        let mut stack: Vec<i64> = self.layouts.children(root, panel);
+        while let Some(pane) = stack.pop() {
+            let kind = texture(pane)?;
+            match kind.as_deref() {
+                Some(BAR) => bar = Some(pane),
+                Some(ICON) => icon = Some(pane),
+                Some(BACKGROUND) => background = Some(pane),
+                _ => {}
+            }
+            stack.extend(self.layouts.children(root, pane));
+        }
+        let (Some(bar), Some(icon), Some(background)) = (bar, icon, background) else {
+            return Ok(None);
+        };
+        if u32(&self.layouts.pane(bar)?, lyt::PARENT)? != panel {
+            return Ok(None);
+        }
+        Ok(Some((bar, icon, background)))
+    }
+}

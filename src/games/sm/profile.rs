@@ -264,7 +264,7 @@ impl SunProfile {
                 slack: field::SLACK,
                 sides: Some({
                     let announcements = announcements.clone();
-                    Rc::new(move |player| announcements.borrow().sides(player))
+                    Rc::new(move |player| Ok(announcements.borrow().sides(player)))
                 }),
                 ..navigate::Options::default()
             },
