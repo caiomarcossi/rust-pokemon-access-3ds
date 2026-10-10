@@ -174,6 +174,84 @@ impl Screen {
     }
 }
 
+#[test]
+fn test_a_question_written_in_a_menu_while_no_cursor_moves_is_said() {
+    // The Pokéblock Case asks "Give the Pokéblock to Pikachu?" in the words that asked which
+    // Pokémon, under its list, as the player chooses one (movie33).
+    let mut screen = Screen::new();
+    let pikachu = piece_kw(1, "Pikachu", -115.0, -15.0, MENU, Kw { parent: 4, ..PLAIN });
+    let asked = piece_kw(
+        2,
+        "Which Pokémon would you like to give it to?",
+        -155.0,
+        105.0,
+        MENU,
+        Kw { parent: 5, ..PLAIN },
+    );
+    let rows = HashSet::from([pikachu.r#box]);
+    screen.say(Args {
+        rows: rows.clone(),
+        ..args(
+            &[pikachu.clone(), asked.clone()],
+            vec![CursorItem::new(0x0C, vec![pikachu.clone()], true)],
+            &[pikachu.clone(), asked.clone()],
+        )
+    });
+    let give = ScreenText {
+        text: "Give the Pokéblock to Pikachu?".to_string(),
+        changed: true,
+        with_layout: false,
+        ..asked.clone()
+    };
+    assert_eq!(
+        screen.say(Args {
+            rows,
+            ..args(&one(&give), vec![], &[pikachu.clone(), give.clone()])
+        }),
+        [give.text.as_str()]
+    );
+}
+
+#[test]
+fn test_a_nameless_item_is_said_by_its_details() {
+    // A contest's portraits draw no words, and the screen names the entrant elsewhere as the
+    // cursor lands, "Pokémon: Bolt, Trainer: Camden" (movie33).
+    let mut screen = Screen::new();
+    let portrait = vec![ScreenText {
+        root: MENU,
+        parent: MENU,
+        ..ScreenText::new(1, "", false)
+    }];
+    let names = vec![
+        piece_kw(
+            2,
+            "Pokémon: Bolt",
+            -140.0,
+            -70.0,
+            PANEL,
+            Kw { parent: 9, ..PLAIN },
+        ),
+        piece_kw(
+            3,
+            "Trainer: Camden",
+            40.0,
+            -70.0,
+            PANEL,
+            Kw { parent: 9, ..PLAIN },
+        ),
+    ];
+    let changes: Vec<ScreenText> = names.iter().map(changed).collect();
+    let mut said = screen.say(args(
+        &changes,
+        vec![CursorItem::new(0x0C, portrait, false)],
+        &names,
+    ));
+    for _ in 0..DETAIL_POLLS {
+        said.extend(screen.on(&names));
+    }
+    assert_eq!(said, ["Pokémon: Bolt Trainer: Camden"]);
+}
+
 fn x_menu() -> Vec<ScreenText> {
     vec![
         piece(1, "POKÉMON", -70.0, 60.0, MENU),

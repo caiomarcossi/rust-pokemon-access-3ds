@@ -841,7 +841,7 @@ impl ScreenTextReader {
             }
         }
         // Counted under the words they hang from, then grouped as those words are.
-        let counted = side_by_side(&counted_stars(&out));
+        let counted = side_by_side(&counted_stars(&out)?);
         let mut grouped: IndexMap<i64, ScreenText> = IndexMap::new();
         for (r#box, piece) in counted {
             let parent = self.group_of(piece.parent, false)?;
@@ -1082,14 +1082,24 @@ pub fn after_the_name(found: &IndexMap<i64, ScreenText>) -> IndexMap<i64, Screen
 /// filled or not, "Potential 2 stars" (Orion, 2026-10-06; spike 195). Side by side, three stars
 /// alike were one picture drawn three times. A contest move's hearts likewise, as many as are
 /// drawn: "Appeal 4 hearts" (spike 196).
-pub(crate) fn counted_stars(pictures: &IndexMap<i64, ScreenText>) -> IndexMap<i64, ScreenText> {
+///
+/// Returns `Result` where Python's `int` of a row read out of freed memory would raise.
+pub(crate) fn counted_stars(
+    pictures: &IndexMap<i64, ScreenText>,
+) -> Result<IndexMap<i64, ScreenText>> {
     let counted = |piece: &ScreenText| [STAR, NO_STAR, HEART, NO_HEART].contains(&&*piece.text);
-    let mut groups: IndexMap<(i64, i64, bool), Vec<&ScreenText>> = IndexMap::new();
+    let mut groups: IndexMap<(i64, i64, bool, i64), Vec<&ScreenText>> = IndexMap::new();
     for piece in pictures.values() {
         if counted(piece) {
             let heart = piece.text == HEART || piece.text == NO_HEART;
+            // A row each: a summary hangs Appeal's hearts and Jamming's in one window (movie33).
+            let row = if heart && piece.glyph > 0.0 {
+                py::int(py::floordiv_f(piece.row, 2.0 * piece.glyph))?
+            } else {
+                0
+            };
             groups
-                .entry((piece.root, piece.parent, heart))
+                .entry((piece.root, piece.parent, heart, row))
                 .or_default()
                 .push(piece);
         }
@@ -1099,7 +1109,7 @@ pub(crate) fn counted_stars(pictures: &IndexMap<i64, ScreenText>) -> IndexMap<i6
         .filter(|(_, piece)| !counted(piece))
         .map(|(&r#box, piece)| (r#box, piece.clone()))
         .collect();
-    for (&(_root, _parent, heart), group) in &groups {
+    for (&(_root, _parent, heart, _row), group) in &groups {
         // `min(group, key=left)` and `max(right ...)`: the first of equals, and a NaN never
         // smaller or larger.
         let mut first = group[0];
@@ -1126,7 +1136,7 @@ pub(crate) fn counted_stars(pictures: &IndexMap<i64, ScreenText>) -> IndexMap<i6
             },
         );
     }
-    out
+    Ok(out)
 }
 
 /// The pictures of a group whose label the game's text names, and nothing else, read straight
@@ -1251,7 +1261,7 @@ pub(crate) fn places_last(found: &IndexMap<i64, ScreenText>) -> IndexMap<i64, Sc
     out
 }
 
-fn side_by_side(pictures: &IndexMap<i64, ScreenText>) -> IndexMap<i64, ScreenText> {
+pub(crate) fn side_by_side(pictures: &IndexMap<i64, ScreenText>) -> IndexMap<i64, ScreenText> {
     let mut out: IndexMap<i64, ScreenText> = IndexMap::new();
     let mut last: Option<ScreenText> = None;
     // The key is `(not top, root, -row, left)`: a tuple is smaller by its first element that
@@ -1272,8 +1282,11 @@ fn side_by_side(pictures: &IndexMap<i64, ScreenText>) -> IndexMap<i64, ScreenTex
         },
     );
     for piece in ordered {
+        // Of one group: the Pokéblock Case's star draws "TOUGH" in its layout touching a move's
+        // icon on its row, and Electro Ball read "Coolness/Toughness" (movie33).
         if let Some(before) = last.clone()
             && before.root == piece.root
+            && before.parent == piece.parent
             && touching(&before, piece)
         {
             if !before.text.split('/').any(|part| part == piece.text) {

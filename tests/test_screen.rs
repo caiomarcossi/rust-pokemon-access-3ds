@@ -785,7 +785,7 @@ fn test_the_dexnav_s_stars_are_counted_and_its_mark_said_after_what_it_marks() {
         .into_iter()
         .map(|piece| (piece.r#box, piece))
         .collect();
-    found.extend(screen::counted_stars(&stars));
+    found.extend(screen::counted_stars(&stars).unwrap());
     found.insert(mark.r#box, mark);
     let mut said: Vec<ScreenText> = screen::by_their_labels(&found, &labels)
         .into_values()
@@ -826,12 +826,64 @@ fn test_a_contest_moves_hearts_are_counted() {
                 )
             })
             .collect();
-    let counted: Vec<ScreenText> = screen::counted_stars(&hearts).into_values().collect();
+    let counted: Vec<ScreenText> = screen::counted_stars(&hearts)
+        .unwrap()
+        .into_values()
+        .collect();
     let [counted] = counted.try_into().unwrap();
     assert_eq!(
         (counted.text.as_str(), counted.left, counted.right),
         ("4 hearts", -30.0, 10.0)
     );
+}
+
+/// The Pokéblock Case's star draws "TOUGH" touching Electro Ball's icon on its row, and it
+/// read "Coolness/Toughness" (movie33).
+#[test]
+fn test_pictures_of_two_groups_side_by_side_are_two() {
+    let r#move = ScreenText {
+        parent: 7,
+        picture: true,
+        ..ScreenText::placed(1, "Coolness", false, -60.0, -10.0, 50.0, 20.0)
+    };
+    let star = ScreenText {
+        parent: 3,
+        picture: true,
+        ..ScreenText::placed(2, "Toughness", false, -5.0, 45.0, 50.0, 20.0)
+    };
+    let found = screen::side_by_side(&IndexMap::from([(1, r#move), (2, star)]));
+    let mut texts: Vec<String> = found.into_values().map(|piece| piece.text).collect();
+    texts.sort();
+    assert_eq!(texts, ["Coolness", "Toughness"]);
+}
+
+/// A summary hangs Appeal's hearts and Jamming's in one window (movie33).
+#[test]
+fn test_hearts_on_two_rows_of_one_group_are_counted_apart() {
+    let hearts: IndexMap<i64, ScreenText> = [
+        (0x90, -100.0, -5.0),
+        (0x94, -90.0, -5.0),
+        (0x98, -100.0, -28.0),
+    ]
+    .into_iter()
+    .map(|(r#box, left, row)| {
+        (
+            r#box,
+            ScreenText {
+                parent: 0x200,
+                picture: true,
+                ..ScreenText::placed(r#box, pictures::HEART, false, left, left + 10.0, row, 10.0)
+            },
+        )
+    })
+    .collect();
+    let mut texts: Vec<String> = screen::counted_stars(&hearts)
+        .unwrap()
+        .into_values()
+        .map(|piece| piece.text)
+        .collect();
+    texts.sort();
+    assert_eq!(texts, ["1 heart", "2 hearts"]);
 }
 
 /// The results draw each entrant's place as a picture left of "Raiden & Metagross" (spike

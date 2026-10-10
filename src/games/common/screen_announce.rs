@@ -96,12 +96,14 @@ struct Gathering {
     /// The item is a count alone, said after the first row of its details, which name what it
     /// counts (`ScreenAnnouncer._say_details`).
     count: String,
+    /// The item was not said as the cursor moved: a count, or nameless, said by its details.
+    held: bool,
 }
 
 impl Gathering {
-    /// `_Gathering(cursor, quiet=quiet, count=count)`: `polls` at 0 and no panels or words said
-    /// yet.
-    fn new(cursor: i64, quiet: bool, count: String) -> Self {
+    /// `_Gathering(cursor, quiet=quiet, count=count, held=held)`: `polls` at 0 and no panels or
+    /// words said yet.
+    fn new(cursor: i64, quiet: bool, count: String, held: bool) -> Self {
         Gathering {
             cursor,
             polls: 0,
@@ -109,6 +111,7 @@ impl Gathering {
             said: HashSet::new(),
             quiet,
             count,
+            held,
         }
     }
 }
@@ -260,23 +263,20 @@ impl ScreenAnnouncer {
             // A count alone names nothing: the Pokéblock Kit's cursor sits on a picture of a
             // berry or a block and its count, and the screen writes what it is elsewhere, "16"
             // then "Cheri Berry Red" (movie30, spike 196). It is said after that, with it.
-            let count = if py::isdigit(&text) && !item.opened && !item.quiet {
-                text.clone()
-            } else {
-                String::new()
-            };
+            // A nameless item, a button of no words, is said by its details alone.
+            let held = (py::isdigit(&text) || text.is_empty()) && !item.opened && !item.quiet;
+            if text.is_empty() && item.opened {
+                continue;
+            }
+            let count = if held { text.clone() } else { String::new() };
             (self.log)(&format!(
                 "cursor {:#010x} {}: {text}{}  [layout {:#x}]",
                 item.cursor,
                 if item.opened { "opened" } else { "moved" },
-                if count.is_empty() {
-                    ""
-                } else {
-                    " (said with its details)"
-                },
+                if held { " (said with its details)" } else { "" },
                 item.pieces[0].root
             ));
-            if count.is_empty() {
+            if !held {
                 self.speech.say(
                     &text,
                     if item.opened {
@@ -299,7 +299,7 @@ impl ScreenAnnouncer {
                         .or_default()
                         .extend(gathering.panels.iter().copied());
                 }
-                self.gathering = Some(Gathering::new(item.cursor, item.quiet, count));
+                self.gathering = Some(Gathering::new(item.cursor, item.quiet, count, held));
             }
         }
 
@@ -328,7 +328,9 @@ impl ScreenAnnouncer {
             .gathering
             .as_ref()
             .is_some_and(|gathering| !gathering.count.is_empty());
-        let rowed: HashSet<i64> = if counting {
+        // Nor while no cursor has just moved: the Pokéblock Case asks "Give the Pokéblock to
+        // Pikachu?" in the words it asked which Pokémon with, under its list (movie33).
+        let rowed: HashSet<i64> = if counting || self.gathering.is_none() {
             on_screen
                 .iter()
                 .filter(|p| rows.contains(&p.r#box))
@@ -677,7 +679,7 @@ impl ScreenAnnouncer {
             ));
             if !group.is_empty() {
                 let mut text = join(&group, self.pauses);
-                if !gathering.count.is_empty() && texts.is_empty() {
+                if gathering.held && !gathering.count.is_empty() && texts.is_empty() {
                     let first: Vec<ScreenText> = group
                         .iter()
                         .filter(|p| (p.row - group[0].row).abs() < group[0].glyph / 2.0)

@@ -416,15 +416,29 @@ impl ListCursors {
                 continue;
             }
             let group = u32(&self.layouts.pane(pane)?, lyt::PARENT)?;
+            if group == root {
+                continue;
+            }
             let mut words: Vec<ScreenText> = Vec::new();
             for piece in on_screen {
                 if piece.root == root && self.panes.below(piece.parent, group)? {
                     words.push(piece.clone());
                 }
             }
-            if group != root && !words.is_empty() {
+            if !words.is_empty() {
                 return Ok(distinct(in_rows(words)));
             }
+            // A button of no words: a contest's portraits, whose entrant the screen names
+            // elsewhere as the cursor lands, "Pokémon: Bolt, Trainer: Camden" (movie33). Its
+            // item is nameless, and said by its details.
+            let placement = self.layouts.placement(holder)?;
+            let top = placement.is_some_and(|placement| placement.top);
+            return Ok(vec![ScreenText {
+                top,
+                root,
+                parent: group,
+                ..ScreenText::new(group, "", false)
+            }]);
         }
         Ok(Vec::new())
     }

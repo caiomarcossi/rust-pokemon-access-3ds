@@ -104,11 +104,13 @@ pub const NO_HEART: &str = "♡";
 /// move, its ability (spike 195); and where a contest does, a heart of a move's appeal, one a
 /// point (spike 196). Signs for the screen text reader to say in words of its own (`stars`,
 /// `hearts`, the `SPECIAL` marks), never said as signs.
-pub const DRAWN: [(&str, &str); 4] = [
+pub const DRAWN: [(&str, &str); 6] = [
     ("star01", STAR),
     ("star02", NO_STAR),
     ("sp_mark", SPECIAL),
     ("heart", HEART),
+    ("heart00", HEART),
+    ("heart01", HEART),
 ];
 /// A contest's places, which its results draw as pictures beside each entrant, `one` to `four`
 /// (spike 196), in words of pa3ds's own, said after the entrant: "Raiden & Metagross third
