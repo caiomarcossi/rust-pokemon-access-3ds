@@ -185,6 +185,30 @@ fn test_written_text_waits_a_whole_poll_and_only_the_last_is_said() {
     assert_eq!(backend.spoken(), ["Switching.", "Elsewhere."]);
 }
 
+/// Under `interrupt`, an option's description cut off the option (the audit, 2026-10-10).
+#[test]
+fn test_written_text_never_cuts_off_the_option_it_describes() {
+    let backend = Recorder::new();
+    let mut announcements = Announcements::new(
+        Rc::new(Speech::new(
+            backend.clone(),
+            std::collections::HashSet::from([Category::Key, Category::Menu]),
+            None,
+        )),
+        quiet(),
+    );
+    announcements
+        .pages(&[Shown::Text(TextWritten {
+            window: 1,
+            text: "Move animations.".to_string(),
+        })])
+        .unwrap();
+    announcements.screen_polled();
+    announcements.screen_polled();
+    assert_eq!(backend.spoken(), ["Move animations."]);
+    assert_eq!(backend.interrupting(), Vec::<String>::new());
+}
+
 #[test]
 fn test_a_task_is_due_every_period_or_sooner_when_asked() {
     let every = Every::new(2.0);

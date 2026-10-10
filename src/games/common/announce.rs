@@ -261,12 +261,14 @@ impl Announcements {
     /// Python's `_say` of a `TextWritten`, apart from the page's: it names nobody, so it cannot
     /// raise, where the page's speaker can.
     fn say_text(&mut self, item: &TextWritten) {
-        // Written text follows the cursor, as an option's description does: a menu's category.
+        // Written text is the option's details, said after it and never cutting it off: as a
+        // menu's, under `interrupt` the description cut off the option it describes (ADR-0010
+        // as amended 2026-10-05, ADR-0012 as amended 2026-10-10).
         (self.log)(&format!(
             "text {:#010x} (written over the window): {}",
             item.window, item.text
         ));
-        self.speech.say(&item.text, Category::Menu);
+        self.speech.say(&item.text, Category::Screen);
     }
 
     /// Python's `_say` of a `PageShown`.
