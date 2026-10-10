@@ -254,6 +254,8 @@ pub struct GameText {
     pub categories: Vec<String>,
     /// What the game calls each status condition, in `RomLayout.conditions`' order.
     pub conditions: Vec<String>,
+    /// What the game calls each contest category, in `RomLayout.contest_categories`' order.
+    pub contest_categories: Vec<String>,
     /// An image a button is drawn with -> the game's word for the button
     /// (`RomLayout.touch_words`).
     pub touch_words: IndexMap<String, String>,
@@ -298,6 +300,7 @@ impl PartialEq for GameText {
             && self.types == other.types
             && self.categories == other.categories
             && self.conditions == other.conditions
+            && self.contest_categories == other.contest_categories
             && self.touch_words == other.touch_words
             && self.labels == other.labels
             && self.plain == other.plain
@@ -331,6 +334,7 @@ impl Default for GameText {
             types: Vec::new(),
             categories: Vec::new(),
             conditions: Vec::new(),
+            contest_categories: Vec::new(),
             touch_words: IndexMap::new(),
             labels: IndexMap::new(),
             plain: HashSet::new(),
@@ -633,6 +637,7 @@ impl GameText {
                 plain
             },
             caught: layout.caught.clone(),
+            contest_categories: lines_from(layout.contest_categories)?,
             decorations: match layout.decorations {
                 Some(file) => lines_of_file(&files, file)?,
                 None => Vec::new(),

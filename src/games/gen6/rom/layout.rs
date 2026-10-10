@@ -94,6 +94,9 @@ pub struct RomLayout {
     /// The text file naming the moves' categories and the line they start at: status, physical,
     /// special, as the category icons number them (`textures`).
     pub categories: Option<(i64, i64)>,
+    /// The text file naming the contest categories and the line they start at: coolness, beauty,
+    /// cuteness, cleverness, toughness, as a contest's move icons number them (`textures`).
+    pub contest_categories: Option<(i64, i64)>,
     /// The text file naming the status conditions and the line they start at: paralysis, asleep,
     /// frozen, burned, poisoned, fainted, Pokérus, as the status icons number them (`textures`).
     pub conditions: Option<(i64, i64)>,
@@ -177,6 +180,7 @@ impl RomLayout {
             species: None,
             pokemon_models: None,
             categories: None,
+            contest_categories: None,
             conditions: None,
             touch_words: Vec::new(),
             labels: Vec::new(),

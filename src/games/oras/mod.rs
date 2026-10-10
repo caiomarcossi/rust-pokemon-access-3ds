@@ -300,6 +300,9 @@ pub const SPECIES_NAMES: i64 = 98;
 pub const POKEMON_MODELS: (&str, i64) = ("a/0/2/1", 0x1BE);
 /// STATUS, PHYSICAL, SPECIAL: the summary's words, in the category icons' order (spike 147).
 pub const MOVE_CATEGORIES: (i64, i64) = (150, 17);
+/// Coolness, Beauty, Cuteness, Cleverness, Toughness: the contest's own text, in its move icons'
+/// order, `contest_icon_00` to `contest_icon_04` (spike 196: Hold Back's is 00, Iron Defense's 04).
+pub const CONTEST_CATEGORIES: (i64, i64) = (141, 121);
 /// PARALYSIS, ASLEEP, FROZEN, BURNED, POISONED, FAINTED, POKÉRUS (spike 147).
 pub const CONDITIONS: (i64, i64) = (123, 50);
 /// A Secret Base's decorations by number, as the save numbers them: Small Desk 0, Small Chair 10,
@@ -384,6 +387,7 @@ pub fn rom() -> &'static RomLayout {
         species: Some(SPECIES_NAMES),
         pokemon_models: Some((POKEMON_MODELS.0.to_string(), POKEMON_MODELS.1)),
         categories: Some(MOVE_CATEGORIES),
+        contest_categories: Some(CONTEST_CATEGORIES),
         conditions: Some(CONDITIONS),
         map_panes: Some((MAP_PANES.0.to_string(), MAP_PANES.1, MAP_PANES.2)),
         decorations: Some(DECORATION_NAMES),

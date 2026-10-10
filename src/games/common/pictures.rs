@@ -96,11 +96,20 @@ pub const OFF: &str = "off";
 pub const STAR: &str = "★";
 pub const NO_STAR: &str = "☆";
 pub const SPECIAL: &str = "!";
+pub const HEART: &str = "♥";
+/// A heart hidden under the words of what it counts: one point of it not had (`screen`).
+pub const NO_HEART: &str = "♡";
 /// What a picture shows, where the DexNav draws it in place of words: a star of Potential filled
 /// or not, three in a row, and the red mark beside what is better than usual, its level, its first
-/// move, its ability (spike B). Signs for the screen text reader to say in words of its own
-/// (`stars`, the `SPECIAL` marks), never said as signs.
-pub const DRAWN: [(&str, &str); 3] = [("star01", STAR), ("star02", NO_STAR), ("sp_mark", SPECIAL)];
+/// move, its ability (spike 195); and where a contest does, a heart of a move's appeal, one a
+/// point (spike 196). Signs for the screen text reader to say in words of its own (`stars`,
+/// `hearts`, the `SPECIAL` marks), never said as signs.
+pub const DRAWN: [(&str, &str); 4] = [
+    ("star01", STAR),
+    ("star02", NO_STAR),
+    ("sp_mark", SPECIAL),
+    ("heart", HEART),
+];
 pub const HIGHER_LEVEL: &str = "higher level";
 pub const EGG_MOVE: &str = "egg move";
 /// What the DexNav's mark says beside a level above the area's, a first move that is an egg move,
@@ -124,6 +133,15 @@ pub fn stars(filled: i64) -> String {
         format!("{filled} star")
     } else {
         format!("{filled} stars")
+    }
+}
+
+/// A contest move's hearts as words: "4 hearts", "1 heart".
+pub fn hearts(count: i64) -> String {
+    if count == 1 {
+        format!("{count} heart")
+    } else {
+        format!("{count} hearts")
     }
 }
 

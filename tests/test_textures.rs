@@ -10,7 +10,7 @@ use super::fake_rom::{GarcFile, TmpDir, garc, lz11_literals, rom_image};
 use crate::core::memory::Memory;
 use crate::core::rom::Rom;
 use crate::games::common::garc::{garc_files, garc_variants};
-use crate::games::common::{layout_file, lyt};
+use crate::games::common::{layout_file, lyt, pictures};
 use crate::games::gen6::rom::archives::GameText;
 use crate::games::gen6::rom::textures;
 use crate::py::Result;
@@ -351,8 +351,32 @@ fn english() -> GameText {
             "FAINTED",
             "POKÉRUS",
         ]),
+        contest_categories: strings(&["Coolness", "Beauty", "Cuteness", "Cleverness", "Toughness"]),
         ..GameText::default()
     }
+}
+
+#[test]
+fn test_a_contest_moves_category_is_said_as_the_contest_names_it() {
+    // Hold Back draws `contest_icon_00`, Iron Defense `contest_icon_04`, a Toughness move (spike
+    // 196); a contest's heart is its sign, counted by the screen text reader.
+    assert_eq!(
+        textures::said(&["contest_icon_00"], &english()).unwrap(),
+        Some("Coolness".to_string())
+    );
+    assert_eq!(
+        textures::said(&["contest_icon_04"], &english()).unwrap(),
+        Some("Toughness".to_string())
+    );
+    assert_eq!(
+        textures::said(&["contest_icon_05"], &english()).unwrap(),
+        None
+    );
+    assert_eq!(
+        textures::said(&["heart"], &english()).unwrap(),
+        Some(pictures::HEART.to_string())
+    );
+    assert_eq!(textures::said(&["mini_heart"], &english()).unwrap(), None);
 }
 
 #[test]
