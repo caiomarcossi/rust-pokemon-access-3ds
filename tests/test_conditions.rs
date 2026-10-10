@@ -1,6 +1,6 @@
 //! A Pokémon's contest conditions as they are said, an Extra (movie33's Pikachu).
 
-use crate::games::gen6::screens::conditions::said;
+use crate::games::oras::screens::conditions::said;
 
 fn words() -> Vec<String> {
     ["Coolness", "Beauty", "Cuteness", "Cleverness", "Toughness"]

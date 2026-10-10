@@ -43,9 +43,10 @@ use crate::games::gen6::field::zonetable::{
 use crate::games::gen6::game::{FeatureFactory, Game, SecretBaseFactory};
 use crate::games::gen6::rom::archives::GameText;
 use crate::games::gen6::rom::maps::{ChunkSource, StreetSource};
-use crate::games::oras::berries::BerrySpots;
-use crate::games::oras::hidden::{self, DexNav};
-use crate::games::oras::{self, ash, doors, ice, secret_base};
+use crate::games::oras;
+use crate::games::oras::field::berries::BerrySpots;
+use crate::games::oras::field::hidden::{self, DexNav};
+use crate::games::oras::field::{ash, doors, ice, secret_base};
 use crate::games::xy;
 use crate::games::{
     gen6::field::camera, gen6::field::mapblock, gen6::field::mmodel, gen6::field::rail,
@@ -3546,8 +3547,9 @@ fn test_a_sweep_of_new_blocks_adds_map_blocks_and_keeps_those_still_map_blocks()
     Ok(())
 }
 
-/// A game's Secret Bases as `oras.secret_base` reads them: every spot, and the player's own;
-/// inside the town, standing for a base, what stands where and the decorating cursor's cell.
+/// A game's Secret Bases as `oras.field.secret_base` reads them: every spot, and the player's
+/// own; inside the town, standing for a base, what stands where and the decorating cursor's
+/// cell.
 pub(crate) struct Bases {
     pub spots: Vec<(i64, (i64, i64))>,
     own: Option<i64>,

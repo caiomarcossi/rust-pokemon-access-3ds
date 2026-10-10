@@ -13,6 +13,7 @@
 //! appealed, and each appeal's message names the Pokémon whose turn it is, "Bolt tried to show
 //! its appeal with Light Screen!", one of the contests' own entrants (`GameText.contest_rivals`).
 
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use indexmap::{IndexMap, IndexSet};
@@ -24,6 +25,8 @@ use crate::games::common::layout_file::LayoutFiles;
 use crate::games::common::lyt;
 use crate::games::common::pictures::PLACES;
 use crate::games::common::screen::ScreenText;
+use crate::games::gen6::game::StandingsReader;
+use crate::games::gen6::rom::archives::GameText;
 use crate::games::gen6::rom::textures;
 use crate::py::{self, Result};
 
@@ -229,8 +232,31 @@ impl Standings {
         }
     }
 
+    /// The standings, with the contest's labels and entrants from the ROM's words, as the
+    /// gen 6 profile builds them (`Game.standings`).
+    pub fn of(
+        memory: Rc<dyn Memory>,
+        layouts: Rc<Layouts>,
+        files: Rc<LayoutFiles>,
+        text: Option<&GameText>,
+        running: Rc<dyn Fn() -> Option<String>>,
+    ) -> Rc<RefCell<dyn StandingsReader>> {
+        Rc::new(RefCell::new(Standings::new(
+            memory,
+            layouts,
+            files,
+            text.map(|text| text.contest_entrant.clone())
+                .unwrap_or_default(),
+            running,
+            text.map(|text| text.contest_rivals.clone())
+                .unwrap_or_default(),
+        )))
+    }
+}
+
+impl StandingsReader for Standings {
     /// Learn the entrant the panel names, by the icon in the portrait the cursor is on.
-    pub fn poll(&mut self, on_screen: &[ScreenText]) -> Result<()> {
+    fn poll(&mut self, on_screen: &[ScreenText]) -> Result<()> {
         if (self.running)().as_deref() != Some(APP) {
             self.names.clear();
             self.written.clear();
@@ -304,7 +330,7 @@ impl Standings {
     /// Learn the computer's entrants from the first round's messages: "Bolt tried to show
     /// its appeal" is the portrait whose turn it is, and the first round appeals left to right.
     /// Only entrants whose entry cards were shown are looked for; the panel's names win.
-    pub fn heard<'a>(&mut self, texts: impl IntoIterator<Item = &'a str>) {
+    fn heard(&mut self, texts: &[&str]) {
         if (self.running)().as_deref() != Some(APP)
             || !self.first_round
             || self.turns.len() != ENTRANTS
@@ -334,7 +360,7 @@ impl Standings {
     /// None outside the appeals or where the portraits are not found.
     ///
     /// Python's `pauses` defaults to False.
-    pub fn said(&self, player: bool, pauses: bool) -> Result<Option<String>> {
+    fn said(&self, player: bool, pauses: bool) -> Result<Option<String>> {
         if (self.running)().as_deref() != Some(APP) {
             return Ok(None);
         }
@@ -347,7 +373,9 @@ impl Standings {
         };
         standings(&portraits, &name, player, pauses)
     }
+}
 
+impl Standings {
     /// The digest of the image the portrait's icon draws, or None.
     fn icon(&self, portrait: &Portrait) -> Result<Option<String>> {
         let image = textures::image(&*self.memory, portrait.icon)?;

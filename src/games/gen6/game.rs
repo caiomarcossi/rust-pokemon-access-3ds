@@ -5,15 +5,21 @@
 //! keeps each kind of file, and one offset in a move model — and what one game has alone, as ORAS's
 //! DexNav; a game package says its own in a `Game`. Everything else is shared.
 
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 
 use crate::core::memory::Memory;
+use crate::core::rtti::ClassNames;
 use crate::core::speech::Speech;
 use crate::core::toml;
 use crate::games::common::field::things::Field;
+use crate::games::common::layout::Layouts;
+use crate::games::common::layout_file::LayoutFiles;
+use crate::games::common::screen::ScreenText;
+use crate::games::gen6::apps::RunningApp;
 use crate::games::gen6::field::features::{
     DoorReader, Feature, HiddenReader, IceReader, SecretBaseReader,
 };
@@ -21,9 +27,9 @@ use crate::games::gen6::rom::archives::GameText;
 use crate::games::gen6::rom::layout::RomLayout;
 use crate::py::{Log, Result};
 
-/// An app only one game has, read by that game's own package: ORAS's soaring (`oras.sky`). While
-/// it runs, the navigation keys walk what it lists instead of the field's, and it is polled in
-/// the field's place.
+/// An app only one game has, read by that game's own package: ORAS's soaring
+/// (`oras.field.sky`). While it runs, the navigation keys walk what it lists instead of the
+/// field's, and it is polled in the field's place.
 pub trait OwnApp {
     /// The class its process is (`apps.RunningApp`).
     fn app(&self) -> &'static str;
@@ -43,6 +49,35 @@ pub trait OwnApp {
 
     /// Say what it says of itself, every field poll while it runs.
     fn poll(&self, process: i64) -> Result<()>;
+}
+
+/// Who stands where in a competition only one game has, said on the keys that say a battle's
+/// sides: ORAS's contests (`oras.screens.contest`).
+pub trait StandingsReader {
+    /// The dialogue pages just said, which name whose turn it is.
+    fn heard(&mut self, texts: &[&str]);
+
+    /// Every screen poll, with every piece of screen text on screen.
+    fn poll(&mut self, on_screen: &[ScreenText]) -> Result<()>;
+
+    /// The player's standing, or everyone else's; None out of a competition. Python's `pauses`
+    /// defaults to False.
+    fn said(&self, player: bool, pauses: bool) -> Result<Option<String>>;
+}
+
+/// A Pokémon's contest conditions, an Extra, said where only one game draws them: ORAS's
+/// (`oras.screens.conditions`).
+pub trait ConditionsReader {
+    /// Every screen poll, once the screen's words are said: the words under the cursors,
+    /// everything on screen, the layouts still being written, and whether a cursor's details are
+    /// still to be said. Python's `waiting` defaults to False.
+    fn poll(
+        &mut self,
+        under: &[String],
+        on_screen: &[ScreenText],
+        settling: &IndexSet<i64>,
+        waiting: bool,
+    ) -> Result<()>;
 }
 
 /// A game's `data` folder as the binary carries it: each language's `sprites.toml`, by the
@@ -65,6 +100,28 @@ pub type AppFactory =
 pub type DoorFactory = fn(Rc<dyn Memory>) -> Rc<dyn DoorReader>;
 /// `Callable[[Memory], IceReader]`.
 pub type IceFactory = fn(Rc<dyn Memory>) -> Rc<dyn IceReader>;
+/// `Callable[[Memory, Layouts, LayoutFiles, GameText | None, Callable[[], str | None]],
+/// StandingsReader]`.
+pub type StandingsFactory = fn(
+    Rc<dyn Memory>,
+    Rc<Layouts>,
+    Rc<LayoutFiles>,
+    Option<&GameText>,
+    Rc<dyn Fn() -> Option<String>>,
+) -> Rc<RefCell<dyn StandingsReader>>;
+/// `Callable[[Memory, ClassNames, Layouts, LayoutFiles, RunningApp, GameText, Speech,
+/// Callable[[str], None], bool], ConditionsReader]`.
+pub type ConditionsFactory = fn(
+    Rc<dyn Memory>,
+    Rc<ClassNames>,
+    Rc<Layouts>,
+    Rc<LayoutFiles>,
+    Rc<RefCell<RunningApp>>,
+    &GameText,
+    Rc<Speech>,
+    Log,
+    bool,
+) -> Box<dyn ConditionsReader>;
 
 /// One game as the gen 6 readers read it.
 ///
@@ -83,7 +140,7 @@ pub struct Game {
     /// Where a move model keeps the sprite it is drawn with (`mmodel.drawn_as`).
     pub drawn: i64,
     /// The reader of its hidden Pokémon, for the field to list, or None in a game with none: ORAS's
-    /// DexNav (`games.oras.hidden`).
+    /// DexNav (`games.oras.field.hidden`).
     pub hidden: Option<HiddenFactory>,
     /// (zone, a trigger's script) -> the way the conveyor belt that trigger is runs (`field`,
     /// spike 132). Nothing in a trigger's record says it is a belt, so each is known one by one.
@@ -111,16 +168,16 @@ pub struct Game {
     /// PC and flag, Mossdeep Gym's switches.
     pub furniture: IndexMap<(i64, i64), String>,
     /// The reader of its Secret Bases, given the executable's image to find every spot in, or None
-    /// in a game with none: ORAS's (`games.oras.secret_base`).
+    /// in a game with none: ORAS's (`games.oras.field.secret_base`).
     pub secret_bases: Option<SecretBaseFactory>,
     /// The readers of what else it has on its field to list, each in its own words: ORAS's berry
-    /// spots and Route 113's ash piles (`games.oras.berries`, `games.oras.ash`).
+    /// spots and Route 113's ash piles (`games.oras.field.berries`, `games.oras.field.ash`).
     pub features: Vec<FeatureFactory>,
     /// The reader of its rotating doors, or None in a game with none: ORAS's, in Fortree Gym
-    /// (`games.oras.doors`).
+    /// (`games.oras.field.doors`).
     pub doors: Option<DoorFactory>,
     /// The reader of its rooms of thin ice, or None in a game with none: ORAS's, in Sootopolis
-    /// Gym (`games.oras.ice`).
+    /// Gym (`games.oras.field.ice`).
     pub ice: Option<IceFactory>,
     /// The sprite of its invisible blocker, a move model drawn as nothing that stands in the way:
     /// listed as nobody, and solid but where it stands in for a rotating door's arm.
@@ -129,11 +186,18 @@ pub struct Game {
     /// the floor above: Sootopolis Gym's two, the way back up from its lower floor.
     pub stairs: HashSet<i64>,
     /// Its own apps' readers, each built from the memory, the ROM's words, and where to say and
-    /// log, or None where what it needs is not read: ORAS's soaring (`oras.sky`).
+    /// log, or None where what it needs is not read: ORAS's soaring (`oras.field.sky`).
     pub apps: Vec<AppFactory>,
     /// Warp kind -> what it is, where the kind says more than a door or stairs: ladders, a
     /// teleporter pad, the way into one building alone. A kind not here is "warp".
     pub warps: IndexMap<i64, String>,
+    /// The reader of who stands where in its competitions, built from the memory, the layouts
+    /// and their files, the ROM's words and the app running, or None in a game with none: ORAS's
+    /// contests (`oras.screens.contest`).
+    pub standings: Option<StandingsFactory>,
+    /// The reader of a Pokémon's contest conditions, built as the Extra is turned on, or None in
+    /// a game that draws none: ORAS's (`oras.screens.conditions`).
+    pub conditions: Option<ConditionsFactory>,
 }
 
 impl Game {
@@ -167,6 +231,8 @@ impl Game {
             stairs: HashSet::new(),
             apps: Vec::new(),
             warps: IndexMap::new(),
+            standings: None,
+            conditions: None,
         }
     }
 

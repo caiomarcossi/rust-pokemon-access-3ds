@@ -98,13 +98,13 @@ pub struct RomLayout {
     /// cuteness, cleverness, toughness, as a contest's move icons number them (`textures`).
     pub contest_categories: Option<(i64, i64)>,
     /// The text file and line of a contest's labels of the entrant under its cursor, "Pokémon:"
-    /// and "Trainer:" (`gen6.screens.contest`).
+    /// and "Trainer:" (`oras.screens.contest`).
     pub contest_entrant: Option<(i64, i64)>,
     /// The story text file and line of the game's word for a Pokémon's contest conditions, said
-    /// before them (`gen6.screens.conditions`).
+    /// before them (`oras.screens.conditions`).
     pub contest_conditions: Option<(i64, i64)>,
     /// The story text file naming the contests' computer entrants, the trainers in its first
-    /// half and each one's Pokémon in the second, in the same order (`gen6.screens.contest`).
+    /// half and each one's Pokémon in the second, in the same order (`oras.screens.contest`).
     pub contest_rivals: Option<i64>,
     /// The text file naming the status conditions and the line they start at: paralysis, asleep,
     /// frozen, burned, poisoned, fainted, Pokérus, as the status icons number them (`textures`).
@@ -135,7 +135,7 @@ pub struct RomLayout {
     /// a game without bumpy slopes.
     pub acro: Option<(i64, i64)>,
     /// Archives a game's own readers read for themselves, handed over whole (`GameText.files`):
-    /// ORAS's sky's map of places (`oras.sky`).
+    /// ORAS's sky's map of places (`oras.field.sky`).
     pub files: Vec<String>,
     /// The warp kinds each used by the way into one building alone, whose building the town's list
     /// names where no plate does (`plates.entrance_names`); none in a game whose are not measured.

@@ -47,7 +47,7 @@ use crate::games::gen6::field::dowsing::Lights;
 use crate::games::gen6::field::reader::{FieldReader, MOVE_MODEL_CLASS};
 use crate::games::gen6::field::speaker::SpeakerReader;
 use crate::games::gen6::field::{camera, mapblock, talk};
-use crate::games::gen6::game::{Game, OwnApp};
+use crate::games::gen6::game::{ConditionsReader, Game, OwnApp, StandingsReader};
 use crate::games::gen6::gflheap;
 use crate::games::gen6::rom::archives::GameText;
 use crate::games::gen6::rom::textures;
@@ -56,13 +56,12 @@ use crate::games::gen6::screens::battle::{BattleReader, Battlers, GAUGE_CLASSES,
 use crate::games::gen6::screens::choices::{
     BOX_DEVICE_MANAGER, ChoiceReader, DEVICE_MANAGER_CLASS,
 };
-use crate::games::gen6::screens::conditions::ConditionsReader;
 use crate::games::gen6::screens::distribution::Distribution;
 use crate::games::gen6::screens::habitat::HabitatReader;
 use crate::games::gen6::screens::lists::{CONTROLLER_CLASS, ListReader};
 use crate::games::gen6::screens::mapcursor::MapCursor;
 use crate::games::gen6::screens::partyicons::PartyIcons;
-use crate::games::gen6::screens::{buttons, contest, distribution, partyicons, summary, townmap};
+use crate::games::gen6::screens::{buttons, distribution, partyicons, summary, townmap};
 use crate::py::{self, Error, Log, PySet, Result};
 
 /// What the heap is swept for: message windows, list controllers, the device manager a choice box
@@ -182,7 +181,7 @@ pub struct Gen6Profile {
     pub views: RefCell<townmap::Views>,
     pub buttons: Rc<RefCell<buttons::Buttons>>,
     pub party_icons: Rc<RefCell<PartyIcons>>,
-    pub standings: Rc<RefCell<contest::Standings>>,
+    pub standings: Option<Rc<RefCell<dyn StandingsReader>>>,
     pub map_cursor: RefCell<MapCursor>,
     /// Python's `self.touch` is the navigator's `touch`, which it owns here.
     pub navigator: RefCell<Navigator>,
@@ -210,7 +209,7 @@ pub struct Gen6Profile {
     /// The Pokédex's habitat map draws the Pokémon's places and never names them (spike 152).
     pub habitat: RefCell<HabitatReader>,
     /// An Extra: the conditions the game draws as a star, said as numbers (ADR-0017).
-    pub conditions: Option<RefCell<ConditionsReader>>,
+    pub conditions: Option<RefCell<Box<dyn ConditionsReader>>>,
     /// (work, root) of every layout whose files have been looked for since an app started.
     archived: RefCell<HashSet<(i64, i64)>>,
     /// The zone the player was last polled in.
@@ -416,30 +415,31 @@ impl Gen6Profile {
         let views = townmap::Views::new(memory.clone(), names.clone());
         // The game's button managers say whose buttons take taps (spike 189).
         let buttons = Rc::new(RefCell::new(buttons::Buttons::new(memory.clone())));
-        // A contest's appeals draw who stands where as portraits, said on the keys that say a
-        // battle's sides (Orion, 2026-10-09).
-        let standings = Rc::new(RefCell::new(contest::Standings::new(
-            memory.clone(),
-            layouts.clone(),
-            files.clone(),
-            text.as_ref()
-                .map(|text| text.contest_entrant.clone())
-                .unwrap_or_default(),
-            {
-                let apps = apps.clone();
-                Rc::new(move || apps.borrow().running.clone())
-            },
-            text.as_ref()
-                .map(|text| text.contest_rivals.clone())
-                .unwrap_or_default(),
-        )));
+        // ORAS's contests' appeals draw who stands where as portraits, said on the keys that say
+        // a battle's sides (Orion, 2026-10-09).
+        let standings: Option<Rc<RefCell<dyn StandingsReader>>> = game.standings.map(|make| {
+            make(
+                memory.clone(),
+                layouts.clone(),
+                files.clone(),
+                text.as_deref(),
+                {
+                    let apps = apps.clone();
+                    Rc::new(move || apps.borrow().running.clone())
+                },
+            )
+        });
         let pauses = ui.pauses;
         let sides: Sides = {
             let (standings, announcements) = (standings.clone(), announcements.clone());
             Rc::new(move |player: bool| {
+                let standing = match &standings {
+                    None => None,
+                    Some(standings) => standings.borrow().said(player, pauses)?,
+                };
                 // Python's `or`: a standing of "" or None goes on to the battle's sides.
-                match standings.borrow().said(player, pauses)? {
-                    Some(said) if !said.is_empty() => Ok(Some(said)),
+                match standing {
+                    Some(standing) if !standing.is_empty() => Ok(Some(standing)),
                     _ => Ok(announcements.borrow().sides(player)),
                 }
             })
@@ -580,16 +580,15 @@ impl Gen6Profile {
             ui.pauses,
         );
         // An Extra: the conditions the game draws as a star, said as numbers (ADR-0017).
-        let conditions = match &text {
-            Some(text) if extras.unwrap_or_default().conditions => {
-                Some(RefCell::new(ConditionsReader::new(
+        let conditions = match (game.conditions, &text) {
+            (Some(make), Some(text)) if extras.unwrap_or_default().conditions => {
+                Some(RefCell::new(make(
                     memory.clone(),
                     names.clone(),
                     layouts.clone(),
                     files.clone(),
                     apps.clone(),
-                    text.contest_categories.clone(),
-                    text.contest_conditions.clone(),
+                    text,
                     speech.clone(),
                     log.clone(),
                     ui.pauses,
@@ -809,12 +808,16 @@ impl Gen6Profile {
         let shown = phase(&*self.memory, "dialogue", || {
             self.dialogue.borrow_mut().poll()
         })?;
-        self.standings
-            .borrow_mut()
-            .heard(shown.iter().filter_map(|page| match page {
-                Shown::Page(page) => Some(page.text.as_str()),
-                Shown::Text(_) => None,
-            }));
+        if let Some(standings) = &self.standings {
+            let texts: Vec<&str> = shown
+                .iter()
+                .filter_map(|page| match page {
+                    Shown::Page(page) => Some(page.text.as_str()),
+                    Shown::Text(_) => None,
+                })
+                .collect();
+            standings.borrow_mut().heard(&texts);
+        }
         let said = self.announcements.borrow_mut().pages(&shown)?;
         if said && self.apps.borrow().running.as_deref() == Some(FIELD) {
             self.look_for_speakers(&shown)?;
@@ -919,7 +922,9 @@ impl Gen6Profile {
             // The HP box is the battle reader's to say, whole and once it holds still.
             let sides = self.battle.borrow_mut().poll(&on_screen)?;
             self.habitat.borrow_mut().poll(&on_screen)?;
-            self.standings.borrow_mut().poll(&on_screen)?;
+            if let Some(standings) = &self.standings {
+                standings.borrow_mut().poll(&on_screen)?;
+            }
             self.map_cursor.borrow_mut().poll()?;
             let items = self.cursors.borrow_mut().poll(&on_screen)?;
             Ok((texts, on_screen, sides, items))

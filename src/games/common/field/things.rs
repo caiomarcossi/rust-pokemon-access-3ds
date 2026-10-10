@@ -62,7 +62,7 @@ pub const DIVE_SOURCE: i64 = 9 << 32;
 pub const STAIRS_SOURCE: i64 = 10 << 32;
 
 /// A thing an app of one game's own lists, by its number there: ORAS's soaring's places and flocks
-/// (`oras.sky`, spike 166). The game names them, so they take no name of ours.
+/// (`oras.field.sky`, spike 166). The game names them, so they take no name of ours.
 pub const APP_SOURCE: i64 = 11 << 32;
 
 /// A place's `source` from its kind's tag and its own number. The number must leave the tag's

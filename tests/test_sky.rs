@@ -17,8 +17,8 @@ use crate::games::common::field::keys::{
 use crate::games::common::field::navigate::{Navigator, Options};
 use crate::games::common::field::things::{Field, POKEMON};
 use crate::games::gen6::apps::LOADED_CODE;
-use crate::games::oras::sky;
-use crate::games::oras::sky::{LANDMARKS, MIRAGE, ROUTES, TOWNS};
+use crate::games::oras::field::sky;
+use crate::games::oras::field::sky::{LANDMARKS, MIRAGE, ROUTES, TOWNS};
 use crate::py::Result;
 
 const WHITE: i64 = 0xFFFFFFFF;

@@ -1,6 +1,8 @@
 //! Pokémon Omega Ruby and Alpha Sapphire: read by the gen 6 profile and readers (`games.gen6`),
 //! with what ORAS keeps where X does not here — where its ROM keeps each kind of file, and who its
-//! story's people are — and what ORAS alone has, the DexNav's hidden Pokémon (`hidden`).
+//! story's people are — and what ORAS alone has: on its field (`field`) the DexNav's hidden
+//! Pokémon, Secret Bases, berry spots, soaring and more, and among its screens (`screens`) its
+//! contests.
 
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -20,13 +22,16 @@ use crate::games::gen6::field::reader::{FLAG, PC_TILE, use_tiles};
 use crate::games::gen6::game::{Data, Game};
 use crate::games::gen6::rom::archives::{BOY, GIRL, GameText};
 use crate::games::gen6::rom::layout::{RomLayout, TownFacilities};
-use crate::games::oras::ash::AshPiles;
-use crate::games::oras::berries::BerrySpots;
-use crate::games::oras::doors::RotatingDoors;
-use crate::games::oras::hidden::DexNav;
-use crate::games::oras::ice::IceFloors;
-use crate::games::oras::secret_base::{SecretBases, zones as secret_bases_zones};
-use crate::games::oras::sky::Soaring;
+use crate::games::oras::field::ash::AshPiles;
+use crate::games::oras::field::berries::BerrySpots;
+use crate::games::oras::field::doors::RotatingDoors;
+use crate::games::oras::field::hidden::DexNav;
+use crate::games::oras::field::ice::IceFloors;
+use crate::games::oras::field::secret_base::{SecretBases, zones as secret_bases_zones};
+use crate::games::oras::field::sky;
+use crate::games::oras::field::sky::Soaring;
+use crate::games::oras::screens::conditions::Conditions;
+use crate::games::oras::screens::contest::Standings;
 
 /// Words the game does not say itself, a folder a language: `pa3ds.core.names` reads them.
 ///
@@ -686,6 +691,8 @@ pub fn game() -> &'static Game {
         stairs: HashSet::from([SOOTOPOLIS_GYM]),
         apps: vec![Soaring::of],
         warps: warps().clone(),
+        standings: Some(Standings::of),
+        conditions: Some(Conditions::of),
         ..Game::new(
             "Omega Ruby and Alpha Sapphire",
             [OMEGA_RUBY, ALPHA_SAPPHIRE],
@@ -696,10 +703,5 @@ pub fn game() -> &'static Game {
     })
 }
 
-pub mod ash;
-pub mod berries;
-pub mod doors;
-pub mod hidden;
-pub mod ice;
-pub mod secret_base;
-pub mod sky;
+pub mod field;
+pub mod screens;

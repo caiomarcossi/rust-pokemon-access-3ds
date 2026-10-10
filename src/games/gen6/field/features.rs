@@ -44,7 +44,7 @@ pub trait Feature: Tracked {
     fn listed(&self, zone: i64, zone_at: ZoneAt) -> Result<Vec<Interactable>>;
 }
 
-/// A game's hidden Pokémon, where it has one: ORAS's DexNav (`games.oras.hidden`). Read at
+/// A game's hidden Pokémon, where it has one: ORAS's DexNav (`games.oras.field.hidden`). Read at
 /// every poll, since a tail shows and goes between sweeps.
 pub trait HiddenReader: Feature {
     /// The one `listed` last listed, which says how it was found.
@@ -55,21 +55,21 @@ pub trait HiddenReader: Feature {
     fn words(&self) -> Result<Option<(String, Cell)>>;
 }
 
-/// A game's rotating doors, where it has them: Fortree Gym's (`games.oras.doors`). Read
+/// A game's rotating doors, where it has them: Fortree Gym's (`games.oras.field.doors`). Read
 /// whenever the ground is, since they turn as the player walks.
 pub trait DoorReader: Tracked {
     /// The doors in `zone` as they stand now, or none.
     fn doors(&self, zone: i64) -> Result<Vec<RotatingDoor>>;
 }
 
-/// A game's rooms of thin ice, where it has them: Sootopolis Gym's (`games.oras.ice`). Read
+/// A game's rooms of thin ice, where it has them: Sootopolis Gym's (`oras.field.ice`). Read
 /// whenever the ground is, since they crack as the player walks.
 pub trait IceReader: Tracked {
     /// The rooms in `zone` as they are now, or none.
     fn rooms(&self, zone: i64) -> Result<Vec<IceRoom>>;
 }
 
-/// A game's Secret Bases, where it has them: ORAS's (`games.oras.secret_base`), listing every
+/// A game's Secret Bases, where it has them: ORAS's (`oras.field.secret_base`), listing every
 /// spot; inside one, what stands where and the cursor the player decorates with.
 pub trait SecretBaseReader: Feature {
     /// Every zone a base is built in.

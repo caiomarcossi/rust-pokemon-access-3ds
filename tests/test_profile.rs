@@ -19,8 +19,8 @@ use crate::games::gen6::field::mmodel::PLAYER_INDEX;
 use crate::games::gen6::game::{Game, OwnApp};
 use crate::games::gen6::profile::{Gen6Profile, Options};
 use crate::games::gen6::rom::archives::GameText;
-use crate::games::oras::hidden::PLAYER_WORK_CLASS;
-use crate::games::{gen6::gflheap, oras::sky};
+use crate::games::oras::field::hidden::PLAYER_WORK_CLASS;
+use crate::games::{gen6::gflheap, oras::field::sky};
 use crate::games::{oras, xy};
 use crate::py::{Log, Result};
 

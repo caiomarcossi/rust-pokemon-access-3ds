@@ -5,8 +5,6 @@
 pub mod battle;
 pub mod buttons;
 pub mod choices;
-pub mod conditions;
-pub mod contest;
 pub mod distribution;
 pub mod habitat;
 pub mod lists;

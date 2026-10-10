@@ -116,7 +116,7 @@ pub type Street = Rc<dyn Fn(i64, i64) -> Result<Option<String>>>;
 /// `Callable[[], int | None]`: the character that last spoke.
 pub type Speaker = Rc<dyn Fn() -> Option<i64>>;
 /// `Callable[[bool], str | None]`: the player's side of the battle as last said, or the enemy's.
-/// It reads a contest's portraits (`gen6.screens.contest`), so it can raise.
+/// It reads a contest's portraits (`oras.screens.contest`), so it can raise.
 pub type Sides = Rc<dyn Fn(bool) -> Result<Option<String>>>;
 
 /// `Navigator.__init__`'s arguments after `field`, `speech` and `log`, each as the Python

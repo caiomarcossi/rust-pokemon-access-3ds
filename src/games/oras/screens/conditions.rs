@@ -27,6 +27,8 @@ use crate::games::common::layout_file::LayoutFiles;
 use crate::games::common::pokemon;
 use crate::games::common::screen::ScreenText;
 use crate::games::gen6::apps::RunningApp;
+use crate::games::gen6::game::ConditionsReader;
+use crate::games::gen6::rom::archives::GameText;
 use crate::games::gen6::screens::partyicons::SLOTS;
 use crate::games::gen6::screens::summary;
 use crate::py::{Log, Result};
@@ -58,7 +60,7 @@ pub fn said(heading: Option<&str>, words: &[String], values: &[i64], pauses: boo
 }
 
 /// Says the conditions of the Pokémon whose star is on screen, once a Pokémon.
-pub struct ConditionsReader {
+pub struct Conditions {
     memory: Rc<dyn Memory>,
     names: Rc<ClassNames>,
     layouts: Rc<Layouts>,
@@ -76,7 +78,7 @@ pub struct ConditionsReader {
     said: Option<(i64, Vec<i64>)>,
 }
 
-impl ConditionsReader {
+impl Conditions {
     /// Python's `pauses` defaults to False.
     pub fn new(
         memory: Rc<dyn Memory>,
@@ -90,7 +92,7 @@ impl ConditionsReader {
         log: Log,
         pauses: bool,
     ) -> Self {
-        ConditionsReader {
+        Conditions {
             memory,
             names,
             layouts,
@@ -106,6 +108,35 @@ impl ConditionsReader {
         }
     }
 
+    /// The reader, with the game's words for the categories and its heading from the ROM,
+    /// as the gen 6 profile builds it once the Extra is on (`Game.conditions`).
+    pub fn of(
+        memory: Rc<dyn Memory>,
+        names: Rc<ClassNames>,
+        layouts: Rc<Layouts>,
+        files: Rc<LayoutFiles>,
+        apps: Rc<RefCell<RunningApp>>,
+        text: &GameText,
+        speech: Rc<Speech>,
+        log: Log,
+        pauses: bool,
+    ) -> Box<dyn ConditionsReader> {
+        Box::new(Conditions::new(
+            memory,
+            names,
+            layouts,
+            files,
+            apps,
+            text.contest_categories.clone(),
+            text.contest_conditions.clone(),
+            speech,
+            log,
+            pauses,
+        ))
+    }
+}
+
+impl ConditionsReader for Conditions {
     /// Say the conditions where a star has come on screen or turned to another Pokémon, once
     /// the words drawn with it have been said: polled after them, they come last, and the
     /// Case's "Blaze" does not cut off Blaze's. `under` is the words under the cursors, which
@@ -113,7 +144,7 @@ impl ConditionsReader {
     /// `waiting` whether a cursor's details are still to be said.
     ///
     /// Python's `waiting` defaults to False.
-    pub fn poll(
+    fn poll(
         &mut self,
         under: &[String],
         on_screen: &[ScreenText],
@@ -147,7 +178,9 @@ impl ConditionsReader {
         self.speech.say(&text, Category::Screen);
         Ok(())
     }
+}
 
+impl Conditions {
     /// The `PokemonParam` whose star is drawn, or None.
     fn shown(&self, under: &[String]) -> Result<Option<i64>> {
         let (process, running) = {

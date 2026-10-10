@@ -29,7 +29,7 @@ use crate::games::common::field::navigate::{LeadsTo, Navigator, Options};
 use crate::games::common::field::things::{
     Field, Interactable, PLACE, POKEMON, SPRITE, WARP_SOURCE,
 };
-use crate::games::oras::hidden::HIDDEN_POKEMON;
+use crate::games::oras::field::hidden::HIDDEN_POKEMON;
 use crate::py::{self, Result};
 
 const NORMAN: i64 = 0x13F;

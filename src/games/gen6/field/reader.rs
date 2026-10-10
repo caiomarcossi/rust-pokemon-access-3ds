@@ -12,7 +12,7 @@
 //!
 //! **Hidden Pokémon** — the DexNav's find, whose tail shows above the tall grass: not a model in
 //! the pool but a record of its own (spike 80), listed under a category of its own. ORAS alone has
-//! one, and its reader is ORAS's (`games.oras.hidden`), handed to this one by the game
+//! one, and its reader is ORAS's (`oras.field.hidden`), handed to this one by the game
 //! (`HiddenReader`).
 //!
 //! **Map block** — `field::MapBlock`, one of the four 40 by 40 chunks of the matrix the game keeps

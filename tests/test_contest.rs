@@ -1,6 +1,6 @@
 //! A contest's standings, from its portraits as spike 196 read them (movie33).
 
-use crate::games::gen6::screens::contest::{Portrait, by_turn, named_in, standings};
+use crate::games::oras::screens::contest::{Portrait, by_turn, named_in, standings};
 use crate::py::Result;
 
 /// The images the portraits' backgrounds draw: the player's is unlike the others'.
