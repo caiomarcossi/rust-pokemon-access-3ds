@@ -328,16 +328,26 @@ impl ScreenAnnouncer {
             .gathering
             .as_ref()
             .is_some_and(|gathering| !gathering.count.is_empty());
-        // Nor while no cursor has just moved: the Pokéblock Case asks "Give the Pokéblock to
-        // Pikachu?" in the words it asked which Pokémon with, under its list (movie33).
-        let rowed: HashSet<i64> = if counting || self.gathering.is_none() {
-            on_screen
-                .iter()
-                .filter(|p| rows.contains(&p.r#box))
-                .map(|p| p.root)
-                .collect()
+        // Nor a sentence while no cursor has just moved: the Pokéblock Case asks "Give the
+        // Pokéblock to Pikachu?" in the words it asked which Pokémon with, under its list, where
+        // going back to it rewrote "1", "Gyarados" and the counts beside it (movie33).
+        let menu_rows: HashSet<i64> = on_screen
+            .iter()
+            .filter(|p| rows.contains(&p.r#box))
+            .map(|p| p.root)
+            .collect();
+        let rowed: HashSet<i64> = if counting {
+            menu_rows.clone()
         } else {
             HashSet::new()
+        };
+        let asking: HashSet<i64> = if self.gathering.is_none() {
+            menu_rows
+        } else {
+            HashSet::new()
+        };
+        let news = |piece: &ScreenText| {
+            rowed.contains(&piece.root) || (asking.contains(&piece.root) && sentence(piece))
         };
         let heard: Vec<ScreenText> = texts
             .iter()
@@ -346,7 +356,7 @@ impl ScreenAnnouncer {
                     && !cursored.contains(&p.r#box)
                     && !(self.menus.contains(&p.root)
                         && !listed.contains_key(&p.root)
-                        && ((p.changed && !rowed.contains(&p.root))
+                        && ((p.changed && !news(p))
                             || p.with_layout
                             || p.scrolled
                             || (p.returned
@@ -964,6 +974,15 @@ fn side_by_side(one: &ScreenText, other: &ScreenText) -> bool {
 }
 
 /// Each changed piece with what sits beside it in its group on its row, each row once.
+/// The fewest words a sentence has, a question or a message: more than a label's
+/// (`LABEL_WORDS`) or an item's.
+pub const SENTENCE_WORDS: usize = 4;
+
+/// Is this a sentence rather than a label, a value or an item's name?
+fn sentence(piece: &ScreenText) -> bool {
+    py::split(&piece.text).len() >= SENTENCE_WORDS
+}
+
 fn rows(
     changed: &[ScreenText],
     on_screen: &[ScreenText],
@@ -980,7 +999,9 @@ fn rows(
         .collect();
     for piece in ordered {
         let mut row = vec![piece.clone()];
-        if piece.glyph > 0.0 {
+        // A sentence is no value of a row: "Give the Pokéblock to Pikachu?" was said with the
+        // tabs beside it, "Give a Pokéblock" and "Make" (movie33).
+        if piece.glyph > 0.0 && !sentence(&piece) {
             let beside: Vec<ScreenText> = on_screen
                 .iter()
                 .filter(|other| {

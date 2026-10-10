@@ -177,7 +177,8 @@ impl Screen {
 #[test]
 fn test_a_question_written_in_a_menu_while_no_cursor_moves_is_said() {
     // The Pokéblock Case asks "Give the Pokéblock to Pikachu?" in the words that asked which
-    // Pokémon, under its list, as the player chooses one (movie33).
+    // Pokémon, under its list, as the player chooses one, on the row of its tabs (movie33). A
+    // row's word that changes is not news so: going back to the case rewrote its counts.
     let mut screen = Screen::new();
     let pikachu = piece_kw(1, "Pikachu", -115.0, -15.0, MENU, Kw { parent: 4, ..PLAIN });
     let asked = piece_kw(
@@ -188,13 +189,16 @@ fn test_a_question_written_in_a_menu_while_no_cursor_moves_is_said() {
         MENU,
         Kw { parent: 5, ..PLAIN },
     );
+    let tab = piece_kw(3, "Make", 62.0, 105.0, MENU, Kw { parent: 6, ..PLAIN });
+    let count = piece_kw(4, "5", 66.0, 18.0, MENU, Kw { parent: 7, ..PLAIN });
+    let everything = vec![pikachu.clone(), asked.clone(), tab.clone(), count.clone()];
     let rows = HashSet::from([pikachu.r#box]);
     screen.say(Args {
         rows: rows.clone(),
         ..args(
-            &[pikachu.clone(), asked.clone()],
+            &everything,
             vec![CursorItem::new(0x0C, vec![pikachu.clone()], true)],
-            &[pikachu.clone(), asked.clone()],
+            &everything,
         )
     });
     let give = ScreenText {
@@ -203,10 +207,20 @@ fn test_a_question_written_in_a_menu_while_no_cursor_moves_is_said() {
         with_layout: false,
         ..asked.clone()
     };
+    let four = ScreenText {
+        text: "4".to_string(),
+        changed: true,
+        with_layout: false,
+        ..count.clone()
+    };
     assert_eq!(
         screen.say(Args {
             rows,
-            ..args(&one(&give), vec![], &[pikachu.clone(), give.clone()])
+            ..args(
+                &[give.clone(), four.clone()],
+                vec![],
+                &[pikachu.clone(), give.clone(), tab.clone(), four.clone()]
+            )
         }),
         [give.text.as_str()]
     );
