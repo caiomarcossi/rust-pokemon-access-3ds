@@ -1151,6 +1151,45 @@ fn test_details_are_one_line_that_never_cuts_off_the_item() {
 }
 
 #[test]
+fn test_a_count_alone_under_a_cursor_is_said_after_what_names_it() {
+    // The Berry Blender's cursor sits on a berry's picture and its count, and the top screen
+    // names the berry: "16", then "Cheri Berry Red" and its description, was all numbers and
+    // colours (movie30, Orion, 2026-10-08).
+    let mut screen = Screen::new();
+    let grouped = Kw {
+        parent: 0x200,
+        ..PLAIN
+    };
+    let count = vec![piece(1, "16", -118.0, 45.0, MENU)];
+    let name = vec![
+        piece_kw(2, "Cheri Berry", -190.0, -35.0, PANEL, grouped),
+        piece_kw(3, "Red", -14.0, -35.0, PANEL, grouped),
+    ];
+    let words = piece_kw(
+        4,
+        "A Berry to be consumed by Pokémon.",
+        -180.0,
+        -83.0,
+        PANEL,
+        grouped,
+    );
+    let everything = cat(&[&count, &name, &one(&words)]);
+    let mut said = screen.say(args(
+        &[changed(&name[0])],
+        vec![CursorItem::new(0x0C, count.clone(), false)],
+        &everything,
+    ));
+    assert_eq!(said, NOTHING);
+    for _ in 0..DETAIL_POLLS {
+        said.extend(screen.on(&everything));
+    }
+    assert_eq!(
+        said,
+        ["Cheri Berry Red 16, A Berry to be consumed by Pokémon."]
+    );
+}
+
+#[test]
 fn test_a_cursor_on_its_way_elsewhere_drops_its_details_unsaid() {
     // The Box's pointer is held two polls on each slot before it is said, and Party 1's details
     // were read once the summary showed Party 2's Pokémon, the pointer already there (spike 129).
