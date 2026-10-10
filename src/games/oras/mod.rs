@@ -305,6 +305,9 @@ pub const MOVE_CATEGORIES: (i64, i64) = (150, 17);
 pub const CONTEST_CATEGORIES: (i64, i64) = (141, 121);
 /// "Pokémon:" and "Trainer:", the contest's labels of the entrant its cursor is on (spike 196).
 pub const CONTEST_ENTRANT: (i64, i64) = (141, 138);
+/// The story text naming the contests' computer entrants: 69 trainers, Micah to Wallace, then
+/// their 69 Pokémon in the same order, Poochin to Milotic (spike 196).
+pub const CONTEST_RIVALS: i64 = 445;
 /// PARALYSIS, ASLEEP, FROZEN, BURNED, POISONED, FAINTED, POKÉRUS (spike 147).
 pub const CONDITIONS: (i64, i64) = (123, 50);
 /// A Secret Base's decorations by number, as the save numbers them: Small Desk 0, Small Chair 10,
@@ -391,6 +394,7 @@ pub fn rom() -> &'static RomLayout {
         categories: Some(MOVE_CATEGORIES),
         contest_categories: Some(CONTEST_CATEGORIES),
         contest_entrant: Some(CONTEST_ENTRANT),
+        contest_rivals: Some(CONTEST_RIVALS),
         conditions: Some(CONDITIONS),
         map_panes: Some((MAP_PANES.0.to_string(), MAP_PANES.1, MAP_PANES.2)),
         decorations: Some(DECORATION_NAMES),

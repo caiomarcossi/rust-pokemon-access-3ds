@@ -8,7 +8,10 @@
 //! background image of its own. No word names an entrant but on the panel under the move list,
 //! "Pokémon: Pikachu, Trainer: Raiden", for the portrait the cursor is on; each name is learned
 //! so, by the image of the icon in that portrait, and said as the entry cards wrote it,
-//! "Raiden & Pikachu", where they did.
+//! "Raiden & Pikachu", where they did. The computer's entrants are learned before that, in the
+//! first round: its portraits stand in its turn order and hold still until all four have
+//! appealed, and each appeal's message names the Pokémon whose turn it is, "Bolt tried to show
+//! its appeal with Light Screen!", one of the contests' own entrants (`GameText.contest_rivals`).
 
 use std::rc::Rc;
 
@@ -49,6 +52,50 @@ fn texture_of(
     let end = raw.iter().position(|&byte| byte == 0).unwrap_or(raw.len());
     let name = py::decode_ascii(&raw[..end]);
     Ok(drawn.get(&name).and_then(|found| found.first().cloned()))
+}
+
+/// Python's `\w`: a letter, a digit or an underscore.
+fn word_char(c: char) -> bool {
+    py::is_alnum(c) || c == '_'
+}
+
+/// The entrants whose Pokémon a message names, in the order it names them: "Bolt tried to
+/// show its appeal with Light Screen!" names Camden & Bolt.
+///
+/// Python searches `(?<!\w)<the name>(?!\w)`; the regex crate has no look-around, so each place
+/// the name starts is tried in turn and its neighbours looked at.
+pub fn named_in(text: &str, rivals: &[(String, String)]) -> Vec<(String, String)> {
+    let chars: Vec<char> = text.chars().collect();
+    let mut found: Vec<(usize, (String, String))> = Vec::new();
+    for rival in rivals {
+        let name: Vec<char> = rival.1.chars().collect();
+        let matched = (0..=chars.len()).find(|&start| {
+            start + name.len() <= chars.len()
+                && chars[start..start + name.len()] == name[..]
+                && !(start > 0 && word_char(chars[start - 1]))
+                && !chars.get(start + name.len()).is_some_and(|&c| word_char(c))
+        });
+        if let Some(start) = matched {
+            found.push((start, rival.clone()));
+        }
+    }
+    found.sort();
+    found.into_iter().map(|(_, rival)| rival).collect()
+}
+
+/// Each icon of the first round's portraits, left to right with whether it is the
+/// player's, -> the entrant whose appeal came in its turn: the first round appeals left to
+/// right and nothing moves until all four have (spike 196, movie33). The player's turn names
+/// no entrant of `appealed`, which holds the computer's alone.
+pub fn by_turn(
+    turns: &[(String, bool)],
+    appealed: &[(String, String)],
+) -> IndexMap<String, (String, String)> {
+    let theirs = turns
+        .iter()
+        .filter(|(_icon, mine)| !mine)
+        .map(|(icon, _mine)| icon.clone());
+    theirs.zip(appealed.iter().cloned()).collect()
 }
 
 /// The player's place, or each other entrant's in order, by the bars, the player's being
@@ -144,15 +191,25 @@ pub struct Standings {
     arrived_with: Option<String>,
     /// What the panel named at the last poll.
     last: Option<String>,
+    /// The computer's entrants, each trainer with their Pokémon (`GameText.contest_rivals`).
+    rivals: Vec<(String, String)>,
+    /// The first round's portraits' icons, left to right, and whether each is the player's.
+    turns: Vec<(String, bool)>,
+    /// Whether no bar has filled yet: the first round's appeals are still to come or going.
+    first_round: bool,
+    /// The computer's entrants the first round's messages have named, in the order named.
+    appealed: Vec<(String, String)>,
 }
 
 impl Standings {
+    /// Python's `rivals` defaults to none.
     pub fn new(
         memory: Rc<dyn Memory>,
         layouts: Rc<Layouts>,
         files: Rc<LayoutFiles>,
         labels: Vec<String>,
         running: Rc<dyn Fn() -> Option<String>>,
+        rivals: Vec<(String, String)>,
     ) -> Self {
         Standings {
             memory,
@@ -165,6 +222,10 @@ impl Standings {
             at: None,
             arrived_with: None,
             last: None,
+            rivals,
+            turns: Vec::new(),
+            first_round: true,
+            appealed: Vec::new(),
         }
     }
 
@@ -173,12 +234,38 @@ impl Standings {
         if (self.running)().as_deref() != Some(APP) {
             self.names.clear();
             self.written.clear();
+            self.turns.clear();
+            self.appealed.clear();
+            self.first_round = true;
             return Ok(());
         }
         self.written
             .extend(on_screen.iter().map(|piece| piece.text.clone()));
         let named = self.named(on_screen);
         let found = self.portraits()?;
+        if let Some((portraits, _at)) = &found
+            && self.first_round
+        {
+            if portraits.iter().any(|p| p.appeal > 0.0) {
+                self.first_round = false;
+            } else {
+                let backgrounds: Vec<Option<i64>> =
+                    portraits.iter().map(|p| p.background).collect();
+                let mut turns: Vec<(Option<String>, bool)> = Vec::new();
+                for p in py::sorted_by_lt(portraits.iter().collect(), |a, b| a.x < b.x) {
+                    let mine = backgrounds
+                        .iter()
+                        .filter(|&&background| background == p.background)
+                        .count()
+                        == 1;
+                    turns.push((self.icon(p)?, mine));
+                }
+                self.turns = turns
+                    .into_iter()
+                    .filter_map(|(icon, mine)| icon.map(|icon| (icon, mine)))
+                    .collect();
+            }
+        }
         let mut on: Vec<Portrait> = Vec::new();
         if let Some((portraits, Some((x, y)))) = &found {
             on = portraits
@@ -212,6 +299,35 @@ impl Standings {
             self.arrived_with = named;
         }
         Ok(())
+    }
+
+    /// Learn the computer's entrants from the first round's messages: "Bolt tried to show
+    /// its appeal" is the portrait whose turn it is, and the first round appeals left to right.
+    /// Only entrants whose entry cards were shown are looked for; the panel's names win.
+    pub fn heard<'a>(&mut self, texts: impl IntoIterator<Item = &'a str>) {
+        if (self.running)().as_deref() != Some(APP)
+            || !self.first_round
+            || self.turns.len() != ENTRANTS
+        {
+            return;
+        }
+        let carded: Vec<(String, String)> = self
+            .rivals
+            .iter()
+            .filter(|(trainer, pokemon)| self.card(trainer, pokemon).is_some())
+            .cloned()
+            .collect();
+        for text in texts {
+            for rival in named_in(text, &carded) {
+                if !self.appealed.contains(&rival) {
+                    self.appealed.push(rival);
+                }
+            }
+        }
+        for (icon, (trainer, pokemon)) in by_turn(&self.turns, &self.appealed) {
+            let card = self.card(&trainer, &pokemon).unwrap_or_default();
+            self.names.entry(icon).or_insert(card);
+        }
     }
 
     /// The player's place, or each other entrant's in order, "Raiden & Pikachu first place";
@@ -258,16 +374,23 @@ impl Standings {
             values.push(value.text.clone());
         }
         let (pokemon, trainer) = (&values[0], &values[1]);
-        let most = trainer.chars().count() + pokemon.chars().count() + JOIN.chars().count() + 2;
-        let carded = self.written.iter().find(|words| {
-            words.starts_with(trainer.as_str())
-                && words.ends_with(pokemon.as_str())
-                && words.chars().count() <= most
-        });
-        Some(match carded {
-            Some(words) => words.clone(),
-            None => format!("{trainer}{JOIN}{pokemon}"),
+        Some(match self.card(trainer, pokemon) {
+            Some(words) if !words.is_empty() => words,
+            _ => format!("{trainer}{JOIN}{pokemon}"),
         })
+    }
+
+    /// The two as the contest's entry card wrote them, or None where it wrote no such card.
+    fn card(&self, trainer: &str, pokemon: &str) -> Option<String> {
+        let most = trainer.chars().count() + pokemon.chars().count() + JOIN.chars().count() + 2;
+        self.written
+            .iter()
+            .find(|words| {
+                words.starts_with(trainer)
+                    && words.ends_with(pokemon)
+                    && words.chars().count() <= most
+            })
+            .cloned()
     }
 
     /// The four portraits, and where the cursor stands, or None where they are not shown.

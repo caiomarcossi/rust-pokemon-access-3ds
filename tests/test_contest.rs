@@ -1,6 +1,6 @@
 //! A contest's standings, from its portraits as spike 196 read them (movie33).
 
-use crate::games::gen6::screens::contest::{Portrait, standings};
+use crate::games::gen6::screens::contest::{Portrait, by_turn, named_in, standings};
 use crate::py::Result;
 
 /// The images the portraits' backgrounds draw: the player's is unlike the others'.
@@ -69,5 +69,74 @@ fn test_bars_caught_mid_turn_are_ranked_by_their_widths() {
     assert_eq!(
         standings(&mid, &|_p| Ok(None), false, false).unwrap(),
         Some("first place, third place, fourth place".to_string())
+    );
+}
+
+/// Some of the contests' entrants, as Omega Ruby's story file 445 pairs them.
+fn rivals() -> Vec<(String, String)> {
+    [
+        ("Gianna", "Tailster"),
+        ("Molly", "Ronnie"),
+        ("Camden", "Bolt"),
+        ("Adeline", "Win"),
+    ]
+    .iter()
+    .map(|&(trainer, pokemon)| (trainer.to_string(), pokemon.to_string()))
+    .collect()
+}
+
+fn rival(trainer: &str, pokemon: &str) -> (String, String) {
+    (trainer.to_string(), pokemon.to_string())
+}
+
+#[test]
+fn test_a_message_names_the_entrants_whose_pokemon_it_names_in_order() {
+    assert_eq!(
+        named_in(
+            "Bolt tried to show its appeal with Light Screen!",
+            &rivals()
+        ),
+        [rival("Camden", "Bolt")]
+    );
+    assert_eq!(
+        named_in("Ronnie and then Tailster", &rivals()),
+        [rival("Molly", "Ronnie"), rival("Gianna", "Tailster")]
+    );
+}
+
+#[test]
+fn test_a_name_inside_another_word_is_no_name() {
+    assert_eq!(
+        named_in(
+            "Pikachu tried to show its appeal with Thunder Wave!",
+            &rivals()
+        ),
+        []
+    );
+    assert_eq!(
+        named_in("It tried to startle the other Pokémon!", &rivals()),
+        []
+    );
+}
+
+/// Movie33's first round: Pikachu (the player's), Bolt, Tailster, Ronnie.
+#[test]
+fn test_the_first_rounds_appeals_name_its_portraits_left_to_right_but_the_players() {
+    let turns: Vec<(String, bool)> = [
+        ("pikachu", true),
+        ("bolt", false),
+        ("tailster", false),
+        ("ronnie", false),
+    ]
+    .iter()
+    .map(|&(icon, mine)| (icon.to_string(), mine))
+    .collect();
+    let appealed = [rival("Camden", "Bolt"), rival("Gianna", "Tailster")];
+    assert_eq!(
+        by_turn(&turns, &appealed),
+        indexmap::IndexMap::from([
+            ("bolt".to_string(), rival("Camden", "Bolt")),
+            ("tailster".to_string(), rival("Gianna", "Tailster")),
+        ])
     );
 }

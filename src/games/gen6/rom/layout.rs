@@ -100,6 +100,9 @@ pub struct RomLayout {
     /// The text file and line of a contest's labels of the entrant under its cursor, "Pokémon:"
     /// and "Trainer:" (`gen6.screens.contest`).
     pub contest_entrant: Option<(i64, i64)>,
+    /// The story text file naming the contests' computer entrants, the trainers in its first
+    /// half and each one's Pokémon in the second, in the same order (`gen6.screens.contest`).
+    pub contest_rivals: Option<i64>,
     /// The text file naming the status conditions and the line they start at: paralysis, asleep,
     /// frozen, burned, poisoned, fainted, Pokérus, as the status icons number them (`textures`).
     pub conditions: Option<(i64, i64)>,
@@ -185,6 +188,7 @@ impl RomLayout {
             categories: None,
             contest_categories: None,
             contest_entrant: None,
+            contest_rivals: None,
             conditions: None,
             touch_words: Vec::new(),
             labels: Vec::new(),

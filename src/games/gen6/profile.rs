@@ -422,6 +422,9 @@ impl Gen6Profile {
                 let apps = apps.clone();
                 Rc::new(move || apps.borrow().running.clone())
             },
+            text.as_ref()
+                .map(|text| text.contest_rivals.clone())
+                .unwrap_or_default(),
         )));
         let pauses = ui.pauses;
         let sides: Sides = {
@@ -779,6 +782,12 @@ impl Gen6Profile {
         let shown = phase(&*self.memory, "dialogue", || {
             self.dialogue.borrow_mut().poll()
         })?;
+        self.standings
+            .borrow_mut()
+            .heard(shown.iter().filter_map(|page| match page {
+                Shown::Page(page) => Some(page.text.as_str()),
+                Shown::Text(_) => None,
+            }));
         let said = self.announcements.borrow_mut().pages(&shown)?;
         if said && self.apps.borrow().running.as_deref() == Some(FIELD) {
             self.look_for_speakers(&shown)?;

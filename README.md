@@ -133,7 +133,7 @@ The map's list has three **modes**. The apostrophe steps through them.
 | `P` | Find the way on foot to the chosen thing, and guide you along it turn by turn. |
 | `Shift+P` | The same, but also using Surf, Cut, Rock Smash, Strength, Waterfall and the bikes. |
 | `R` | Say your side of the battle again. In a contest's appeals, your place ("Raiden & Pikachu first place"). |
-| `Shift+R` | Say the enemy's side of the battle again. In a contest's appeals, everyone else's place, in order. An entrant is named once you have moved the cursor onto their portrait. |
+| `Shift+R` | Say the enemy's side of the battle again. In a contest's appeals, everyone else's place, in order. Each entrant is named from the first round's appeals on, or once you have moved the cursor onto their portrait. |
 | `Shift+K` | Give the chosen thing a name of your own. |
 | `Shift+J` | Give whoever spoke last a name of your own. |
 
