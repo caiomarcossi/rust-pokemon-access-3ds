@@ -10,6 +10,7 @@
 //! PokemonParam   +0x04 -> its record, which sits at +0x40    +0x08 -> its battle stats
 //! record         +0x00 u32 encryption constant    +0x06 u16 checksum of 0x08-0xE8, decrypted
 //!   decrypted    +0x08 u16 species    +0x1d u8 gender in bits 1-2: 0 male, 1 female, 2 neither
+//!                +0x24 u8 each the contest conditions, coolness to toughness, then sheen
 //!                +0x40 the nickname, UTF-16LE: a Pokémon never nicknamed carries its species name
 //! battle stats   +0x04 u8 level    +0x08 u16 HP    +0x0a u16 maximum HP
 //! ```
@@ -37,6 +38,11 @@ pub const NICKNAME: i64 = 0x40;
 pub const NICKNAME_SIZE: i64 = 0x1A;
 /// ORAS's last species. Sun keeps its Pokémon in the same record (spike 124), up to 802.
 pub const SPECIES_MAX: i64 = 721;
+
+/// The contest conditions, a byte each: coolness, beauty, cuteness, cleverness, toughness, then
+/// sheen, in the decrypted record (Pikachu's 104, 70, 70, 70, 70, 0, movie33).
+pub const CONTEST: i64 = 0x24;
+pub const CONTEST_CONDITIONS: i64 = 5;
 
 pub const MALE: i64 = 0;
 pub const FEMALE: i64 = 1;
@@ -121,6 +127,25 @@ pub fn parse(plain: &[u8], species_max: i64) -> Result<Option<Pokemon>> {
         species,
         nickname: nickname.to_string(),
         gender: (gender >> 1) & 3,
+    }))
+}
+
+/// The contest conditions of the Pokémon a `PokemonParam` holds, coolness to toughness, or
+/// None when it is not one.
+pub fn contest_conditions(
+    memory: &dyn Memory,
+    names: &ClassNames,
+    param: i64,
+) -> Result<Option<Vec<i64>>> {
+    if names.of_object(param)?.as_deref() != Some(PARAM_CLASS) {
+        return Ok(None);
+    }
+    let plain = decrypt(&memory.read(param + RECORD_IN_PARAM, RECORD_SIZE)?);
+    Ok(plain.map(|plain| {
+        py::slice(&plain, CONTEST, CONTEST + CONTEST_CONDITIONS)
+            .iter()
+            .map(|&byte| i64::from(byte))
+            .collect()
     }))
 }
 

@@ -91,6 +91,7 @@ pub fn start(
             named: Some(named),
             ui: Some(setup.ui.clone()),
             navigation: Some(setup.navigation.clone()),
+            extras: Some(setup.extras.clone()),
             keys: Some(setup.keys.clone()),
             text,
             pictures,

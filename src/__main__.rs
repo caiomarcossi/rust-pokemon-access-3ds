@@ -281,6 +281,7 @@ fn run(args: Args, hooks: &Hooks) -> py::Result<()> {
             tick: 1.0 / settings.general.poll_rate,
             ui,
             navigation: settings.navigation.clone(),
+            extras: settings.extras.clone(),
             keys: bindings,
             names_home: Some(keyfile::home_path()?),
             rom: args.rom,

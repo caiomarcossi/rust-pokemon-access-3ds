@@ -13,7 +13,7 @@ use std::rc::Rc;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::core::binary::u32;
-use crate::core::config::{Navigation, Ui};
+use crate::core::config::{Extras, Navigation, Ui};
 use crate::core::discovery::{Discovery, Found, HEAP_SPAN, LINEAR_SPAN, within};
 use crate::core::memory::{Cache, Memory, phase};
 use crate::core::names::{GamePlace, GameSprite, Names};
@@ -56,6 +56,7 @@ use crate::games::gen6::screens::battle::{BattleReader, Battlers, GAUGE_CLASSES,
 use crate::games::gen6::screens::choices::{
     BOX_DEVICE_MANAGER, ChoiceReader, DEVICE_MANAGER_CLASS,
 };
+use crate::games::gen6::screens::conditions::ConditionsReader;
 use crate::games::gen6::screens::distribution::Distribution;
 use crate::games::gen6::screens::habitat::HabitatReader;
 use crate::games::gen6::screens::lists::{CONTROLLER_CLASS, ListReader};
@@ -118,6 +119,8 @@ pub struct Options {
     /// None is `Ui()`.
     pub ui: Option<Ui>,
     pub navigation: Option<Navigation>,
+    /// None is `Extras()`.
+    pub extras: Option<Extras>,
     /// None is `DEFAULT_BINDINGS`.
     pub keys: Option<Bindings>,
     pub text: Option<Rc<GameText>>,
@@ -205,6 +208,8 @@ pub struct Gen6Profile {
     pub screen_announcer: RefCell<ScreenAnnouncer>,
     /// The Pokédex's habitat map draws the Pokémon's places and never names them (spike 152).
     pub habitat: RefCell<HabitatReader>,
+    /// An Extra: the conditions the game draws as a star, said as numbers (ADR-0017).
+    pub conditions: Option<RefCell<ConditionsReader>>,
     /// (work, root) of every layout whose files have been looked for since an app started.
     archived: RefCell<HashSet<(i64, i64)>>,
     /// The zone the player was last polled in.
@@ -257,6 +262,7 @@ impl Gen6Profile {
             named,
             ui,
             navigation,
+            extras,
             keys,
             text,
             pictures,
@@ -572,6 +578,24 @@ impl Gen6Profile {
             log.clone(),
             ui.pauses,
         );
+        // An Extra: the conditions the game draws as a star, said as numbers (ADR-0017).
+        let conditions = match &text {
+            Some(text) if extras.unwrap_or_default().conditions => {
+                Some(RefCell::new(ConditionsReader::new(
+                    memory.clone(),
+                    names.clone(),
+                    layouts.clone(),
+                    files.clone(),
+                    apps.clone(),
+                    text.contest_categories.clone(),
+                    text.contest_conditions.clone(),
+                    speech.clone(),
+                    log.clone(),
+                    ui.pauses,
+                )))
+            }
+            _ => None,
+        };
         // The rival is a work object in RAM and a name in the ROM, and so are some doors' buildings:
         // the game's own word, behind whatever the player has called them and ahead of pa3ds's.
         let sprite: GameSprite = {
@@ -620,6 +644,7 @@ impl Gen6Profile {
             announcements,
             screen_announcer: RefCell::new(screen_announcer),
             habitat: RefCell::new(habitat),
+            conditions,
             archived: RefCell::new(HashSet::new()),
             zone: Cell::new(None),
             unheard: RefCell::new(HashSet::new()),
@@ -932,6 +957,22 @@ impl Gen6Profile {
             &moving,
             &rows,
         )?;
+        if let Some(conditions) = &self.conditions {
+            // After the screen's words, and once a cursor's details are said, so they come last.
+            let under: Vec<String> = self
+                .cursors
+                .borrow()
+                .under()
+                .into_iter()
+                .flatten()
+                .map(|piece| piece.text)
+                .collect();
+            let settling = self.screen.borrow().settling();
+            let waiting = self.screen_announcer.borrow().gathering();
+            conditions
+                .borrow_mut()
+                .poll(&under, &on_screen, &settling, waiting)?;
+        }
         self.announcements.borrow_mut().battlers(&sides);
         self.announcements.borrow_mut().screen_polled();
         self.read_archives()

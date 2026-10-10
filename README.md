@@ -37,7 +37,7 @@ to install.
   and its description ("Hold Back", "Coolness, Appeal 4 hearts, Jamming 0 hearts"); the
   results say each entrant's place ("Raiden & Metagross third place"). A Pokémon's summary
   says each move with its type, PP and contest category ("Meteor Mash Steel PP 10/10
-  Coolness"), on either page.
+  Coolness"), on either page. Its conditions, drawn as a star, are an [Extra](#extras).
 - **The Bag's party** for an evolution stone: whether each Pokémon can use it, in party order
   ("UNABLE!"), with its species where pa3ds has found your party ("Metagross UNABLE!").
 - **Where you are**: the place name when you arrive somewhere new.
@@ -205,10 +205,29 @@ overwritten. Each setting has a comment in the file saying what it does.
 | `position_first` | `true` | Say the place in the list before the way to it. `false` says "door, 1 north, 1 of 3". |
 | `turn_by_turn` | `true` | Say each turn of the way P found as you reach it. `false` says the way once, and P again says it from where you stand. |
 | `guide_to_hidden` | `true` | When a DexNav search finds the Pokémon you searched for, or the DexNav finds one by itself while it is open and you are in touch mode, find the way to it as P does, and keep P on it. One found while the AreaNav is open is left alone. |
+| **`[pa3ds.extras]`** | | Extras: see [below](#extras). |
+| `conditions` | `false` | Say a Pokémon's contest conditions as numbers on its summary and in the Pokéblock Case: "Conditions Coolness 116 Beauty 70 Cuteness 70 Cleverness 70 Toughness 70". |
 | **`[azahar]`** | | Azahar's own settings: see [above](#azahar-settings-pa3ds-needs). |
 
 A setting added to pa3ds after your file was written is not added to your file. It works at its
 default, and you can add the line yourself.
+
+### Extras
+
+pa3ds says what the game shows, and no more: a sighted player and you hear of the same things.
+An Extra is something pa3ds can only give you more exactly than the game shows it. Each is off
+until you turn it on under `[pa3ds.extras]`.
+
+- **`conditions`**: the game shows a Pokémon's contest conditions as a star on its summary and
+  in the Pokéblock Case, each point reaching further as that condition grows. pa3ds cannot read
+  the star itself, so it says the numbers the star is drawn from. They are exact, where a
+  sighted player sees only a shape: nobody sees "Coolness 116". It is an Extra because the
+  numbers are all pa3ds can give you of something the game does show; the alternative is
+  hearing nothing of it. Sheen is not said: the game never names it, and in Omega Ruby and
+  Alpha Sapphire it changes nothing.
+
+No Extra so far tells you something the game keeps from everyone, such as a Pokémon's hidden
+potential or an item buried on the ground.
 
 ### Command-line options
 

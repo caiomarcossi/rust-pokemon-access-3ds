@@ -104,6 +104,13 @@ fn test_the_first_run_writes_every_default_and_reads_them_back() {
     assert_eq!(ours["poll_rate"], toml::Value::Integer(60));
     assert_eq!(ours["ui"], as_table::<Ui>());
     assert_eq!(ours["navigation"], as_table::<Navigation>());
+    assert_eq!(
+        ours["extras"],
+        toml::Value::Table(toml::Table::from_iter([(
+            "conditions".to_string(),
+            toml::Value::Boolean(false)
+        )]))
+    );
     let shipped: toml::Table = config::azahar()
         .into_iter()
         .map(|(name, (default, _))| {
@@ -194,6 +201,31 @@ fn test_a_setting_of_the_wrong_kind_is_logged_and_left_at_its_default() {
             .iter()
             .any(|note| note.contains("turn_by_turn"))
     );
+}
+
+#[test]
+fn test_an_extra_is_on_only_when_asked_for() {
+    let tmp_path = TmpPath::new();
+    let home = tmp_path.join("home");
+    fs::create_dir(&home).unwrap();
+    fs::write(
+        home.join("config.toml"),
+        "[pa3ds.extras]\nconditions = true\n",
+    )
+    .unwrap();
+    assert!(
+        prepare(&home, &tmp_path.join("none.ini"), false)
+            .extras
+            .conditions
+    );
+    let other = config::prepare(
+        Some(&tmp_path.join("other")),
+        Some(&tmp_path.join("none.ini")),
+        false,
+        false,
+    )
+    .unwrap();
+    assert!(!other.extras.conditions);
 }
 
 /// The first file was flat, `positions = true` at the top; it is never overwritten.

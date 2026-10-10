@@ -7,6 +7,7 @@
 //! - **`[pa3ds]`**: whether pa3ds answers its keys, and how often it reads the game.
 //! - **`[pa3ds.ui]`**: how menus, lists and screens are said.
 //! - **`[pa3ds.navigation]`**: how the map's list and the way to a thing are said.
+//! - **`[pa3ds.extras]`**: what the game shows in a way pa3ds cannot read, said from its numbers.
 //! - **`[azahar]`**: Azahar's own settings, written into its `qt-config.ini` whenever pa3ds
 //!   starts while Azahar is closed: the RPC server pa3ds reads the game through, which Azahar
 //!   ships switched off, and what made the game run smoothly on this machine (2026-09-11 and
@@ -166,9 +167,28 @@ impl Table for Navigation {
     }
 }
 
+/// `[pa3ds.extras]`: what the game shows in a way pa3ds cannot read, said from the game's own
+/// numbers, each off unless asked for (ADR-0017).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Extras {
+    pub conditions: bool,
+}
+
+impl Table for Extras {
+    fn fields(&self) -> Vec<(&'static str, Value)> {
+        vec![("conditions", Value::Bool(self.conditions))]
+    }
+
+    fn set(&mut self, setting: &str, value: Value) {
+        if let ("conditions", Value::Bool(value)) = (setting, value) {
+            self.conditions = value;
+        }
+    }
+}
+
 /// The tables of the file, in the order it writes them: each is a settings dataclass, and
 /// `defaults` is what `kind()` holds.
-pub const TABLES: [&str; 3] = ["pa3ds", "pa3ds.ui", "pa3ds.navigation"];
+pub const TABLES: [&str; 4] = ["pa3ds", "pa3ds.ui", "pa3ds.navigation", "pa3ds.extras"];
 
 /// `kind().fields()` for the dataclass `TABLES` names.
 fn defaults(name: &str) -> Vec<(&'static str, Value)> {
@@ -176,12 +196,13 @@ fn defaults(name: &str) -> Vec<(&'static str, Value)> {
         "pa3ds" => General::default().fields(),
         "pa3ds.ui" => Ui::default().fields(),
         "pa3ds.navigation" => Navigation::default().fields(),
+        "pa3ds.extras" => Extras::default().fields(),
         _ => Vec::new(),
     }
 }
 
 /// What each setting does, as the file's comment above it says it.
-pub const EXPLAINED: [(&str, &str); 10] = [
+pub const EXPLAINED: [(&str, &str); 11] = [
     (
         "pa3ds.keys",
         "answer pa3ds's keys and bind Azahar's buttons, as keys.toml says",
@@ -230,6 +251,12 @@ pub const EXPLAINED: [(&str, &str); 10] = [
         "when a DexNav search finds the Pokémon searched for, or the DexNav finds one by itself \
          while it is open and you are in touch mode, find the way to it as P does and keep P on it, \
          whatever the list was on; one found while the AreaNav is open is left alone",
+    ),
+    (
+        "pa3ds.extras.conditions",
+        "say a Pokémon's contest conditions as numbers where the game draws them as a star, on \
+         the summary and in the Pokéblock Case: the star is shown to everyone but pa3ds cannot \
+         read it, so its numbers are all it can give, and they are more exact than the star",
     ),
 ];
 
@@ -303,6 +330,7 @@ pub struct Config {
     pub general: General,
     pub ui: Ui,
     pub navigation: Navigation,
+    pub extras: Extras,
     pub notes: Vec<String>,
     pub said: String,
     /// Whether `said` is something the player must do before Azahar has pa3ds's settings.
@@ -568,7 +596,7 @@ pub fn prepare(
         if !TABLES.contains(&name.as_str()) && name != EMULATOR_SECTION {
             notes.push(format!(
                 "{}: there is no [{name}] table, only [pa3ds], [pa3ds.ui], \
-                 [pa3ds.navigation] and [azahar]",
+                 [pa3ds.navigation], [pa3ds.extras] and [azahar]",
                 py::path_str(&path)
             ));
         }
@@ -590,6 +618,12 @@ pub fn prepare(
     let navigation: Navigation = table(
         &toml::table(ours.get("navigation")),
         "pa3ds.navigation",
+        &path,
+        &mut notes,
+    );
+    let extras: Extras = table(
+        &toml::table(ours.get("extras")),
+        "pa3ds.extras",
         &path,
         &mut notes,
     );
@@ -636,6 +670,7 @@ pub fn prepare(
         general,
         ui,
         navigation,
+        extras,
         notes,
         said: said.to_string(),
         warning: matches!(saved.as_str(), "waiting" | "missing"),

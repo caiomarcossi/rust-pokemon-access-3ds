@@ -10,7 +10,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use crate::core::config::{Navigation, Ui};
+use crate::core::config::{Extras, Navigation, Ui};
 use crate::core::discovery::{Discovery, Found, Walk};
 use crate::core::heaps::{Block, Heaps};
 use crate::core::memory::{Cache, PageCache};
@@ -86,7 +86,8 @@ pub struct Session {
 /// What a game is started with, besides the emulator and speech: the process running, the log,
 /// and the settings its readers read by (`app.Settings`).
 ///
-/// Python's defaults are `DEFAULT_BINDINGS`, `Ui()`, `Navigation()`, `"en"`, no `names_home`, no
+/// Python's defaults are `DEFAULT_BINDINGS`, `Ui()`, `Navigation()`, `Extras()`, `"en"`, no
+/// `names_home`, no
 /// `rom`, a `sweep_chunk` of 512, and no `tap` or `tones`: [`Setup::new`] has them, and the rest is
 /// set with `Setup { language, ..Setup::new(process, log) }`.
 #[derive(Clone)]
@@ -96,6 +97,7 @@ pub struct Setup {
     pub keys: Bindings,
     pub ui: Ui,
     pub navigation: Navigation,
+    pub extras: Extras,
     pub language: String,
     pub names_home: Option<PathBuf>,
     pub rom: Option<PathBuf>,
@@ -116,6 +118,7 @@ impl Setup {
             keys: DEFAULT_BINDINGS.clone(),
             ui: Ui::default(),
             navigation: Navigation::default(),
+            extras: Extras::default(),
             language: "en".to_string(),
             names_home: None,
             rom: None,

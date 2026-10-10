@@ -171,6 +171,11 @@ impl ScreenAnnouncer {
         }
     }
 
+    /// Whether the details of the item a cursor has moved to are still to be said.
+    pub fn gathering(&self) -> bool {
+        self.gathering.is_some()
+    }
+
     /// Did a cursor say these words a moment ago? A choice box or a list opening on them then
     /// has no news: the Mart's boxes are read by the cursor beside their words before the choice
     /// reader has found them, and "Buy" was heard from both (spike 98), as the save's YES was from

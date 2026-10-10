@@ -259,6 +259,8 @@ pub struct GameText {
     /// A contest's labels of the entrant under its cursor, the Pokémon's then the trainer's
     /// (`RomLayout.contest_entrant`).
     pub contest_entrant: Vec<String>,
+    /// The game's word for a Pokémon's contest conditions (`RomLayout.contest_conditions`).
+    pub contest_conditions: Option<String>,
     /// The contests' computer entrants, each trainer with their Pokémon
     /// (`RomLayout.contest_rivals`).
     pub contest_rivals: Vec<(String, String)>,
@@ -308,6 +310,7 @@ impl PartialEq for GameText {
             && self.conditions == other.conditions
             && self.contest_categories == other.contest_categories
             && self.contest_entrant == other.contest_entrant
+            && self.contest_conditions == other.contest_conditions
             && self.contest_rivals == other.contest_rivals
             && self.touch_words == other.touch_words
             && self.labels == other.labels
@@ -344,6 +347,7 @@ impl Default for GameText {
             conditions: Vec::new(),
             contest_categories: Vec::new(),
             contest_entrant: Vec::new(),
+            contest_conditions: None,
             contest_rivals: Vec::new(),
             touch_words: IndexMap::new(),
             labels: IndexMap::new(),
@@ -653,6 +657,13 @@ impl GameText {
             contest_rivals: match layout.contest_rivals {
                 Some(file) => halves(&lines_of_file(&story, file)?),
                 None => Vec::new(),
+            },
+            contest_conditions: match layout.contest_conditions {
+                Some((file, line)) => py::slice_from(&lines_of_file(&story, file)?, line)
+                    .first()
+                    .filter(|word| !word.is_empty())
+                    .cloned(),
+                None => None,
             },
             decorations: match layout.decorations {
                 Some(file) => lines_of_file(&files, file)?,

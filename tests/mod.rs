@@ -14,6 +14,7 @@ mod test_battle;
 mod test_buttons;
 mod test_catalog;
 mod test_choices;
+mod test_conditions;
 mod test_config;
 mod test_contest;
 mod test_cursor;

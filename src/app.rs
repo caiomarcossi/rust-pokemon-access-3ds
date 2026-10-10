@@ -14,7 +14,7 @@ use std::sync::{Arc, mpsc};
 
 use indexmap::IndexMap;
 
-use crate::core::config::{Navigation, Ui};
+use crate::core::config::{Extras, Navigation, Ui};
 use crate::core::discovery::{CODE_SPAN, Discovery};
 use crate::core::heaps::Block;
 use crate::core::keys::Hotkeys;
@@ -73,6 +73,9 @@ pub struct Settings {
     pub ui: Ui,
     /// How the map's list and the way to a thing are said (`[pa3ds.navigation]`).
     pub navigation: Navigation,
+    /// What the game shows in a way pa3ds cannot read, said from its numbers
+    /// (`[pa3ds.extras]`).
+    pub extras: Extras,
     /// Which of a game's name tables to read for the people it never names (`pa3ds.core.names`).
     pub language: String,
     /// Where the player's own names live, and where a rename is written: beside pa3ds itself from
@@ -105,6 +108,7 @@ impl Default for Settings {
             wait: 1.0,
             ui: Ui::default(),
             navigation: Navigation::default(),
+            extras: Extras::default(),
             language: "en".to_string(),
             names_home: None,
             keys: None,
@@ -527,6 +531,7 @@ fn session(
                 .unwrap_or_else(|| DEFAULT_BINDINGS.clone()),
             ui: settings.ui.clone(),
             navigation: settings.navigation.clone(),
+            extras: settings.extras.clone(),
             language: settings.language.clone(),
             names_home: settings.names_home.clone(),
             rom: settings.rom.clone(),
