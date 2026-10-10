@@ -277,6 +277,7 @@ fn test_a_textures_name_is_said_as_words() {
     assert_eq!(words("waza_plate_00.bclim"), "plate 00");
     assert_eq!(words("button.bclim"), "button");
     assert_eq!(words("return_btn.bclim"), "return");
+    assert_eq!(words("camera_btn_mini.bclim"), "camera");
 }
 
 /// A `darc` holding these files one after another, as a work's resource points at (spike 64).

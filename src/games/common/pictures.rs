@@ -26,6 +26,9 @@ pub const ICON: &str = "icon";
 /// `icon_return`, and reads "return" (opening.ctm, the user, 2026-09-18); the move-forget screen's
 /// `waza_con_change` reads "change" (Orion, 2026-10-01), not "waza con change".
 pub const KINDS: [&str; 3] = [ICON, "waza", "con"];
+/// Words a texture name ends in to say which size of a picture it is, after its kind: the
+/// contest photo's `camera_btn_mini` is "camera" (Orion, 2026-10-09, movie34). Left unsaid.
+pub const SIZES: [&str; 1] = ["mini"];
 /// The word a designer starts a button's pane name with, as the battle's `Btn_Fight` (spike 124):
 /// what the button is, not what it says.
 pub const BUTTON_PREFIX: &str = "btn";
@@ -181,6 +184,9 @@ pub fn words(texture: &str) -> String {
     }
     let replaced = stem.replace('_', " ");
     let mut said = py::split(&replaced);
+    if said.len() > 1 && SIZES.contains(&said[said.len() - 1]) {
+        said.pop();
+    }
     if said.len() > 1 && [BUTTON, BUTTON_PREFIX, ICON].contains(&said[said.len() - 1]) {
         said.pop();
     }
