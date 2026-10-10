@@ -1860,6 +1860,7 @@ impl Contest {
                 (format!("s{index}"), button + 0x200),
                 (format!("t{index}"), button + 0x400),
             ]);
+            // Where spike 196 estimated the words: Hold Back, at -80, from -38.8 to 16.5.
             pieces.push(ScreenText {
                 root,
                 parent: button,
@@ -1867,8 +1868,8 @@ impl Contest {
                     button + 0x400,
                     r#move,
                     false,
-                    x - 40.0,
-                    x + 40.0,
+                    x + 41.0,
+                    x + 97.0,
                     y + 10.0,
                     12.5,
                 )

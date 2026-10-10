@@ -251,18 +251,19 @@ impl ListCursors {
             }
             // The Bag's select bar carries the chosen Pokémon's name, level and ABLE! over the
             // slot's own ABLE!, which lies nearer its middle (spike 139).
-            let button = if walks && own.is_empty() {
+            let mut inside: Vec<ScreenText> = if !own.is_empty() {
+                distinct(in_rows(own.clone()))
+            } else {
+                framed(on_screen, &rect)
+            };
+            let button = if walks && inside.is_empty() {
                 self.on_empty_pane(holder, root, on_screen)?
             } else {
                 Vec::new()
             };
-            let mut inside: Vec<ScreenText> = if !own.is_empty() {
-                distinct(in_rows(own.clone()))
-            } else if !button.is_empty() {
-                button.clone()
-            } else {
-                framed(on_screen, &rect)
-            };
+            if inside.is_empty() {
+                inside = button.clone();
+            }
             if !inside.is_empty() {
                 self.over.insert(holder);
             } else if walks && !self.over.contains(&holder) {
