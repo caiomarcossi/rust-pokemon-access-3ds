@@ -283,7 +283,11 @@ pub fn join(pieces: &[ScreenText], pauses: bool) -> String {
         let mut labelled = false;
         match before {
             None => out = piece.text.clone(),
-            Some(before) if touching(before, piece) && !before.label => out.push_str(&piece.text),
+            Some(before)
+                if (touching(before, piece) || counted(before, piece)) && !before.label =>
+            {
+                out.push_str(&piece.text)
+            }
             Some(before) if !pauses || before.text.ends_with(':') => {
                 out.push(' ');
                 out.push_str(&piece.text);
@@ -347,6 +351,19 @@ fn labels(first: &ScreenText, second: &ScreenText) -> bool {
         && -glyph <= first.row - second.row
         && first.row - second.row <= glyph * VALUE_BELOW
         && second.right >= first.right + glyph * VALUE_BEYOND
+}
+
+/// Is `first` a sign and `second` the number it is drawn before on its row? The battle's Bag
+/// draws an item's times sign and its count in boxes that touch, but the words are estimated
+/// narrower than their boxes, and under `pauses` it read "Poké Ball, times, 10" (movie3,
+/// spike 196).
+fn counted(first: &ScreenText, second: &ScreenText) -> bool {
+    let glyph = min_of(first.glyph, second.glyph);
+    glyph > 0.0
+        && (first.row - second.row).abs() < glyph
+        && first.left < second.left
+        && !first.text.chars().any(py::is_alnum)
+        && second.text.chars().next().is_some_and(py::is_digit)
 }
 
 fn touching(first: &ScreenText, second: &ScreenText) -> bool {

@@ -37,6 +37,7 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::core::speech::{Category, Speech};
 use crate::games::common::cursors::shared::CursorItem;
+use crate::games::common::pictures::EMPTY;
 use crate::games::common::screen::{ScreenText, by_rows, distinct, in_rows, join, reading_order};
 use crate::py::{self, Log, Result};
 
@@ -249,7 +250,13 @@ impl ScreenAnnouncer {
             if item.pieces.is_empty() || item.pieces.iter().any(|p| labels.contains(&p.text)) {
                 continue;
             }
-            let text = join(&item.pieces, self.pauses);
+            let mut text = join(&item.pieces, self.pauses);
+            if item.pieces.iter().all(|p| p.glyph > 0.0) && !text.chars().any(py::is_alnum) {
+                // Words with no letter or digit are no item: the battle's Bag draws an empty slot
+                // dimmed with its times sign still in it, and Orion heard "Times" (movie29,
+                // spike 196).
+                text = EMPTY.to_string();
+            }
             // A count alone names nothing: the Pokéblock Kit's cursor sits on a picture of a
             // berry or a block and its count, and the screen writes what it is elsewhere, "16"
             // then "Cheri Berry Red" (movie30, spike 196). It is said after that, with it.

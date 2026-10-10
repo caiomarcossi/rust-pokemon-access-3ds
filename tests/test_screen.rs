@@ -551,6 +551,19 @@ fn test_pauses_go_only_between_pieces_that_are_apart() {
     );
 }
 
+/// The battle's Bag draws an item's sign and count in touching boxes, the words estimated
+/// apart: "Poké Ball, times, 10" under pauses (movie3, spike 196).
+#[test]
+fn test_a_sign_is_joined_to_the_number_after_it() {
+    let name = ScreenText::placed(1, "Poké Ball", false, -108.0, -52.0, 92.0, 12.5);
+    let sign = ScreenText::placed(3, TIMES, false, -98.0, -90.0, 73.0, 16.0);
+    let count = ScreenText::placed(2, "10", false, -74.0, -60.0, 73.0, 14.0);
+    assert_eq!(
+        join(&[name, sign, count], true),
+        format!("Poké Ball, {TIMES}10")
+    );
+}
+
 /// The summary's HP hangs every piece from its root, each a panel of its own, and its "/",
 /// the layout file's and never written, was left out: "HP 30 30" (spike 148, Orion 2026-09-30).
 #[test]
