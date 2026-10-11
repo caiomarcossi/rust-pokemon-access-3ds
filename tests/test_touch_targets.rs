@@ -10,7 +10,8 @@ use std::rc::Rc;
 
 use indexmap::IndexMap;
 
-use super::fake_memory::{CODE, FakeMemory};
+use super::fake_layouts::FakeLayouts;
+use super::fake_memory::{CODE, FakeClasses, FakeMemory};
 use crate::core::rtti::ClassNames;
 use crate::games::common::layout::Layouts;
 use crate::games::common::lyt;
@@ -231,5 +232,65 @@ fn test_while_a_list_window_is_up_only_its_buttons_are_offered() {
     assert_eq!(
         touch::answered_first(&found, &words(&["Buy", "Sell"])),
         found
+    );
+}
+
+/// The PlayNav's pages and the sub-screen tutorial's arrows both draw `button.bclim`, a ◀
+/// mirrored by its material on the right; the same texture lower down is a plate (spike A).
+#[test]
+fn test_a_bare_button_in_the_top_bars_corners_is_the_page_arrows() {
+    let memory = FakeMemory::new();
+    let classes = FakeClasses::new(memory.clone());
+    let fake = FakeLayouts::new(&memory, &classes);
+    let (bounding, picture) = (
+        classes.add(lyt::BOUNDING_CLASS),
+        classes.add(lyt::PICTURE_CLASS),
+    );
+    let (_work, group) = fake.screen(0x08200000);
+    let mut drawn: HashSet<i64> = HashSet::new();
+    for (i, (x, y)) in [(-140.0f32, 105.0f32), (140.0, 105.0), (0.0, 0.0)]
+        .into_iter()
+        .enumerate()
+    {
+        let button = group + 0x1000 * (i as i64 + 1);
+        fake.pane(button, group);
+        fake.pane_with_vtable(button + 0x200, button, Some(bounding));
+        fake.pane_with_vtable(button + 0x400, button, Some(picture));
+        memory.write(button + 0x200 + lyt::X, &x.to_le_bytes());
+        memory.write(button + 0x200 + lyt::Y, &y.to_le_bytes());
+        memory.write(
+            button + 0x200 + lyt::WIDTH,
+            &[30.0f32.to_le_bytes(), 30.0f32.to_le_bytes()].concat(),
+        );
+        drawn.insert(button + 0x400);
+    }
+    fake.track().unwrap();
+    let mut targets = TouchTargets::new(
+        fake.layouts.clone(),
+        Rc::new(Vec::new),
+        Rc::new(|_box| Ok(String::new())),
+        Rc::new(move |pane| {
+            Ok(if drawn.contains(&pane) {
+                Some("button.bclim".to_string())
+            } else {
+                None
+            })
+        }),
+        Rc::new(|_root| None),
+        Rc::new(|_line: &str| {}),
+        Options::default(),
+    );
+    assert_eq!(
+        targets
+            .targets()
+            .unwrap()
+            .iter()
+            .map(|t| (t.name.as_str(), t.x, t.y))
+            .collect::<Vec<_>>(),
+        [
+            ("previous", 20, 15),
+            ("next", 300, 15),
+            ("button", 160, 120)
+        ]
     );
 }

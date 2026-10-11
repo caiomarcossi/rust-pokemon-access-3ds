@@ -43,7 +43,10 @@ pub const BUTTON_PREFIX: &str = "btn";
 /// select a group (Orion, 2026-10-02, movie22). The DexNav's crown for an area's Pokémon caught,
 /// `complete0` to `complete3`, is each by its colour, decoded from the ROM: brown, grey, yellow and
 /// a paler grey, bronze to platinum; tapped, it says "Good job! You've caught them all!" (Orion,
-/// movie28: the gold for Route 101, all of whose Pokémon are in the grass).
+/// movie28: the gold for Route 101, all of whose Pokémon are in the grass). The round ▶ under each
+/// app's logo on the PlayNav, `menu_bg_button`, starts that app (its tutorial the first time):
+/// Pokémon- Amie, the PSS and Super Training all draw it, and the game names it nowhere; it is said
+/// by what it does, as Orion names buttons (spike A).
 pub fn own_words() -> &'static IndexMap<&'static str, &'static str> {
     static OWN_WORDS: OnceLock<IndexMap<&'static str, &'static str>> = OnceLock::new();
     OWN_WORDS.get_or_init(|| {
@@ -58,9 +61,19 @@ pub fn own_words() -> &'static IndexMap<&'static str, &'static str> {
             ("complete1", "silver crown"),
             ("complete2", "gold crown"),
             ("complete3", "platinum crown"),
+            ("menu_bg_button", "start"),
         ])
     })
 }
+
+pub const PREVIOUS: &str = "previous";
+/// What the ◀ and ▶ in the top bar's corners do: the PlayNav's pages and the sub-screen
+/// tutorial's. Both draw `button.bclim`, a ◀, and the right one is mirrored by its material, not
+/// by any pane float (spike A, omega_ruby_bottom-screen1), so the picture's words are `BUTTON` for
+/// both and only its side of the screen tells them apart (`common.touch`). The ROM's other
+/// `button.bclim` are plates, a battle's 250 by 40 and a rounded corner in Super Training's
+/// archive, and a `button` anywhere but that bar stays one.
+pub const NEXT: &str = "next";
 
 /// Words a texture name spells otherwise. A file name is ASCII, so `pokemon_button.bclim` loses the
 /// accent the game itself writes everywhere else ("Choose a Pokémon."), and a screen reader says

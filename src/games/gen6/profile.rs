@@ -52,6 +52,7 @@ use crate::games::gen6::gflheap;
 use crate::games::gen6::rom::archives::GameText;
 use crate::games::gen6::rom::textures;
 use crate::games::gen6::rom::textures::Index;
+use crate::games::gen6::screens::amie::AmiePage;
 use crate::games::gen6::screens::battle::{BattleReader, Battlers, GAUGE_CLASSES, Gauges};
 use crate::games::gen6::screens::choices::{
     BOX_DEVICE_MANAGER, ChoiceReader, DEVICE_MANAGER_CLASS,
@@ -61,7 +62,7 @@ use crate::games::gen6::screens::habitat::HabitatReader;
 use crate::games::gen6::screens::lists::{CONTROLLER_CLASS, ListReader};
 use crate::games::gen6::screens::mapcursor::MapCursor;
 use crate::games::gen6::screens::partyicons::PartyIcons;
-use crate::games::gen6::screens::{buttons, distribution, partyicons, summary, townmap};
+use crate::games::gen6::screens::{amie, buttons, distribution, partyicons, summary, townmap};
 use crate::py::{self, Error, Log, PySet, Result};
 
 /// What the heap is swept for: message windows, list controllers, the device manager a choice box
@@ -70,15 +71,16 @@ use crate::py::{self, Error, Log, PySet, Result};
 /// ADR-0034), the camera whose heading the D-pad walks by on Lumiose's rails, the process manager
 /// that says which app is running, and the button managers and touch bars that say whose
 /// buttons take taps (`buttons`), and the AreaNav's navigator, which says whose icon each picture of
-/// its Pokémon Distribution draws, and its views, which say which of its layouts it draws; and the
-/// party and the icons the Bag draws it with. A game's own readers add what they find their objects
+/// its Pokémon Distribution draws, and its views, which say which of its layouts it draws; the
+/// party and the icons the Bag draws it with; and the Pokémon-Amie page, which says whose icon its
+/// Pokémon is. A game's own readers add what they find their objects
 /// by (`Gen6Profile.classes`): ORAS's DexNav, the player's work its hidden Pokémon's record is found
 /// through.
 ///
 /// Not TextBoxes or cursor windows: walking each layout's tree finds every one that can be placed on
 /// screen (spike 62). And the linear heap is not swept: the battle builds its layouts there, and its
 /// message window leads to their pool (spike 64).
-pub const HEAP_CLASSES: [&str; 24] = [
+pub const HEAP_CLASSES: [&str; 25] = [
     msgwin::CLASSES[0],
     msgwin::CLASSES[1],
     talk::CLASSES[0],
@@ -100,6 +102,7 @@ pub const HEAP_CLASSES: [&str; 24] = [
     townmap::VIEWS[2].0,
     townmap::VIEWS[3].0,
     townmap::VIEWS[4].0,
+    amie::CLASS,
     pokemon::PARAM_CLASS,
     partyicons::ICON_CLASS,
     buttons::MANAGER_CLASS,
@@ -179,6 +182,7 @@ pub struct Gen6Profile {
     pub classes: Vec<String>,
     pub distribution: Rc<RefCell<Distribution>>,
     pub views: RefCell<townmap::Views>,
+    pub amie: Rc<RefCell<AmiePage>>,
     pub buttons: Rc<RefCell<buttons::Buttons>>,
     pub party_icons: Rc<RefCell<PartyIcons>>,
     pub standings: Option<Rc<RefCell<dyn StandingsReader>>>,
@@ -452,6 +456,14 @@ impl Gen6Profile {
             let screen = screen.clone();
             Rc::new(move |r#box: i64| screen.borrow().text_of(r#box))
         };
+        // The PlayNav's Pokémon-Amie page draws its Pokémon's icon, and says nothing of whose.
+        let amie = Rc::new(RefCell::new(AmiePage::new(
+            memory.clone(),
+            names.clone(),
+            text.as_ref()
+                .map(|text| text.species.clone())
+                .unwrap_or_default(),
+        )));
         // The DexNav draws a Pokémon caught in colour, and only those are said so: "Ralts",
         // "Zigzagoon caught", with a comma under pauses (Orion, 2026-10-06).
         let caught = format!("{}{CAUGHT}", if ui.pauses { ", " } else { " " });
@@ -469,24 +481,34 @@ impl Gen6Profile {
                 .collect()
         });
         let picture_name: PictureName = {
-            let (apps, distribution, party_icons) =
-                (apps.clone(), distribution.clone(), party_icons.clone());
+            let (apps, distribution, amie, party_icons) = (
+                apps.clone(),
+                distribution.clone(),
+                amie.clone(),
+                party_icons.clone(),
+            );
             Rc::new(move |pane: i64| {
                 // The AreaNav is the field's: elsewhere its navigators are gone, and asking cost a
                 // touch walk 1,400 reads (movie22). On the field its icons are the DexNav's.
                 // A name of "" or None goes on to the party's icons.
                 let running = apps.borrow().running.clone();
-                if running.as_deref().is_none_or(|running| running == FIELD)
-                    && let Some(name) = distribution.borrow().name(pane)?
-                    && !name.is_empty()
-                {
-                    let caught_here =
-                        running.as_deref() == Some(FIELD) && distribution.borrow().caught(pane)?;
-                    return Ok(Some(if caught_here {
-                        format!("{name}{caught}")
-                    } else {
-                        name
-                    }));
+                if running.as_deref().is_none_or(|running| running == FIELD) {
+                    if let Some(name) = distribution.borrow().name(pane)?
+                        && !name.is_empty()
+                    {
+                        let caught_here = running.as_deref() == Some(FIELD)
+                            && distribution.borrow().caught(pane)?;
+                        return Ok(Some(if caught_here {
+                            format!("{name}{caught}")
+                        } else {
+                            name
+                        }));
+                    }
+                    if let Some(name) = amie.borrow().name(pane)?
+                        && !name.is_empty()
+                    {
+                        return Ok(Some(name));
+                    }
                 }
                 party_icons.borrow().name(pane)
             })
@@ -628,6 +650,7 @@ impl Gen6Profile {
             classes: classes.into_iter().collect(),
             distribution,
             views: RefCell::new(views),
+            amie,
             buttons,
             party_icons,
             standings,
@@ -683,6 +706,7 @@ impl Gen6Profile {
             .borrow_mut()
             .track(found.of(&[distribution::CLASS]), adding);
         self.views.borrow_mut().track(&found.heap, adding)?;
+        self.amie.borrow_mut().track(&found.heap, adding)?;
         self.buttons.borrow_mut().track(
             found.of(&[buttons::MANAGER_CLASS]),
             found.of(&[buttons::BAR_CLASS]),

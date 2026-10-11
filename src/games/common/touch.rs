@@ -25,7 +25,8 @@
 //!    magnifier from another archive while a hidden Pokémon is near (spike 171);
 //! 5. **where it is, as a slot** (`slots.slot`), as the Box's pointer says it: "BOX 1, row 1,
 //!    column 1, empty", "Party 2", a mark's "●, on" (movie22);
-//! 6. **the words of the picture's own name** (`pictures.words`).
+//! 6. **the words of the picture's own name** (`pictures.words`), a bare "button" in the top bar's
+//!    corners being the page arrows, previous and next.
 //!
 //! A touch area none of these names is left out, and the log says so once. So is the AreaNav's
 //! map, whose every place is a touch area (spike 152): on the field it is drawn zoomed in and cut
@@ -48,6 +49,8 @@ use crate::py::{self, Error, Log, Result};
 pub const WIDTH: i64 = 320;
 /// The touch screen in pixels; a layout places its panes from its middle, y up.
 pub const HEIGHT: i64 = 240;
+/// How far down the screen the top bar reaches, whose corners hold the page arrows (spike A).
+pub const TOP_BAR: i64 = 30;
 /// The AreaNav's map, whose touch areas are places (spike 152).
 pub const MAP: &str = "poke_navi_map.bclim";
 
@@ -423,6 +426,9 @@ impl TouchTargets {
             let first = found.len();
             for &touch in &touches {
                 let group = &groups[&touch];
+                let pane = layouts.pane(touch)?;
+                let x = py::round(WIDTH as f64 / 2.0 + f32(&pane, shape.x)? - root_x)?;
+                let y = py::round(HEIGHT as f64 / 2.0 - (f32(&pane, shape.y)? - root_y))?;
                 // A button with words of its own is named by them or not at all: the Bag's rows
                 // all draw `bar1.bclim`, and an empty row was said by the one row's item
                 // (movie21).
@@ -485,20 +491,27 @@ impl TouchTargets {
                             });
                         }
                     }
-                    let picture = own
+                    let mut picture = own
                         .iter()
                         .flatten()
                         .find(|o| !o.is_empty())
                         .map(|o| pictures::words(o));
+                    if picture.as_deref() == Some(pictures::BUTTON) && y < TOP_BAR {
+                        picture = Some(
+                            if (x as f64) < WIDTH as f64 / 2.0 {
+                                pictures::PREVIOUS
+                            } else {
+                                pictures::NEXT
+                            }
+                            .to_string(),
+                        );
+                    }
                     if let Some(picture) = picture
                         && !picture.is_empty()
                     {
                         names.insert(touch, picture);
                     }
                 }
-                let pane = layouts.pane(touch)?;
-                let x = py::round(WIDTH as f64 / 2.0 + f32(&pane, shape.x)? - root_x)?;
-                let y = py::round(HEIGHT as f64 / 2.0 - (f32(&pane, shape.y)? - root_y))?;
                 if !((0..WIDTH).contains(&x) && (0..HEIGHT).contains(&y)) {
                     continue;
                 }

@@ -12,3 +12,6 @@ pub mod mapcursor;
 pub mod partyicons;
 pub mod summary;
 pub mod townmap;
+
+pub mod amie;
+pub mod training;
