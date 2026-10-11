@@ -508,6 +508,112 @@ fn test_the_place_in_the_list_may_follow_the_way_or_be_left_out() {
     assert_eq!(both, ["door, 1 north, 1 of 5", "door, 1 north"]);
 }
 
+/// One of room 0x69's boulders (`boulders`).
+fn boulder(
+    cell: Cell,
+    source: i64,
+    index: i64,
+    start: Cell,
+    pushes: &[(&'static str, bool)],
+) -> Interactable {
+    Interactable {
+        size: (2, 2),
+        code: 0x2009,
+        source,
+        move_model: true,
+        record: Some((0x69, index)),
+        start: Some(start),
+        pushes: Some(pushes.to_vec()),
+        ..Interactable::new("signs", "object", cell)
+    }
+}
+
+/// Room 0x69 of Seafloor Cavern partway through movie37 (spike A): record 5 pushed five east,
+/// record 0 half onto the north-west hole, and record 1 against the east wall.
+fn boulders() -> Field {
+    Field {
+        interactables: vec![
+            boulder(
+                (21, 25),
+                0x08D21F18,
+                5,
+                (16, 25),
+                &[("west", false), ("south", false)],
+            ),
+            boulder(
+                (16, 19),
+                0x08D1E9A8,
+                0,
+                (16, 20),
+                &[("north", true), ("east", false), ("south", false)],
+            ),
+            boulder((23, 20), 0x08D1F458, 1, (23, 20), &[]),
+        ],
+        ..Field::new(0x69, (20, 30))
+    }
+}
+
+/// Orion, 2026-10-11: what it can do, not what it is doing, and the push that drops it.
+#[test]
+fn test_a_big_boulder_says_the_ways_it_can_be_pushed_after_the_way_to_it() {
+    let mut rig = navigator(on(boulders()));
+    rig.press(CATEGORY_NEXT);
+    for _ in boulders().interactables {
+        rig.press(ITEM_NEXT);
+    }
+    assert_eq!(
+        said(&rig.backend),
+        [
+            "signs, 3",
+            "object, 2 of 3, 3 east 9 north, immoveable",
+            "object, 3 of 3, 3 west 10 north, moveable north into a hole, east or south",
+            "object, 1 of 3, 1 east 4 north, moveable west or south"
+        ]
+    );
+}
+
+/// Orion, 2026-10-11: which boulders have been pushed, with the way to it as a teleporter's
+/// way out is, the place in the list before or after them both; off unless asked for, since the
+/// game never shows where one started.
+#[test]
+fn test_a_big_boulder_pushed_says_how_far_from_its_start_where_asked() {
+    let mut first = navigator(Want {
+        navigation: Some(Navigation {
+            track_boulders: true,
+            ..Navigation::default()
+        }),
+        ..on(boulders())
+    });
+    first.press(CATEGORY_NEXT);
+    first.press(ITEM_READ);
+    first.press(ITEM_PREVIOUS);
+    first.press(ITEM_PREVIOUS);
+    let mut after = navigator(Want {
+        navigation: Some(Navigation {
+            track_boulders: true,
+            position_first: false,
+            ..Navigation::default()
+        }),
+        ..on(boulders())
+    });
+    after.press(CATEGORY_NEXT);
+    after.press(ITEM_READ);
+    let mut both = said(&first.backend);
+    both.extend(said(&after.backend));
+    assert_eq!(
+        both,
+        [
+            "signs, 3",
+            "object, 1 of 3, 1 east 4 north, moved 5 east, moveable west or south",
+            "object, 3 of 3, 3 west 10 north, moved 1 north, moveable north into a hole, east or \
+             south",
+            "object, 2 of 3, 3 east 9 north, immoveable",
+            "signs, 3",
+            "object, 1 east 4 north, moved 5 east, moveable west or south, 1 of 3"
+        ]
+    );
+}
+
 #[test]
 fn test_a_category_is_said_with_how_many_things_are_in_it() {
     let mut rig = navigator(Want::default());

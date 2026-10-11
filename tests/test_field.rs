@@ -16,7 +16,7 @@ use crate::core::memory::Memory;
 use crate::core::pathfind;
 use crate::core::rtti::ClassNames;
 use crate::games::common::field::chunk::{BLOCKED, CHUNK, COUNTER, Chunk, Floor, KIND_SHIFT};
-use crate::games::common::field::ground::{BLOCK, Ground, NO_ZONE, Of, RotatingDoor};
+use crate::games::common::field::ground::{BLOCK, Ground, NO_ZONE, Of, RotatingDoor, pushes};
 use crate::games::common::field::things::{
     ASH_SOURCE, BERRY_SOURCE, DECORATION_SOURCE, EDGE_SOURCE, FURNITURE_SOURCE, Field,
     Interactable, SECRET_BASE_SOURCE, TILE_SOURCE, WARP_SOURCE, describe, place_source,
@@ -1648,6 +1648,118 @@ fn test_a_big_boulder_stands_in_four_cells_and_strength_clears_them_all() -> Res
         assert!(strong.open(cell)?);
     }
     Ok(())
+}
+
+/// movie37 (spike A): every boulder of room 0x69 kept its record however far it was pushed,
+/// and the record kept the room's own cell, so the list can tell one boulder from the next and
+/// say how far each has been pushed.
+#[test]
+fn test_a_big_boulder_keeps_its_record_and_where_the_record_starts_it() -> Result<()> {
+    let mut town = Town::new();
+    let data = zone_file(&ZoneSpec {
+        info: &town_info(),
+        npcs: &[
+            (0x119, 91, 175, 0x227, None),
+            (mmodel::ITEM_BALL, 100, 180, 0x51A, None),
+            (PROP_MODEL + 0x4E, 110, 170, 0x205, None),
+            (oras::BIG_BOULDER, 98, 175, 0, None),
+        ],
+        ..ZoneSpec::default()
+    });
+    town.memory.write(FILE, &data);
+    town.memory
+        .u32(HOLDER + 8, &[0x11 | (data.len() as i64) << 8]);
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given::default(),
+        Game {
+            clears: oras::game().clears.clone(),
+            ..game()
+        },
+    );
+    town.model_sized(4, TOWN, 3, oras::BIG_BOULDER, (100, 175), (2, 2));
+    let r#where = town.r#where()?;
+    let boulder = r#where
+        .of("signs")
+        .into_iter()
+        .find(|item| item.code == oras::BIG_BOULDER)
+        .unwrap();
+    let person = r#where.of("people").into_iter().next().unwrap();
+    assert_eq!(
+        (boulder.record, boulder.start),
+        (Some((TOWN, 3)), Some((98, 175)))
+    );
+    assert_eq!(
+        (person.record, person.start, person.pushes),
+        (Some((TOWN, 0)), None, None)
+    );
+    assert_eq!(
+        boulder.pushes,
+        Some(vec![
+            ("north", false),
+            ("east", false),
+            ("south", false),
+            ("west", false)
+        ])
+    );
+    Ok(())
+}
+
+/// Seafloor Cavern's eight-boulder room from x 8 and z 17, as the ROM's chunks have it (spike A):
+/// # a wall, H a hole.
+const ROOM_0X69: [&str; 14] = [
+    "###########...##########",
+    "########HH.....HH#######",
+    "########HH.....HH#######",
+    "########..#####..#######",
+    "########.........#######",
+    "########.#.....#.#######",
+    "########...#.#...#######",
+    "#########.......########",
+    "########.........#######",
+    "#######...........######",
+    "#######..#.#.#.#..######",
+    "########HH.....HH#######",
+    "########HH.....HH#######",
+    "########..#...#..#######",
+];
+
+/// Pushes movie37 made, the stick lined up with the replay (spike A): record 0 went half onto
+/// the north-west hole at 246 s and dropped in at the next push, and against the wall west of it
+/// it stayed; record 6 stayed against record 7, south of it, three times.
+#[test]
+fn test_a_big_boulder_moves_where_every_cell_ahead_is_floor_or_a_hole() {
+    let mut cells: HashMap<(i64, i64), u8> = HashMap::new();
+    for (z, row) in ROOM_0X69.iter().enumerate() {
+        for (x, kind) in row.bytes().enumerate() {
+            cells.insert((x as i64 + 8, z as i64 + 17), kind);
+        }
+    }
+    let holes: HashSet<(i64, i64)> = cells
+        .iter()
+        .filter(|&(_, &kind)| kind == b'H')
+        .map(|(&cell, _)| cell)
+        .collect();
+
+    fn square(x: i64, z: i64) -> [(i64, i64); 4] {
+        [(x, z), (x + 1, z), (x, z + 1), (x + 1, z + 1)]
+    }
+
+    let ways = |boulder: (i64, i64), others: &[(i64, i64)]| -> Vec<(&'static str, bool)> {
+        let standing: HashSet<(i64, i64)> =
+            others.iter().flat_map(|&(x, z)| square(x, z)).collect();
+        pushes(
+            square(boulder.0, boulder.1),
+            &|cell| Ok(cells.get(&cell) == Some(&b'.') && !standing.contains(&cell)),
+            &holes,
+        )
+        .unwrap()
+    };
+
+    assert_eq!(ways((16, 20), &[]), [("north", false)]);
+    assert_eq!(ways((16, 19), &[]), [("north", true)]);
+    assert_eq!(ways((22, 23), &[(23, 25)]), []);
+    assert_eq!(ways((22, 23), &[]), [("south", false)]);
 }
 
 /// Seafloor Cavern (movie36, spike A): a hole is four cells of kind 0x30, blocked; a boulder

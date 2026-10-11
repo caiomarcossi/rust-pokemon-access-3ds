@@ -36,7 +36,7 @@ use crate::games::common::field::chunk::{
     BIKE_RAILS, BLOCKED, BUMPY_SLOPES, CHUNK, Chunk, DIVE, FALLS, SLOPES,
 };
 use crate::games::common::field::ground::{
-    self as common, BLOCK, CRACKED, Far, Grid, Ground, NO_ZONE, Of, STRENGTH, walkable,
+    self as common, BLOCK, CRACKED, Far, Grid, Ground, NO_ZONE, Of, STRENGTH, pushes, walkable,
 };
 use crate::games::common::field::things::{
     BIKE, BIKE_SOURCE, DECORATION_SOURCE, DIVE_SOURCE, EDGE_SOURCE, FURNITURE_SOURCE, Field,
@@ -48,9 +48,10 @@ use crate::games::gen6::field::features::{
 use crate::games::gen6::field::rail::{self, Rails, keep};
 use crate::games::gen6::field::terrain::{FarCells, FarFloors, FarHeights, FarMatrices, Terrain};
 use crate::games::gen6::field::zonedata::{
-    FURNITURE, LZ11, TRIGGER_HEIGHT, TRIGGER_SCRIPT, TRIGGER_WIDTH, TRIGGER_X, TRIGGER_Y,
-    TRIGGER_Z, WARP, WARP_DOOR, WARP_OUT, WARP_STAIRS, WARP_STREET, WARP_Y, ZoneData, arrival,
-    from_world, on_rail, read_furniture, read_records, read_triggers, read_zone, zone_files,
+    FURNITURE, LZ11, NPC, NPC_INDEX, NPC_X, NPC_Z, TRIGGER_HEIGHT, TRIGGER_SCRIPT, TRIGGER_WIDTH,
+    TRIGGER_X, TRIGGER_Y, TRIGGER_Z, WARP, WARP_DOOR, WARP_OUT, WARP_STAIRS, WARP_STREET, WARP_Y,
+    ZoneData, arrival, from_world, on_rail, read_furniture, read_records, read_triggers, read_zone,
+    zone_files,
 };
 use crate::games::gen6::field::zonetable::{
     INFO_KIND, INFO_MATRIX, INFO_NAME, INFO_PARENT, INFO_SIZE, NAME_MASK, UNDERWATER, ZONE_LIMIT,
@@ -897,8 +898,10 @@ impl FieldReader {
         }
         let mut items: Vec<Interactable> = Vec::new();
         let data = self.current()?;
+        let people = self.people(r#where.zone)?;
+        let mut home = None;
         if let Some(data) = &data {
-            let home = self.home(data, &[r#where.zone])?;
+            home = self.home(data, &[r#where.zone])?;
             for item in read_furniture(&*self.memory, data)? {
                 let kind = self.furniture_kind(home, &item);
                 items.push(Interactable { kind, home, ..item });
@@ -915,7 +918,7 @@ impl FieldReader {
                 }
             }
         }
-        items.extend(self.people(r#where.zone)?);
+        items.extend(self.boulders(people, r#where.zone, data.as_ref(), home)?);
         items.extend(self.edges(r#where.zone, !r#where.on_rail)?);
         items.extend(self.use_tiles(r#where.zone)?);
         items.extend(self.ways(r#where.zone, r#where.cell)?);
@@ -947,6 +950,76 @@ impl FieldReader {
             interactables: items,
             ..r#where.clone()
         })
+    }
+
+    /// `people` with each big boulder told the ways it moves (`Interactable.pushes`), and
+    /// where its record starts it where the record is `home`'s (`Interactable.start`): the
+    /// record keeps the room's own cell as the boulder is pushed about (spike A). A boulder in
+    /// its hole is floor, and nobody in the way.
+    fn boulders(
+        &self,
+        people: Vec<Interactable>,
+        zone: i64,
+        data: Option<&ZoneData>,
+        home: Option<i64>,
+    ) -> Result<Vec<Interactable>> {
+        if !people
+            .iter()
+            .any(|item| self.clears.get(&item.code) == Some(&STRENGTH))
+        {
+            return Ok(people);
+        }
+        let mut starts: HashMap<i64, Cell> = HashMap::new();
+        if let Some(data) = data {
+            for record in read_records(&*self.memory, data, NPC)? {
+                starts.insert(
+                    u16(&record, NPC_INDEX)?,
+                    (u16(&record, NPC_X)?, u16(&record, NPC_Z)?),
+                );
+            }
+        }
+        let holes = self.holes(zone)?;
+        let filled = self.dropped(&holes, &people);
+        let standing: HashSet<Cell> = people
+            .iter()
+            .flat_map(|item| item.cells())
+            .filter(|cell| !filled.contains(cell))
+            .collect();
+        let mut chunks: Vec<Rc<Chunk>> = Vec::new();
+        for chunk in self.chunks_loaded()? {
+            chunks.push(self.terrain.flattened(&chunk, None, false)?);
+        }
+        let floor = |cell: Cell| -> Result<bool> {
+            Ok(
+                (filled.contains(&cell) || walkable(&chunks, cell)? == Some(true))
+                    && !standing.contains(&cell),
+            )
+        };
+
+        let mut out: Vec<Interactable> = Vec::new();
+        for mut item in people {
+            if self.clears.get(&item.code) == Some(&STRENGTH)
+                && !item.cells().iter().all(|cell| holes.contains(cell))
+            {
+                // Going through a passage out of the room, a poll found its chunks gone and
+                // every boulder immoveable (movie37, spike A): with no walls, nothing is said.
+                if !chunks.is_empty() {
+                    item.pushes = Some(pushes(item.cells(), &floor, &holes)?);
+                }
+                if let Some((zone, index)) = item.record
+                    && Some(zone) == home
+                    && let Some(&cell) = starts.get(&index)
+                {
+                    let (wide, deep) = item.size;
+                    item.start = Some((
+                        cell.0 - py::floordiv(wide - 1, 2),
+                        cell.1 - py::floordiv(deep - 1, 2),
+                    ));
+                }
+            }
+            out.push(item);
+        }
+        Ok(out)
     }
 
     /// The cells of the zone's holes a big boulder drops into (`BOULDER_HOLE`).

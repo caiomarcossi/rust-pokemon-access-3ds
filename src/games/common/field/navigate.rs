@@ -607,6 +607,19 @@ impl Navigator {
         if let Some(arrival) = item.arrival {
             way += &format!(", out at {}", things::bearing(r#where.cell, arrival));
         }
+        let start = if self.wording.track_boulders {
+            item.start
+        } else {
+            None
+        };
+        if let Some(start) = start
+            && start != item.cell
+        {
+            way += &format!(", moved {}", things::bearing(start, item.cell));
+        }
+        if let Some(pushes) = &item.pushes {
+            way += &format!(", {}", moveable(pushes));
+        }
         let mut parts = vec![self.label(item, r#where.zone)?, way];
         if self.wording.positions {
             parts.insert(
@@ -818,6 +831,24 @@ impl Navigator {
         (self.log)(&format!("key: {text}"));
         self.speech.say(text, Category::Key);
     }
+}
+
+/// The ways a big boulder can be pushed, as a reading says them: "moveable north into a hole
+/// or east", or "immoveable" (Orion's words, 2026-10-11: what it can do, not what it is doing).
+fn moveable(ways: &[(&str, bool)]) -> String {
+    if ways.is_empty() {
+        return "immoveable".to_string();
+    }
+    let said: Vec<String> = ways
+        .iter()
+        .map(|&(way, drops)| format!("{way}{}", if drops { " into a hole" } else { "" }))
+        .collect();
+    "moveable ".to_string()
+        + &if said.len() == 1 {
+            said[0].clone()
+        } else {
+            said[..said.len() - 1].join(", ") + " or " + &said[said.len() - 1]
+        }
 }
 
 /// `called` with the place it leads to after it, unless it already says it.

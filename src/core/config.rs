@@ -133,6 +133,7 @@ pub struct Navigation {
     pub position_first: bool,
     pub turn_by_turn: bool,
     pub guide_to_hidden: bool,
+    pub track_boulders: bool,
 }
 
 impl Default for Navigation {
@@ -142,6 +143,7 @@ impl Default for Navigation {
             position_first: true,
             turn_by_turn: true,
             guide_to_hidden: true,
+            track_boulders: false,
         }
     }
 }
@@ -153,6 +155,7 @@ impl Table for Navigation {
             ("position_first", Value::Bool(self.position_first)),
             ("turn_by_turn", Value::Bool(self.turn_by_turn)),
             ("guide_to_hidden", Value::Bool(self.guide_to_hidden)),
+            ("track_boulders", Value::Bool(self.track_boulders)),
         ]
     }
 
@@ -162,6 +165,7 @@ impl Table for Navigation {
             ("position_first", Value::Bool(value)) => self.position_first = value,
             ("turn_by_turn", Value::Bool(value)) => self.turn_by_turn = value,
             ("guide_to_hidden", Value::Bool(value)) => self.guide_to_hidden = value,
+            ("track_boulders", Value::Bool(value)) => self.track_boulders = value,
             _ => {}
         }
     }
@@ -202,7 +206,7 @@ fn defaults(name: &str) -> Vec<(&'static str, Value)> {
 }
 
 /// What each setting does, as the file's comment above it says it.
-pub const EXPLAINED: [(&str, &str); 11] = [
+pub const EXPLAINED: [(&str, &str); 12] = [
     (
         "pa3ds.keys",
         "answer pa3ds's keys and bind Azahar's buttons, as keys.toml says",
@@ -251,6 +255,12 @@ pub const EXPLAINED: [(&str, &str); 11] = [
         "when a DexNav search finds the Pokémon searched for, or the DexNav finds one by itself \
          while it is open and you are in touch mode, find the way to it as P does and keep P on \
          it, whatever the list was on; one found while the AreaNav is open is left alone",
+    ),
+    (
+        "pa3ds.navigation.track_boulders",
+        "say how far a big boulder has moved from where its room starts it, as in \"big boulder, \
+         2 east, moved 1 north\", so you know which you have pushed; the game shows where each \
+         boulder is, never where it started",
     ),
     (
         "pa3ds.extras.conditions",

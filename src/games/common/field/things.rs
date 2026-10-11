@@ -182,6 +182,12 @@ pub struct Interactable {
     /// which one it is, wherever it walks or is pushed (spike A). None where it is not read: Sun's
     /// models.
     pub record: Option<(i64, i64)>,
+    /// For a big boulder, where its record starts it, as `cell` says where it is: where the room
+    /// had it before anybody pushed it (spike A). None for anything else.
+    pub start: Option<(i64, i64)>,
+    /// For a big boulder, the ways it moves when pushed, each with whether that push drops it
+    /// into a hole (`ground.pushes`); none for one that cannot be moved. None for anything else.
+    pub pushes: Option<Vec<(&'static str, bool)>>,
 }
 
 impl Interactable {
@@ -201,6 +207,8 @@ impl Interactable {
             height: None,
             arrival: None,
             record: None,
+            start: None,
+            pushes: None,
         }
     }
 

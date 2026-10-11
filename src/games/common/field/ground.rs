@@ -44,6 +44,53 @@ pub const ROCK_SMASH: i64 = 249;
 /// pushed to open.
 pub const SHOVE: i64 = 1000;
 
+/// The ways a big boulder standing in `cells` moves when pushed, each with whether that push
+/// drops it into a hole, in `pathfind.STEPS`' order: where every cell it moves into is `floor` or
+/// a hole, and a cell on the side it is pushed from is `floor` to push it from. It drops once all
+/// four of its cells are a hole's. So 32 of the 37 pushes into a boulder in movie37 went, and the
+/// other five were taps too short to push (spike A). `floor` is where the player could stand:
+/// open, and nobody in it.
+///
+/// ponytail: water, ledges and a floor's height are not looked at; Seafloor Cavern's rooms have
+/// none of them round a boulder.
+pub fn pushes(
+    cells: impl IntoIterator<Item = Cell>,
+    floor: &dyn Fn(Cell) -> Result<bool>,
+    holes: &HashSet<Cell>,
+) -> Result<Vec<(&'static str, bool)>> {
+    let own: HashSet<Cell> = cells.into_iter().collect();
+    let mut out: Vec<(&'static str, bool)> = Vec::new();
+    for (way, (dx, dz)) in pathfind::STEPS {
+        let moved: HashSet<Cell> = own.iter().map(|&(x, z)| (x + dx, z + dz)).collect();
+        let behind: HashSet<Cell> = own
+            .iter()
+            .map(|&(x, z)| (x - dx, z - dz))
+            .filter(|cell| !own.contains(cell))
+            .collect();
+        let mut goes = true;
+        for &cell in moved.difference(&own) {
+            if !(holes.contains(&cell) || floor(cell)?) {
+                goes = false;
+                break;
+            }
+        }
+        if goes {
+            let mut from = false;
+            for &cell in &behind {
+                if floor(cell)? {
+                    from = true;
+                    break;
+                }
+            }
+            goes = from;
+        }
+        if goes {
+            out.push((way, moved.is_subset(holes)));
+        }
+    }
+    Ok(out)
+}
+
 /// Cells to a block of the matrix.
 pub const BLOCK: i64 = 10;
 

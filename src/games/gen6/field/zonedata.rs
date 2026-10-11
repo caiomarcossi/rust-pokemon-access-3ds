@@ -59,9 +59,16 @@ pub const PLACEMENT: i64 = 0x06;
 /// A furniture or warp record's +0x06: 0 on the grid, 1 on a rail (spike 102).
 pub const ON_RAIL: i64 = 1;
 
+/// An NPC record's index, which a move model built from it holds (`mmodel.index_of`).
+pub const NPC_INDEX: i64 = 0x00;
+
 pub const NPC_SPRITE: i64 = 0x02;
 
 pub const NPC_FLAG: i64 = 0x0A;
+
+/// The cell an NPC record starts its move model in.
+pub const NPC_X: i64 = 0x28;
+pub const NPC_Z: i64 = 0x2A;
 
 /// An NPC record's +0x0a is 3000 plus a trainer's id when the NPC is one (spike 90).
 pub const TRAINER_FLAGS: i64 = 3000;
