@@ -30,7 +30,8 @@ pub const FURNITURE_SOURCE: i64 = 0 << 32;
 /// A warp's source: `WARP_SOURCE | index` in the warp table.
 pub const WARP_SOURCE: i64 = 1 << 32;
 
-/// A use tile's source: `TILE_SOURCE | x << 12 | z`, its first cell.
+/// A use tile's source, or a hole's a big boulder drops into: `TILE_SOURCE | x << 12 | z`, its
+/// first cell.
 pub const TILE_SOURCE: i64 = 2 << 32;
 
 /// An edge's source: `EDGE_SOURCE | zone << 16 | gap`, the zone it leads to and the gap's place

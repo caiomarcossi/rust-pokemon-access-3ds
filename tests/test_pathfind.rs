@@ -7,8 +7,8 @@ use std::rc::Rc;
 use indexmap::IndexMap;
 
 use crate::core::pathfind::{
-    Box, Cell, EAST, Leg, NORTH, Options, SOUTH, WEST, cover, facing, find, legs, nearest, off,
-    spoken, turned,
+    Box, Cell, EAST, Leg, NORTH, Options, Reach, SOUTH, WEST, cover, facing, find, legs, nearest,
+    off, reached, spoken, turned,
 };
 use crate::py::Result;
 
@@ -64,6 +64,51 @@ fn test_open_ground_is_crossed_in_two_legs() {
     )
     .unwrap();
     assert_eq!(said(path).as_deref(), Some("5 east, 2 north"));
+}
+
+/// Every cell a way can end on, by `find`'s moves, an end stepped into and not on from.
+#[test]
+fn test_reached_is_where_find_goes_a_ledge_down_and_never_up() {
+    let rows = ["...#.", "vv###", "...E."];
+    let (walkable, box_) = drawn(&rows);
+    let ledge = ledges(&rows);
+    let ends: HashSet<Cell> = HashSet::from([(3, 2)]);
+    let is_end = |cell: Cell| Ok(ends.contains(&cell));
+    let below = reached(
+        (0, 2),
+        &|cell: Cell| Ok(walkable(cell)? && !ends.contains(&cell)),
+        box_,
+        &Reach {
+            ledge: Some(&*ledge),
+            ends: Some(&is_end),
+            ..Reach::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(below, HashSet::from([(0, 2), (1, 2), (2, 2), (3, 2)]));
+    let above = reached(
+        (0, 0),
+        &*walkable,
+        box_,
+        &Reach {
+            ledge: Some(&*ledge),
+            ..Reach::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        above,
+        HashSet::from([
+            (0, 0),
+            (1, 0),
+            (2, 0),
+            (0, 2),
+            (1, 2),
+            (2, 2),
+            (3, 2),
+            (4, 2)
+        ])
+    );
 }
 
 /// The way to a door ends facing the door, so the last step is the one that goes in.

@@ -375,55 +375,156 @@ pub fn find(
                 order += 1;
             }
         }
-        for (direction, (dx, dz)) in STEPS {
-            let mut step = (cell.0 + dx, cell.1 + dz);
-            let mut steps = 1;
-            let unfit = |way: Option<&str>| way.is_some_and(|way| way != direction);
-            if !can_walk(step)? {
-                if !r#box.holds(step) || (down(step)? != Some(direction) && !over(step)?) {
-                    continue;
+        moves(
+            cell,
+            &can_walk,
+            &r#box,
+            &down,
+            &over,
+            &joined,
+            &mut |direction, step, steps| {
+                let after = match through {
+                    Some(through) if steps != 2 => through(turned, cell, step)?,
+                    _ => Some(turned.clone()),
+                };
+                let Some(after) = after else {
+                    return Ok(());
+                };
+                let onward: State = (step, direction, after);
+                let price = cost
+                    + STEP * steps
+                    + if !going.is_empty() && going != direction {
+                        TURN
+                    } else {
+                        0
+                    }
+                    + toll(cell, step)?;
+                if price < spent.get(&onward).copied().unwrap_or(price + 1) {
+                    spent.insert(onward.clone(), price);
+                    came.insert(onward.clone(), state.clone());
+                    let left = estimate(step);
+                    frontier.push(Entry {
+                        key: (price + left, left, order),
+                        state: onward,
+                    });
+                    order += 1;
                 }
-                step = (step.0 + dx, step.1 + dz);
-                steps = 2;
-                if !can_walk(step)? {
-                    continue;
-                }
-            } else if unfit(down(step)?) || unfit(down(cell)?) || !joined(cell, step)? {
-                continue;
-            }
-            let after = match through {
-                Some(through) if steps != 2 => through(turned, cell, step)?,
-                _ => Some(turned.clone()),
-            };
-            let Some(after) = after else {
-                continue;
-            };
-            let onward: State = (step, direction, after);
-            let price = cost
-                + STEP * steps
-                + if !going.is_empty() && going != direction {
-                    TURN
-                } else {
-                    0
-                }
-                + toll(cell, step)?;
-            if price < spent.get(&onward).copied().unwrap_or(price + 1) {
-                spent.insert(onward.clone(), price);
-                came.insert(onward.clone(), state.clone());
-                let left = estimate(step);
-                frontier.push(Entry {
-                    key: (price + left, left, order),
-                    state: onward,
-                });
-                order += 1;
-            }
-        }
+                Ok(())
+            },
+        )?;
     }
     Ok(if *closest {
         Some(back(&came, &nearest.3))
     } else {
         None
     })
+}
+
+/// Each move from `cell` as `find` takes them: its way, where it lands, and how many cells
+/// on, two for a jump over a ledge or the shore. Handed to `each` one at a time, as Python's
+/// generator yields them, so a move is taken before the next is tried.
+fn moves(
+    cell: Cell,
+    can_walk: &dyn Fn(Cell) -> Result<bool>,
+    r#box: &Box,
+    down: &dyn Fn(Cell) -> Result<Option<&'static str>>,
+    over: &dyn Fn(Cell) -> Result<bool>,
+    joined: &dyn Fn(Cell, Cell) -> Result<bool>,
+    each: &mut dyn FnMut(&'static str, Cell, i64) -> Result<()>,
+) -> Result<()> {
+    for (direction, (dx, dz)) in STEPS {
+        let mut step = (cell.0 + dx, cell.1 + dz);
+        let mut steps = 1;
+        let unfit = |way: Option<&str>| way.is_some_and(|way| way != direction);
+        if !can_walk(step)? {
+            if !r#box.holds(step) || (down(step)? != Some(direction) && !over(step)?) {
+                continue;
+            }
+            step = (step.0 + dx, step.1 + dz);
+            steps = 2;
+            if !can_walk(step)? {
+                continue;
+            }
+        } else if unfit(down(step)?) || unfit(down(cell)?) || !joined(cell, step)? {
+            continue;
+        }
+        each(direction, step, steps)?;
+    }
+    Ok(())
+}
+
+/// `reached`'s keyword arguments, each as the Python defaults it.
+#[derive(Default)]
+pub struct Reach<'a> {
+    pub ledge: Option<&'a dyn Fn(Cell) -> Result<Option<&'static str>>>,
+    pub joined: Option<&'a dyn Fn(Cell, Cell) -> Result<bool>>,
+    pub over: Option<&'a dyn Fn(Cell) -> Result<bool>>,
+    pub ends: Option<&'a dyn Fn(Cell) -> Result<bool>>,
+}
+
+/// Every cell inside `box` a way from `start` can end on, by `find`'s moves: a cell that can
+/// be walked, or one of `ends`, which a way may step into and not on from, as `find` steps into
+/// a goal it would walk round on the way to anything else. What `find` would reach from `start`,
+/// found once for every goal at a time.
+pub fn reached(
+    start: Cell,
+    walkable: &dyn Fn(Cell) -> Result<bool>,
+    r#box: Box,
+    options: &Reach,
+) -> Result<HashSet<Cell>> {
+    let down_cache: Cached<Cell, Option<&'static str>> = Cached::new();
+    let walk_cache: Cached<Cell, bool> = Cached::new();
+    let walked_cache: Cached<Cell, bool> = Cached::new();
+    let down = |cell: Cell| {
+        down_cache.get(cell, || match options.ledge {
+            Some(ledge) => ledge(cell),
+            None => Ok(None),
+        })
+    };
+    let walk = |cell: Cell| walk_cache.get(cell, || walkable(cell));
+    let can_walk = |cell: Cell| {
+        walked_cache.get(cell, || {
+            Ok(r#box.holds(cell)
+                && (walk(cell)?
+                    || match options.ends {
+                        Some(ends) => ends(cell)?,
+                        None => false,
+                    }))
+        })
+    };
+    let over = |cell: Cell| match options.over {
+        Some(over) => over(cell),
+        None => Ok(false),
+    };
+    let joined = |cell: Cell, step: Cell| match options.joined {
+        Some(joined) => joined(cell, step),
+        None => Ok(true),
+    };
+    let mut out: HashSet<Cell> = HashSet::from([start]);
+    let mut todo: Vec<Cell> = vec![start];
+    let mut at = 0;
+    while at < todo.len() {
+        let cell = todo[at];
+        at += 1;
+        if cell != start && !walk(cell)? {
+            continue;
+        }
+        moves(
+            cell,
+            &can_walk,
+            &r#box,
+            &down,
+            &over,
+            &joined,
+            &mut |_, step, _| {
+                if out.insert(step) {
+                    todo.push(step);
+                }
+                Ok(())
+            },
+        )?;
+    }
+    Ok(out)
 }
 
 /// A way from `start` that steps on every cell of `once` exactly once and ends on one of

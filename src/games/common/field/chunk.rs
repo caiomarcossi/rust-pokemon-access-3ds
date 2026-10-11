@@ -42,6 +42,15 @@ pub const FALLS: i64 = 0x3F;
 /// Across ORAS's chunks, 45 of its patches are 3-by-3 squares and the rest are bands and blobs.
 pub const DIVE: i64 = 0x41;
 
+/// The kind of a hole in the floor a big boulder Strength pushes drops into, blocked: a square
+/// of two cells by two, a boulder's size. Every cell of it in ORAS's chunks is `0x30020021`, in
+/// nine zones and in none without a big boulder: Fiery Path, Seafloor Cavern's rooms and three
+/// others. A boulder in one stays a move model, on the hole's four cells, the cells still blocked
+/// in the chunk as loaded, and the player walks over it: Seafloor Cavern's first room with
+/// boulders, zone `0x64`, has both of its in their holes at (10, 19) and (21, 22) (movie36,
+/// spike 202).
+pub const HOLE: i64 = 0x30;
+
 /// What going onto water costs a path on top of the step, five steps' worth: the player faces the
 /// water, presses A, and answers the game's question before the step is taken. So a way surfing
 /// is taken over one on foot only when it saves more than that. Cutting a bush down or smashing a

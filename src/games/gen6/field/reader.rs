@@ -31,11 +31,12 @@ use crate::core::binary::{s16, u16, u32};
 use crate::core::discovery::{Found, HEAP_SPAN, within};
 use crate::core::memory::Memory;
 use crate::core::pathfind::{self, Cell};
+use crate::games::common::field::chunk::HOLE as BOULDER_HOLE;
 use crate::games::common::field::chunk::{
     BIKE_RAILS, BLOCKED, BUMPY_SLOPES, CHUNK, Chunk, DIVE, FALLS, SLOPES,
 };
 use crate::games::common::field::ground::{
-    self as common, BLOCK, CRACKED, Far, Grid, Ground, NO_ZONE, Of, walkable,
+    self as common, BLOCK, CRACKED, Far, Grid, Ground, NO_ZONE, Of, STRENGTH, walkable,
 };
 use crate::games::common::field::things::{
     BIKE, BIKE_SOURCE, DECORATION_SOURCE, DIVE_SOURCE, EDGE_SOURCE, FURNITURE_SOURCE, Field,
@@ -146,7 +147,9 @@ pub const CLIFF: &str = "crumbled cliff";
 pub const HOLE_TILE: i64 = 0xFE;
 
 /// What a hole in a Secret Base's floor is called: the game names it only in the Solid Board's
-/// description, "You can place this over holes to cross over them", never where it is.
+/// description, "You can place this over holes to cross over them", never where it is. A hole a big
+/// boulder drops into is one too, listed under signs with the boulders until one fills it (Orion,
+/// 2026-10-11; spike 202): its cells are of a kind of their own (`chunk.HOLE`).
 pub const HOLE: &str = "hole";
 
 /// The cells of a Secret Base a decoration goes over, by kind, each with its name.
@@ -628,6 +631,13 @@ impl FieldReader {
         };
         let ladders = self.ladders_here()?;
         let cliffs = self.terrain.cliffs(level, &ladders)?;
+        // From the models, not the listing: guiding asks with nothing listed.
+        let holes = self.holes(r#where.zone)?;
+        let filled = if holes.is_empty() {
+            HashSet::new()
+        } else {
+            self.dropped(&holes, &self.people(r#where.zone)?)
+        };
         let doors = match &self.doors {
             None => Vec::new(),
             Some(doors) => doors.doors(r#where.zone)?,
@@ -650,6 +660,7 @@ impl FieldReader {
                 stacked,
                 level,
                 ice,
+                filled,
                 ..Ground::of(
                     r#where,
                     Of {
@@ -683,6 +694,7 @@ impl FieldReader {
             stacked,
             level,
             ice,
+            filled,
             ..Ground::of(
                 r#where,
                 Of {
@@ -923,10 +935,43 @@ impl FieldReader {
         if let Some(hidden) = &self.hidden {
             items.extend(hidden.listed(r#where.zone, &zone_at)?);
         }
+        // A boulder in a hole is floor now, and neither it nor the hole is anything to find.
+        let holes = self.holes(r#where.zone)?;
+        if !holes.is_empty() {
+            let gone = self.dropped(&holes, &items);
+            if !gone.is_empty() {
+                items.retain(|item| !item.cells().iter().all(|cell| gone.contains(cell)));
+            }
+        }
         Ok(Field {
             interactables: items,
             ..r#where.clone()
         })
+    }
+
+    /// The cells of the zone's holes a big boulder drops into (`BOULDER_HOLE`).
+    fn holes(&self, zone: i64) -> Result<HashSet<Cell>> {
+        Ok(self
+            .found_ways(zone)?
+            .0
+            .iter()
+            .filter(|item| item.code == BOULDER_HOLE)
+            .flat_map(|item| item.cells())
+            .collect())
+    }
+
+    /// The cells of every big boulder among `items` lying wholly in `holes`: pushed into one,
+    /// it is floor the player walks over, its model still there (spike 202).
+    fn dropped(&self, holes: &HashSet<Cell>, items: &[Interactable]) -> HashSet<Cell> {
+        items
+            .iter()
+            .filter(|item| {
+                item.move_model
+                    && self.clears.get(&item.code) == Some(&STRENGTH)
+                    && item.cells().iter().all(|cell| holes.contains(cell))
+            })
+            .flat_map(|item| item.cells())
+            .collect()
     }
 
     /// The Secret Base's crumbled cliff and holes, each patch of touching cells of a kind in
@@ -1386,13 +1431,17 @@ impl FieldReader {
     /// not anybody: five were listed as "person 1 west" round Fortree Gym's third door, and P said
     /// "person in the way" (spike 161). Nor is the game's invisible blocker anywhere: Sootopolis
     /// Gym's nine, rows of three across the corridors up from its rooms, were listed as nameless
-    /// people (spike 167). They stand in the way all the same (`unseen`).
-    fn people(&self, _zone: i64) -> Result<Vec<Interactable>> {
+    /// people (spike 167). They stand in the way all the same (`unseen`). A big boulder in a hole is
+    /// no parked model, however walled in: Seafloor Cavern's room 0x69 has walls north and west of
+    /// its north-west hole, and the boulder pushed into it was left out, its hole still listed and
+    /// a wall (movie37).
+    fn people(&self, zone: i64) -> Result<Vec<Interactable>> {
         let mut out: Vec<Interactable> = Vec::new();
         let mut chunks: Vec<Rc<Chunk>> = Vec::new();
         for chunk in self.chunks_loaded()? {
             chunks.push(self.terrain.flattened(&chunk, None, false)?);
         }
+        let holes = self.holes(zone)?;
         let models = self.models.borrow().clone();
         for model in models {
             let head = self.memory.read(model, mmodel::HEAD)?;
@@ -1402,7 +1451,7 @@ impl FieldReader {
             let Some(cell) = mmodel::cell(&head)? else {
                 continue;
             };
-            if walled_in(&chunks, cell)? {
+            if !holes.contains(&cell) && walled_in(&chunks, cell)? {
                 continue;
             }
             if let Some(blocker) = self.blocker
@@ -1689,7 +1738,7 @@ impl FieldReader {
         Ok((held.1.clone(), held.2.clone()))
     }
 
-    /// The bike's things in the zone, and each patch of deep water (`_ways`).
+    /// The bike's things in the zone and its holes, and each patch of deep water (`_ways`).
     fn find_ways(
         &self,
         zone: i64,
@@ -1716,7 +1765,8 @@ impl FieldReader {
                 if (in_slopes(kind)
                     || BIKE_RAILS.contains(&kind)
                     || BUMPY_SLOPES.contains(&kind)
-                    || kind == DIVE)
+                    || kind == DIVE
+                    || kind == BOULDER_HOLE)
                     && {
                         let at = self.zone_at(cell)?;
                         at == Some(zone) || at.is_none()
@@ -1737,6 +1787,17 @@ impl FieldReader {
         for patch in patches(&found) {
             if kind_at(patch[0])? == DIVE {
                 dives.push(patch);
+                continue;
+            }
+            if kind_at(patch[0])? == BOULDER_HOLE {
+                let (first, size) = spread(&patch);
+                out.push(Interactable {
+                    size,
+                    code: BOULDER_HOLE,
+                    source: place_source(TILE_SOURCE, cell_number(first))?,
+                    home: Some(zone),
+                    ..Interactable::new("signs", HOLE, first)
+                });
                 continue;
             }
             if BUMPY_SLOPES.contains(&kind_at(patch[0])?) {

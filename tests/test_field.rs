@@ -1650,6 +1650,68 @@ fn test_a_big_boulder_stands_in_four_cells_and_strength_clears_them_all() -> Res
     Ok(())
 }
 
+/// Seafloor Cavern (movie36, spike A): a hole is four cells of kind 0x30, blocked; a boulder
+/// pushed into one stays a model on its four cells, which stay blocked in the chunk, and the
+/// player walked over it while the list said "big boulder, here". Guiding asks for the ground
+/// with nothing listed, and is told the same. A hole in a corner, walls north and west of it as
+/// room 0x69's north-west one has, is no place the game parks a model (movie37).
+#[test]
+fn test_a_hole_is_listed_until_a_big_boulder_fills_it_and_then_both_are_floor() -> Result<()> {
+    let hole = 0x30020021;
+    let empty = [(100, 175), (101, 175), (100, 176), (101, 176)];
+    let full = [(104, 175), (105, 175), (104, 176), (105, 176)];
+    let corner = [(103, 174), (104, 174), (105, 174), (103, 175), (103, 176)];
+    let mut town = Town::new();
+    let mut blocked = border(160);
+    blocked.extend(corner);
+    let tiles: Vec<((i64, i64), i64)> = empty
+        .iter()
+        .chain(&full)
+        .map(|&cell| (cell, hole))
+        .collect();
+    town.block_tiles(TOWN_BLOCK, TOWN_CHUNK, (80, 160), &blocked, &tiles);
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given::default(),
+        Game {
+            clears: oras::game().clears.clone(),
+            ..game()
+        },
+    );
+    town.model_sized(4, TOWN, 3, oras::BIG_BOULDER, (104, 175), (2, 2));
+    town.model_sized(5, TOWN, 4, oras::BIG_BOULDER, (100, 179), (2, 2));
+    let r#where = town.r#where()?;
+    let listed: Vec<(String, (i64, i64), (i64, i64))> = r#where
+        .of("signs")
+        .into_iter()
+        .filter(|item| item.kind == "hole" || item.code == oras::BIG_BOULDER)
+        .map(|item| (item.kind.clone(), item.cell, item.size))
+        .collect();
+    assert_eq!(
+        listed,
+        [
+            ("hole".to_string(), (100, 175), (2, 2)),
+            ("object".to_string(), (100, 179), (2, 2))
+        ]
+    );
+    let bare = Field {
+        interactables: Vec::new(),
+        ..r#where.clone()
+    };
+    for ground in [
+        town.reader.ground(&r#where, None)?,
+        town.reader.ground(&bare, None)?,
+    ] {
+        for cell in full {
+            assert!(ground.open(cell)?);
+        }
+        for cell in empty {
+            assert!(!ground.open(cell)?);
+        }
+    }
+    Ok(())
+}
+
 /// Mauville Gym (spike 146): its switches are triggers the list never had, and stepping on one
 /// turns barriers, so a way elsewhere keeps off them. A passage joins two rooms with no floor
 /// between them; a trigger the game has not said is either is left out, as before.

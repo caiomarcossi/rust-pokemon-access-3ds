@@ -647,7 +647,12 @@ pub struct Guide {
     /// The way being walked, or None. Shared with the call that is holding it (`to`'s `held`),
     /// as one object in Python, so it is an `Rc<RefCell<Guidance>>`.
     pub guidance: Option<Rc<RefCell<Guidance>>>,
+    /// What `reachable` was last asked and found.
+    reached: RefCell<Option<(Asked, HashSet<Key>)>>,
 }
+
+/// What `reachable` is asked: the zone, the player's cell, what is listed and the visit.
+type Asked = (i64, Cell, Vec<Interactable>, Option<(i64, i64)>);
 
 impl Guide {
     /// `label` and `name_of` say a thing as the navigator does; `tell` says what is said
@@ -693,7 +698,92 @@ impl Guide {
             routes,
             slack,
             guidance: None,
+            reached: RefCell::new(None),
         }
+    }
+
+    /// The keys of the things listed in `where` that Shift and P finds a way to, ending at
+    /// them and not short of them: every one where no way is found on this ground (Sun's, the
+    /// rails', the sky). One walk out from the player over the ground with HMs, at the player's
+    /// height and at each other deck's, as Shift and P tries them; the rotating doors' arms and
+    /// which floor of a stacked ground a step is on are not followed, so what lies past them is
+    /// taken to be reached. Orion's, 2026-10-11: in Team Magma's Hideout the list held every
+    /// teleporter of the place, most of them in rooms the player was not in.
+    pub fn reachable(&self, r#where: &Field) -> Result<HashSet<Key>> {
+        let everything: HashSet<Key> = r#where
+            .interactables
+            .iter()
+            .map(|item| item.key())
+            .collect();
+        if !self.routes || r#where.on_rail || r#where.steer.is_some() {
+            return Ok(everything);
+        }
+        let asked: Asked = (
+            r#where.zone,
+            r#where.cell,
+            r#where.interactables.clone(),
+            self.field.visit(),
+        );
+        if let Some((last, keys)) = &*self.reached.borrow()
+            && *last == asked
+        {
+            return Ok(keys.clone());
+        }
+        let ground = self.ground(r#where, true, None)?;
+        let mut out: HashSet<Key> = HashSet::new();
+        // ponytail: a walk over the whole matrix each time the player has moved, 0.9 s on one of
+        // 8 by 8 chunks and tens of milliseconds in a cave; keep it while they stay where it
+        // reached, if a route's wait is heard.
+        let levels: Vec<Option<f64>> = std::iter::once(None)
+            .chain(ground.decks.iter().map(|&deck| Some(deck)))
+            .collect();
+        for level in levels {
+            let other;
+            let walked = match level {
+                None => &ground,
+                Some(level) => {
+                    other = self.ground(r#where, true, Some(level))?;
+                    &other
+                }
+            };
+            let mut goals: IndexMap<Key, IndexMap<Cell, Option<&'static str>>> = IndexMap::new();
+            for item in &r#where.interactables {
+                if !out.contains(&item.key()) {
+                    goals.insert(item.key(), walked.goals(item)?);
+                }
+            }
+            let aims: Vec<Cell> = goals
+                .values()
+                .flat_map(|cells| cells.keys().copied())
+                .collect();
+            let r#box = if aims.is_empty() {
+                walked.r#box(r#where.cell, [r#where.cell])?
+            } else {
+                walked.r#box(r#where.cell, aims)?
+            };
+            let ledge = |cell: Cell| walked.ledge(cell);
+            let joined = |cell: Cell, step: Cell| Ok(walked.joined(cell, step));
+            let over = |cell: Cell| walked.over(cell);
+            let open = |cell: Cell| walked.open(cell);
+            let reached = pathfind::reached(
+                r#where.cell,
+                &|cell: Cell| walked.passable(cell),
+                r#box,
+                &pathfind::Reach {
+                    ledge: Some(&ledge),
+                    joined: Some(&joined),
+                    over: Some(&over),
+                    ends: Some(&open),
+                },
+            )?;
+            for (key, cells) in goals {
+                if cells.keys().any(|cell| reached.contains(cell)) {
+                    out.insert(key);
+                }
+            }
+        }
+        *self.reached.borrow_mut() = Some((asked, out.clone()));
+        Ok(out)
     }
 
     /// Find the way from where the player stands to `item`, say it, and follow the player

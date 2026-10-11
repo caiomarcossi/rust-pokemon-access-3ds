@@ -37,6 +37,13 @@ pub const WATERFALL: i64 = 127;
 /// move names: "Surf", "なみのり" in both ORAS and X (spike 136).
 pub const ROCK_SMASH: i64 = 249;
 
+/// What a step through a big boulder costs on top of its steps, where a bush or a rock costs
+/// `BOARD`: five hundred steps' worth, so Shift and P goes round a boulder wherever a way round
+/// lies, and through one only where none does (Orion, 2026-10-11, in Seafloor Cavern). Where a
+/// push leaves the boulder is not modelled, and one pushed the wrong way can shut the way it was
+/// pushed to open.
+pub const SHOVE: i64 = 1000;
+
 /// Cells to a block of the matrix.
 pub const BLOCK: i64 = 10;
 
@@ -321,6 +328,9 @@ pub struct Ground {
     pub cleared: IndexMap<Cell, i64>,
     /// Whether the way goes through what a move clears, and up a slope: Shift and P's ground.
     pub hm: bool,
+    /// The cells of each hole a big boulder has dropped into: floor, though the chunk still has
+    /// them blocked (`HOLE`, spike 202).
+    pub filled: HashSet<Cell>,
     /// Whether the player is riding the Mach Bike, which rides up a slope as well as down: P's
     /// ground goes up one only then (spike 158).
     pub bike: bool,
@@ -392,6 +402,7 @@ impl Default for Ground {
             far: None,
             cleared: IndexMap::new(),
             hm: false,
+            filled: HashSet::new(),
             bike: false,
             cliffs: IndexSet::new(),
             ladders: IndexMap::new(),
@@ -561,7 +572,8 @@ impl Ground {
         let Some(chunk) = self.chunk(cell)? else {
             return Ok(true);
         };
-        Ok(chunk.walkable(cell)? && (self.surf || !chunk.water(cell)?))
+        Ok((chunk.walkable(cell)? || self.filled.contains(&cell))
+            && (self.surf || !chunk.water(cell)?))
     }
 
     /// On a stacked ground, each floor open in the cell, by its place among its chunk's floors,
@@ -783,8 +795,11 @@ impl Ground {
 
     /// What a move from `cell` to `step` costs on top of its steps: going onto water,
     /// through what a move clears, up a waterfall, or up a slope from the foot of it on foot,
-    /// where the player gets on the bike first.
+    /// where the player gets on the bike first; through a big boulder, `SHOVE`.
     pub fn toll(&self, cell: Cell, step: Cell) -> Result<i64> {
+        if self.cleared.get(&step) == Some(&STRENGTH) {
+            return Ok(SHOVE);
+        }
         if self.cleared.contains_key(&step) || (self.water(step)? && !self.water(cell)?) {
             return Ok(BOARD);
         }

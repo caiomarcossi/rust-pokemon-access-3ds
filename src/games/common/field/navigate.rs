@@ -52,8 +52,8 @@ use crate::core::speech::{Category, Speech};
 use crate::games::common::field::guide::{Clock, FieldSource, Guide, Key};
 use crate::games::common::field::keys::{
     Bindings, CATEGORY_NEXT, CATEGORY_PREVIOUS, COORDINATES, DEFAULT_BINDINGS, DIRECTIONS, EAST,
-    ENEMY_SIDE, ITEM_NEXT, ITEM_PREVIOUS, LIST, MODE_TOGGLE, MODES, NORTH, OUR_SIDE, PATHFIND,
-    PATHFIND_HM, PATHFIND_OFF, RENAME, RENAME_SPEAKER, SOUTH, TOUCH, WEST,
+    ENEMY_SIDE, HIDE_UNREACHABLE, ITEM_NEXT, ITEM_PREVIOUS, LIST, MODE_TOGGLE, MODES, NORTH,
+    OUR_SIDE, PATHFIND, PATHFIND_HM, PATHFIND_OFF, RENAME, RENAME_SPEAKER, SOUTH, TOUCH, WEST,
 };
 use crate::games::common::field::things::{self, ALL, Field, Interactable, SPRITE};
 use crate::games::common::touch::ACTIONS as TOUCH_ACTIONS;
@@ -250,6 +250,8 @@ pub struct Navigator {
     /// walked on by the time they press OK.
     renaming: Option<((&'static str, i64, i64), String)>,
     mode: &'static str,
+    /// Whether what Shift and P finds no way to is left out of the list (`HIDE_UNREACHABLE`).
+    hiding: bool,
     category: i64,
     /// The key of the item chosen, or None for the nearest.
     chosen: Option<Key>,
@@ -334,6 +336,7 @@ impl Navigator {
             sides: sides.unwrap_or_else(|| Rc::new(|_player| Ok(None))),
             renaming: None,
             mode: LIST,
+            hiding: false,
             category: 0,
             chosen: None,
             facing: None,
@@ -417,6 +420,15 @@ impl Navigator {
             }
             return Ok(());
         }
+        if action == HIDE_UNREACHABLE {
+            self.hiding = !self.hiding;
+            self.say(if self.hiding {
+                "unreachable hidden"
+            } else {
+                "unreachable shown"
+            });
+            return Ok(());
+        }
         let Some(r#where) = self.field.poll()? else {
             self.say("no map");
             return Ok(());
@@ -430,7 +442,7 @@ impl Navigator {
             return self.rename(&r#where);
         }
         if action == PATHFIND || action == PATHFIND_HM {
-            let Some(item) = self.chosen_item(&r#where) else {
+            let Some(item) = self.chosen_item(&r#where)? else {
                 self.say("nothing here");
                 return Ok(());
             };
@@ -468,7 +480,7 @@ impl Navigator {
             let was = self.category;
             for _ in 0..self.categories.len() - 1 {
                 self.category = py::modulo(self.category + step, self.categories.len() as i64);
-                let items = self.items(&r#where);
+                let items = self.items(&r#where)?;
                 if !items.is_empty() {
                     self.chosen = Some(items[0].key());
                     self.say(&format!(
@@ -488,7 +500,7 @@ impl Navigator {
         if DIRECTIONS.contains(&action) {
             return self.look(&r#where, action);
         }
-        let items = self.items(&r#where);
+        let items = self.items(&r#where)?;
         if items.is_empty() {
             self.say("nothing here");
             return Ok(());
@@ -509,7 +521,7 @@ impl Navigator {
     /// Say the next item on `direction`'s side of the player, nearest first.
     fn look(&mut self, r#where: &Field, direction: &str) -> Result<()> {
         let items: Vec<Interactable> = self
-            .items(r#where)
+            .items(r#where)?
             .into_iter()
             .filter(|item| {
                 towards(
@@ -556,8 +568,16 @@ impl Navigator {
         self.said(r#where, &items, at)
     }
 
-    fn items(&self, r#where: &Field) -> Vec<Interactable> {
-        r#where.of(&self.categories[self.category as usize])
+    fn items(&self, r#where: &Field) -> Result<Vec<Interactable>> {
+        let items = r#where.of(&self.categories[self.category as usize]);
+        if !self.hiding {
+            return Ok(items);
+        }
+        let reached = self.guide.reachable(r#where)?;
+        Ok(items
+            .into_iter()
+            .filter(|item| reached.contains(&item.key()))
+            .collect())
     }
 
     fn said(&self, r#where: &Field, items: &[Interactable], at: i64) -> Result<()> {
@@ -615,10 +635,10 @@ impl Navigator {
     }
 
     /// The thing the navigation keys are on now, or None when they are on nothing.
-    fn chosen_item(&self, r#where: &Field) -> Option<Interactable> {
-        let mut items = self.items(r#where);
+    fn chosen_item(&self, r#where: &Field) -> Result<Option<Interactable>> {
+        let mut items = self.items(r#where)?;
         if items.is_empty() {
-            return None;
+            return Ok(None);
         }
         let at = match &self.chosen {
             Some(chosen) => items
@@ -627,7 +647,7 @@ impl Navigator {
                 .unwrap_or(0),
             None => 0,
         };
-        Some(items.swap_remove(at))
+        Ok(Some(items.swap_remove(at)))
     }
 
     /// A hidden Pokémon the DexNav has just found, `item` of the list `where` holds: by its
@@ -645,7 +665,11 @@ impl Navigator {
             return Ok(());
         }
         let key = item.key();
-        if !self.items(r#where).iter().any(|listed| listed.key() == key) {
+        if !self
+            .items(r#where)?
+            .iter()
+            .any(|listed| listed.key() == key)
+        {
             self.category = self
                 .categories
                 .iter()
@@ -665,7 +689,7 @@ impl Navigator {
     /// Nothing chosen is nothing to rename, and no dialog opens: that is the common case for a
     /// mistyped key, and it must not leave a window in front of the game.
     fn rename(&mut self, r#where: &Field) -> Result<()> {
-        let Some(item) = self.chosen_item(r#where) else {
+        let Some(item) = self.chosen_item(r#where)? else {
             self.say("nothing to rename");
             return Ok(());
         };

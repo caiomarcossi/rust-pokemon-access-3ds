@@ -68,6 +68,22 @@ pub const PATHFIND_HM: &str = "pathfind with HMs";
 /// off", or "no path" when there was none (the user, 2026-10-10).
 pub const PATHFIND_OFF: &str = "pathfind off";
 
+/// Leave out of the list, in either mode, everything Shift and P finds no way to from where the
+/// player stands, or put it back: "unreachable hidden", "unreachable shown". Off whenever pa3ds
+/// starts, as the mode is list mode (Orion, 2026-10-11): sometimes the player wants to know what is
+/// there and out of reach, and sometimes, in Team Magma's Hideout with every teleporter of the place
+/// listed, not.
+pub const HIDE_UNREACHABLE: &str = "hide unreachable";
+
+pub const PATH_PREVIOUS: &str = "path previous";
+
+/// Choose which way P goes to the chosen thing, where there is more than one: for a big boulder,
+/// the side it is pushed from, among the ways it can be pushed, "push east, 2 of 2"; P then says
+/// "to push east: 3 west, 2 north". With none chosen P takes the nearest. Comma and period in every
+/// mode (Orion, 2026-10-11): direction mode has the compass where list mode has I and O, and the
+/// brackets stay the category everywhere.
+pub const PATH_NEXT: &str = "path next";
+
 pub const OUR_SIDE: &str = "our side";
 
 /// Say a side of the battle again, as it was last said: "Blaze♂ L10 20/30", "Zigzagoon♂ L2 50%".
@@ -142,6 +158,9 @@ pub static DEFAULT_BINDINGS: LazyLock<Bindings> = LazyLock::new(|| {
                 ("p", PATHFIND),
                 ("shift+p", PATHFIND_HM),
                 ("alt+p", PATHFIND_OFF),
+                ("ctrl+p", HIDE_UNREACHABLE),
+                (",", PATH_PREVIOUS),
+                (".", PATH_NEXT),
                 ("r", OUR_SIDE),
                 ("shift+r", ENEMY_SIDE),
                 ("c", COORDINATES),
@@ -162,6 +181,9 @@ pub static DEFAULT_BINDINGS: LazyLock<Bindings> = LazyLock::new(|| {
                 ("p", PATHFIND),
                 ("shift+p", PATHFIND_HM),
                 ("alt+p", PATHFIND_OFF),
+                ("ctrl+p", HIDE_UNREACHABLE),
+                (",", PATH_PREVIOUS),
+                (".", PATH_NEXT),
                 ("r", OUR_SIDE),
                 ("shift+r", ENEMY_SIDE),
                 ("c", COORDINATES),
@@ -184,6 +206,9 @@ pub static DEFAULT_BINDINGS: LazyLock<Bindings> = LazyLock::new(|| {
                 ("p", PATHFIND),
                 ("shift+p", PATHFIND_HM),
                 ("alt+p", PATHFIND_OFF),
+                ("ctrl+p", HIDE_UNREACHABLE),
+                (",", PATH_PREVIOUS),
+                (".", PATH_NEXT),
                 ("r", OUR_SIDE),
                 ("shift+r", ENEMY_SIDE),
                 ("c", COORDINATES),

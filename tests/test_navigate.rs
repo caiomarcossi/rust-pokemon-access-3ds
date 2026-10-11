@@ -1406,6 +1406,47 @@ fn hedge() -> Vec<Cell> {
     (80..120).filter(|&x| x != 95).map(|x| (x, 177)).collect()
 }
 
+/// Walls round the cells from (91, 178) to (100, 185), but for a gap two cells wide at (95,
+/// 177) for a big boulder and, where asked, a gate.
+fn pen(gate: Option<Cell>) -> Vec<Cell> {
+    let walls = (90..102).flat_map(|x| [(x, 177), (x, 186)]).chain(
+        [90, 101]
+            .into_iter()
+            .flat_map(|x| (178..186).map(move |z| (x, z))),
+    );
+    walls
+        .filter(|&cell| cell != (95, 177) && cell != (96, 177) && Some(cell) != gate)
+        .collect()
+}
+
+/// The street with a big boulder in the way into a pen, and an item ball inside it.
+fn pen_field() -> Field {
+    let here = street();
+    let mut interactables = here.interactables.clone();
+    interactables.push(Interactable {
+        size: (2, 2),
+        code: BIG_BOULDER,
+        source: 0x08D1F458,
+        move_model: true,
+        ..Interactable::new("signs", "object", (95, 177))
+    });
+    interactables.push(Interactable {
+        source: place_source(FURNITURE_SOURCE, 1).unwrap(),
+        ..Interactable::new("items", "item ball", (95, 182))
+    });
+    Field {
+        interactables,
+        ..Field::new(here.zone, here.cell)
+    }
+}
+
+/// The house front and these walls.
+fn walled(more: Vec<Cell>) -> Vec<Cell> {
+    let mut walls = house_front();
+    walls.extend(more);
+    walls
+}
+
 /// Route 104's bush stands in the way to an item ball (omega_ruby_bush.ctm), Rusturf
 /// Tunnel's rock in the way on (omega_ruby_smash.ctm, spike 137). P walks round either as round
 /// anything standing; Shift and P clears it, and says the move as the player reaches it. One
@@ -1457,41 +1498,70 @@ fn test_p_goes_round_a_bush_or_a_rock_and_shift_p_clears_it() {
 }
 
 /// Fiery Path's boulder fills a path two cells wide (omega_ruby_strength-boulders.ctm): P
-/// walks round it, and Shift and P goes through both its rows, said with Strength.
+/// walks round it, and Shift and P goes through both its rows, said with Strength, where it is
+/// the one way in.
 #[test]
 fn test_p_goes_round_a_big_boulder_and_shift_p_pushes_through_all_of_it() {
-    let here = street();
-    let mut interactables = here.interactables.clone();
-    interactables.push(Interactable {
-        size: (2, 2),
-        code: BIG_BOULDER,
-        source: 0x08D1F458,
-        move_model: true,
-        ..Interactable::new("signs", "object", (95, 177))
-    });
-    let blocked = Field {
-        interactables,
-        ..Field::new(here.zone, here.cell)
-    };
-    let hedge: Vec<Cell> = (80..120)
-        .filter(|x| ![95, 96].contains(x))
-        .map(|x| (x, 177))
-        .collect();
-    let mut walls = house_front();
-    walls.extend(hedge);
     let mut rig = navigator(Want {
-        blocked: walls,
-        ..on(blocked)
+        blocked: walled(pen(None)),
+        ..on(pen_field())
     });
     rig.press(CATEGORY_PREVIOUS);
     rig.press(PATHFIND);
+    assert_eq!(
+        last(&rig.backend),
+        "5 east, 1 south, then can't continue, object in the way"
+    );
+    rig.press_key("shift+p");
+    assert_eq!(
+        last(&rig.backend),
+        "5 east, 1 south, Strength 2 south, 4 south"
+    );
+}
+
+/// Team Magma's Hideout listed every teleporter of the place, most in rooms the player was not
+/// in (Orion, 2026-10-11). Walled into the pen, the item ball and the person are hidden, and the
+/// boulder in its wall is not; pressed again, all are listed, as they are when pa3ds starts.
+#[test]
+fn test_ctrl_p_hides_what_shift_p_finds_no_way_to_and_shows_it_again() {
+    let mut walls = pen(None);
+    walls.extend([(95, 177), (96, 177)]);
+    let mut rig = navigator(Want {
+        blocked: walled(walls),
+        ..on(pen_field())
+    });
+    rig.press_key("ctrl+p");
+    rig.press(CATEGORY_PREVIOUS);
+    rig.press_key("ctrl+p");
+    rig.press(CATEGORY_NEXT);
+    assert_eq!(
+        said(&rig.backend),
+        [
+            "unreachable hidden",
+            "signs, 1",
+            "unreachable shown",
+            "people, 1"
+        ]
+    );
+}
+
+/// Seafloor Cavern (movie36): a boulder pushed the wrong way can shut the way it was pushed to
+/// open, so Shift and P goes round one however far that is (Orion, 2026-10-11).
+#[test]
+fn test_shift_p_goes_round_a_big_boulder_wherever_a_way_round_lies() {
+    let mut rig = navigator(Want {
+        blocked: walled(pen(Some((95, 186)))),
+        ..on(pen_field())
+    });
+    rig.press(CATEGORY_PREVIOUS);
+    rig.press_key("shift+p");
+    assert!(!last(&rig.backend).contains("Strength"));
     let way = path_of(&guidance(&rig));
+    assert_eq!(way.last(), Some(&(95, 182)));
     assert!(
         !way.iter()
             .any(|cell| [(95, 177), (96, 177), (95, 178), (96, 178)].contains(cell))
     );
-    rig.press_key("shift+p");
-    assert!(last(&rig.backend).contains("Strength 2 south"));
 }
 
 /// Three of Rusturf Tunnel's rocks have a sign in their cell and a script of their own, and
@@ -2149,9 +2219,16 @@ fn test_the_users_keys_map_to_the_actions() {
             "{mode}"
         );
     }
-    let mut expected: HashSet<String> = "iojlk[];'prc".chars().map(|key| key.to_string()).collect();
-    expected
-        .extend(["shift+k", "shift+j", "shift+p", "alt+p", "shift+r", "enter"].map(str::to_string));
+    let mut expected: HashSet<String> = "iojlk[];'prc,."
+        .chars()
+        .map(|key| key.to_string())
+        .collect();
+    expected.extend(
+        [
+            "shift+k", "shift+j", "shift+p", "alt+p", "ctrl+p", "shift+r", "enter",
+        ]
+        .map(str::to_string),
+    );
     assert_eq!(bound_keys(&DEFAULT_BINDINGS), expected);
     assert_eq!(
         ["j", "l", "i", "o", "k", "enter"].map(|key| bound(TOUCH, key)),
