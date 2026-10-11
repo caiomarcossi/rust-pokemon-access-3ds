@@ -48,16 +48,51 @@ to install.
   distance ("door, 1 of 3, 3 east 2 north"), and the way to any of them on foot. An exit says
   what it is: a door, stairs up or down, a passage between rooms with no floor between them, a
   ladder up or down, the name of the building behind it, or in a hideout a teleporter and where
-  it comes out ("teleporter, 3 east, out at 17 east 8 south").
+  it comes out ("teleporter, 3 east, out at 17 east 8 south"). Under signs, a big boulder
+  Strength pushes is listed with the holes it can be pushed into ("hole, 2 east 3 south"): push
+  a boulder into a hole and both leave the list, and the filled hole is floor you can walk over.
+  A boulder says the ways it can be pushed from where it stands now, and which push drops it
+  into a hole ("big boulder, 2 east, moveable north into a hole or east"), or "immoveable" when
+  a wall, another boulder or somebody is in the way of every push, or there is nowhere to push
+  it from. A push moves it one cell, and only while you hold the way for a moment.
 - **The touch screen**: the buttons on the bottom screen, which touch mode can tap for you,
-  and the PokéNav's apps, the BuzzNav's shows among them.
+  and the PokéNav's apps, the BuzzNav's shows among them. On the PlayNav's pages the arrows in
+  the top corners are "previous" and "next", the round button that opens an app is "start", and
+  on the Pokémon-Amie page the Pokémon you play with is said by its name ("Sceptile"). Tap it
+  for its menu, PLAY, DECORATE and SWITCH; "close" shuts the menu again. In Pokémon-Amie
+  itself touch mode offers "stroke Sceptile": the tap key strokes your Pokémon, back and forth
+  across the middle of the screen. This is an experiment.
+- **Super Training**: on its PlayNav page your party's Pokémon are said by name; tap one to
+  train it. "Super Training" in the lower left opens the regimens, and "training bags" in the
+  lower right opens your bags: each bag is said by its name ("Strength Bag"), and tapping one
+  says what it does, with "Use" and "Back". A bag in use hangs beside your Pokémon and is said by
+  its name too: tap it to hit it. On the regimen menu each regimen is said by its title ("Hone
+  Sp. Atk with Magnemite!"): tap it once to hear what it trains and its target time, and again
+  to start it; "left" and "right" turn the menu's pages. Tapping the screen moves the messages
+  after a regimen on. In a regimen, touch mode offers each goal the Balloon Bot puts up, "goal",
+  or "red goal" for a bonus goal that takes many hits, and the tap key shoots at it: the first
+  press says the goal and plays its tone, each press after that shoots, wherever the goal has
+  moved to. A goal you hit goes away, and the next press says the next one. A round says "start"
+  and "clear" or "game over", your score as it changes ("177 of 300"), and the time left at each
+  half minute and at 10 seconds ("2:00 left"). When the bot fires at you, pa3ds says "shot
+  coming" at once, about a second before the ball arrives: move your Pokémon with the Circle Pad
+  or raise a shield with L, as the game's own instructions say.
 - **The DexNav**: the area's Pokémon in touch mode, "caught" after each one you have caught,
   and the crown for an area whose Pokémon you have caught ("gold crown");
   searching; and a hidden Pokémon's details, its Potential's stars and the marks for a higher
   level, an egg move or the hidden ability among them ("Potential 2 stars", "First Move Helping
   Hand egg move").
 - **The Dowsing Machine's lights** ("dowsing green"), **soaring** on Latios or Latias, and
-  decorating a Secret Base.
+  decorating a Secret Base. A base with a second floor lists its "crumbled cliff" among the
+  exits, the place the Stairs decoration goes to climb up, until the Stairs stand there, and the
+  decorating cursor says "crumbled cliff" on it. A base with a hole in its floor lists the "hole"
+  the same way, until a Solid Board covers it. Once the Stairs or a Solid Board are set down,
+  P's path goes up the Stairs or across the board. While you hold a decoration, the cursor says
+  first whether it can be set down there, as the game draws its squares green or red:
+  "placeable, crumbled cliff, 4 east 3 north" or "not placeable, wall, 6 east 3 north". The
+  decorations in your base are listed among the signs by their names, "Stairs", "Welcome Mat",
+  all but the Invisible Doll, which the game hides. Decorations of the same name that touch, like
+  the line of Welcome Mats, are one thing.
 
 pa3ds says only what the game shows. Hidden information such as IVs or the enemy's exact HP is
 not read.
@@ -134,11 +169,15 @@ The map's list has three **modes**. The apostrophe steps through them.
 | `'` (apostrophe) | Next mode: list mode, direction mode, touch mode. |
 | `[` and `]` | Previous and next category of the map's list. |
 | `P` | Find the way on foot to the chosen thing, and guide you along it turn by turn. |
-| `Shift+P` | The same, but also using Surf, Cut, Rock Smash, Strength, Waterfall and the bikes. |
+| `Shift+P` | The same, but also using Surf, Cut, Rock Smash, Strength, Waterfall and the bikes. It goes round a big boulder wherever there is a way round, however long, and pushes one only where there is none, since a boulder pushed the wrong way can block the way. |
+| `Alt+P` | Stop guiding: the way is dropped and nothing more of it is said. "path off", or "no path" when there was none. |
+| `Ctrl+P` | Leave out of the list everything `Shift+P` finds no way to from where you stand ("unreachable hidden"), or put it back ("unreachable shown"). Off each time pa3ds starts. Ctrl+P is Azahar's key to save a screenshot, which pa3ds takes while the game is in front. |
+| `,` and `.` (comma and period) | Previous and next way to the chosen thing, where there is more than one: for a big boulder, which way to push it ("push east into a hole, 2 of 2"). `P` then goes to the side you push it from that way, round the boulder if need be: "to push east: 3 west, 2 north". Without a choice, `P` goes to the nearest side it can be pushed from. Anything else has "one way to it". |
 | `R` | Say your side of the battle again. In a contest's appeals, your place ("Raiden & Pikachu first place"). |
 | `Shift+R` | Say the enemy's side of the battle again. In a contest's appeals, everyone else's place, in order. Each entrant is named from the first round's appeals on, or once you have moved the cursor onto their portrait. |
 | `Shift+K` | Give the chosen thing a name of your own. |
 | `Shift+J` | Give whoever spoke last a name of your own. |
+| `C` | Say the square you are standing on, as two numbers: "x 381, z 117". x grows going east and z going south. |
 
 **List mode** walks the whole list, nearest first.
 
@@ -168,6 +207,15 @@ The map's list has three **modes**. The apostrophe steps through them.
 
 The categories are all, exits, signs, people, items, berries, ash, bike and pokémon; while
 soaring, towns, routes, landmarks and mirage spots. A category with nothing in it is skipped.
+
+**Lining up.** The D-pad walks you from the centre of one cell to the centre of the next. The
+circle pad lets you stop anywhere, partway between cells, and the game refuses a step past a
+wall's corner to a player standing off the centre on the corner's side: a gap one cell wide
+between two pillars can stay shut however often you walk into it. So where that would stop you,
+`P` says which way to step first, "a little west, then 2 north", and while it guides you, stopping
+off the line before such a step gets "a little west" on its own. Sneak that way, the circle pad
+tilted gently, or your walking modifier held and the key tapped, and pa3ds says "lined up" the
+moment you are. Off the line in open ground nothing is said, since nothing stops you there.
 
 On a fresh Azahar, `I`, `J`, `K` and `L` are the C-stick and `O` and `P` are the debug and GPIO
 buttons, none of which the Pokémon games use. When one of pa3ds's keys is on an Azahar button,
@@ -208,6 +256,7 @@ overwritten. Each setting has a comment in the file saying what it does.
 | `position_first` | `true` | Say the place in the list before the way to it. `false` says "door, 1 north, 1 of 3". |
 | `turn_by_turn` | `true` | Say each turn of the way P found as you reach it. `false` says the way once, and P again says it from where you stand. |
 | `guide_to_hidden` | `true` | When a DexNav search finds the Pokémon you searched for, or the DexNav finds one by itself while it is open and you are in touch mode, find the way to it as P does, and keep P on it. One found while the AreaNav is open is left alone. |
+| `track_boulders` | `false` | Say how far a big boulder has moved from where its room starts it, so you know which you have pushed: "big boulder, 2 east, moved 1 north". Nothing is added for one that has not moved. Off by default, since the game shows where each boulder is but never where it started. |
 | **`[pa3ds.extras]`** | | Extras: see [below](#extras). |
 | `conditions` | `false` | Say a Pokémon's contest conditions as numbers on its summary and in the Pokéblock Case: "Conditions Coolness 116 Beauty 70 Cuteness 70 Cleverness 70 Toughness 70". |
 | **`[azahar]`** | | Azahar's own settings: see [above](#azahar-settings-pa3ds-needs). |
@@ -246,8 +295,17 @@ The game never names some things: most people on the map, signs, doors. pa3ds gi
 a name of its own. You can give anything a name with `Shift+K`, or name whoever spoke last with
 `Shift+J`: a box opens, type the name and press Enter. pa3ds says the new name back.
 
+Many people share a look: every Youngster is drawn alike, and so is every big boulder. When you
+name one of them, the box has an **Only this one** checkbox, a Tab away from the name and ticked
+as the box opens. Ticked, the name is that one's alone, the Youngster on Route 102 who is Calvin,
+or one boulder of eight, and it stays with them wherever they walk or are pushed. Unticked, it
+names everyone drawn alike, everywhere in the game. A name given to one alone wins over one given
+to everyone, and clearing it gives that one back to everyone's.
+
 Your names are saved in `user\names\<language>\`, one file per game. Your names always win over
-pa3ds's. To share them, send the file.
+pa3ds's. To share them, send the file. A place is written map, kind and number, as in
+`"0x10:warp:3" = "Devon Corporation"`: Rustboro City's door number 3. A file written before
+2026-10-11 is rewritten that way the next time its game is played.
 
 ## Your files
 
@@ -276,7 +334,12 @@ were doing.
   `%APPDATA%\Azahar`. With a portable Azahar, set the settings in
   [the table above](#azahar-settings-pa3ds-needs) yourself, in `user\config\qt-config.ini` beside
   `azahar.exe`, while Azahar is closed.
-- **Some touch-screen apps are not fully read yet**: the PokéNav's DexNav and PlayNav.
+- **Some touch-screen apps are not fully read yet**: the PokéNav's DexNav, and the PlayNav's apps
+  once they open: Pokémon-Amie, Super Training and the PSS. In Pokémon-Amie the Pokémon has
+  not been seen to come when stroked, and its Poké Puffs, minigames and way out have not been
+  found. In Super Training, a regimen's description reads its two columns run together, and
+  a red bonus goal has not been met yet. Turning a PlayNav page with its
+  arrows says nothing of the page it turns to.
 - **X, Y, Sun and Moon** are read less completely than Omega Ruby and Alpha Sapphire.
 
 ## For developers
