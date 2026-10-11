@@ -245,7 +245,7 @@ fn test_while_a_list_window_is_up_only_its_buttons_are_offered() {
 }
 
 /// The PlayNav's pages and the sub-screen tutorial's arrows both draw `button.bclim`, a ◀
-/// mirrored by its material on the right; the same texture lower down is a plate (spike A).
+/// mirrored by its material on the right; the same texture lower down is a plate (spike 198).
 #[test]
 fn test_a_bare_button_in_the_top_bars_corners_is_the_page_arrows() {
     let memory = FakeMemory::new();
@@ -305,7 +305,7 @@ fn test_a_bare_button_in_the_top_bars_corners_is_the_page_arrows() {
 }
 
 /// The Pokémon-Amie page's PLAY is a picture of its word inside the touch area behind its
-/// menu, which closes it: the backdrop took PLAY's word, and PLAY was left out (spike A).
+/// menu, which closes it: the backdrop took PLAY's word, and PLAY was left out (spike 198).
 #[test]
 fn test_a_button_the_game_names_inside_the_menus_backdrop_is_its_own() {
     let memory = FakeMemory::new();
@@ -493,7 +493,7 @@ fn test_a_touch_area_holding_no_such_picture_is_not_named_by_one_lying_in_it() {
 }
 
 /// Pokémon-Amie's Pokémon is stroked, not tapped: its target's key slides along the path
-/// (spike C).
+/// (spike 200).
 #[test]
 fn test_a_stroke_slides_along_its_path_where_a_tap_would_press() {
     let stroke = Target {

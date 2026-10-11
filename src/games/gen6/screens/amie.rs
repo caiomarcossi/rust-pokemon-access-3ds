@@ -1,4 +1,4 @@
-//! The PlayNav's Pokémon-Amie page, whose Pokémon is a picture named by its species (spike A).
+//! The PlayNav's Pokémon-Amie page, whose Pokémon is a picture named by its species (spike 198).
 //!
 //! After the tutorial the page shows one Pokémon of the player's walking in its ring, a 40 by 30
 //! touch area on a picture of its own, and the game names neither: touch mode said "touch: 2 of
@@ -21,7 +21,7 @@
 //!
 //! PLAY opens Amie itself, `kawaigari::MainProc`: the Pokémon's model on the bottom screen and no
 //! button drawn, its Poké Puffs, minigames and way back hidden (omega_ruby_bottom-screen4). Amie
-//! strokes the Pokémon by a slide over it, and shows its hand where the stylus is (spike C, live in
+//! strokes the Pokémon by a slide over it, and shows its hand where the stylus is (spike 200, live in
 //! the rig). So while it runs touch mode offers the Pokémon, "stroke Sceptile", whose key slides
 //! back and forth across the middle of the screen, where Amie stands the Pokémon: an exploration
 //! past ADR-0009's tap, which Khai asked for (2026-10-08).
@@ -42,7 +42,7 @@ pub const CLASS: &str = "N5field9subscreen9kawaigari12FM_KawaigariE";
 /// Pokémon-Amie itself, the app PLAY starts.
 pub const AMIE: &str = "N9kawaigari8MainProcE";
 /// Back and forth across the middle of the screen, over the Pokémon's body: Sceptile stood from
-/// about 110 to 200 across and 60 to 170 down, and the hand followed every pass (spike C).
+/// about 110 to 200 across and 60 to 170 down, and the hand followed every pass (spike 200).
 pub const STROKE: [(i64, i64); 6] = [
     (110, 110),
     (210, 110),

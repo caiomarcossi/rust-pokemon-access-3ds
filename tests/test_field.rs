@@ -18,9 +18,9 @@ use crate::core::rtti::ClassNames;
 use crate::games::common::field::chunk::{BLOCKED, CHUNK, COUNTER, Chunk, Floor, KIND_SHIFT};
 use crate::games::common::field::ground::{BLOCK, Ground, NO_ZONE, Of, RotatingDoor};
 use crate::games::common::field::things::{
-    ASH_SOURCE, BERRY_SOURCE, EDGE_SOURCE, FURNITURE_SOURCE, Field, Interactable,
-    SECRET_BASE_SOURCE, TILE_SOURCE, WARP_SOURCE, describe, place_source, source_kind,
-    source_number,
+    ASH_SOURCE, BERRY_SOURCE, DECORATION_SOURCE, EDGE_SOURCE, FURNITURE_SOURCE, Field,
+    Interactable, SECRET_BASE_SOURCE, TILE_SOURCE, WARP_SOURCE, describe, place_source,
+    source_kind, source_number,
 };
 use crate::games::gen6::field::features::SecretBaseReader;
 use crate::games::gen6::field::features::{Feature, HiddenReader, Tracked, ZoneAt};
@@ -3557,6 +3557,9 @@ pub(crate) struct Bases {
     solid: IndexSet<(i64, i64)>,
     /// The cursor's cell, or None while it is not shown.
     pub at: StdCell<Option<(i64, i64)>>,
+    /// Whether the item held can be set down at the cursor, None for nothing held.
+    pub fits: StdCell<Option<bool>>,
+    placed: Vec<(i64, Vec<(i64, i64)>)>,
 }
 
 impl Bases {
@@ -3566,12 +3569,25 @@ impl Bases {
         standing: &[((i64, i64), Vec<i64>)],
         solid: &[(i64, i64)],
     ) -> Rc<Bases> {
+        Bases::placing(spots, own, standing, solid, &[])
+    }
+
+    /// `Bases(spots, own, standing, solid, placed)`.
+    fn placing(
+        spots: &[(i64, (i64, i64))],
+        own: Option<i64>,
+        standing: &[((i64, i64), Vec<i64>)],
+        solid: &[(i64, i64)],
+        placed: &[(i64, Vec<(i64, i64)>)],
+    ) -> Rc<Bases> {
         Rc::new(Bases {
             spots: spots.to_vec(),
             own,
             standing: standing.iter().cloned().collect(),
             solid: solid.iter().copied().collect(),
             at: StdCell::new(None),
+            fits: StdCell::new(None),
+            placed: placed.to_vec(),
         })
     }
 }
@@ -3603,8 +3619,8 @@ impl SecretBaseReader for Bases {
         Ok(true)
     }
 
-    fn cursor(&self) -> Result<Option<(i64, i64)>> {
-        Ok(self.at.get())
+    fn cursor(&self) -> Result<Option<((i64, i64), Option<bool>)>> {
+        Ok(self.at.get().map(|at| (at, self.fits.get())))
     }
 
     fn standing(&self, cell: (i64, i64)) -> Result<Vec<i64>> {
@@ -3613,6 +3629,10 @@ impl SecretBaseReader for Bases {
 
     fn solid(&self) -> Result<IndexSet<(i64, i64)>> {
         Ok(self.solid.clone())
+    }
+
+    fn placed(&self) -> Result<Vec<(i64, Vec<(i64, i64)>)>> {
+        Ok(self.placed.clone())
     }
 }
 
@@ -3801,6 +3821,274 @@ fn test_the_decorating_cursor_says_what_stands_under_it() -> Result<()> {
     Ok(())
 }
 
+/// A crumbled cliff's cell as the ROM has it: kind 0xfd over the blocked bit.
+const CLIFF_WORD: i64 = 0xFD0001A1;
+
+fn cliff_cells() -> Vec<(i64, i64)> {
+    (104..107)
+        .flat_map(|x| (166..168).map(move |z| (x, z)))
+        .collect()
+}
+
+fn tiles(cells: &[(i64, i64)], word: i64) -> Vec<((i64, i64), i64)> {
+    cells.iter().map(|&cell| (cell, word)).collect()
+}
+
+fn bases_game(bases: Rc<Bases>) -> Game {
+    Game {
+        secret_bases: Some(given_bases(bases)),
+        ..game()
+    }
+}
+
+/// The base's listing said only "way out", "PC" and "flag", so nothing told the player where
+/// the Stairs go (omega_ruby_secret-base3.ctm). The ROM's 3 by 2 patch of kind 0xfd is now one
+/// exit over all six cells, and still no ground to walk on.
+#[test]
+fn test_a_bases_crumbled_cliff_is_listed_once_as_one_exit() -> Result<()> {
+    let mut town = Town::new();
+    town.block_tiles(
+        TOWN_BLOCK,
+        TOWN_CHUNK,
+        (80, 160),
+        &border(160),
+        &tiles(&cliff_cells(), CLIFF_WORD),
+    );
+    let r#where = town.r#where()?;
+    let cliffs: Vec<_> = r#where
+        .of("exits")
+        .into_iter()
+        .filter(|item| item.kind == "crumbled cliff")
+        .map(|item| (item.kind, item.cell, item.size))
+        .collect();
+    assert_eq!(cliffs, [("crumbled cliff".to_string(), (104, 166), (3, 2))]);
+    let ground = town.reader.ground(&r#where, None)?;
+    assert!(!ground.open((105, 167))? && ground.open((103, 167))?);
+    Ok(())
+}
+
+/// The cell table keeps kind 0xfd under the Stairs set down at (18, 17), and the cliff stayed
+/// in the exits as "crumbled cliff, 1 of 2" (omega_ruby_secret-base4.ctm). It leaves the list
+/// once a decoration stands on it.
+#[test]
+fn test_a_crumbled_cliff_the_stairs_stand_on_is_no_longer_listed() -> Result<()> {
+    let mut town = Town::new();
+    town.block_tiles(
+        TOWN_BLOCK,
+        TOWN_CHUNK,
+        (80, 160),
+        &border(160),
+        &tiles(&cliff_cells(), CLIFF_WORD),
+    );
+    let standing: Vec<_> = cliff_cells().into_iter().map(|c| (c, vec![10])).collect();
+    let bases = Bases::new(&[], None, &standing, &[]);
+    town.reader = field_reader(town.memory.clone(), Given::default(), bases_game(bases));
+    assert!(
+        town.r#where()?
+            .of("exits")
+            .iter()
+            .all(|item| item.kind != "crumbled cliff")
+    );
+    Ok(())
+}
+
+/// The cursor crossing the cliff's three cells said "wall" each time, in the session before
+/// omega_ruby_secret-base3.ctm. It says the cliff's name there, and still "wall" over a blocked
+/// cell of any other kind.
+#[test]
+fn test_the_decorating_cursor_says_crumbled_cliff_over_the_cliff_and_wall_over_a_wall() -> Result<()>
+{
+    let mut town = Town::new();
+    town.block_tiles(
+        TOWN_BLOCK,
+        TOWN_CHUNK,
+        (80, 160),
+        &[border(160), vec![(95, 170)]].concat(),
+        &tiles(&cliff_cells(), CLIFF_WORD),
+    );
+    let bases = Bases::new(&[], None, &[], &[]);
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given::default(),
+        bases_game(bases.clone()),
+    );
+    let r#where = town.r#where()?;
+    let mut said: Vec<((i64, i64), String)> = Vec::new();
+    for cell in [(105, 167), (95, 170)] {
+        bases.at.set(Some(cell));
+        let found = town
+            .reader
+            .decorating(&r#where)?
+            .expect("the cursor is shown");
+        said.push((cell, found.1));
+    }
+    assert_eq!(
+        said,
+        [
+            ((105, 167), "crumbled cliff".to_string()),
+            ((95, 170), "wall".to_string())
+        ]
+    );
+    Ok(())
+}
+
+const HOLE_CELLS: [(i64, i64); 2] = [(100, 172), (100, 173)];
+
+/// Granite Cave's base has two blocked cells of kind 0xfe at (20, 12) and (20, 13), the only
+/// way into its upper-left room (omega_ruby_secret-base6.ctm).
+#[test]
+fn test_a_bases_hole_is_an_exit_and_named_under_the_cursor_until_a_board_covers_it() -> Result<()> {
+    let mut town = Town::new();
+    town.block_tiles(
+        TOWN_BLOCK,
+        TOWN_CHUNK,
+        (80, 160),
+        &border(160),
+        &tiles(&HOLE_CELLS, 0xFE0001A1),
+    );
+    let bases = Bases::new(&[], None, &[], &[]);
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given::default(),
+        bases_game(bases.clone()),
+    );
+    let r#where = town.r#where()?;
+    let holes: Vec<_> = r#where
+        .of("exits")
+        .into_iter()
+        .filter(|item| item.kind == "hole")
+        .map(|item| (item.cell, item.size))
+        .collect();
+    assert_eq!(holes, [((100, 172), (1, 2))]);
+    bases.at.set(Some((100, 173)));
+    assert_eq!(
+        town.reader.decorating(&r#where)?,
+        Some(((100, 173), "hole".to_string()))
+    );
+    let standing: Vec<_> = HOLE_CELLS.iter().map(|&c| (c, vec![10])).collect();
+    let covered = Bases::new(&[], None, &standing, &[]);
+    town.reader = field_reader(town.memory.clone(), Given::default(), bases_game(covered));
+    assert!(
+        town.r#where()?
+            .of("exits")
+            .iter()
+            .all(|item| item.kind != "hole")
+    );
+    Ok(())
+}
+
+/// The player climbed the Stairs set down over the cliff, whose cells the cell table keeps
+/// blocked and the mapper has as a decoration, and P said "can't continue"
+/// (omega_ruby_secret-base4.ctm). A Solid Board over a hole is crossed the same way.
+#[test]
+fn test_p_walks_over_the_stairs_on_the_cliff_and_a_board_over_a_hole() -> Result<()> {
+    let mut town = Town::new();
+    let mut words = tiles(&cliff_cells(), CLIFF_WORD);
+    words.extend(tiles(&HOLE_CELLS, 0xFE0001A1));
+    town.block_tiles(TOWN_BLOCK, TOWN_CHUNK, (80, 160), &border(160), &words);
+    let covered: Vec<(i64, i64)> = [cliff_cells(), HOLE_CELLS.to_vec()].concat();
+    let standing: Vec<_> = covered.iter().map(|&c| (c, vec![10])).collect();
+    let solid: Vec<(i64, i64)> = [covered.clone(), vec![(95, 172)]].concat();
+    let bases = Bases::new(&[], None, &standing, &solid);
+    town.reader = field_reader(town.memory.clone(), Given::default(), bases_game(bases));
+    let ground = town.reader.ground(&town.r#where()?, None)?;
+    for &cell in &covered {
+        assert!(ground.open(cell)?, "{cell:?}");
+    }
+    assert!(!ground.open((95, 172))?);
+    Ok(())
+}
+
+/// Holding the Stairs, the game drew their squares green over (18, 17), where they were set
+/// down, and red elsewhere, and said "You cannot set it there!" only once A was pressed
+/// (omega_ruby_secret-base5.ctm).
+#[test]
+fn test_a_held_item_says_first_whether_it_can_be_placed_under_the_cursor() -> Result<()> {
+    let mut town = Town::new();
+    town.block_tiles(
+        TOWN_BLOCK,
+        TOWN_CHUNK,
+        (80, 160),
+        &border(160),
+        &tiles(&cliff_cells(), CLIFF_WORD),
+    );
+    let bases = Bases::new(&[], None, &[], &[]);
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given::default(),
+        bases_game(bases.clone()),
+    );
+    let r#where = town.r#where()?;
+    bases.at.set(Some((105, 167)));
+    let mut said = Vec::new();
+    for fits in [Some(true), Some(false), None] {
+        bases.fits.set(fits);
+        said.push(town.reader.decorating(&r#where)?);
+    }
+    assert_eq!(
+        said,
+        [
+            Some(((105, 167), "placeable, crumbled cliff".to_string())),
+            Some(((105, 167), "not placeable, crumbled cliff".to_string())),
+            Some(((105, 167), "crumbled cliff".to_string())),
+        ]
+    );
+    Ok(())
+}
+
+/// Set down, the Stairs and the desks were not in the list at all, and once listed, every
+/// base's five Welcome Mats in a line were five things (the user, 2026-10-10). Those of a name
+/// that touch are one; one apart is another.
+#[test]
+fn test_a_bases_decorations_are_signs_by_the_games_names_one_over_its_cells() -> Result<()> {
+    let mut town = Town::new();
+    let bases = Bases::placing(
+        &[],
+        None,
+        &[],
+        &[],
+        &[
+            (10, vec![(97, 172), (98, 172)]),
+            (0, vec![(95, 174)]),
+            (5, vec![(85, 165)]),
+            (1, vec![(90, 170)]),
+            (1, vec![(90, 171)]),
+            (2, vec![(90, 172)]),
+            (1, vec![(93, 170)]),
+        ],
+    );
+    let mut decorations = vec!["Small Desk".to_string()];
+    decorations.extend(std::iter::repeat_n("Welcome Mat".to_string(), 2));
+    decorations.extend(std::iter::repeat_n(String::new(), 7));
+    decorations.push("Small Chair".to_string());
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given {
+            decorations,
+            ..Given::default()
+        },
+        bases_game(bases),
+    );
+    let mut found: Vec<_> = town
+        .r#where()?
+        .of("signs")
+        .into_iter()
+        .filter(|item| source_kind(item.source) == DECORATION_SOURCE)
+        .map(|item| (item.kind, item.cell, item.size))
+        .collect();
+    found.sort();
+    assert_eq!(
+        found,
+        [
+            ("Small Chair".to_string(), (97, 172), (2, 1)),
+            ("Small Desk".to_string(), (95, 174), (1, 1)),
+            ("Welcome Mat".to_string(), (90, 170), (1, 3)),
+            ("Welcome Mat".to_string(), (93, 170), (1, 1)),
+        ]
+    );
+    Ok(())
+}
+
 /// P's way to the PC went through the Small Desk, whose cell the cell table has as open floor,
 /// and the player walked round it (omega_ruby_secret-base2.ctm).
 #[test]
@@ -3841,6 +4129,9 @@ fn test_a_bases_decorations_and_cursor_are_read_from_its_modules_objects() -> Re
     memory.u32(floor + (12 * 39 + 18) * secret_base::CELL, &[mat, 0]);
     memory.u32(desk, &[0x0084A344, 0]);
     memory.u32(mat, &[0x0084B064, 0xAD]);
+    let doll = 0x083E4000;
+    memory.u32(floor + (12 * 39 + 20) * secret_base::CELL, &[doll, 1]);
+    memory.u32(doll, &[0x0084C000, 0x50]);
     memory.u32(cursor, &[0x0084A3A4, 0, 1]);
     memory.write(cursor + secret_base::CURSOR_CELL, &le16(&[14, 13]));
     memory.u32(image, &[0x0084A3A4, 0xE59F1018, 0xE92D4010]);
@@ -3852,12 +4143,24 @@ fn test_a_bases_decorations_and_cursor_are_read_from_its_modules_objects() -> Re
             (cursor, secret_base::CURSOR_CLASS.to_string()),
             (image, secret_base::CURSOR_CLASS.to_string()),
             (mat, secret_base::WALKED_ON[0].to_string()),
+            (doll, secret_base::UNSEEN.to_string()),
         ]),
         partial: false,
     })?;
-    assert_eq!(bases.cursor()?, Some((14, 13)));
+    assert_eq!(bases.cursor()?, Some(((14, 13), None)));
     assert!(bases.standing((14, 13))? == [0] && bases.standing((18, 12))? == [0xAD]);
-    assert_eq!(bases.solid()?, IndexSet::from([(14, 13)]));
+    assert_eq!(
+        bases.solid()?.into_iter().collect::<HashSet<_>>(),
+        HashSet::from([(14, 13), (20, 12)])
+    );
+    assert_eq!(
+        bases.placed()?,
+        [(0xAD, vec![(18, 12)]), (0, vec![(14, 13)])]
+    );
+    memory.u32(cursor + 4, &[secret_base::FITS]);
+    assert_eq!(bases.cursor()?, Some(((14, 13), Some(true))));
+    memory.u32(cursor + 4, &[secret_base::REFUSED]);
+    assert_eq!(bases.cursor()?, Some(((14, 13), Some(false))));
     memory.u32(cursor + secret_base::CURSOR_SHOWN, &[0]);
     assert_eq!(bases.cursor()?, None);
     Ok(())

@@ -65,6 +65,10 @@ pub const STAIRS_SOURCE: i64 = 10 << 32;
 /// (`oras.field.sky`, spike 166). The game names them, so they take no name of ours.
 pub const APP_SOURCE: i64 = 11 << 32;
 
+/// A decoration set down in a Secret Base: `DECORATION_SOURCE | x << 12 | z`, its first cell, a
+/// kind of its own so a name given the crumbled cliff is not the Stairs' over it.
+pub const DECORATION_SOURCE: i64 = 12 << 32;
+
 /// A place's `source` from its kind's tag and its own number. The number must leave the tag's
 /// bits clear, and no u16 the game holds can reach them, so one that does is a new encoding
 /// written wider than the tag allows for: a programmer's error, refused here rather than keyed as

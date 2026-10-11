@@ -182,7 +182,7 @@ pub fn towns() -> &'static TownFacilities {
 /// (spike 171, and the BuzzNav's in movie24); the AreaNav's tabs, by the images their layout
 /// file gives them: Places 143, Pokémon 144, Trainers 145, Bases 146, Berries 147 (movie17); and the
 /// Pokémon-Amie page's menu, opened by tapping its Pokémon, images of their words: PLAY 77,
-/// DECORATE 78, SWITCH 79, in the middle, on the left and on the right (spike A,
+/// DECORATE 78, SWITCH 79, in the middle, on the left and on the right (spike 198,
 /// omega_ruby_bottom-screen2); and Super Training's page, whose lower-left button
 /// `spar_button.bclim` opens the regimen menu, by line 84, "Super Training"
 /// (omega_ruby_bottom-screen5).

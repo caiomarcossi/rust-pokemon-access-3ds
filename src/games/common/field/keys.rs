@@ -64,12 +64,20 @@ pub const PATHFIND: &str = "pathfind";
 /// "Waterfall 2 north", and down one; P keeps off it either way (the user, 2026-10-05, spike 170).
 pub const PATHFIND_HM: &str = "pathfind with HMs";
 
+/// Stop guiding: the way P or Shift and P found is dropped and nothing more of it is said, "path
+/// off", or "no path" when there was none (the user, 2026-10-10).
+pub const PATHFIND_OFF: &str = "pathfind off";
+
 pub const OUR_SIDE: &str = "our side";
 
 /// Say a side of the battle again, as it was last said: "Blaze♂ L10 20/30", "Zigzagoon♂ L2 50%".
 /// For when the line was missed, and while the HP box is off the screen, in the move list or the
 /// Bag (ADR-0015). "no battle" outside one.
 pub const ENEMY_SIDE: &str = "enemy side";
+
+/// Say the cell the player stands in, "x 381, z 117", as the zone's cells count it: for finding a
+/// place again, and for telling a spike where something is (the user, 2026-10-10).
+pub const COORDINATES: &str = "coordinates";
 
 /// What the keys file says above an action's key, where its name does not say it all. The
 /// horde's order is Orion's, heard by fainting the bottom left Zigzagoon and the fifth going to 0%
@@ -114,7 +122,8 @@ fn keys(pairs: &[(&str, &str)]) -> IndexMap<String, String> {
 /// battle again and shift and R the enemy's (2026-09-29). The apostrophe steps on to touch mode
 /// after direction mode (Orion, 2026-10-02; it was shift and T for a day), where J and L walk the
 /// bottom screen's buttons, I and O a row at a time, K says the one chosen again and Enter taps it.
-/// All of these are the player's to change in `<pa3ds>\user\keys.toml`.
+/// C says the player's cell and alt and P stops guiding (2026-10-10). All of these are the player's
+/// to change in `<pa3ds>\user\keys.toml`.
 pub static DEFAULT_BINDINGS: LazyLock<Bindings> = LazyLock::new(|| {
     IndexMap::from([
         (
@@ -132,8 +141,10 @@ pub static DEFAULT_BINDINGS: LazyLock<Bindings> = LazyLock::new(|| {
                 ("shift+j", RENAME_SPEAKER),
                 ("p", PATHFIND),
                 ("shift+p", PATHFIND_HM),
+                ("alt+p", PATHFIND_OFF),
                 ("r", OUR_SIDE),
                 ("shift+r", ENEMY_SIDE),
+                ("c", COORDINATES),
             ]),
         ),
         (
@@ -150,8 +161,10 @@ pub static DEFAULT_BINDINGS: LazyLock<Bindings> = LazyLock::new(|| {
                 ("shift+j", RENAME_SPEAKER),
                 ("p", PATHFIND),
                 ("shift+p", PATHFIND_HM),
+                ("alt+p", PATHFIND_OFF),
                 ("r", OUR_SIDE),
                 ("shift+r", ENEMY_SIDE),
+                ("c", COORDINATES),
             ]),
         ),
         (
@@ -170,8 +183,10 @@ pub static DEFAULT_BINDINGS: LazyLock<Bindings> = LazyLock::new(|| {
                 ("shift+j", RENAME_SPEAKER),
                 ("p", PATHFIND),
                 ("shift+p", PATHFIND_HM),
+                ("alt+p", PATHFIND_OFF),
                 ("r", OUR_SIDE),
                 ("shift+r", ENEMY_SIDE),
+                ("c", COORDINATES),
             ]),
         ),
     ])

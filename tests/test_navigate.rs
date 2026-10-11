@@ -18,9 +18,9 @@ use crate::games::common::field::ground::{
 };
 use crate::games::common::field::guide::{FieldSource, Guidance};
 use crate::games::common::field::keys::{
-    CATEGORY_NEXT, CATEGORY_PREVIOUS, DEFAULT_BINDINGS, DIRECTION, EAST, ENEMY_SIDE, ITEM_NEXT,
-    ITEM_PREVIOUS, ITEM_READ, LIST, MODE_TOGGLE, NORTH, OUR_SIDE, PATHFIND, PATHFIND_HM, RENAME,
-    RENAME_SPEAKER, SOUTH, TOUCH, WEST, bound_keys,
+    CATEGORY_NEXT, CATEGORY_PREVIOUS, COORDINATES, DEFAULT_BINDINGS, DIRECTION, EAST, ENEMY_SIDE,
+    ITEM_NEXT, ITEM_PREVIOUS, ITEM_READ, LIST, MODE_TOGGLE, NORTH, OUR_SIDE, PATHFIND, PATHFIND_HM,
+    PATHFIND_OFF, RENAME, RENAME_SPEAKER, SOUTH, TOUCH, WEST, bound_keys,
 };
 use crate::games::common::field::navigate::{LeadsTo, Navigator, Options, Sides, Street};
 use crate::games::common::field::things::{
@@ -587,6 +587,23 @@ fn test_off_the_map_there_is_no_map() {
 }
 
 #[test]
+fn test_c_says_the_players_cell_and_off_the_map_no_map() {
+    let mut rig = navigator(Want::default());
+    rig.press(COORDINATES);
+    walk_to(&rig, (94, 180));
+    rig.press(COORDINATES);
+    let mut off = navigator(Want {
+        r#where: None,
+        ..Want::default()
+    });
+    off.press(COORDINATES);
+    assert_eq!(
+        [said(&rig.backend), said(&off.backend)].concat(),
+        ["x 94, z 172", "x 94, z 180", "no map"]
+    );
+}
+
+#[test]
 fn test_a_key_answer_interrupts() {
     let mut rig = navigator(Want {
         exits: true,
@@ -1078,6 +1095,26 @@ fn test_p_goes_to_whatever_the_navigation_keys_are_on() {
     assert_eq!(
         said(&rig.backend),
         ["person, 1 of 1, 10 east 5 south", "10 east, 4 south"]
+    );
+}
+
+#[test]
+fn test_alt_p_drops_the_way_and_nothing_more_of_it_is_said() {
+    let mut rig = navigator(Want {
+        blocked: house_front(),
+        ..on(street())
+    });
+    rig.press(PATHFIND);
+    rig.press_key("alt+p");
+    assert!(!rig.nav.guiding());
+    step(
+        &mut rig,
+        &[(91, 175), (92, 175), (93, 175), (94, 175), (95, 175)],
+    );
+    rig.press_key("alt+p");
+    assert_eq!(
+        said(&rig.backend),
+        ["5 east, 2 north", "path off", "no path"]
     );
 }
 
@@ -2112,8 +2149,9 @@ fn test_the_users_keys_map_to_the_actions() {
             "{mode}"
         );
     }
-    let mut expected: HashSet<String> = "iojlk[];'pr".chars().map(|key| key.to_string()).collect();
-    expected.extend(["shift+k", "shift+j", "shift+p", "shift+r", "enter"].map(str::to_string));
+    let mut expected: HashSet<String> = "iojlk[];'prc".chars().map(|key| key.to_string()).collect();
+    expected
+        .extend(["shift+k", "shift+j", "shift+p", "alt+p", "shift+r", "enter"].map(str::to_string));
     assert_eq!(bound_keys(&DEFAULT_BINDINGS), expected);
     assert_eq!(
         ["j", "l", "i", "o", "k", "enter"].map(|key| bound(TOUCH, key)),
@@ -2135,6 +2173,10 @@ fn test_the_users_keys_map_to_the_actions() {
         assert_eq!(bound(mode, "shift+p"), PATHFIND_HM, "{mode}");
         assert_eq!(bound(mode, "r"), OUR_SIDE, "{mode}");
         assert_eq!(bound(mode, "shift+r"), ENEMY_SIDE, "{mode}");
+    }
+    for mode in [LIST, DIRECTION, TOUCH] {
+        assert_eq!(bound(mode, "c"), COORDINATES, "{mode}");
+        assert_eq!(bound(mode, "alt+p"), PATHFIND_OFF, "{mode}");
     }
 }
 

@@ -49,7 +49,7 @@ use crate::py::{self, Error, Log, Result};
 pub const WIDTH: i64 = 320;
 /// The touch screen in pixels; a layout places its panes from its middle, y up.
 pub const HEIGHT: i64 = 240;
-/// How far down the screen the top bar reaches, whose corners hold the page arrows (spike A).
+/// How far down the screen the top bar reaches, whose corners hold the page arrows (spike 198).
 pub const TOP_BAR: i64 = 30;
 /// The AreaNav's map, whose touch areas are places (spike 152).
 pub const MAP: &str = "poke_navi_map.bclim";
@@ -178,7 +178,7 @@ pub struct TouchTargets {
     /// Drag a press along a path of the touch screen over so many seconds.
     slide: Option<Slide>,
     /// Targets a screen offers that no touch area draws, each a stroke: Pokémon-Amie's
-    /// Pokémon, stroked by sliding over it (spike C).
+    /// Pokémon, stroked by sliding over it (spike 200).
     gestures: Option<Gestures>,
     chosen: Option<i64>,
     /// Touch area -> what it was last called (rule 4).
@@ -402,7 +402,7 @@ impl TouchTargets {
             let mut filled: Option<IndexMap<i64, String>> = None;
             // Touch area -> the words on screen in its button, or with none the game's word for
             // its picture: the Pokémon-Amie page's PLAY, DECORATE and SWITCH lie within the touch
-            // area behind its menu, and are buttons of their own (spike A). A button with words
+            // area behind its menu, and are buttons of their own (spike 198). A button with words
             // keeps to them: the Secret Base's DexNav panel, words and an app's icon, was offered
             // as well as the window it lies in.
             let mut spoken: IndexMap<i64, HashSet<String>> = IndexMap::new();
@@ -825,7 +825,7 @@ impl TouchTargets {
 /// Each touch area's button less the buttons of the touch areas inside it, whose pictures are
 /// their own: the Pokémon-Amie page's menu lies within the touch area behind it, which took
 /// PLAY's word and tapped the menu shut, and PLAY, adding no word, was left out as part of it
-/// (spike A, omega_ruby_bottom-screen2). Words on screen stay the outer button's too: taken from
+/// (spike 198, omega_ruby_bottom-screen2). Words on screen stay the outer button's too: taken from
 /// it, the Bag's strips and the Secret Base's panels were said by what was left, "/".
 fn own_parts(groups: &IndexMap<i64, Vec<i64>>) -> IndexMap<i64, Vec<i64>> {
     let sets: IndexMap<i64, HashSet<i64>> = groups

@@ -656,7 +656,7 @@ impl Round {
 
     fn say_score(&mut self, score: Option<(i64, i64)>) -> Vec<String> {
         // Read the same on two polls first: a hit from 0 to 177 showed its last digit a frame
-        // before the others, and was said "7 of 300" (spike C, live).
+        // before the others, and was said "7 of 300" (spike 200, live).
         let steady = score == self.reading;
         self.reading = score;
         let Some(score) = score.filter(|_| steady) else {

@@ -29,8 +29,9 @@
 //!                                       z * 39 + x'th, measured at (14, 12), (18, 12), (14, 13)
 //! a decoration's model                  +0x00 its class's vtable, +0x04 u32 the decoration
 //! field::secretBase::SecretBaseCursorModel
-//!                                       +0x04 u32 0 walking, 1 an item chosen, 2 an item held,
-//!                                       3 before the player first decorates
+//!                                       +0x04 u32 `MODES`: 0 walking, 1 an item held where it
+//!                                       fits, 2 where it does not, 3 before the player first
+//!                                       decorates
 //!                                       +0x08 u32 1 while it is shown
 //!                                       +0x30 u16 x and +0x32 u16 z, the cell it is on
 //! ```
@@ -162,6 +163,9 @@ pub const WALKED_ON: [&str; 5] = [
 ];
 // ponytail: solid by class, measured for the desk and Your Location alone; a mat found solid, or
 // a desk found walked through, moves its class in or out of WALKED_ON.
+/// The Invisible Doll's class: the game hides the doll until it is examined, so it is never
+/// listed (the user, 2026-10-10).
+pub const UNSEEN: &str = "N5field10secretBase37SecretBaseGoodsModelSuperKakureonDollE";
 
 /// The mapper's layers, said in this order: what stands on a desk, the floor, the wall.
 pub const LAYERS: [i64; 3] = [0x20, 0x1C, 0x18];
@@ -172,9 +176,13 @@ pub const ROW: i64 = 39;
 pub const CELL: i64 = 8;
 pub const CURSOR_SHOWN: i64 = 0x08;
 pub const CURSOR_CELL: i64 = 0x30;
-/// 0 walking the floor, 1 an item chosen, 2 an item held, and 3 as the base is built, before
-/// the player first decorates.
+/// 0 walking the floor, 1 an item held where it can be set down, the game drawing its squares
+/// green, 2 one held where it cannot, drawn red, and 3 as the base is built, before the player
+/// first decorates. 1 and 2 turn with the cursor's cell, in the same frame
+/// (omega_ruby_secret-base5.ctm).
 pub const MODES: i64 = 4;
+pub const FITS: i64 = 1;
+pub const REFUSED: i64 = 2;
 
 pub const SAVE_CLASS: &str = "N8savedata10SecretBaseE";
 /// Where `savedata::SecretBase` keeps the number of the player's own spot: 8, Route 111's tree,
@@ -247,12 +255,15 @@ pub struct SecretBases {
     cursor: Slot<Option<i64>>,
     /// The vtables of `WALKED_ON`'s classes, as the sweeps found them.
     walked_on: RefCell<HashSet<i64>>,
+    /// `UNSEEN`'s vtable, as the sweeps found it.
+    unseen: RefCell<HashSet<i64>>,
 }
 
 impl SecretBases {
     pub fn new(memory: Rc<dyn Memory>, image: &[u8]) -> Self {
         let mut classes = vec![SAVE_CLASS, MAPPER_CLASS, CURSOR_CLASS];
         classes.extend(WALKED_ON);
+        classes.push(UNSEEN);
         SecretBases {
             classes,
             inside: INSIDE,
@@ -263,6 +274,7 @@ impl SecretBases {
             mapper: Slot::new(None),
             cursor: Slot::new(None),
             walked_on: RefCell::new(HashSet::new()),
+            unseen: RefCell::new(HashSet::new()),
         }
     }
 
@@ -295,6 +307,10 @@ impl SecretBases {
             let vtable = u32(&self.memory.read(at, 4)?, 0)?;
             self.walked_on.borrow_mut().insert(vtable);
         }
+        for at in found.of(&[UNSEEN]) {
+            let vtable = u32(&self.memory.read(at, 4)?, 0)?;
+            self.unseen.borrow_mut().insert(vtable);
+        }
         Ok(())
     }
 
@@ -306,14 +322,22 @@ impl SecretBases {
         }
     }
 
-    /// The cell the decorating cursor is on, or None while it is not shown.
-    pub fn cursor(&self) -> Result<Option<Cell>> {
+    /// The cell the decorating cursor is on and whether the item held can be set down there,
+    /// None for nothing held; or None while it is not shown. One read, so the two agree.
+    pub fn cursor(&self) -> Result<Option<(Cell, Option<bool>)>> {
         let head = match self.cursor.get() {
             None => None,
             Some(cursor) => self.cursor_head(cursor)?,
         };
         Ok(match head {
-            Some((true, cell)) => Some(cell),
+            Some((true, cell, mode)) => Some((
+                cell,
+                match mode {
+                    FITS => Some(true),
+                    REFUSED => Some(false),
+                    _ => None,
+                },
+            )),
             _ => None,
         })
     }
@@ -363,6 +387,42 @@ impl SecretBases {
         Ok(out)
     }
 
+    /// Each decoration standing in the base, by number, with its cells: one a model, however
+    /// many cells and layers it covers. The Invisible Doll is left out (`UNSEEN`).
+    pub fn placed(&self) -> Result<Vec<(i64, Vec<Cell>)>> {
+        let layers = match self.mapper.get() {
+            None => None,
+            Some(mapper) => self.layers(mapper)?,
+        };
+        let Some(layers) = layers.filter(|layers| !layers.is_empty()) else {
+            return Ok(Vec::new());
+        };
+        let mut models: IndexMap<i64, Vec<Cell>> = IndexMap::new();
+        for offset in LAYERS {
+            let grid = self.memory.read(layers[&offset], GRID * GRID * CELL)?;
+            for z in 0..GRID {
+                for x in 0..GRID {
+                    let model = u32(&grid, (z * ROW + x) * CELL)?;
+                    if within(HEAP_SPAN, model) {
+                        models.entry(model).or_default().push((x, z));
+                    }
+                }
+            }
+        }
+        let mut heads: IndexMap<i64, Vec<u8>> = IndexMap::new();
+        for &model in models.keys() {
+            heads.insert(model, self.memory.read(model, 8)?);
+        }
+        let mut out = Vec::new();
+        for (model, cells) in models {
+            let head = &heads[&model];
+            if !self.unseen.borrow().contains(&u32(head, 0)?) {
+                out.push((u32(head, 4)?, cells));
+            }
+        }
+        Ok(out)
+    }
+
     /// Where each layer's cells start, or None where `mapper` is not a mapper's shape.
     fn layers(&self, mapper: i64) -> Result<Option<IndexMap<i64, i64>>> {
         let head = self
@@ -388,14 +448,19 @@ impl SecretBases {
         Ok(Some(out))
     }
 
-    /// Whether the cursor is shown and its cell, or None where `cursor` is not its shape.
-    fn cursor_head(&self, cursor: i64) -> Result<Option<(bool, Cell)>> {
+    /// Whether the cursor is shown, its cell and its mode, or None where `cursor` is not its
+    /// shape.
+    fn cursor_head(&self, cursor: i64) -> Result<Option<(bool, Cell, i64)>> {
         let head = self.memory.read(cursor, CURSOR_CELL + 4)?;
         let (x, z) = (u16(&head, CURSOR_CELL)?, u16(&head, CURSOR_CELL + 2)?);
         if u32(&head, 4)? >= MODES || u32(&head, CURSOR_SHOWN)? > 1 || x >= GRID || z >= GRID {
             return Ok(None);
         }
-        Ok(Some((u32(&head, CURSOR_SHOWN)? != 0, (x, z))))
+        Ok(Some((
+            u32(&head, CURSOR_SHOWN)? != 0,
+            (x, z),
+            u32(&head, 4)?,
+        )))
     }
 
     /// The number of the player's own spot, or None while the player has none or the save is
@@ -455,7 +520,7 @@ impl SecretBaseReader for SecretBases {
         SecretBases::furnished(self)
     }
 
-    fn cursor(&self) -> Result<Option<Cell>> {
+    fn cursor(&self) -> Result<Option<(Cell, Option<bool>)>> {
         SecretBases::cursor(self)
     }
 
@@ -465,6 +530,10 @@ impl SecretBaseReader for SecretBases {
 
     fn solid(&self) -> Result<IndexSet<Cell>> {
         SecretBases::solid(self)
+    }
+
+    fn placed(&self) -> Result<Vec<(i64, Vec<Cell>)>> {
+        SecretBases::placed(self)
     }
 }
 

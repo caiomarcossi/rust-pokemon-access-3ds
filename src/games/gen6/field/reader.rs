@@ -31,13 +31,15 @@ use crate::core::binary::{s16, u16, u32};
 use crate::core::discovery::{Found, HEAP_SPAN, within};
 use crate::core::memory::Memory;
 use crate::core::pathfind::{self, Cell};
-use crate::games::common::field::chunk::{BIKE_RAILS, BUMPY_SLOPES, Chunk, DIVE, FALLS, SLOPES};
+use crate::games::common::field::chunk::{
+    BIKE_RAILS, BLOCKED, BUMPY_SLOPES, CHUNK, Chunk, DIVE, FALLS, SLOPES,
+};
 use crate::games::common::field::ground::{
     self as common, BLOCK, CRACKED, Far, Grid, Ground, NO_ZONE, Of, walkable,
 };
 use crate::games::common::field::things::{
-    BIKE, BIKE_SOURCE, DIVE_SOURCE, EDGE_SOURCE, FURNITURE_SOURCE, Field, Interactable,
-    STAIRS_SOURCE, TILE_SOURCE, TRIGGER_SOURCE, WARP_SOURCE, place_source,
+    BIKE, BIKE_SOURCE, DECORATION_SOURCE, DIVE_SOURCE, EDGE_SOURCE, FURNITURE_SOURCE, Field,
+    Interactable, STAIRS_SOURCE, TILE_SOURCE, TRIGGER_SOURCE, WARP_SOURCE, place_source,
 };
 use crate::games::gen6::field::features::{
     DoorReader, Feature, HiddenReader, Hiding, IceReader, SecretBaseReader, Tracked,
@@ -125,6 +127,39 @@ pub const STAIRS: &str = "stairs";
 /// What a Secret Base's flag beside its PC is called: the game never names it where it stands.
 pub const FLAG: &str = "flag";
 
+/// The cell kind of a Secret Base's crumbled cliff, where the Stairs are placed to climb to the
+/// upper floor: always blocked, one patch of 3 cells by 2 a base (Route 116's, zone 0x1a7, at x 17
+/// to 19, z 17 to 18, its top row at the upper floor's height 36 and its bottom at 18, the lower
+/// floor 0). The 857 ORAS chunk files have it only in base shapes 11, 12, 21, 22, 23, 40 and 41,
+/// the 13 spots that need Stairs, and X's 1030 have none (spike 201).
+pub const CLIFF_TILE: i64 = 0xFD;
+
+/// What a Secret Base's crumbled cliff is called: the game names it only in the Stairs'
+/// description, "You can place this by a crumbled cliff to climb to a higher floor", never where
+/// it stands (omega_ruby_secret-base3.ctm).
+pub const CLIFF: &str = "crumbled cliff";
+
+/// The cell kind of a hole in a Secret Base's floor, crossed on a Solid Board: always blocked,
+/// two cells in Granite Cave's base (zone 0x1f0, at x 20, z 12 to 13), the only way into its
+/// upper-left room (omega_ruby_secret-base6.ctm). The ROM has it only in base shapes 42 to 50
+/// (spike 201).
+pub const HOLE_TILE: i64 = 0xFE;
+
+/// What a hole in a Secret Base's floor is called: the game names it only in the Solid Board's
+/// description, "You can place this over holes to cross over them", never where it is.
+pub const HOLE: &str = "hole";
+
+/// The cells of a Secret Base a decoration goes over, by kind, each with its name.
+pub const BASE_TILES: [(i64, &str); 2] = [(CLIFF_TILE, CLIFF), (HOLE_TILE, HOLE)];
+
+/// `BASE_TILES.get(kind)`.
+fn base_tile(kind: i64) -> Option<&'static str> {
+    BASE_TILES
+        .iter()
+        .find(|(tile, _)| *tile == kind)
+        .map(|(_, name)| *name)
+}
+
 /// What the decorating cursor is on where nothing stands and nothing is in the way: the game says
 /// nothing as it moves from one such cell to the next (the user's word, 2026-10-02).
 pub const BLANK: &str = "blank";
@@ -132,6 +167,13 @@ pub const BLANK: &str = "blank";
 /// What the decorating cursor is on where the cell table has the cell blocked and no decoration,
 /// PC or flag stands: the base's walls and the hedge round them.
 pub const WALL: &str = "wall";
+
+/// Said first while an item is held: whether it can be set down where the cursor is. The game
+/// draws its squares green or red and says "You cannot set it there!" only once A is pressed
+/// (omega_ruby_secret-base5.ctm).
+pub fn fit(fits: bool) -> &'static str {
+    if fits { "placeable" } else { "not placeable" }
+}
 
 pub const BASE_ASKS: i64 = 5;
 /// Sweeps asked for inside a Secret Base while what stands where is not found, and the seconds
@@ -551,12 +593,15 @@ impl FieldReader {
                 }
             }
         }
+        let covered = self.covered(r#where.zone)?;
         let mut solid: IndexMap<Cell, Option<f64>> = IndexMap::new();
         if let Some(bases) = bases
             && bases.zones().contains(&r#where.zone)
         {
             for cell in bases.solid()? {
-                solid.insert(cell, None);
+                if !covered.contains(&cell) {
+                    solid.insert(cell, None);
+                }
             }
         }
         solid.extend(self.unseen(r#where.zone)?);
@@ -571,7 +616,10 @@ impl FieldReader {
 
         let mut chunks: Vec<Rc<Chunk>> = Vec::new();
         for chunk in self.chunks_loaded()? {
-            chunks.push(laid(&self.terrain, &chunk, stacked, level)?);
+            chunks.push(opened(
+                laid(&self.terrain, &chunk, stacked, level)?,
+                &covered,
+            ));
         }
         let decks = if stacked {
             Vec::new()
@@ -707,13 +755,29 @@ impl FieldReader {
     /// "Select location" alike over the floor, the PC and the walls, and nothing at all moving from
     /// one empty cell to the next (omega_ruby_secret-base2.ctm).
     pub fn decorating(&self, r#where: &Field) -> Result<Option<(Cell, String)>> {
-        let cell = match &self.secret_bases {
+        let cursor = match &self.secret_bases {
             Some(bases) if bases.zones().contains(&r#where.zone) => bases.cursor()?,
             _ => None,
         };
-        let (Some(bases), Some(cell)) = (&self.secret_bases, cell) else {
+        let (Some(bases), Some((cell, fits))) = (&self.secret_bases, cursor) else {
             return Ok(None);
         };
+        let under = self.under_cursor(r#where, bases.as_ref(), cell)?;
+        Ok(Some((
+            cell,
+            match fits {
+                None => under,
+                Some(fits) => format!("{}, {under}", fit(fits)),
+            },
+        )))
+    }
+
+    fn under_cursor(
+        &self,
+        r#where: &Field,
+        bases: &dyn SecretBaseReader,
+        cell: Cell,
+    ) -> Result<String> {
         let mut names: Vec<&str> = Vec::new();
         let standing = bases.standing(cell)?;
         for number in standing {
@@ -724,7 +788,7 @@ impl FieldReader {
             }
         }
         if !names.is_empty() {
-            return Ok(Some((cell, names.join(", "))));
+            return Ok(names.join(", "));
         }
         let data = self.current()?;
         let home = match &data {
@@ -737,11 +801,17 @@ impl FieldReader {
         };
         for item in items {
             if item.cells().contains(&cell) {
-                return Ok(Some((cell, self.furniture_kind(home, &item))));
+                return Ok(self.furniture_kind(home, &item));
             }
         }
-        let wall = walkable(&self.chunks_loaded()?, cell)? == Some(false);
-        Ok(Some((cell, if wall { WALL } else { BLANK }.to_string())))
+        let chunks = self.chunks_loaded()?;
+        if walkable(&chunks, cell)? != Some(false) {
+            return Ok(BLANK.to_string());
+        }
+        let Some(held) = chunks.iter().find(|chunk| chunk.holds(cell)) else {
+            return Ok(WALL.to_string());
+        };
+        Ok(base_tile(held.kind(cell)?).unwrap_or(WALL).to_string())
     }
 
     /// The cells of the zone's conveyor belts, each with the way it runs: its triggers whose
@@ -838,6 +908,8 @@ impl FieldReader {
         items.extend(self.use_tiles(r#where.zone)?);
         items.extend(self.ways(r#where.zone, r#where.cell)?);
         items.extend(self.stairs_in(r#where.zone)?);
+        items.extend(self.base_tiles(r#where.zone)?);
+        items.extend(self.placed(r#where.zone)?);
         if let Some(data) = &data {
             items.extend(self.listed_triggers(data, r#where.zone)?);
         }
@@ -855,6 +927,113 @@ impl FieldReader {
             interactables: items,
             ..r#where.clone()
         })
+    }
+
+    /// The Secret Base's crumbled cliff and holes, each patch of touching cells of a kind in
+    /// `BASE_TILES` the zone's chunks hold as one thing over its bounding box: `runs` would split
+    /// the cliff's 3 cells by 2 into two rows and list it twice. A cell of the map, so only the
+    /// chunks loaded now say where it is. Nothing once a decoration stands on any of its cells:
+    /// the Stairs set down over the cliff left the cell table at kind `CLIFF_TILE` and the base's
+    /// mapper with a decoration in each of the six (omega_ruby_secret-base4.ctm).
+    fn base_tiles(&self, zone: i64) -> Result<Vec<Interactable>> {
+        let mut found: IndexMap<i64, HashSet<Cell>> = IndexMap::new();
+        for chunk in self.chunks_loaded()? {
+            for (cell, kind) in chunk.kinds() {
+                if base_tile(kind).is_some() {
+                    let at = self.zone_at(cell)?;
+                    if at == Some(zone) || at.is_none() {
+                        found.entry(kind).or_default().insert(cell);
+                    }
+                }
+            }
+        }
+        let covered = self.covered(zone)?;
+        let mut out: Vec<Interactable> = Vec::new();
+        for (kind, cells) in found {
+            for group in touching(&cells) {
+                if group.iter().any(|cell| covered.contains(cell)) {
+                    continue;
+                }
+                let (first, size) = spread(&group);
+                out.push(Interactable {
+                    size,
+                    code: kind,
+                    source: place_source(TILE_SOURCE, first.0 << 12 | first.1)?,
+                    ..Interactable::new(
+                        "exits",
+                        base_tile(kind).expect("a base tile's kind"),
+                        first,
+                    )
+                });
+            }
+        }
+        Ok(out)
+    }
+
+    /// The cells of the Secret Base's crumbled cliff and holes a decoration stands on, walked
+    /// over: the player climbed the Stairs set down over the cliff to the upper floor, the cell
+    /// table keeping all six cells blocked under them, and P said "can't continue"
+    /// (omega_ruby_secret-base4.ctm). The Solid Board over a hole is taken to be crossed the same
+    /// way, by its description; none has been set down yet.
+    fn covered(&self, zone: i64) -> Result<HashSet<Cell>> {
+        let Some(bases) = &self.secret_bases else {
+            return Ok(HashSet::new());
+        };
+        if !bases.zones().contains(&zone) {
+            return Ok(HashSet::new());
+        }
+        let mut out = HashSet::new();
+        for chunk in self.chunks_loaded()? {
+            for (cell, kind) in chunk.kinds() {
+                if base_tile(kind).is_none() {
+                    continue;
+                }
+                let at = self.zone_at(cell)?;
+                if (at == Some(zone) || at.is_none()) && !bases.standing(cell)?.is_empty() {
+                    out.insert(cell);
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// The decorations set down in a Secret Base, among the signs by the game's names for them,
+    /// each one thing over its cells: set down, the Stairs and the desks were not listed at all
+    /// (the user, 2026-10-10). The Invisible Doll is not, as the game hides it.
+    ///
+    /// Those of one name that touch are one thing: every base's five Welcome Mats in a line were
+    /// listed five times (the user, 2026-10-10). Apart, they stay apart, so the way to one does not
+    /// end on the floor between them.
+    fn placed(&self, zone: i64) -> Result<Vec<Interactable>> {
+        let Some(bases) = &self.secret_bases else {
+            return Ok(Vec::new());
+        };
+        if !bases.zones().contains(&zone) {
+            return Ok(Vec::new());
+        }
+        let mut named: IndexMap<String, HashSet<Cell>> = IndexMap::new();
+        for (number, cells) in bases.placed()? {
+            if number < self.decorations.len() as i64
+                && !self.decorations[number as usize].is_empty()
+            {
+                named
+                    .entry(self.decorations[number as usize].clone())
+                    .or_default()
+                    .extend(cells);
+            }
+        }
+        let mut out: Vec<Interactable> = Vec::new();
+        for (name, cells) in named {
+            for group in touching(&cells) {
+                let (first, size) = spread(&group);
+                out.push(Interactable {
+                    size,
+                    source: place_source(DECORATION_SOURCE, cell_number(first))?,
+                    ..Interactable::new("signs", &name, first)
+                });
+            }
+        }
+        Ok(out)
     }
 
     /// The stairs between the floors of the zone's chunks, where it is one of `Game.stairs`: each
@@ -1796,6 +1975,48 @@ fn spread(cells: &[Cell]) -> (Cell, (i64, i64)) {
     let (west, east) = (xs.clone().min().unwrap_or(0), xs.max().unwrap_or(0));
     let (north, south) = (zs.clone().min().unwrap_or(0), zs.max().unwrap_or(0));
     ((west, north), (east - west + 1, south - north + 1))
+}
+
+/// The chunk with `cells` it holds open: the blocked bit cleared, the kind kept.
+fn opened(chunk: Rc<Chunk>, cells: &HashSet<Cell>) -> Rc<Chunk> {
+    let held: Vec<Cell> = cells
+        .iter()
+        .copied()
+        .filter(|&cell| chunk.holds(cell))
+        .collect();
+    if held.is_empty() {
+        return chunk;
+    }
+    let mut words = chunk.words.clone();
+    for (x, z) in held {
+        words[((z - chunk.origin.1) * CHUNK + x - chunk.origin.0) as usize] &= !BLOCKED;
+    }
+    Rc::new(Chunk {
+        words,
+        ..(*chunk).clone()
+    })
+}
+
+/// `cells` in groups of those that touch side to side, the group with the first cell first.
+fn touching(cells: &HashSet<Cell>) -> Vec<Vec<Cell>> {
+    let mut left: std::collections::BTreeSet<Cell> = cells.iter().copied().collect();
+    let mut out: Vec<Vec<Cell>> = Vec::new();
+    while let Some(&first) = left.iter().next() {
+        let mut group: Vec<Cell> = Vec::new();
+        left.remove(&first);
+        let mut edge = vec![first];
+        while let Some(cell) = edge.pop() {
+            group.push(cell);
+            let (x, z) = cell;
+            for near in [(x - 1, z), (x + 1, z), (x, z - 1), (x, z + 1)] {
+                if left.remove(&near) {
+                    edge.push(near);
+                }
+            }
+        }
+        out.push(group);
+    }
+    out
 }
 
 /// A cell as a place's number: `x << 12 | z`, as a use tile's is.

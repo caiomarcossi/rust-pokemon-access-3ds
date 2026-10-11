@@ -76,7 +76,7 @@ pub const NAME_SIZE: i64 = 16;
 /// Enough of a pane to take a TextBox's text, length and alignment in one read.
 pub const HEAD: i64 = 0x100;
 
-// nw::lyt::Picture and its nw::lyt::Material (spikes 128 and A)
+// nw::lyt::Picture and its nw::lyt::Material (spikes 128 and 198)
 /// -> the picture's material, which says what it draws now, whatever its layout file says.
 pub const PICTURE_MATERIAL: i64 = 0x13C;
 /// The physical address of the image the material's first texture draws: FCRAM, or video memory
@@ -226,7 +226,7 @@ pub const RESOURCE_ACCESSOR: i64 = 0x14;
 pub const ACCESSOR_CLASS: &str = "N2nw3lyt19ArcResourceAccessorE";
 /// Resources sit in a table, one after another: the Pokémon-Amie page's layout is built from one
 /// and draws its PLAY, DECORATE and SWITCH from the next, an archive of their images alone, which
-/// no work points at (spike A).
+/// no work points at (spike 198).
 pub const RESOURCE_SIZE: i64 = 0x48;
 pub const MAX_RESOURCES: i64 = 32;
 

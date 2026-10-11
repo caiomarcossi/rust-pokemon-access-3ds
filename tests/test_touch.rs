@@ -114,7 +114,7 @@ fn crossings(part: &[i64]) -> i64 {
         .count() as i64
 }
 
-/// A stroke over Pokémon-Amie's Pokémon is a press moving along a path (spike C).
+/// A stroke over Pokémon-Amie's Pokémon is a press moving along a path (spike 200).
 #[test]
 fn test_a_slide_walks_its_path_evenly_and_lets_go_at_its_end() {
     let path = [(110, 110), (210, 110), (210, 130)];

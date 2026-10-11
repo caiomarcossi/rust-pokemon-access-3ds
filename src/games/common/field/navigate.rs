@@ -51,9 +51,9 @@ use crate::core::names::Names;
 use crate::core::speech::{Category, Speech};
 use crate::games::common::field::guide::{Clock, FieldSource, Guide, Key};
 use crate::games::common::field::keys::{
-    Bindings, CATEGORY_NEXT, CATEGORY_PREVIOUS, DEFAULT_BINDINGS, DIRECTIONS, EAST, ENEMY_SIDE,
-    ITEM_NEXT, ITEM_PREVIOUS, LIST, MODE_TOGGLE, MODES, NORTH, OUR_SIDE, PATHFIND, PATHFIND_HM,
-    RENAME, RENAME_SPEAKER, SOUTH, TOUCH, WEST,
+    Bindings, CATEGORY_NEXT, CATEGORY_PREVIOUS, COORDINATES, DEFAULT_BINDINGS, DIRECTIONS, EAST,
+    ENEMY_SIDE, ITEM_NEXT, ITEM_PREVIOUS, LIST, MODE_TOGGLE, MODES, NORTH, OUR_SIDE, PATHFIND,
+    PATHFIND_HM, PATHFIND_OFF, RENAME, RENAME_SPEAKER, SOUTH, TOUCH, WEST,
 };
 use crate::games::common::field::things::{self, ALL, Field, Interactable, SPRITE};
 use crate::games::common::touch::ACTIONS as TOUCH_ACTIONS;
@@ -369,6 +369,16 @@ impl Navigator {
         if action == RENAME_SPEAKER {
             return self.rename_speaker();
         }
+        // Off the map too: a way kept from before a menu or a warp is still the player's to drop.
+        if action == PATHFIND_OFF {
+            self.say(if self.guide.guidance.is_some() {
+                "path off"
+            } else {
+                "no path"
+            });
+            self.guide.guidance = None;
+            return Ok(());
+        }
         // A battle's sides are the battle's, whatever the field says.
         if action == OUR_SIDE || action == ENEMY_SIDE {
             let text = match (self.sides)(action == OUR_SIDE)? {
@@ -411,6 +421,10 @@ impl Navigator {
             self.say("no map");
             return Ok(());
         };
+        if action == COORDINATES {
+            self.say(&format!("x {}, z {}", r#where.cell.0, r#where.cell.1));
+            return Ok(());
+        }
         let r#where = self.field.interactables(&r#where)?;
         if action == RENAME {
             return self.rename(&r#where);

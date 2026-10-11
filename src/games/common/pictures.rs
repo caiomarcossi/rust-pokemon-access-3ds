@@ -46,7 +46,7 @@ pub const BUTTON_PREFIX: &str = "btn";
 /// movie28: the gold for Route 101, all of whose Pokémon are in the grass). The round ▶ under each
 /// app's logo on the PlayNav, `menu_bg_button`, starts that app (its tutorial the first time):
 /// Pokémon- Amie, the PSS and Super Training all draw it, and the game names it nowhere; it is said
-/// by what it does, as Orion names buttons (spike A). Behind the menu its Pokémon opens, the page
+/// by what it does, as Orion names buttons (spike 198). Behind the menu its Pokémon opens, the page
 /// draws `msg_win_c`, a message window's backing, 320 by 180, as a touch area, and a tap on it
 /// closes the menu (omega_ruby_bottom-screen2). Super Training's `list_button`, 48 by 48 in the
 /// lower right of its PlayNav page, opens the list of training bags; the game names it only in a
@@ -83,7 +83,7 @@ pub const OWN_PREFIXES: [(&str, &str); 1] = [("stage_icon", "start")];
 pub const PREVIOUS: &str = "previous";
 /// What the ◀ and ▶ in the top bar's corners do: the PlayNav's pages and the sub-screen
 /// tutorial's. Both draw `button.bclim`, a ◀, and the right one is mirrored by its material, not
-/// by any pane float (spike A, omega_ruby_bottom-screen1), so the picture's words are `BUTTON` for
+/// by any pane float (spike 198, omega_ruby_bottom-screen1), so the picture's words are `BUTTON` for
 /// both and only its side of the screen tells them apart (`common.touch`). The ROM's other
 /// `button.bclim` are plates, a battle's 250 by 40 and a rounded corner in Super Training's
 /// archive, and a `button` anywhere but that bar stays one.

@@ -78,12 +78,16 @@ pub trait SecretBaseReader: Feature {
     /// Whether a sweep has found what stands where in a base.
     fn furnished(&self) -> Result<bool>;
 
-    /// The cell the decorating cursor is on, or None while it is not shown.
-    fn cursor(&self) -> Result<Option<Cell>>;
+    /// The cell the decorating cursor is on and whether the item held can be set down there,
+    /// None for nothing held; or None while it is not shown.
+    fn cursor(&self) -> Result<Option<(Cell, Option<bool>)>>;
 
     /// The decorations standing in a cell, by number.
     fn standing(&self, cell: Cell) -> Result<Vec<i64>>;
 
     /// The cells a decoration stands in that is walked round, not over.
     fn solid(&self) -> Result<IndexSet<Cell>>;
+
+    /// Each decoration standing in the base, by number, with its cells; none the game hides.
+    fn placed(&self) -> Result<Vec<(i64, Vec<Cell>)>>;
 }

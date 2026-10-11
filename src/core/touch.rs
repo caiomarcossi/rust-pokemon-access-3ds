@@ -21,7 +21,7 @@
 //! release, and closing the server sends one.
 //!
 //! A slide is a press that moves, along a path walked evenly in time and let go at its end:
-//! Pokémon-Amie is stroked so, and answers it with its hand on the Pokémon (spike C). A tap is a
+//! Pokémon-Amie is stroked so, and answers it with its hand on the Pokémon (spike 200). A tap is a
 //! slide that stays on one point. ADR-0009 allows pa3ds a tap alone; the slide is an exploration
 //! Khai asked for (2026-10-08), for Orion to keep or take back.
 
