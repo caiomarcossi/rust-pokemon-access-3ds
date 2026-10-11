@@ -89,6 +89,11 @@ pub struct Target {
     pub layer: i64,
     /// The root of its layout.
     pub root: i64,
+    /// Where the key that taps slides instead, for a target that is a stroke (`TouchTargets`'s
+    /// `gestures`); none for a tap.
+    pub path: Vec<(i64, i64)>,
+    /// How long the slide along `path` takes.
+    pub seconds: f64,
 }
 
 impl Target {
@@ -103,6 +108,8 @@ impl Target {
             height,
             layer: 0,
             root: 0,
+            path: Vec::new(),
+            seconds: 0.0,
         }
     }
 }
@@ -126,6 +133,10 @@ pub type PictureName = Rc<dyn Fn(i64) -> Result<Option<String>>>;
 pub type Lists = Rc<dyn Fn() -> HashSet<String>>;
 /// `Callable[[], set[int]]`: the works of the layouts whose buttons take no tap. It reads memory.
 pub type Idle = Rc<dyn Fn() -> Result<HashSet<i64>>>;
+/// `Callable[[Sequence[tuple[int, int]], float], str | None]`: drag a press along a path.
+pub type Slide = Rc<dyn Fn(&[(i64, i64)], f64) -> Option<String>>;
+/// `Callable[[], list[Target]]`: targets no touch area draws. It reads memory.
+pub type Gestures = Rc<dyn Fn() -> Result<Vec<Target>>>;
 
 /// `TouchTargets.__init__`'s keyword arguments, each as the Python defaults it: set what differs
 /// with `..Options::default()`.
@@ -138,6 +149,8 @@ pub struct Options {
     pub picture_name: Option<PictureName>,
     pub lists: Option<Lists>,
     pub idle: Option<Idle>,
+    pub slide: Option<Slide>,
+    pub gestures: Option<Gestures>,
 }
 
 /// The bottom screen's touch targets, and the one touch mode is on.
@@ -162,6 +175,11 @@ pub struct TouchTargets {
     lists: Option<Lists>,
     /// The works of the layouts whose buttons take no tap now (`Buttons.idle`).
     idle: Option<Idle>,
+    /// Drag a press along a path of the touch screen over so many seconds.
+    slide: Option<Slide>,
+    /// Targets a screen offers that no touch area draws, each a stroke: Pokémon-Amie's
+    /// Pokémon, stroked by sliding over it (spike C).
+    gestures: Option<Gestures>,
     chosen: Option<i64>,
     /// Touch area -> what it was last called (rule 4).
     named: IndexMap<i64, String>,
@@ -194,6 +212,8 @@ impl TouchTargets {
             picture_name,
             lists,
             idle,
+            slide,
+            gestures,
         } = options;
         TouchTargets {
             layouts,
@@ -208,6 +228,8 @@ impl TouchTargets {
             picture_name,
             lists,
             idle,
+            slide,
+            gestures,
             chosen: None,
             named: IndexMap::new(),
             unnamed: HashSet::new(),
@@ -247,6 +269,22 @@ impl TouchTargets {
         };
         if action == TAP {
             let target = &found[at];
+            if !target.path.is_empty() {
+                let Some(slide) = &self.slide else {
+                    return Ok("touch is off".to_string());
+                };
+                let path: Vec<String> = target
+                    .path
+                    .iter()
+                    .map(|(x, y)| format!("({x}, {y})"))
+                    .collect();
+                (self.log)(&format!(
+                    "touch: slide {} along [{}]",
+                    target.name,
+                    path.join(", ")
+                ));
+                return Ok(slide(&target.path, target.seconds).unwrap_or_default());
+            }
             let Some(tap) = &self.tap else {
                 return Ok("touch is off".to_string());
             };
@@ -552,6 +590,8 @@ impl TouchTargets {
                     height,
                     layer,
                     root,
+                    path: Vec::new(),
+                    seconds: 0.0,
                 });
             }
             // A touch area hanging straight from the root is the screen's, and the buttons inside
@@ -577,6 +617,9 @@ impl TouchTargets {
             once.entry((target.x, target.y)).or_insert(target);
         }
         let mut found = uncovered(&once.into_values().collect::<Vec<_>>(), &areas);
+        if let Some(gestures) = &self.gestures {
+            found.extend(gestures()?);
+        }
         if let Some(lists) = &self.lists {
             found = answered_first(&found, &lists());
         }

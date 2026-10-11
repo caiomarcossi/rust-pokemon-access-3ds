@@ -105,6 +105,8 @@ pub struct Setup {
     /// Tap the touch screen at a pixel, saying why not where it cannot (`pa3ds.core.touch`); None
     /// where pa3ds takes no keys, as in a replay.
     pub tap: Option<Rc<dyn Fn(i64, i64) -> Option<String>>>,
+    /// A press dragged along a path over so many seconds (`TouchServer.slide`).
+    pub slide: Option<Rc<dyn Fn(&[(i64, i64)], f64) -> Option<String>>>,
     /// The tones that say where a cursor is (`pa3ds.core.tones`); None where pa3ds takes no keys,
     /// so a replay makes no sound, or where `[pa3ds.ui] tones` is off.
     pub tones: Option<Rc<Tones>>,
@@ -124,6 +126,7 @@ impl Setup {
             rom: None,
             sweep_chunk: 512,
             tap: None,
+            slide: None,
             tones: None,
         }
     }

@@ -540,6 +540,10 @@ fn session(
                 Rc::new(move |x: i64, y: i64| touching.tap(x, y))
                     as Rc<dyn Fn(i64, i64) -> Option<String>>
             }),
+            slide: touching.clone().map(|touching| {
+                Rc::new(move |path: &[(i64, i64)], seconds: f64| touching.slide(path, seconds))
+                    as Rc<dyn Fn(&[(i64, i64)], f64) -> Option<String>>
+            }),
             tones: if settings.keys.is_some() && settings.ui.tones {
                 Some(Rc::new(Tones::new()))
             } else {

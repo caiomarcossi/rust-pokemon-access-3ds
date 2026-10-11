@@ -114,6 +114,17 @@ fn crossings(part: &[i64]) -> i64 {
         .count() as i64
 }
 
+/// A stroke over Pokémon-Amie's Pokémon is a press moving along a path (spike C).
+#[test]
+fn test_a_slide_walks_its_path_evenly_and_lets_go_at_its_end() {
+    let path = [(110, 110), (210, 110), (210, 130)];
+    assert_eq!(touch::along(&path, 10.0, 12.0, 10.0), Some((110, 110)));
+    assert_eq!(touch::along(&path, 10.0, 12.0, 10.5), Some((160, 110)));
+    assert_eq!(touch::along(&path, 10.0, 12.0, 11.5), Some((210, 120)));
+    assert_eq!(touch::along(&path, 10.0, 12.0, 12.0), None);
+    assert_eq!(touch::along(&[(5, 6)], 0.0, 1.0, 0.5), Some((5, 6)));
+}
+
 /// `pa3ds.core.tones`: a tone at the top left is in the left ear alone and higher than one at
 /// the bottom right, in the right ear alone.
 #[test]

@@ -130,6 +130,7 @@ pub struct Options {
     /// The executable as read from its code, `b""` when there is none.
     pub image: Vec<u8>,
     pub tap: Option<Tap>,
+    pub slide: Option<touch::Slide>,
     pub tones: Option<Rc<Tones>>,
 }
 
@@ -272,6 +273,7 @@ impl Gen6Profile {
             pictures,
             image,
             tap,
+            slide,
             tones,
         } = options;
         let cache = memory;
@@ -540,6 +542,14 @@ impl Gen6Profile {
                 picture_name: Some(picture_name),
                 lists: Some(lists_labels),
                 idle: Some(idle),
+                slide,
+                gestures: Some({
+                    let (amie, apps) = (amie.clone(), apps.clone());
+                    Rc::new(move || {
+                        let running = apps.borrow().running.clone();
+                        amie.borrow_mut().strokes(running.as_deref())
+                    })
+                }),
             },
         );
         // The Hoenn map's cursor says nothing between places: a tone says where it is.

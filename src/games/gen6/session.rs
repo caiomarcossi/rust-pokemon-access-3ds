@@ -97,6 +97,7 @@ pub fn start(
             pictures,
             image: image.to_vec(),
             tap: setup.tap.clone(),
+            slide: setup.slide.clone(),
             tones: setup.tones.clone(),
         },
     ));

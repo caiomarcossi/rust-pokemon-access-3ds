@@ -64,3 +64,27 @@ fn test_the_picture_drawing_the_icons_first_texture_is_named_by_its_species() {
 fn test_a_picture_drawing_another_image_is_not_named() {
     assert_eq!(page().0.name(OTHER).unwrap(), None);
 }
+
+#[test]
+fn test_amie_itself_offers_its_pokemon_to_stroke_by_the_species_the_page_showed() {
+    let (mut found, memory) = page();
+    memory.u32(PAGE, &[0]); // the page freed as Amie runs
+    assert!(
+        found
+            .strokes(Some("N5field12FieldmapProcE"))
+            .unwrap()
+            .is_empty()
+    );
+    let strokes = found.strokes(Some(amie::AMIE)).unwrap();
+    let [stroke] = strokes.as_slice() else {
+        panic!("one stroke: {strokes:?}");
+    };
+    assert_eq!(
+        (stroke.name.as_str(), stroke.path.clone(), stroke.seconds),
+        (
+            "stroke Sceptile",
+            amie::STROKE.to_vec(),
+            amie::STROKE_SECONDS
+        )
+    );
+}

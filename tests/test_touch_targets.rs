@@ -40,12 +40,16 @@ fn bar() -> Vec<Target> {
 struct Screen {
     targets: TouchTargets,
     tapped: Rc<RefCell<Vec<(i64, i64)>>>,
+    /// Every slide, as Python's test keeps them by setting `_slide`.
+    slid: Rc<RefCell<Vec<(Vec<(i64, i64)>, f64)>>>,
     found: Rc<RefCell<Vec<Target>>>,
 }
 
 impl Screen {
     fn new(found: Vec<Target>) -> Self {
         let tapped: Rc<RefCell<Vec<(i64, i64)>>> = Rc::new(RefCell::new(Vec::new()));
+        let slid: Rc<RefCell<Vec<(Vec<(i64, i64)>, f64)>>> = Rc::new(RefCell::new(Vec::new()));
+        let kept = slid.clone();
         let found = Rc::new(RefCell::new(found));
         let memory = FakeMemory::new();
         let layouts = Rc::new(Layouts::new(
@@ -66,6 +70,10 @@ impl Screen {
                     keep.borrow_mut().push((x, y));
                     None
                 })),
+                slide: Some(Rc::new(move |path: &[(i64, i64)], seconds| {
+                    kept.borrow_mut().push((path.to_vec(), seconds));
+                    None
+                })),
                 ..Options::default()
             },
         );
@@ -81,6 +89,7 @@ impl Screen {
         Screen {
             targets,
             tapped,
+            slid,
             found,
         }
     }
@@ -353,5 +362,23 @@ fn test_a_button_the_game_names_inside_the_menus_backdrop_is_its_own() {
             .map(|t| (t.name.as_str(), t.x, t.y))
             .collect::<Vec<_>>(),
         [("close", 160, 120), ("PLAY", 160, 181)]
+    );
+}
+
+/// Pokémon-Amie's Pokémon is stroked, not tapped: its target's key slides along the path
+/// (spike C).
+#[test]
+fn test_a_stroke_slides_along_its_path_where_a_tap_would_press() {
+    let stroke = Target {
+        path: vec![(110, 110), (210, 110)],
+        seconds: 3.0,
+        ..Target::new(1, "stroke Sceptile", 160, 120, 0.0, 240.0)
+    };
+    let mut screen = Screen::new(vec![stroke]);
+    assert_eq!(screen.press(touch::TAP), "stroke Sceptile");
+    assert_eq!(screen.press(touch::TAP), "");
+    assert!(
+        *screen.slid.borrow() == [(vec![(110, 110), (210, 110)], 3.0)]
+            && screen.tapped().is_empty()
     );
 }

@@ -18,6 +18,13 @@
 //!
 //! A picture drawing that image is the Pokémon's. Measured with one Pokémon on one replay: that
 //! +0x14C holds the number for any other species is taken from the two records agreeing.
+//!
+//! PLAY opens Amie itself, `kawaigari::MainProc`: the Pokémon's model on the bottom screen and no
+//! button drawn, its Poké Puffs, minigames and way back hidden (omega_ruby_bottom-screen4). Amie
+//! strokes the Pokémon by a slide over it, and shows its hand where the stylus is (spike C, live in
+//! the rig). So while it runs touch mode offers the Pokémon, "stroke Sceptile", whose key slides
+//! back and forth across the middle of the screen, where Amie stands the Pokémon: an exploration
+//! past ADR-0009's tap, which Khai asked for (2026-10-08).
 
 use std::rc::Rc;
 
@@ -26,11 +33,29 @@ use indexmap::IndexMap;
 use crate::core::binary::u32;
 use crate::core::memory::Memory;
 use crate::core::rtti::ClassNames;
-use crate::games::common::lyt;
+use crate::games::common::touch::Target;
+use crate::games::common::{lyt, touch};
 use crate::games::gen6::screens::distribution as d;
 use crate::py::Result;
 
 pub const CLASS: &str = "N5field9subscreen9kawaigari12FM_KawaigariE";
+/// Pokémon-Amie itself, the app PLAY starts.
+pub const AMIE: &str = "N9kawaigari8MainProcE";
+/// Back and forth across the middle of the screen, over the Pokémon's body: Sceptile stood from
+/// about 110 to 200 across and 60 to 170 down, and the hand followed every pass (spike C).
+pub const STROKE: [(i64, i64); 6] = [
+    (110, 110),
+    (210, 110),
+    (110, 130),
+    (210, 130),
+    (110, 110),
+    (210, 110),
+];
+pub const STROKE_SECONDS: f64 = 3.0;
+/// The pane a stroke stands in for in touch mode, which no pane is at.
+pub const STROKE_TARGET: i64 = 1;
+/// pa3ds's word for the slide, the manual's: "you can stroke your Pokémon".
+pub const STROKE_WORD: &str = "stroke";
 pub const NUMBER: i64 = 0x14C;
 pub const HOLDER: i64 = 0x194;
 pub const HEAD: i64 = HOLDER + 4;
@@ -42,6 +67,8 @@ pub struct AmiePage {
     species: Vec<String>,
     /// Page object -> the vtable it was found with.
     pages: IndexMap<i64, i64>,
+    /// The species the page last showed, which Amie opens on.
+    last: Option<String>,
 }
 
 impl AmiePage {
@@ -51,6 +78,7 @@ impl AmiePage {
             names,
             species,
             pages: IndexMap::new(),
+            last: None,
         }
     }
 
@@ -67,6 +95,7 @@ impl AmiePage {
             }
         }
         self.pages = pages;
+        self.species()?;
         Ok(())
     }
 
@@ -105,6 +134,48 @@ impl AmiePage {
             }
         }
         Ok(None)
+    }
+
+    /// The species the page shows, or the one it last showed once it has gone, as it may
+    /// while Amie runs.
+    pub fn species(&mut self) -> Result<Option<String>> {
+        for (&page, &vtable) in &self.pages {
+            let head = self.memory.read(page, HEAD)?;
+            let number = u32(&head, NUMBER)?;
+            if u32(&head, 0)? == vtable
+                && 0 < number
+                && number < self.species.len() as i64
+                && !self.species[number as usize].is_empty()
+            {
+                self.last = Some(self.species[number as usize].clone());
+                break;
+            }
+        }
+        Ok(self.last.clone())
+    }
+
+    /// The stroke touch mode offers while Amie runs, by the Pokémon's species.
+    pub fn strokes(&mut self, running: Option<&str>) -> Result<Vec<Target>> {
+        let species = if running == Some(AMIE) {
+            self.species()?
+        } else {
+            None
+        };
+        let Some(species) = species else {
+            return Ok(Vec::new());
+        };
+        Ok(vec![Target {
+            path: STROKE.to_vec(),
+            seconds: STROKE_SECONDS,
+            ..Target::new(
+                STROKE_TARGET,
+                &format!("{STROKE_WORD} {species}"),
+                160,
+                120,
+                0.0,
+                touch::HEIGHT as f64,
+            )
+        }])
     }
 
     /// The image of texture 0 of a PokeIcon, or None where a link of the chain is not the

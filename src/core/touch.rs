@@ -19,6 +19,11 @@
 //! button takes (Amethyst's touch module for Black and White does the same through BizHawk).
 //! Azahar keeps the last state it was sent, so a finger is never left down: every tap ends in a
 //! release, and closing the server sends one.
+//!
+//! A slide is a press that moves, along a path walked evenly in time and let go at its end:
+//! Pokémon-Amie is stroked so, and answers it with its hand on the Pokémon (spike C). A tap is a
+//! slide that stays on one point. ADR-0009 allows pa3ds a tap alone; the slide is an exploration
+//! Khai asked for (2026-10-08), for Orion to keep or take back.
 
 use std::io;
 use std::net::{SocketAddr, UdpSocket};
@@ -30,7 +35,7 @@ use std::time::{Duration, Instant};
 use flate2::Crc;
 use indexmap::IndexMap;
 
-use crate::py::{Error, Kind, Result, time};
+use crate::py::{self, Error, Kind, Result, time};
 
 /// Azahar's `udp_input_port` as it ships.
 pub const PORT: i64 = 26760;
@@ -116,6 +121,27 @@ pub fn pad_state(counter: i64, touch: Option<(i64, i64)>) -> Result<Vec<u8>> {
     Ok(out)
 }
 
+/// Where a press walking `path` evenly from `start` to `until` is at `now`, or None once it
+/// has let go (or before any press).
+pub fn along(path: &[(i64, i64)], start: f64, until: f64, now: f64) -> Option<(i64, i64)> {
+    if path.is_empty() || now >= until {
+        return None;
+    }
+    if path.len() == 1 {
+        return Some(path[0]);
+    }
+    let last = (path.len() - 1) as f64;
+    // Python's `max(0.0, x)` keeps 0.0 unless x is strictly greater.
+    let share = (now - start) / (until - start);
+    let at = if share > 0.0 { share } else { 0.0 } * last;
+    let i = (py::int(at).expect("a finite share") as usize).min(path.len() - 2);
+    let ((x0, y0), (x1, y1)) = (path[i], path[i + 1]);
+    let share = at - i as f64;
+    let x = py::round(x0 as f64 + (x1 - x0) as f64 * share).expect("finite");
+    let y = py::round(y0 as f64 + (y1 - y0) as f64 * share).expect("finite");
+    Some((x, y))
+}
+
 /// The type of a client's request, or None for anything that is not one.
 pub fn request(packet: &[u8]) -> Option<i64> {
     if packet.len() < 20 || &packet[..4] != CLIENT {
@@ -146,6 +172,8 @@ fn os_error(error: &io::Error) -> String {
 /// What `_lock` guards.
 struct State {
     touch: Option<(i64, i64)>,
+    path: Vec<(i64, i64)>,
+    start: f64,
     until: f64,
     counter: i64,
     clients: IndexMap<SocketAddr, f64>,
@@ -198,6 +226,8 @@ impl TouchServer {
             id,
             state: Mutex::new(State {
                 touch: None,
+                path: Vec::new(),
+                start: 0.0,
                 until: 0.0,
                 counter: 0,
                 clients: IndexMap::new(),
@@ -232,18 +262,36 @@ impl TouchServer {
     /// where Azahar has not asked for the pad lately, which is Azahar without pa3ds's touch
     /// settings (`config.AZAHAR`): closed and opened again after pa3ds patched them, it asks.
     pub fn tap(&self, x: i64, y: i64) -> Option<String> {
+        self.slide(&[(x, y)], HOLD)
+    }
+
+    /// Press the touch screen at the path's first point, move along it evenly over `seconds`,
+    /// and let go at its last. Says why not as `tap` does.
+    pub fn slide(&self, path: &[(i64, i64)], seconds: f64) -> Option<String> {
         if !self.listened() {
             return Some(NOT_LISTENING.to_string());
         }
-        let (x, y) = (x.clamp(0, WIDTH - 1), y.clamp(0, HEIGHT - 1));
+        let points: Vec<(i64, i64)> = path
+            .iter()
+            .map(|&(x, y)| (x.clamp(0, WIDTH - 1), y.clamp(0, HEIGHT - 1)))
+            .collect();
+        if points.is_empty() {
+            return None;
+        }
         let mut state = self.inner.locked();
-        state.touch = Some((x, y));
-        state.until = time::monotonic() + HOLD;
+        state.start = time::monotonic();
+        state.until = state.start + seconds;
+        state.touch = Some(points[0]);
+        state.path = points;
         None
     }
 
     pub fn close(&self) {
-        self.inner.locked().touch = None;
+        {
+            let mut state = self.inner.locked();
+            state.touch = None;
+            state.path = Vec::new();
+        }
         self.inner.send();
         self.inner.stop.store(true, Ordering::SeqCst);
         let taken = self
@@ -298,8 +346,9 @@ impl Inner {
             }
             {
                 let mut state = self.locked();
-                if state.touch.is_some() && time::monotonic() >= state.until {
-                    state.touch = None;
+                state.touch = along(&state.path, state.start, state.until, time::monotonic());
+                if state.touch.is_none() {
+                    state.path = Vec::new();
                 }
             }
             self.send();
