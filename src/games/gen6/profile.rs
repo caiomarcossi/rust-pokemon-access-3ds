@@ -1281,18 +1281,37 @@ impl Gen6Profile {
     ///
     /// Read outside any phase, since each archive is read once.
     fn read_archives(&self) -> Result<()> {
+        let mut walked: HashSet<i64> = HashSet::new();
         for (work, root) in self.layouts.works() {
             if self.archived.borrow().contains(&(work, root)) {
                 continue;
             }
             self.archived.borrow_mut().insert((work, root));
             let resource = u32(&self.memory.read(work + lyt::WORK_RESOURCE, 4)?, 0)?;
-            if !in_a_heap(resource) {
+            if !in_a_heap(resource) || walked.contains(&resource) {
                 continue;
             }
+            walked.insert(resource);
             let archive = u32(&self.memory.read(resource + lyt::RESOURCE_ARCHIVE, 4)?, 0)?;
             if in_a_heap(archive) {
                 self.files.add_archive(archive)?;
+            }
+            for step in [lyt::RESOURCE_SIZE, -lyt::RESOURCE_SIZE] {
+                for count in 1..lyt::MAX_RESOURCES {
+                    let beside = resource + step * count;
+                    let head = self.memory.read(beside, lyt::RESOURCE_ACCESSOR + 4)?;
+                    let accessor = u32(&head, lyt::RESOURCE_ACCESSOR)?;
+                    if !in_a_heap(accessor)
+                        || self.names.of_object(accessor)?.as_deref() != Some(lyt::ACCESSOR_CLASS)
+                    {
+                        break;
+                    }
+                    walked.insert(beside);
+                    let archive = u32(&head, lyt::RESOURCE_ARCHIVE)?;
+                    if in_a_heap(archive) {
+                        self.files.add_archive(archive)?;
+                    }
+                }
             }
         }
         Ok(())

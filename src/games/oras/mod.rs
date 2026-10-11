@@ -179,8 +179,11 @@ pub fn towns() -> &'static TownFacilities {
 }
 /// The PokéNav's app buttons, drawn as pictures alone, by the icon each draws, and the line of
 /// text file 123 the game names its app with: AreaNav 139, PlayNav 140, BuzzNav 141, DexNav 142
-/// (spike 171, and the BuzzNav's in movie24); and the AreaNav's tabs, by the images their layout
-/// file gives them: Places 143, Pokémon 144, Trainers 145, Bases 146, Berries 147 (movie17).
+/// (spike 171, and the BuzzNav's in movie24); the AreaNav's tabs, by the images their layout
+/// file gives them: Places 143, Pokémon 144, Trainers 145, Bases 146, Berries 147 (movie17); and the
+/// Pokémon-Amie page's menu, opened by tapping its Pokémon, images of their words: PLAY 77,
+/// DECORATE 78, SWITCH 79, in the middle, on the left and on the right (spike A,
+/// omega_ruby_bottom-screen2).
 pub fn touch_words() -> &'static (i64, IndexMap<&'static str, i64>) {
     static TOUCH_WORDS: OnceLock<(i64, IndexMap<&'static str, i64>)> = OnceLock::new();
     TOUCH_WORDS.get_or_init(|| {
@@ -196,6 +199,9 @@ pub fn touch_words() -> &'static (i64, IndexMap<&'static str, i64>) {
                 ("map_navi03.bclim", 145),
                 ("map_navi04.bclim", 146),
                 ("map_navi05.bclim", 147),
+                ("kwg_button01.bclim", 77),
+                ("kwg_button02.bclim", 78),
+                ("kwg_button03.bclim", 79),
             ]),
         )
     })

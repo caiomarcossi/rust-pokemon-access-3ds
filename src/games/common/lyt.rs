@@ -221,6 +221,14 @@ pub const WORK_SIZE: i64 = 0x104;
 /// -> the resource the layout was built from; its +0x10 is the `darc` archive of its files.
 pub const WORK_RESOURCE: i64 = 0xBC;
 pub const RESOURCE_ARCHIVE: i64 = 0x10;
+/// -> the `nw::lyt::ArcResourceAccessor` of the archive, whose +0x04 is the archive again.
+pub const RESOURCE_ACCESSOR: i64 = 0x14;
+pub const ACCESSOR_CLASS: &str = "N2nw3lyt19ArcResourceAccessorE";
+/// Resources sit in a table, one after another: the Pokémon-Amie page's layout is built from one
+/// and draws its PLAY, DECORATE and SWITCH from the next, an archive of their images alone, which
+/// no work points at (spike A).
+pub const RESOURCE_SIZE: i64 = 0x48;
+pub const MAX_RESOURCES: i64 = 32;
 
 // Game Freak's layout pool (spike 64): a table of 8-byte entries, each the pool and a work
 pub const POOL_TABLE: i64 = 0x00;

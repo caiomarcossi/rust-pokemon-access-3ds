@@ -46,7 +46,9 @@ pub const BUTTON_PREFIX: &str = "btn";
 /// movie28: the gold for Route 101, all of whose Pokémon are in the grass). The round ▶ under each
 /// app's logo on the PlayNav, `menu_bg_button`, starts that app (its tutorial the first time):
 /// Pokémon- Amie, the PSS and Super Training all draw it, and the game names it nowhere; it is said
-/// by what it does, as Orion names buttons (spike A).
+/// by what it does, as Orion names buttons (spike A). Behind the menu its Pokémon opens, the page
+/// draws `msg_win_c`, a message window's backing, 320 by 180, as a touch area, and a tap on it
+/// closes the menu (omega_ruby_bottom-screen2).
 pub fn own_words() -> &'static IndexMap<&'static str, &'static str> {
     static OWN_WORDS: OnceLock<IndexMap<&'static str, &'static str>> = OnceLock::new();
     OWN_WORDS.get_or_init(|| {
@@ -62,6 +64,7 @@ pub fn own_words() -> &'static IndexMap<&'static str, &'static str> {
             ("complete2", "gold crown"),
             ("complete3", "platinum crown"),
             ("menu_bg_button", "start"),
+            ("msg_win_c", "close"),
         ])
     })
 }

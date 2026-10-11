@@ -360,7 +360,12 @@ impl TouchTargets {
                 let group = self.group(root, touch, &tree)?;
                 groups.insert(touch, group);
             }
-            // Touch area -> the words on screen in its button.
+            let owned = own_parts(&groups);
+            // Touch area -> the words on screen in its button, or with none the game's word for
+            // its picture: the Pokémon-Amie page's PLAY, DECORATE and SWITCH lie within the touch
+            // area behind its menu, and are buttons of their own (spike A). A button with words
+            // keeps to them: the Secret Base's DexNav panel, words and an app's icon, was offered
+            // as well as the window it lies in.
             let mut spoken: IndexMap<i64, HashSet<String>> = IndexMap::new();
             for &touch in &touches {
                 let group = &groups[&touch];
@@ -380,13 +385,22 @@ impl TouchTargets {
                         .collect(),
                 );
                 let mut image: Option<String> = None;
-                'image: for &p in group {
+                'image: for &p in &owned[&touch] {
                     for i in self.drawn_or_textured(p, &drawn, textures)? {
                         if let Some(word) = self.images.get(&i) {
                             image = Some(word.clone());
                             break 'image;
                         }
                     }
+                }
+                if let Some(image) = &image
+                    && !image.is_empty()
+                    && said.is_empty()
+                {
+                    spoken
+                        .get_mut(&touch)
+                        .expect("inserted above")
+                        .insert(image.clone());
                 }
                 if let Some(picture_name) = &self.picture_name {
                     // What the game fills a picture with comes first, as it is drawn: the Bag's
@@ -478,7 +492,7 @@ impl TouchTargets {
                     // the pictures over it are the screen's: the Battle Box's slots, left on
                     // under BOX 1, were said by its wallpaper, "line pattern" (movie22).
                     let mut own: Vec<Option<String>> = Vec::new();
-                    for &p in group {
+                    for &p in &owned[&touch] {
                         if tree.get(&p).map(String::as_str) == Some(lyt::PICTURE_CLASS)
                             && shown(&layouts, p)?
                         {
@@ -700,6 +714,39 @@ impl TouchTargets {
 }
 
 /// Where a pane's middle is across and up its screen, from its place and its anchor.
+/// Each touch area's button less the buttons of the touch areas inside it, whose pictures are
+/// their own: the Pokémon-Amie page's menu lies within the touch area behind it, which took
+/// PLAY's word and tapped the menu shut, and PLAY, adding no word, was left out as part of it
+/// (spike A, omega_ruby_bottom-screen2). Words on screen stay the outer button's too: taken from
+/// it, the Bag's strips and the Secret Base's panels were said by what was left, "/".
+fn own_parts(groups: &IndexMap<i64, Vec<i64>>) -> IndexMap<i64, Vec<i64>> {
+    let sets: IndexMap<i64, HashSet<i64>> = groups
+        .iter()
+        .map(|(&touch, group)| (touch, group.iter().copied().collect()))
+        .collect();
+    // Python's `<` on sets: a proper subset.
+    let within = |inner: &HashSet<i64>, outer: &HashSet<i64>| {
+        inner.len() < outer.len() && inner.is_subset(outer)
+    };
+    groups
+        .iter()
+        .map(|(&touch, group)| {
+            let kept = group
+                .iter()
+                .copied()
+                .filter(|pane| {
+                    !groups.keys().any(|&other| {
+                        other != touch
+                            && sets[&other].contains(pane)
+                            && within(&sets[&other], &sets[&touch])
+                    })
+                })
+                .collect();
+            (touch, kept)
+        })
+        .collect()
+}
+
 fn middle(head: &[u8], shape: &lyt::PaneShape) -> Result<(f64, f64)> {
     let width = f32(head, shape.width)? * f32(head, shape.scale_x)?;
     let anchor = usize::try_from(shape.anchored(head)?)

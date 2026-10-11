@@ -294,3 +294,64 @@ fn test_a_bare_button_in_the_top_bars_corners_is_the_page_arrows() {
         ]
     );
 }
+
+/// The Pokémon-Amie page's PLAY is a picture of its word inside the touch area behind its
+/// menu, which closes it: the backdrop took PLAY's word, and PLAY was left out (spike A).
+#[test]
+fn test_a_button_the_game_names_inside_the_menus_backdrop_is_its_own() {
+    let memory = FakeMemory::new();
+    let classes = FakeClasses::new(memory.clone());
+    let fake = FakeLayouts::new(&memory, &classes);
+    let (bounding, picture) = (
+        classes.add(lyt::BOUNDING_CLASS),
+        classes.add(lyt::PICTURE_CLASS),
+    );
+    let (_work, group) = fake.screen(0x08200000);
+    let menu = group + 0x1000;
+    let (backdrop, behind, play, area) = (menu + 0x200, menu + 0x400, menu + 0x600, menu + 0x800);
+    fake.pane(menu, group);
+    fake.pane_with_vtable(backdrop, menu, Some(bounding));
+    fake.pane_with_vtable(behind, menu, Some(picture));
+    fake.pane_with_vtable(play, menu, Some(picture));
+    fake.pane_with_vtable(area, play, Some(bounding));
+    memory.write(
+        backdrop + lyt::WIDTH,
+        &[320.0f32.to_le_bytes(), 180.0f32.to_le_bytes()].concat(),
+    );
+    for pane in [play, area] {
+        memory.write(pane + lyt::Y, &(-61.0f32).to_le_bytes());
+    }
+    memory.write(
+        area + lyt::WIDTH,
+        &[90.0f32.to_le_bytes(), 54.0f32.to_le_bytes()].concat(),
+    );
+    fake.track().unwrap();
+    let drawn: IndexMap<i64, String> = IndexMap::from([
+        (behind, "msg_win_c.bclim".to_string()),
+        (play, "kwg_button01.bclim".to_string()),
+    ]);
+    let mut targets = TouchTargets::new(
+        fake.layouts.clone(),
+        Rc::new(Vec::new),
+        Rc::new(|_box| Ok(String::new())),
+        Rc::new(move |pane| Ok(drawn.get(&pane).cloned())),
+        Rc::new(|_root| None),
+        Rc::new(|_line: &str| {}),
+        Options {
+            images: Some(IndexMap::from([(
+                "kwg_button01.bclim".to_string(),
+                "PLAY".to_string(),
+            )])),
+            ..Options::default()
+        },
+    );
+    assert_eq!(
+        targets
+            .targets()
+            .unwrap()
+            .iter()
+            .map(|t| (t.name.as_str(), t.x, t.y))
+            .collect::<Vec<_>>(),
+        [("close", 160, 120), ("PLAY", 160, 181)]
+    );
+}
