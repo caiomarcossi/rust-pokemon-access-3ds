@@ -41,11 +41,13 @@
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::LazyLock;
 
 use indexmap::IndexMap;
+use regex::Regex;
 
 use crate::core::toml;
-use crate::py::Result;
+use crate::py::{self, Result};
 
 pub const SPRITES: &str = "sprites";
 pub const PLACES: &str = "places";
@@ -70,9 +72,51 @@ pub fn sprite_key(character: i64) -> String {
     hex(character)
 }
 
-/// How a slot on a map is written in a names file: `0x1af:1`.
+/// What each kind of slot is written as in a names file, by its tag (`things.SOURCE_KIND`): a
+/// warp's slot 3 is `warp:3`. A word, so a person editing the file can tell a door from a sign
+/// (Orion, 2026-10-11); a kind renamed in code keeps its word here, or its names stop matching.
+pub const KINDS: [&str; 14] = [
+    "furniture",
+    "warp",
+    "tile",
+    "edge",
+    "berry",
+    "trigger",
+    "base",
+    "ash",
+    "bike",
+    "dive",
+    "stairs",
+    "app",
+    "decoration",
+    "model",
+];
+
+/// A slot as names files wrote it until 2026-10-11, its kind's tag and its number one sum:
+/// `0x10:4294967299`, Rustboro's warp 3.
+static OLD_KEY: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^(0x[0-9a-f]+):(\d+)$").expect("a fixed pattern"));
+
+/// How a slot on a map is written in a names file: `0x10:warp:3`, map, kind and number. A slot
+/// is never negative, so Python's `KINDS[kind]` never counts from the end here.
 pub fn place_key(map_id: i64, slot: i64) -> String {
-    format!("{}:{slot}", hex(map_id))
+    let (kind, number) = (slot >> 32, slot & 0xFFFFFFFF);
+    let word = match usize::try_from(kind).ok().and_then(|at| KINDS.get(at)) {
+        Some(word) => word.to_string(),
+        None => kind.to_string(),
+    };
+    format!("{}:{word}:{number}", hex(map_id))
+}
+
+/// A key in the form names files use now, from either form.
+fn readable(key: &str) -> Result<String> {
+    let Some(old) = OLD_KEY.captures(key) else {
+        return Ok(key.to_string());
+    };
+    Ok(place_key(
+        py::int_base16(&old[1])?,
+        py::int_base10(&old[2])?,
+    ))
 }
 
 /// `first or second()`: a name that is there but empty is no name at all.
@@ -111,21 +155,36 @@ impl Names {
             .iter()
             .map(|section| (section.to_string(), IndexMap::new()))
             .collect();
+        let mut migrated = false;
         if let Some(mine_path) = mine_path {
             let found = toml::read(mine_path);
             mine = SECTIONS
                 .iter()
                 .map(|section| (section.to_string(), toml::strings(found.get(*section))))
                 .collect();
+            let mut places: IndexMap<String, String> = IndexMap::new();
+            for (key, said) in &mine[PLACES] {
+                places.insert(readable(key)?, said.clone());
+            }
+            // An IndexMap's `==` ignores order, as a dict's does.
+            if places != mine[PLACES] {
+                // Written the old way: kept the new way from now on, read once a game is played.
+                mine[PLACES] = places;
+                migrated = true;
+            }
         }
-        Ok(Names {
+        let names = Names {
             shipped: shipped.cloned().unwrap_or_default(),
             path: mine_path.map(Path::to_path_buf),
             header: header.cloned().unwrap_or_default(),
             game_sprite: RefCell::new(Rc::new(|_character| None)),
             game_place: RefCell::new(Rc::new(|_map, _slot| None)),
             mine: RefCell::new(mine),
-        })
+        };
+        if migrated {
+            names.write()?;
+        }
+        Ok(names)
     }
 
     /// `Names()`: no shipped names, no file, no header.
@@ -261,11 +320,11 @@ impl Names {
             String::new(),
             "[sprites] is a character: everyone drawn alike everywhere in the game, by the number"
                 .to_string(),
-            "the game counts them with. [places] is a slot on one map, written map:slot, so a sign"
+            "the game counts them with. [places] is a slot on one map, written map:kind:number,"
                 .to_string(),
-            "named here says nothing about a sign on another map; one person or boulder named"
+            "so a sign named here says nothing about a sign on another map; one person or"
                 .to_string(),
-            "alone is a slot of its map too.".to_string(),
+            "boulder named alone is a slot of its map too, of the kind model.".to_string(),
         ]);
         for section in SECTIONS {
             lines.push(String::new());

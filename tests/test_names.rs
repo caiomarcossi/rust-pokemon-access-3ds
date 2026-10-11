@@ -7,7 +7,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use indexmap::IndexMap;
 
-use crate::core::names::Names;
+use crate::core::names::{KINDS, Names};
+use crate::games::common::field::things;
 
 const NORMAN: i64 = 0x13F;
 const WALLY: i64 = 0xB4;
@@ -292,4 +293,94 @@ fn test_names_without_a_home_are_kept_for_this_run_only() {
     names.name_sprite(WALLY, "Wally").unwrap();
     assert_eq!(names.sprite(WALLY).as_deref(), Some("Wally"));
     assert_eq!(names.sprite(NORMAN).as_deref(), Some("Norman"));
+}
+
+/// The `[places]` of a names file, as (key, name) in any order.
+fn places(path: &Path) -> Vec<(String, String)> {
+    let loaded: ::toml::Table = fs::read_to_string(path).unwrap().parse().unwrap();
+    let mut out: Vec<(String, String)> = loaded["places"]
+        .as_table()
+        .unwrap()
+        .iter()
+        .map(|(key, name)| (key.clone(), name.as_str().unwrap().to_string()))
+        .collect();
+    out.sort();
+    out
+}
+
+/// Orion, 2026-10-11: a person editing the file can tell a door from a sign from a boulder,
+/// where the kind and the number were one sum, Rustboro's warp 3 `0x10:4294967299`.
+#[test]
+fn test_a_place_is_written_map_kind_number() {
+    let tmp_path = TmpPath::new();
+    let mine = tmp_path.join("sango-1.toml");
+    let names = Names::new(None, Some(&mine), None).unwrap();
+    names
+        .name_place(0x10, 1 << 32 | 3, "Devon Corporation")
+        .unwrap();
+    names
+        .name_place(0x69, 13 << 32 | 5, "the last one")
+        .unwrap();
+    names.name_place(GYM, 1, "the Gym's sign").unwrap();
+    assert_eq!(
+        places(&mine),
+        [
+            ("0x10:warp:3".to_string(), "Devon Corporation".to_string()),
+            (
+                "0x1af:furniture:1".to_string(),
+                "the Gym's sign".to_string()
+            ),
+            ("0x69:model:5".to_string(), "the last one".to_string()),
+        ]
+    );
+}
+
+#[test]
+fn test_a_file_written_the_old_way_is_read_and_kept_the_new_way() {
+    let tmp_path = TmpPath::new();
+    let mine = tmp_path.join("sango-1.toml");
+    fs::write(
+        &mine,
+        "[places]\n\"0x10:4294967299\" = \"Devon Corporation\"\n\"0x10:warp:4\" = \"House\"\n",
+    )
+    .unwrap();
+    let names = Names::new(None, Some(&mine), None).unwrap();
+    assert_eq!(
+        names.place(0x10, 1 << 32 | 3).as_deref(),
+        Some("Devon Corporation")
+    );
+    assert_eq!(names.place(0x10, 1 << 32 | 4).as_deref(), Some("House"));
+    assert_eq!(
+        places(&mine),
+        [
+            ("0x10:warp:3".to_string(), "Devon Corporation".to_string()),
+            ("0x10:warp:4".to_string(), "House".to_string()),
+        ]
+    );
+}
+
+/// A kind added to the field without a word here would be written as its bare tag. Python reads
+/// the tags off the module; here they are listed, and a new one is added to this list too.
+#[test]
+fn test_every_kind_of_slot_has_a_word() {
+    let mut tags: Vec<i64> = [
+        things::FURNITURE_SOURCE,
+        things::WARP_SOURCE,
+        things::TILE_SOURCE,
+        things::EDGE_SOURCE,
+        things::BERRY_SOURCE,
+        things::TRIGGER_SOURCE,
+        things::SECRET_BASE_SOURCE,
+        things::ASH_SOURCE,
+        things::BIKE_SOURCE,
+        things::DIVE_SOURCE,
+        things::STAIRS_SOURCE,
+        things::APP_SOURCE,
+        things::DECORATION_SOURCE,
+        things::MODEL_SOURCE,
+    ]
+    .map(|value| value >> 32)
+    .to_vec();
+    tags.sort();
+    assert_eq!(tags, (0..KINDS.len() as i64).collect::<Vec<_>>());
 }
