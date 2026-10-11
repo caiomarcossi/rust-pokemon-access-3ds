@@ -23,8 +23,12 @@ use std::rc::Rc;
 use crate::core::binary::u32;
 use crate::core::memory::Memory;
 use crate::core::names::Names;
+use crate::games::common::field::things::{Naming, own_name};
 use crate::games::{gen6::field::mmodel, gen6::field::talk};
 use crate::py::Result;
+
+/// Who spoke: the character, and the name of the one model alone (`Interactable.own`).
+pub type Speaker = (i64, Naming);
 
 /// Tracks the field's talk objects and says who is speaking a window.
 ///
@@ -35,9 +39,9 @@ pub struct SpeakerReader {
     names: Rc<Names>,
     /// Where the game keeps the sprite a move model is drawn with (`mmodel.drawn_as`).
     drawn: i64,
-    /// The character that last spoke, for a rename: a player names somebody having just
-    /// heard them, which is a moment later than the page that named them.
-    last: Cell<Option<i64>>,
+    /// Who last spoke, for a rename: a player names somebody having just heard them, which
+    /// is a moment later than the page that named them.
+    last: Cell<Option<Speaker>>,
     /// Every talk object found. Kept for good: a talk object's class is a DLL's while a talk
     /// runs, so it cannot be found again exactly when it matters.
     talking: RefCell<Vec<i64>>,
@@ -83,6 +87,11 @@ impl SpeakerReader {
 
     /// Which character is showing this message window, or None when none is.
     pub fn character_of(&self, window: i64) -> Result<Option<i64>> {
+        Ok(self.speaker_of(window)?.map(|speaker| speaker.0))
+    }
+
+    /// Who is showing this message window, or None when nobody is.
+    pub fn speaker_of(&self, window: i64) -> Result<Option<Speaker>> {
         for &at in self.talking.borrow().iter() {
             let head = self.memory.read(at + talk::WINDOW, talk::HEAD)?;
             if u32(&head, 0)? != window {
@@ -95,26 +104,34 @@ impl SpeakerReader {
             let head = self.memory.read(actor, mmodel::HEAD)?;
             let character = mmodel::drawn_as(&*self.memory, actor, &head, self.drawn)?;
             if character != 0 {
-                return Ok(Some(character));
+                return Ok(Some((
+                    character,
+                    own_name(mmodel::zone_of(&head)?, mmodel::index_of(&head)?)?,
+                )));
             }
         }
         Ok(None)
     }
 
-    /// What to call whoever is speaking this window, or None.
+    /// What to call whoever is speaking this window, or None: their own name, or their
+    /// character's.
     ///
-    /// Remembers the character either way: somebody nameless is exactly who a rename is for, so
+    /// Remembers the speaker either way: somebody nameless is exactly who a rename is for, so
     /// the one worth remembering is the one this returns None for.
     pub fn name_for(&self, window: i64) -> Result<Option<String>> {
-        let character = self.character_of(window)?;
-        if let Some(character) = character {
-            self.last.set(Some(character));
-        }
-        Ok(character.and_then(|character| self.names.sprite(character)))
+        let Some(speaker) = self.speaker_of(window)? else {
+            return Ok(None);
+        };
+        self.last.set(Some(speaker));
+        let (character, (_, zone, slot)) = speaker;
+        Ok(match self.names.place(zone, slot) {
+            Some(own) if !own.is_empty() => Some(own),
+            _ => self.names.sprite(character),
+        })
     }
 
-    /// The character that last spoke, or None if nobody has this session.
-    pub fn last(&self) -> Option<i64> {
+    /// Who last spoke, or None if nobody has this session.
+    pub fn last(&self) -> Option<Speaker> {
         self.last.get()
     }
 }

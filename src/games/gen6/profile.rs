@@ -621,7 +621,11 @@ impl Gen6Profile {
                 navigation,
                 speaker: Some({
                     let speaker = speaker.clone();
-                    Rc::new(move || speaker.last())
+                    Rc::new(move || {
+                        speaker
+                            .last()
+                            .map(|(character, own)| (character, Some(own)))
+                    })
                 }),
                 leads_to: Some(leads_to_of(text.clone(), field.clone())),
                 street: Some(street_of(text.clone())),
@@ -1239,7 +1243,7 @@ impl Gen6Profile {
         ));
         let zone = at.zone;
         let called = |item: &Interactable| -> Result<Option<String>> {
-            Ok(self.navigator.borrow().called(item, zone))
+            self.navigator.borrow().called(item, zone)
         };
         let leads = |item: &Interactable| -> Result<Option<String>> {
             self.navigator.borrow().destination(item, zone)

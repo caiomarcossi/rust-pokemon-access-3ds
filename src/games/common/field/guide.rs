@@ -610,7 +610,7 @@ fn apart(one: f64, other: f64) -> f64 {
 /// `Callable[[Interactable, int], str]`: what a thing is said as (`Navigator.label`).
 pub type Label = Rc<dyn Fn(&Interactable, i64) -> Result<String>>;
 /// `Callable[[Interactable, int], str]`: what a thing is called (`Navigator.name_of`).
-pub type NameOf = Rc<dyn Fn(&Interactable, i64) -> String>;
+pub type NameOf = Rc<dyn Fn(&Interactable, i64) -> Result<String>>;
 /// `Callable[[str], None]`: say something about the way unasked (`Navigator._tell`).
 pub type Tell = Rc<dyn Fn(&str)>;
 
@@ -824,7 +824,7 @@ impl Guide {
         asked: bool,
     ) -> Result<()> {
         self.guidance = None;
-        let name = (self.name_of)(item, r#where.zone);
+        let name = (self.name_of)(item, r#where.zone)?;
         if !self.routes {
             let text = format!(
                 "{}, {}, no route in this game yet",

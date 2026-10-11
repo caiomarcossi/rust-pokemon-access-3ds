@@ -55,6 +55,7 @@ use crate::games::common::field::keys::{
     ENEMY_SIDE, HIDE_UNREACHABLE, ITEM_NEXT, ITEM_PREVIOUS, LIST, MODE_TOGGLE, MODES, NORTH,
     OUR_SIDE, PATHFIND, PATHFIND_HM, PATHFIND_OFF, RENAME, RENAME_SPEAKER, SOUTH, TOUCH, WEST,
 };
+use crate::games::common::field::things::Naming as Named;
 use crate::games::common::field::things::{self, ALL, Field, Interactable, SPRITE};
 use crate::games::common::touch::ACTIONS as TOUCH_ACTIONS;
 use crate::games::common::touch::TouchTargets;
@@ -82,6 +83,11 @@ pub const RELATIVE: [(&str, &str); 4] = [
 /// What a dialog's answer is for, as `dialog.Answer` carries it.
 pub const RENAMING: &str = "interactable";
 pub const SPEAKING: &str = "speaker";
+
+/// The rename box's checkbox, for somebody or something that can be named alone, apart from
+/// everyone drawn as it: ticked as it opens, since the shipped names already call everybody what
+/// they look like (Orion, 2026-10-11).
+pub const ONLY: &str = "Only this one";
 
 /// How far direction mode looks, in cells each way: a box, so a thing 10 north and 10 east is
 /// in. The top screen shows about 13 cells across and 9 deep (measured from a rig screenshot,
@@ -113,8 +119,9 @@ pub fn towards(direction: &str, origin: (i64, i64), cell: (i64, i64), within: i6
 pub type LeadsTo = Rc<dyn Fn(i64, i64) -> Result<Option<String>>>;
 /// `Callable[[int, int], str | None]`: the street an exit comes out on.
 pub type Street = Rc<dyn Fn(i64, i64) -> Result<Option<String>>>;
-/// `Callable[[], int | None]`: the character that last spoke.
-pub type Speaker = Rc<dyn Fn() -> Option<i64>>;
+/// `Callable[[], tuple[int, Naming | None] | None]`: the character that last spoke, and the
+/// name of the one model alone.
+pub type Speaker = Rc<dyn Fn() -> Option<(i64, Option<Named>)>>;
 /// `Callable[[bool], str | None]`: the player's side of the battle as last said, or the enemy's.
 /// It reads a contest's portraits (`oras.screens.contest`), so it can raise.
 pub type Sides = Rc<dyn Fn(bool) -> Result<Option<String>>>;
@@ -181,11 +188,11 @@ pub struct Naming {
 
 impl Naming {
     /// What to call this: the name it has been given, or what it is when it has none.
-    pub fn name_of(&self, item: &Interactable, zone: i64) -> String {
-        match self.name(item, zone) {
+    pub fn name_of(&self, item: &Interactable, zone: i64) -> Result<String> {
+        Ok(match self.name(item, zone)? {
             Some(name) if !name.is_empty() => name,
             _ => item.kind.clone(),
-        }
+        })
     }
 
     /// What this is said as: what it is called, and for an exit into another place, the
@@ -195,7 +202,7 @@ impl Naming {
     /// rather than instead of it (ADR-0023: nothing of ours replaces what the game says); a name
     /// that already says the place is left as it is.
     pub fn label(&self, item: &Interactable, zone: i64) -> Result<String> {
-        let called = self.name_of(item, zone);
+        let called = self.name_of(item, zone)?;
         Ok(leading(&called, self.destination(item, zone)?.as_deref()))
     }
 
@@ -219,8 +226,22 @@ impl Naming {
     }
 
     /// The name this has been given, by the player or the game, or None.
-    pub fn name(&self, item: &Interactable, zone: i64) -> Option<String> {
-        let (what, first, second) = item.naming(zone)?;
+    pub fn name(&self, item: &Interactable, zone: i64) -> Result<Option<String>> {
+        let Some(naming) = item.naming(zone) else {
+            return Ok(None);
+        };
+        Ok(self.called(naming, item.own()?))
+    }
+
+    /// What a thing named by `naming` is called, or the one `own` names alone, ahead of it.
+    pub fn called(&self, naming: Named, own: Option<Named>) -> Option<String> {
+        if let Some((_, first, second)) = own
+            && let Some(called) = self.names.place(first, second)
+            && !called.is_empty()
+        {
+            return Some(called);
+        }
+        let (what, first, second) = naming;
         if what == SPRITE {
             self.names.sprite(first)
         } else {
@@ -246,9 +267,9 @@ pub struct Navigator {
     speaker: Speaker,
     /// The player's side of the battle as last said, or the enemy's, or None out of one.
     sides: Sides,
-    /// What the open dialog is renaming and what it was called, since the player may have
-    /// walked on by the time they press OK.
-    renaming: Option<((&'static str, i64, i64), String)>,
+    /// What the open dialog is renaming, the one alone where its checkbox may say so, and
+    /// what it was called, since the player may have walked on by the time they press OK.
+    renaming: Option<(Named, Option<Named>, String)>,
     mode: &'static str,
     /// Whether what Shift and P finds no way to is left out of the list (`HIDE_UNREACHABLE`).
     hiding: bool,
@@ -603,7 +624,7 @@ impl Navigator {
     }
 
     /// What to call this: the name it has been given, or what it is when it has none.
-    pub fn name_of(&self, item: &Interactable, zone: i64) -> String {
+    pub fn name_of(&self, item: &Interactable, zone: i64) -> Result<String> {
         self.naming.name_of(item, zone)
     }
 
@@ -626,11 +647,11 @@ impl Navigator {
     }
 
     /// The name this has been given, by the player or the game, or None.
-    pub fn called(&self, item: &Interactable, zone: i64) -> Option<String> {
+    pub fn called(&self, item: &Interactable, zone: i64) -> Result<Option<String>> {
         self.naming.name(item, zone)
     }
 
-    fn name(&self, item: &Interactable, zone: i64) -> Option<String> {
+    fn name(&self, item: &Interactable, zone: i64) -> Result<Option<String>> {
         self.naming.name(item, zone)
     }
 
@@ -702,8 +723,9 @@ impl Navigator {
             self.say("already renaming");
             return Ok(());
         }
-        let called = self.name(&item, r#where.zone);
-        self.renaming = Some((naming, self.label(&item, r#where.zone)?));
+        let called = self.name(&item, r#where.zone)?;
+        let own = item.own()?;
+        self.renaming = Some((naming, own, self.label(&item, r#where.zone)?));
         let label = format!(
             "{}, {}. ",
             leading(
@@ -720,13 +742,14 @@ impl Navigator {
             "Rename",
             &label,
             called.as_deref().unwrap_or_default(),
+            if own.is_some() { ONLY } else { "" },
         )?;
         Ok(())
     }
 
     /// Put the dialog up for whoever last spoke.
     fn rename_speaker(&mut self) -> Result<()> {
-        let Some(character) = (self.speaker)() else {
+        let Some(speaker) = (self.speaker)() else {
             self.say("nobody has spoken");
             return Ok(());
         };
@@ -734,10 +757,13 @@ impl Navigator {
             self.say("already renaming");
             return Ok(());
         }
-        let called = self.names.sprite(character);
+        let (character, own) = speaker;
+        let naming: Named = (SPRITE, character, 0);
+        let called = self.naming.called(naming, own);
         let called = called.filter(|called| !called.is_empty());
         self.renaming = Some((
-            (SPRITE, character, 0),
+            naming,
+            own,
             called
                 .clone()
                 .unwrap_or_else(|| "the last speaker".to_string()),
@@ -752,6 +778,7 @@ impl Navigator {
             "Rename",
             &label,
             called.as_deref().unwrap_or_default(),
+            if own.is_some() { ONLY } else { "" },
         )?;
         Ok(())
     }
@@ -766,16 +793,19 @@ impl Navigator {
             if (answer.what != RENAMING && answer.what != SPEAKING) || self.renaming.is_none() {
                 continue;
             }
-            let Some(((what, first, second), was)) = self.renaming.take() else {
+            let Some((naming, own, was)) = self.renaming.take() else {
                 continue;
             };
-            let now = if what == SPRITE {
+            let (what, first, second) = match own {
+                Some(own) if answer.ticked => own,
+                _ => naming,
+            };
+            if what == SPRITE {
                 self.names.name_sprite(first, &answer.said)?;
-                self.names.sprite(first)
             } else {
                 self.names.name_place(first, second, &answer.said)?;
-                self.names.place(first, second)
-            };
+            }
+            let now = self.naming.called(naming, own);
             match now {
                 Some(now) if !now.is_empty() => self.say(&format!("{was} is now {now}")),
                 _ => self.say(&format!("{was} has no name")),

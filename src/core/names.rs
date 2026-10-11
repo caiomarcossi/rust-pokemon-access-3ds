@@ -259,11 +259,13 @@ impl Names {
                 .to_string(),
             "hand too, and sending it to somebody else gives them your names.".to_string(),
             String::new(),
-            "[sprites] is a character: one person everywhere in the game, by the number the game"
+            "[sprites] is a character: everyone drawn alike everywhere in the game, by the number"
                 .to_string(),
-            "counts them with. [places] is a slot on one map, written map:slot, so a sign named"
+            "the game counts them with. [places] is a slot on one map, written map:slot, so a sign"
                 .to_string(),
-            "here says nothing about a sign on another map.".to_string(),
+            "named here says nothing about a sign on another map; one person or boulder named"
+                .to_string(),
+            "alone is a slot of its map too.".to_string(),
         ]);
         for section in SECTIONS {
             lines.push(String::new());

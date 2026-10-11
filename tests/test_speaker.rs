@@ -12,6 +12,7 @@ use crate::core::names::{Names, sprite_key};
 use crate::core::speech::Speech;
 use crate::games::common::announce::Announcements;
 use crate::games::common::dialogue::{PageShown, Shown};
+use crate::games::common::field::things::{MODEL_SOURCE, own_name};
 use crate::games::gen6::field::speaker::SpeakerReader;
 use crate::games::gen6::game::Game;
 use crate::games::{gen6::field::mmodel, gen6::field::talk};
@@ -92,7 +93,31 @@ fn test_a_work_object_speaks_as_whoever_it_was_filled_with() {
     speaker.track([TALK]);
     assert_eq!(speaker.character_of(WINDOW).unwrap(), Some(0x13A));
     assert_eq!(speaker.name_for(WINDOW).unwrap().as_deref(), Some("May"));
-    assert_eq!(speaker.last(), Some(0x13A));
+    assert_eq!(speaker.last(), Some((0x13A, own_name(GYM, 3).unwrap())));
+}
+
+/// A Youngster named "Calvin" with the box ticked is Calvin in what he says too, where every
+/// other Youngster speaks as the sprite's name (Orion, 2026-10-11).
+#[test]
+fn test_somebody_named_alone_speaks_as_that_name() {
+    let memory = FakeMemory::new();
+    talking(&memory, TALK, WINDOW, NORMAN_MODEL);
+    standing(&memory, NORMAN_MODEL, 0xDA, 7);
+    let shipped = IndexMap::from([("0xda".to_string(), "Youngster".to_string())]);
+    let names = Rc::new(Names::new(Some(&shipped), None, None).unwrap());
+    let speaker = SpeakerReader::with_default_drawn(memory.clone(), names.clone());
+    speaker.track([TALK]);
+    assert_eq!(
+        speaker.name_for(WINDOW).unwrap().as_deref(),
+        Some("Youngster")
+    );
+    names.name_place(GYM, MODEL_SOURCE | 7, "Calvin").unwrap();
+    assert_eq!(speaker.name_for(WINDOW).unwrap().as_deref(), Some("Calvin"));
+    standing(&memory, NORMAN_MODEL, 0xDA, 8);
+    assert_eq!(
+        speaker.name_for(WINDOW).unwrap().as_deref(),
+        Some("Youngster")
+    );
 }
 
 #[test]

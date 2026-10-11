@@ -16,7 +16,8 @@ use indexmap::IndexMap;
 
 use super::fake_speech::Recorder;
 use crate::core::dialog::{
-    ATOM_BUTTON, ATOM_EDIT, ATOM_STATIC, Ask, Asker, IDC_EDIT, IDC_LABEL, IDCANCEL, IDOK, template,
+    ATOM_BUTTON, ATOM_EDIT, ATOM_STATIC, Ask, Asker, IDC_CHECK, IDC_EDIT, IDC_LABEL, IDCANCEL,
+    IDOK, template,
 };
 use crate::core::names::Names;
 use crate::core::speech::Speech;
@@ -27,7 +28,7 @@ use crate::games::common::field::keys::{
 };
 use crate::games::common::field::navigate::{LeadsTo, Navigator, Options};
 use crate::games::common::field::things::{
-    Field, Interactable, PLACE, POKEMON, SPRITE, WARP_SOURCE,
+    Field, Interactable, MODEL_SOURCE, Naming, PLACE, POKEMON, SPRITE, WARP_SOURCE,
 };
 use crate::games::oras::field::hidden::HIDDEN_POKEMON;
 use crate::py::{self, Result};
@@ -131,42 +132,67 @@ impl FieldSource for FakeField {
     }
 }
 
+type Asked = (String, String, String, String);
+
 /// Stands in for the box: records what it was asked and answers with what it was told to.
 struct FakeDialog {
     answer: Mutex<Option<String>>,
-    asked: Mutex<Vec<(String, String, String)>>,
+    /// Whether the checkbox is left ticked, where the box has one: it opens ticked.
+    ticked: bool,
+    asked: Mutex<Vec<Asked>>,
 }
 
 impl FakeDialog {
-    fn new(answer: Option<&str>) -> Arc<Self> {
+    fn new(answer: Option<&str>, ticked: bool) -> Arc<Self> {
         Arc::new(FakeDialog {
             answer: Mutex::new(answer.map(str::to_string)),
+            ticked,
             asked: Mutex::new(Vec::new()),
         })
     }
 
-    fn call(&self, title: &str, label: &str, current: &str) -> Result<Option<String>> {
-        self.asked.lock().unwrap().push((
-            title.to_string(),
-            label.to_string(),
-            current.to_string(),
-        ));
-        Ok(self.answer.lock().unwrap().clone())
+    fn call(
+        &self,
+        title: &str,
+        label: &str,
+        current: &str,
+        check: &str,
+    ) -> Result<Option<(String, bool)>> {
+        self.asked
+            .lock()
+            .unwrap()
+            .push(box_with(title, label, current, check));
+        Ok(self
+            .answer
+            .lock()
+            .unwrap()
+            .clone()
+            .map(|answer| (answer, !check.is_empty() && self.ticked)))
     }
 
-    fn asked(&self) -> Vec<(String, String, String)> {
+    fn asked(&self) -> Vec<Asked> {
         self.asked.lock().unwrap().clone()
     }
 
     fn shown(self: &Arc<Self>) -> Ask {
         let dialog = self.clone();
-        Arc::new(move |title, label, current| dialog.call(title, label, current))
+        Arc::new(move |title, label, current, check| dialog.call(title, label, current, check))
     }
 }
 
+/// One of `FakeDialog.asked`'s entries, for a box with no checkbox.
+fn box_of(title: &str, label: &str, current: &str) -> Asked {
+    box_with(title, label, current, "")
+}
+
 /// One of `FakeDialog.asked`'s entries.
-fn box_of(title: &str, label: &str, current: &str) -> (String, String, String) {
-    (title.to_string(), label.to_string(), current.to_string())
+fn box_with(title: &str, label: &str, current: &str, check: &str) -> Asked {
+    (
+        title.to_string(),
+        label.to_string(),
+        current.to_string(),
+        check.to_string(),
+    )
 }
 
 /// `navigator`'s arguments, each as the Python defaults it.
@@ -174,8 +200,12 @@ struct Wanted {
     answer: Option<String>,
     names: Option<Rc<Names>>,
     r#where: Field,
+    /// The last speaker's character.
     spoke: Option<i64>,
     leads_to: Option<LeadsTo>,
+    /// The speaker's name alone.
+    own: Option<Naming>,
+    ticked: bool,
 }
 
 impl Default for Wanted {
@@ -186,15 +216,17 @@ impl Default for Wanted {
             r#where: town(),
             spoke: None,
             leads_to: None,
+            own: None,
+            ticked: true,
         }
     }
 }
 
 fn navigator(wanted: Wanted) -> (Navigator, Rc<Recorder>, Arc<FakeDialog>, Rc<Names>) {
     let backend = Recorder::new();
-    let dialog = FakeDialog::new(wanted.answer.as_deref());
+    let dialog = FakeDialog::new(wanted.answer.as_deref(), wanted.ticked);
     let named = wanted.names.unwrap_or_else(|| Rc::new(Names::default()));
-    let spoke = wanted.spoke;
+    let (spoke, own) = (wanted.spoke, wanted.own);
     let nav = Navigator::new(
         Rc::new(FakeField {
             r#where: wanted.r#where,
@@ -204,7 +236,7 @@ fn navigator(wanted: Wanted) -> (Navigator, Rc<Recorder>, Arc<FakeDialog>, Rc<Na
         Options {
             names: Some(named.clone()),
             asker: Some(Asker::new(Some(dialog.shown()))),
-            speaker: Some(Rc::new(move || spoke)),
+            speaker: Some(Rc::new(move || spoke.map(|spoke| (spoke, own)))),
             leads_to: wanted.leads_to,
             ..Options::default()
         },
@@ -412,7 +444,7 @@ fn test_a_second_press_while_the_box_is_up_does_not_stack_another() {
 
     let never: Ask = {
         let (holding, asked) = (holding.clone(), asked.clone());
-        Arc::new(move |_title, label, _current| {
+        Arc::new(move |_title, label, _current, _check| {
             asked.lock().unwrap().push(label.to_string());
             holding.wait(2.0);
             Ok(None)
@@ -584,6 +616,165 @@ fn test_nobody_having_spoken_opens_no_box() {
     assert_eq!(backend.spoken(), ["nobody has spoken"]);
 }
 
+// ---------------------------------------------------------------- one of many drawn alike
+
+const YOUNGSTER: i64 = 0xDA;
+const ROUTE: i64 = 0x10E;
+
+fn calvin() -> Interactable {
+    Interactable {
+        code: YOUNGSTER,
+        source: 0x08D1E9A8,
+        move_model: true,
+        record: Some((ROUTE, 7)),
+        ..Interactable::new("people", "person", (95, 172))
+    }
+}
+
+fn other() -> Interactable {
+    Interactable {
+        code: YOUNGSTER,
+        source: 0x08D1F458,
+        move_model: true,
+        record: Some((ROUTE, 8)),
+        ..Interactable::new("people", "person", (96, 172))
+    }
+}
+
+/// Two Youngsters on Route 102, one sprite and two records: Calvin is trainer 7 (spike 90).
+fn youngsters() -> Field {
+    Field {
+        interactables: vec![calvin(), other()],
+        ..Field::new(ROUTE, (94, 172))
+    }
+}
+
+/// Orion, 2026-10-11: the shipped names already call everybody what they look like, so a
+/// rename is more likely for one than for all, and the box opens ticked. Calvin's name is a slot
+/// on his record's map, and the other Youngster keeps the sprite's.
+#[test]
+fn test_one_youngster_is_named_alone_while_the_box_stays_ticked() {
+    let names = Rc::new(Names::new(Some(&shipped(&[("0xda", "Youngster")])), None, None).unwrap());
+    let (mut nav, backend, dialog, _) = navigator(Wanted {
+        answer: Some("Youngster Calvin".to_string()),
+        names: Some(names.clone()),
+        r#where: youngsters(),
+        ..Wanted::default()
+    });
+    nav.press(ITEM_READ).unwrap();
+    backend.spoken.borrow_mut().clear();
+    rename(&mut nav);
+    assert_eq!(
+        dialog.asked(),
+        [box_with(
+            "Rename",
+            "person, 1 east. Called: Youngster",
+            "Youngster",
+            "Only this one"
+        )]
+    );
+    assert_eq!(
+        names.place(ROUTE, MODEL_SOURCE | 7).as_deref(),
+        Some("Youngster Calvin")
+    );
+    assert_eq!(names.sprite(YOUNGSTER).as_deref(), Some("Youngster"));
+    nav.press(ITEM_NEXT).unwrap();
+    nav.press(ITEM_NEXT).unwrap();
+    assert_eq!(
+        backend.spoken(),
+        [
+            "Youngster is now Youngster Calvin",
+            "Youngster, 2 of 2, 2 east",
+            "Youngster Calvin, 1 of 2, 1 east"
+        ]
+    );
+}
+
+#[test]
+fn test_the_box_unticked_names_everyone_drawn_alike_and_one_named_alone_keeps_theirs() {
+    let names = Rc::new(Names::default());
+    names.name_place(ROUTE, MODEL_SOURCE | 7, "Calvin").unwrap();
+    let (mut nav, backend, _, _) = navigator(Wanted {
+        answer: Some("Youngster".to_string()),
+        names: Some(names.clone()),
+        r#where: youngsters(),
+        ticked: false,
+        ..Wanted::default()
+    });
+    nav.press(ITEM_NEXT).unwrap(); // the other Youngster
+    rename(&mut nav);
+    assert_eq!(names.sprite(YOUNGSTER).as_deref(), Some("Youngster"));
+    backend.spoken.borrow_mut().clear();
+    nav.press(ITEM_READ).unwrap();
+    nav.press(ITEM_NEXT).unwrap();
+    assert_eq!(
+        backend.spoken(),
+        ["Youngster, 2 of 2, 2 east", "Calvin, 1 of 2, 1 east"]
+    );
+}
+
+#[test]
+fn test_clearing_a_name_given_alone_gives_the_one_back_to_the_sprites() {
+    let names = Rc::new(Names::new(Some(&shipped(&[("0xda", "Youngster")])), None, None).unwrap());
+    names.name_place(ROUTE, MODEL_SOURCE | 7, "Calvin").unwrap();
+    let (mut nav, backend, _, _) = navigator(Wanted {
+        answer: Some(String::new()),
+        names: Some(names.clone()),
+        r#where: youngsters(),
+        ..Wanted::default()
+    });
+    nav.press(ITEM_READ).unwrap();
+    backend.spoken.borrow_mut().clear();
+    rename(&mut nav);
+    assert_eq!(names.place(ROUTE, MODEL_SOURCE | 7), None);
+    assert_eq!(backend.spoken(), ["Calvin is now Youngster"]);
+}
+
+/// Naming him from what he said names the one on the map, and the other way round.
+#[test]
+fn test_the_last_speaker_is_named_alone_as_the_one_on_the_map_is() {
+    let (mut nav, _, dialog, names) = navigator(Wanted {
+        answer: Some("Calvin".to_string()),
+        r#where: youngsters(),
+        spoke: Some(YOUNGSTER),
+        own: calvin().own().unwrap(),
+        ..Wanted::default()
+    });
+    nav.press(RENAME_SPEAKER).unwrap();
+    nav.asker.wait_default();
+    nav.poll_renames().unwrap();
+    assert_eq!(
+        dialog.asked(),
+        [box_with(
+            "Rename",
+            "The last speaker. Not named yet",
+            "",
+            "Only this one"
+        )]
+    );
+    assert_eq!(
+        names.place(ROUTE, MODEL_SOURCE | 7).as_deref(),
+        Some("Calvin")
+    );
+    assert_eq!(names.sprite(YOUNGSTER), None);
+}
+
+/// Sun's people are read without the record they were built from.
+#[test]
+fn test_a_person_with_no_record_has_no_box_to_tick() {
+    let (mut nav, _, dialog, _) = navigator(Wanted {
+        r#where: Field {
+            interactables: vec![town().interactables[2].clone()],
+            ..Field::new(MART, (94, 172))
+        },
+        ..Wanted::default()
+    });
+    nav.press(ITEM_READ).unwrap();
+    nav.press(RENAME).unwrap();
+    nav.asker.wait_default();
+    assert_eq!(dialog.asked()[0].3, "");
+}
+
 // ---------------------------------------------------------------- the template
 
 /// A dialog template read back: its title, and each item as (id, class atom, text).
@@ -631,7 +822,7 @@ fn read_template(built: &[u8]) -> (String, Vec<(i64, i64, String)>) {
 /// and not just "edit".
 #[test]
 fn test_the_dialog_template_builds_a_real_dialog() {
-    let built = template("Rename", "sign, 1 north. Called: Signpost 1", 260).unwrap();
+    let built = template("Rename", "sign, 1 north. Called: Signpost 1", "", 260).unwrap();
     let (title, items) = read_template(&built);
     assert_eq!(title, "Rename");
     assert_eq!(
@@ -643,6 +834,23 @@ fn test_the_dialog_template_builds_a_real_dialog() {
                 "sign, 1 north. Called: Signpost 1".to_string()
             ),
             (IDC_EDIT, ATOM_EDIT, String::new()),
+            (IDOK, ATOM_BUTTON, "OK".to_string()),
+            (IDCANCEL, ATOM_BUTTON, "Cancel".to_string()),
+        ]
+    );
+}
+
+/// A Tab from the name, and named by its own words, as a checkbox is.
+#[test]
+fn test_the_checkbox_comes_after_the_edit_and_before_the_buttons() {
+    let (_, items) =
+        read_template(&template("Rename", "person, 1 east", "Only this one", 260).unwrap());
+    assert_eq!(
+        items,
+        [
+            (IDC_LABEL, ATOM_STATIC, "person, 1 east".to_string()),
+            (IDC_EDIT, ATOM_EDIT, String::new()),
+            (IDC_CHECK, ATOM_BUTTON, "Only this one".to_string()),
             (IDOK, ATOM_BUTTON, "OK".to_string()),
             (IDCANCEL, ATOM_BUTTON, "Cancel".to_string()),
         ]

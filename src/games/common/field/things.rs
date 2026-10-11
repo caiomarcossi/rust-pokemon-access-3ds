@@ -70,6 +70,11 @@ pub const APP_SOURCE: i64 = 11 << 32;
 /// kind of its own so a name given the crumbled cliff is not the Stairs' over it.
 pub const DECORATION_SOURCE: i64 = 12 << 32;
 
+/// One move model's own name, apart from its sprite's: `MODEL_SOURCE | index`, the record it was
+/// built from, under that record's zone (`Interactable.record`). A big boulder keeps its record
+/// however far it is pushed, and across a save (spike A).
+pub const MODEL_SOURCE: i64 = 13 << 32;
+
 /// A place's `source` from its kind's tag and its own number. The number must leave the tag's
 /// bits clear, and no u16 the game holds can reach them, so one that does is a new encoding
 /// written wider than the tag allows for: a programmer's error, refused here rather than keyed as
@@ -82,6 +87,12 @@ pub fn place_source(kind: i64, payload: i64) -> Result<i64> {
         )));
     }
     Ok(kind | payload)
+}
+
+/// The name of the one move model built from record `index` of `zone`'s table, as
+/// `Interactable.naming` says one.
+pub fn own_name(zone: i64, index: i64) -> Result<Naming> {
+    Ok((PLACE, zone, place_source(MODEL_SOURCE, index)?))
 }
 
 /// Which kind of place a source is: one of the `*_SOURCE` tags.
@@ -101,6 +112,10 @@ pub const SPRITE: &str = "sprite";
 
 /// The two name spaces of `pa3ds.core.names`, as `Interactable.naming` chooses between them.
 pub const PLACE: &str = "place";
+
+/// Which name a thing has, as `Interactable.naming` says it: (`SPRITE`, character, 0) or
+/// (`PLACE`, map, slot).
+pub type Naming = (&'static str, i64, i64);
 
 pub const POKEMON: &str = "pokémon";
 
@@ -163,6 +178,10 @@ pub struct Interactable {
     /// For an exit that comes out in the zone it is in, the cell it comes out at: a hideout's
     /// teleporter pads, most of which lead to another pad of their own room (2026-10-06).
     pub arrival: Option<(i64, i64)>,
+    /// For a move model built from a record of a zone's table, that zone and the record's index:
+    /// which one it is, wherever it walks or is pushed (spike A). None where it is not read: Sun's
+    /// models.
+    pub record: Option<(i64, i64)>,
 }
 
 impl Interactable {
@@ -181,6 +200,7 @@ impl Interactable {
             home: None,
             height: None,
             arrival: None,
+            record: None,
         }
     }
 
@@ -210,7 +230,7 @@ impl Interactable {
     /// minute, its `source` is the record's address rather than a slot in any table, and the
     /// game names the species itself once the DexNav has registered it — so a name here would be
     /// a key that never matches again and would replace something the game says.
-    pub fn naming(&self, zone: i64) -> Option<(&'static str, i64, i64)> {
+    pub fn naming(&self, zone: i64) -> Option<Naming> {
         // What a game's own app lists, the sky's places, the game names itself, and a name of
         // ours never replaces the game's (ADR-0023).
         if self.category == POKEMON || source_kind(self.source) == APP_SOURCE {
@@ -220,6 +240,15 @@ impl Interactable {
             return Some((SPRITE, self.code, 0));
         }
         Some((PLACE, self.home.unwrap_or(zone), self.source))
+    }
+
+    /// The name of this one alone, ahead of its sprite's, as `naming` says one: a slot on its
+    /// record's map. None for anything but a move model with a record. Youngster Calvin is one of
+    /// eleven drawn as a Youngster, and one big boulder of eight in a room (Orion, 2026-10-11).
+    pub fn own(&self) -> Result<Option<Naming>> {
+        self.record
+            .map(|(zone, index)| own_name(zone, index))
+            .transpose()
     }
 
     /// Direction and distance from `origin`, as "3 east 2 north", or "here"; for a player

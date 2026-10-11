@@ -1525,6 +1525,7 @@ impl FieldReader {
             source,
             move_model: true,
             height: mmodel::height(head)?,
+            record: Some((mmodel::zone_of(head)?, mmodel::index_of(head)?)),
             ..Interactable::new(category, kind, cell)
         })
     }

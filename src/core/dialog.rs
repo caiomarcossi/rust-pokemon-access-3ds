@@ -34,6 +34,8 @@ use std::ptr::null_mut;
 #[cfg(windows)]
 use windows_sys::Win32::Foundation::{GetLastError, HWND, LPARAM, WPARAM};
 #[cfg(windows)]
+use windows_sys::Win32::UI::Controls::{CheckDlgButton, IsDlgButtonChecked};
+#[cfg(windows)]
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     DLGTEMPLATE, DialogBoxIndirectParamW, EndDialog, GetDlgItemTextW, SetDlgItemTextW,
     SetForegroundWindow,
@@ -54,6 +56,8 @@ pub const WS_BORDER: i64 = 0x00800000;
 pub const WS_GROUP: i64 = 0x00020000;
 pub const ES_AUTOHSCROLL: i64 = 0x0080;
 pub const BS_DEFPUSHBUTTON: i64 = 0x0001;
+pub const BS_AUTOCHECKBOX: i64 = 0x0003;
+pub const BST_CHECKED: i64 = 1;
 pub const SS_LEFT: i64 = 0x0000;
 pub const WS_EX_CLIENTEDGE: i64 = 0x00000200;
 
@@ -62,16 +66,18 @@ pub const ATOM_BUTTON: i64 = 0x0080;
 pub const ATOM_EDIT: i64 = 0x0081;
 pub const ATOM_STATIC: i64 = 0x0082;
 
-/// How a dialog is shown: title, label and the name it starts with, back to the name given or
-/// None for a dialog cancelled. `ask` is the real one; a test passes its own.
+/// How a dialog is shown: title, label, the name it starts with and its checkbox's words, none
+/// for no checkbox; back to the name given and whether the box was ticked, or None for a dialog
+/// cancelled. `ask` is the real one; a test passes its own.
 ///
 /// It runs on the dialog's thread, so it is `Send` and `Sync`.
-pub type Ask = Arc<dyn Fn(&str, &str, &str) -> Result<Option<String>> + Send + Sync>;
+pub type Ask = Arc<dyn Fn(&str, &str, &str, &str) -> Result<Option<(String, bool)>> + Send + Sync>;
 
 pub const IDOK: i64 = 1;
 pub const IDCANCEL: i64 = 2;
 pub const IDC_LABEL: i64 = 100;
 pub const IDC_EDIT: i64 = 101;
+pub const IDC_CHECK: i64 = 102;
 
 pub const WM_INITDIALOG: i64 = 0x0110;
 pub const WM_COMMAND: i64 = 0x0111;
@@ -87,6 +93,8 @@ pub struct Answer {
     /// Which question this answers, in the asker's own words.
     pub what: String,
     pub said: String,
+    /// Whether the box's checkbox was ticked; False where it had none.
+    pub ticked: bool,
 }
 
 /// A null-terminated UTF-16 string, as every string in a dialog template is.
@@ -161,8 +169,10 @@ fn item(
 ///
 /// Sizes are dialog units, not pixels: Windows scales them by the dialog's font, which is how a
 /// box stays laid out at any DPI or text size. The label is given two lines' worth of room,
-/// because it carries both what is being renamed and what it is called now.
-pub fn template(title: &str, label: &str, width: i64) -> Result<Vec<u8>> {
+/// because it carries both what is being renamed and what it is called now. `check` puts a
+/// checkbox of those words after the edit, a Tab away, which a checkbox's own words name. Python's
+/// `check` defaults to "" and `width` to 260.
+pub fn template(title: &str, label: &str, check: &str, width: i64) -> Result<Vec<u8>> {
     let mut items = Vec::new();
     // The label comes immediately before the edit, because that is how Win32 says which static
     // names which control: MSAA takes a control's name from the static before it in tab order.
@@ -190,12 +200,28 @@ pub fn template(title: &str, label: &str, width: i64) -> Result<Vec<u8>> {
         ATOM_EDIT,
         "",
     )?;
+    let mut buttons = 52;
+    if !check.is_empty() {
+        item(
+            &mut items,
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
+            0,
+            7,
+            49,
+            width - 14,
+            12,
+            IDC_CHECK,
+            ATOM_BUTTON,
+            check,
+        )?;
+        buttons = 68;
+    }
     item(
         &mut items,
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
         0,
         width - 111,
-        52,
+        buttons,
         50,
         14,
         IDOK,
@@ -207,7 +233,7 @@ pub fn template(title: &str, label: &str, width: i64) -> Result<Vec<u8>> {
         WS_CHILD | WS_VISIBLE | WS_TABSTOP,
         0,
         width - 57,
-        52,
+        buttons,
         50,
         14,
         IDCANCEL,
@@ -220,8 +246,8 @@ pub fn template(title: &str, label: &str, width: i64) -> Result<Vec<u8>> {
         DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE;
     data.extend_from_slice(&uint(style & 0xFFFFFFFF)?);
     data.extend_from_slice(&uint(0)?);
-    data.extend_from_slice(&ushort(4)?);
-    for number in [0, 0, width, 73] {
+    data.extend_from_slice(&ushort(if check.is_empty() { 4 } else { 5 })?);
+    for number in [0, 0, width, buttons + 21] {
         data.extend_from_slice(&short(number)?);
     }
     data.extend_from_slice(&ushort(0)?); // no menu
@@ -240,7 +266,8 @@ pub fn template(title: &str, label: &str, width: i64) -> Result<Vec<u8>> {
 #[cfg(windows)]
 struct Asking {
     current: String,
-    answer: Option<String>,
+    check: String,
+    answer: Option<(String, bool)>,
 }
 
 #[cfg(windows)]
@@ -264,16 +291,20 @@ unsafe extern "system" fn proc(
     if message == WM_INITDIALOG {
         // Windows sends the edit's change back through this procedure while the text is set, so
         // `current` is cloned out rather than held borrowed across the call.
-        let current = ASKING.with(|asking| {
+        let (current, check) = ASKING.with(|asking| {
             asking
                 .borrow()
                 .as_ref()
-                .map(|asking| asking.current.clone())
+                .map(|asking| (asking.current.clone(), !asking.check.is_empty()))
                 .unwrap_or_default()
         });
         // SAFETY: `window` is the dialog Windows is calling this for, and the text is a
         // NUL-terminated UTF-16 string that outlives the call.
         unsafe { SetDlgItemTextW(window, IDC_EDIT as i32, wide(&current).as_ptr()) };
+        if check {
+            // SAFETY: `window` is the dialog, and IDC_CHECK one of its controls.
+            unsafe { CheckDlgButton(window, IDC_CHECK as i32, BST_CHECKED as u32) };
+        }
         // pa3ds is not the foreground process when the key is pressed — the hook sees the
         // key but never receives it — so this can be refused, and the box would open
         // behind the game with the player hearing nothing. Measured as working from
@@ -303,7 +334,11 @@ unsafe extern "system" fn proc(
             let said = String::from_utf16_lossy(&buffer[..end]);
             ASKING.with(|asking| {
                 if let Some(asking) = asking.borrow_mut().as_mut() {
-                    asking.answer = Some(said);
+                    // SAFETY: `window` is the dialog, and IDC_CHECK one of its controls.
+                    let ticked = !asking.check.is_empty()
+                        && unsafe { IsDlgButtonChecked(window, IDC_CHECK as i32) } as i64
+                            == BST_CHECKED;
+                    asking.answer = Some((said, ticked));
                 }
             });
             // SAFETY: `window` is the dialog this procedure was called for.
@@ -319,13 +354,14 @@ unsafe extern "system" fn proc(
     0
 }
 
-/// Show the dialog and wait for it. The name given, or None if it was cancelled.
+/// Show the dialog and wait for it. The name given and whether the checkbox was ticked, or None
+/// if it was cancelled. The checkbox, where there is one, starts ticked.
 ///
 /// Blocking, and it runs its own message loop, so it belongs on a thread of its own — see
 /// `Asker`. An empty string back is a name cleared, which is not the same as None.
 #[cfg(windows)]
-pub fn ask(title: &str, label: &str, current: &str) -> Result<Option<String>> {
-    let built = template(title, label, 260)?;
+pub fn ask(title: &str, label: &str, current: &str, check: &str) -> Result<Option<(String, bool)>> {
+    let built = template(title, label, check, 260)?;
     // The template must start on a 4-byte boundary, which a byte buffer does not promise and
     // Python's `create_string_buffer` happened to.
     let mut held = vec![0u32; built.len().div_ceil(4)];
@@ -337,6 +373,7 @@ pub fn ask(title: &str, label: &str, current: &str) -> Result<Option<String>> {
     ASKING.with(|asking| {
         *asking.borrow_mut() = Some(Asking {
             current: current.to_string(),
+            check: check.to_string(),
             answer: None,
         });
     });
@@ -369,7 +406,12 @@ pub fn ask(title: &str, label: &str, current: &str) -> Result<Option<String>> {
 // The runtime is Windows; this keeps the import working elsewhere.
 
 #[cfg(not(windows))]
-pub fn ask(_title: &str, _label: &str, _current: &str) -> Result<Option<String>> {
+pub fn ask(
+    _title: &str,
+    _label: &str,
+    _current: &str,
+    _check: &str,
+) -> Result<Option<(String, bool)>> {
     Err(Error::new(Kind::OsError, "a dialog needs Windows"))
 }
 
@@ -451,20 +493,29 @@ impl Asker {
         self.thread.as_ref().is_some_and(Thread::is_alive)
     }
 
-    /// Put a dialog up. False when one is already open, and nothing happens.
-    pub fn ask(&mut self, what: &str, title: &str, label: &str, current: &str) -> Result<bool> {
+    /// Put a dialog up, with a checkbox of `check`'s words where it says any. False when one
+    /// is already open, and nothing happens. Python's `check` defaults to "".
+    pub fn ask(
+        &mut self,
+        what: &str,
+        title: &str,
+        label: &str,
+        current: &str,
+        check: &str,
+    ) -> Result<bool> {
         if self.open() {
             return Ok(false);
         }
         let (show, answers) = (self.show.clone(), self.answers.clone());
-        let (what, title, label, current) = (
+        let (what, title, label, current, check) = (
             what.to_string(),
             title.to_string(),
             label.to_string(),
             current.to_string(),
+            check.to_string(),
         );
         self.thread = Some(Thread::start("dialog", move || {
-            Asker::run(&show, &answers, &what, &title, &label, &current)
+            Asker::run(&show, &answers, &what, &title, &label, &current, &check)
         })?);
         Ok(true)
     }
@@ -498,11 +549,13 @@ impl Asker {
         title: &str,
         label: &str,
         current: &str,
+        check: &str,
     ) {
-        match show(title, label, current) {
-            Ok(Some(said)) => lock(answers).push_back(Answer {
+        match show(title, label, current, check) {
+            Ok(Some((said, ticked))) => lock(answers).push_back(Answer {
                 what: what.to_string(),
                 said,
+                ticked,
             }),
             Ok(None) => {}
             // What `threading.excepthook` writes for a thread that raised.

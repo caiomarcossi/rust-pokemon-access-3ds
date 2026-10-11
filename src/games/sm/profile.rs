@@ -625,7 +625,7 @@ impl Profile for SunProfile {
         ));
         let zone = at.zone;
         let called = |item: &Interactable| -> Result<Option<String>> {
-            Ok(self.navigator.borrow().called(item, zone))
+            self.navigator.borrow().called(item, zone)
         };
         let destination = |item: &Interactable| self.navigator.borrow().destination(item, zone);
         for line in describe(&at, Some(&called), Some(&destination)) {
