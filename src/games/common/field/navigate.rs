@@ -53,7 +53,8 @@ use crate::games::common::field::guide::{Clock, FieldSource, Guide, Key};
 use crate::games::common::field::keys::{
     Bindings, CATEGORY_NEXT, CATEGORY_PREVIOUS, COORDINATES, DEFAULT_BINDINGS, DIRECTIONS, EAST,
     ENEMY_SIDE, HIDE_UNREACHABLE, ITEM_NEXT, ITEM_PREVIOUS, LIST, MODE_TOGGLE, MODES, NORTH,
-    OUR_SIDE, PATHFIND, PATHFIND_HM, PATHFIND_OFF, RENAME, RENAME_SPEAKER, SOUTH, TOUCH, WEST,
+    OUR_SIDE, PATH_NEXT, PATH_PREVIOUS, PATHFIND, PATHFIND_HM, PATHFIND_OFF, RENAME,
+    RENAME_SPEAKER, SOUTH, TOUCH, WEST,
 };
 use crate::games::common::field::things::Naming as Named;
 use crate::games::common::field::things::{self, ALL, Field, Interactable, SPRITE};
@@ -279,6 +280,9 @@ pub struct Navigator {
     /// The direction the chosen item was found in, so the same key steps on from it and
     /// another starts afresh.
     facing: Option<String>,
+    /// The big boulder a way to push it was chosen for, by its key, and that way
+    /// (`PATH_NEXT`).
+    pushing: Option<(Key, &'static str)>,
     /// P, and guiding the player along the way it finds.
     pub guide: Guide,
 }
@@ -361,6 +365,7 @@ impl Navigator {
             category: 0,
             chosen: None,
             facing: None,
+            pushing: None,
             guide,
         }
     }
@@ -492,7 +497,11 @@ impl Navigator {
                 None,
                 false,
                 true,
+                self.push(&item),
             );
+        }
+        if action == PATH_PREVIOUS || action == PATH_NEXT {
+            return self.choose_push(&r#where, if action == PATH_PREVIOUS { -1 } else { 1 });
         }
         if action == CATEGORY_PREVIOUS || action == CATEGORY_NEXT {
             let step = if action == CATEGORY_PREVIOUS { -1 } else { 1 };
@@ -587,6 +596,53 @@ impl Navigator {
         self.chosen = Some(keys[at as usize].clone());
         self.facing = Some(direction.to_string());
         self.said(r#where, &items, at)
+    }
+
+    /// Choose the next or previous way the chosen big boulder can be pushed, for P to go to
+    /// its side: "push east, 2 of 2". Anything else has one way to it.
+    fn choose_push(&mut self, r#where: &Field, step: i64) -> Result<()> {
+        let Some(item) = self.chosen_item(r#where)? else {
+            self.say("nothing here");
+            return Ok(());
+        };
+        let Some(pushes) = &item.pushes else {
+            self.say("one way to it");
+            return Ok(());
+        };
+        if pushes.is_empty() {
+            self.say("immoveable");
+            return Ok(());
+        }
+        let ways: Vec<&'static str> = pushes.iter().map(|&(way, _)| way).collect();
+        let count = ways.len() as i64;
+        let at = match self
+            .push(&item)
+            .and_then(|now| ways.iter().position(|&way| way == now))
+        {
+            Some(now) => py::modulo(now as i64 + step, count),
+            None if step > 0 => 0,
+            None => count - 1,
+        };
+        let (way, drops) = pushes[at as usize];
+        self.chosen = Some(item.key());
+        self.pushing = Some((item.key(), way));
+        let mut text = format!("push {way}");
+        if drops {
+            text += " into a hole";
+        }
+        if self.wording.positions {
+            text += &format!(", {} of {count}", at + 1);
+        }
+        self.say(&text);
+        Ok(())
+    }
+
+    /// The way chosen for this big boulder to be pushed, or None.
+    fn push(&self, item: &Interactable) -> Option<&'static str> {
+        match &self.pushing {
+            Some((key, way)) if *key == item.key() => Some(*way),
+            _ => None,
+        }
     }
 
     fn items(&self, r#where: &Field) -> Result<Vec<Interactable>> {
@@ -714,8 +770,9 @@ impl Navigator {
         self.chosen = Some(key);
         self.facing = None;
         let tell = self.guide.tell.clone();
-        self.guide
-            .to(r#where, item, &*tell, "", false, None, None, true, false)
+        self.guide.to(
+            r#where, item, &*tell, "", false, None, None, true, false, None,
+        )
     }
 
     /// Put the rename dialog up for whatever is chosen.

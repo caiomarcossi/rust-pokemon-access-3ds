@@ -114,6 +114,9 @@ pub struct Guidance {
     /// again quietly when they leave it: walking away from a hidden Pokémon the DexNav found, a new
     /// way was said at every step (movie26's replay, 2026-10-06). Python's default is True.
     pub asked: bool,
+    /// For a big boulder, the way it is to be pushed, whose side the path ends on and is found
+    /// again to.
+    pub push: Option<&'static str>,
 }
 
 impl Guidance {
@@ -377,6 +380,32 @@ type Past = (
     Option<f64>,
     Option<Interactable>,
 );
+
+/// The ways a big boulder is to be pushed, whose sides a way to it ends on: `push` where it
+/// can be pushed so, otherwise every way it can be (`Interactable.pushes`); none for anything
+/// else, and for a boulder no push moves.
+fn sides(item: &Interactable, push: Option<&str>) -> HashSet<&'static str> {
+    let ways: HashSet<&'static str> = item.pushes.iter().flatten().map(|&(way, _)| way).collect();
+    match push.and_then(|push| ways.get(push).copied()) {
+        Some(push) => HashSet::from([push]),
+        None => ways,
+    }
+}
+
+/// `goals` kept to those faced the ways in `sides`: beside a boulder, facing it is the way it
+/// is pushed from there (Orion, 2026-10-11: P left him south of a boulder that moves only
+/// east). All of them where none of those is open.
+fn aimed(
+    goals: IndexMap<Cell, Option<&'static str>>,
+    sides: &HashSet<&'static str>,
+) -> IndexMap<Cell, Option<&'static str>> {
+    let kept: IndexMap<Cell, Option<&'static str>> = goals
+        .iter()
+        .filter(|(_, way)| way.is_some_and(|way| sides.contains(way)))
+        .map(|(&cell, &way)| (cell, way))
+        .collect();
+    if kept.is_empty() { goals } else { kept }
+}
 
 /// Whether a way found ends at the thing: on one of `goals`, and on a stacked ground on the
 /// thing's floor there, not the floor over it (`Ground.walked`). `path[-1]` raises on an empty
@@ -810,6 +839,10 @@ impl Guide {
     /// `named` says what the way leads to before it, for a way nobody asked for (`found`), and
     /// `asked` is whether a key asked for it (`_Guidance.asked`).
     ///
+    /// A big boulder is gone to on a side it is pushed from, the way `push` says where it can be
+    /// pushed so and the nearest otherwise, and the way is said with the push: "to push east:
+    /// 3 west, 2 north" (Orion, 2026-10-11).
+    ///
     #[allow(clippy::too_many_arguments)]
     pub fn to(
         &mut self,
@@ -822,6 +855,7 @@ impl Guide {
         height: Option<f64>,
         named: bool,
         asked: bool,
+        push: Option<&str>,
     ) -> Result<()> {
         self.guidance = None;
         let name = (self.name_of)(item, r#where.zone)?;
@@ -846,7 +880,8 @@ impl Guide {
             say(&text);
             return Ok(());
         }
-        let mut goals = ground.goals(item)?;
+        let sides = sides(item, push);
+        let mut goals = aimed(ground.goals(item)?, &sides);
         let mut path = search(&ground, r#where.cell, &goals, heading, true, Some(item))?;
         // ponytail: where the ground is not stacked, a whole map's decks walked at one height, so
         // a way that goes under a deck and later onto it is not found; a stacked one finds it.
@@ -860,7 +895,7 @@ impl Guide {
         };
         for deck in decks {
             let other = self.ground(r#where, hm, Some(deck))?;
-            let aim = other.goals(item)?;
+            let aim = aimed(other.goals(item)?, &sides);
             let found = search(&other, r#where.cell, &aim, heading, false, Some(item))?;
             if let Some(found) = found {
                 ground = other;
@@ -900,8 +935,8 @@ impl Guide {
             }
         }
         let mut blocker = String::new();
-        if short && let Some(past) = self.up_to(r#where, item, hm, heading, &levels)? {
-            // Python also rebinds `goals` here, and never reads it again.
+        if short && let Some(past) = self.up_to(r#where, item, hm, heading, &levels, &sides)? {
+            // Python also rebinds `goals` here, and reads it again only where not short.
             let (past_ground, _goals, way, past_height, stood) = past;
             ground = past_ground;
             path = Some(way);
@@ -924,8 +959,21 @@ impl Guide {
                 return Ok(());
             }
         };
+        let pushing = if short || sides.is_empty() {
+            None
+        } else {
+            path.last()
+                .and_then(|end| goals.get(end).copied().flatten())
+        };
+        let to_push = match pushing {
+            None => String::new(),
+            Some(pushing) => format!("to push {pushing}: "),
+        };
         if path.len() == 1 {
-            let text = format!("{name}, {}", item.bearing(r#where.cell, r#where.heading)?);
+            let text = format!(
+                "{to_push}{name}, {}",
+                item.bearing(r#where.cell, r#where.heading)?
+            );
             say(&text);
             return Ok(());
         }
@@ -1005,6 +1053,7 @@ impl Guide {
             short,
             blocker: blocker.clone(),
             asked,
+            push: pushing,
         })));
         let first = first.ok_or_else(|| Error::index("list index out of range"))?;
         if first != heading {
@@ -1015,6 +1064,7 @@ impl Guide {
             } else {
                 String::new()
             };
+            text += &to_push;
             text += &spoken(&legs, r#where)?;
             if short {
                 text += &format!(", then can't continue{blocker}");
@@ -1147,6 +1197,7 @@ impl Guide {
         hm: bool,
         heading: &str,
         levels: &[Option<f64>],
+        sides: &HashSet<&'static str>,
     ) -> Result<Option<Past>> {
         let own: HashSet<Cell> = item.cells().into_iter().collect();
         let listed: HashSet<Cell> = r#where
@@ -1164,7 +1215,7 @@ impl Guide {
                 .filter(|cell| own.contains(cell) || !listed.contains(cell))
                 .copied()
                 .collect();
-            let goals = clear.goals(item)?;
+            let goals = aimed(clear.goals(item)?, sides);
             let way = search(&clear, r#where.cell, &goals, heading, false, Some(item))?;
             let Some(way) = way else {
                 continue;
@@ -1272,15 +1323,17 @@ impl Guide {
             self.guidance = None;
             return Ok(());
         };
-        let (hm, height, asked) = {
+        let (hm, height, asked, push) = {
             let guidance = guidance.borrow();
-            (guidance.hm, guidance.height, guidance.asked)
+            (guidance.hm, guidance.height, guidance.asked, guidance.push)
         };
         let log = self.log.clone();
         let quietly = move |text: &str| log(&format!("path, quietly: {text}"));
         let tell = self.tell.clone();
         let say: &dyn Fn(&str) = if asked { &*tell } else { &quietly };
-        self.to(&listed, &item, say, heading, hm, None, height, false, asked)
+        self.to(
+            &listed, &item, say, heading, hm, None, height, false, asked, push,
+        )
     }
 
     /// The field's ground, its decks walked at `height` or the player's own, crossing water

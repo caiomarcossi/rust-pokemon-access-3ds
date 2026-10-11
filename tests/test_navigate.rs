@@ -19,8 +19,9 @@ use crate::games::common::field::ground::{
 use crate::games::common::field::guide::{FieldSource, Guidance};
 use crate::games::common::field::keys::{
     CATEGORY_NEXT, CATEGORY_PREVIOUS, COORDINATES, DEFAULT_BINDINGS, DIRECTION, EAST, ENEMY_SIDE,
-    ITEM_NEXT, ITEM_PREVIOUS, ITEM_READ, LIST, MODE_TOGGLE, NORTH, OUR_SIDE, PATHFIND, PATHFIND_HM,
-    PATHFIND_OFF, RENAME, RENAME_SPEAKER, SOUTH, TOUCH, WEST, bound_keys,
+    ITEM_NEXT, ITEM_PREVIOUS, ITEM_READ, LIST, MODE_TOGGLE, NORTH, OUR_SIDE, PATH_NEXT,
+    PATH_PREVIOUS, PATHFIND, PATHFIND_HM, PATHFIND_OFF, RENAME, RENAME_SPEAKER, SOUTH, TOUCH, WEST,
+    bound_keys,
 };
 use crate::games::common::field::navigate::{LeadsTo, Navigator, Options, Sides, Street};
 use crate::games::common::field::things::{
@@ -1553,6 +1554,78 @@ fn walled(more: Vec<Cell>) -> Vec<Cell> {
     walls
 }
 
+/// A big boulder on the street that moves north, or east into a hole.
+fn loose() -> Field {
+    let here = street();
+    Field {
+        interactables: vec![
+            Interactable {
+                size: (2, 2),
+                code: BIG_BOULDER,
+                source: 0x08D1F458,
+                move_model: true,
+                pushes: Some(vec![("north", false), ("east", true)]),
+                ..Interactable::new("signs", "object", (95, 177))
+            },
+            Interactable {
+                source: place_source(FURNITURE_SOURCE, 1).unwrap(),
+                ..Interactable::new("items", "item ball", (99, 182))
+            },
+        ],
+        ..Field::new(here.zone, here.cell)
+    }
+}
+
+/// Orion, 2026-10-11: P left him south of a boulder that moved only east, with no way to
+/// tell how to get round to its west. P goes to the nearest side it can be pushed from and says
+/// the push; comma and period choose another, and P goes there, round the boulder.
+#[test]
+fn test_p_goes_to_a_side_a_boulder_is_pushed_from_and_comma_and_period_choose_which() {
+    let mut rig = navigator(on(loose()));
+    rig.press(ITEM_READ);
+    rig.press(PATHFIND);
+    rig.press(PATH_NEXT);
+    rig.press(PATH_NEXT);
+    rig.press(PATH_NEXT);
+    rig.press(PATHFIND);
+    let way = guidance(&rig);
+    let end = *path_of(&way).last().unwrap();
+    assert!([(95, 179), (96, 179)].contains(&end));
+    assert_eq!(way.unwrap().borrow().push, Some("north"));
+    rig.press(PATH_PREVIOUS);
+    rig.press(ITEM_NEXT);
+    rig.press(PATH_NEXT);
+    assert_eq!(
+        said(&rig.backend),
+        [
+            "object, 1 of 2, 5 east 2 south, moveable north or east into a hole",
+            "to push east: 2 south, 4 east",
+            "push north, 1 of 2",
+            "push east into a hole, 2 of 2",
+            "push north, 1 of 2",
+            "to push north: 4 south, 5 east",
+            "push east into a hole, 2 of 2",
+            "item ball, 2 of 2, 9 east 7 south",
+            "one way to it"
+        ]
+    );
+}
+
+/// Off the way to push it north, the way found again still ends south of it, though its west
+/// side, pushed east from, is nearer.
+#[test]
+fn test_a_way_to_push_a_boulder_found_again_keeps_to_its_side() {
+    let mut rig = navigator(on(loose()));
+    rig.press(ITEM_READ);
+    rig.press(PATH_NEXT);
+    rig.press(PATHFIND);
+    step(&mut rig, &[(90, 174)]);
+    let way = guidance(&rig);
+    let end = *path_of(&way).last().unwrap();
+    assert!([(95, 179), (96, 179)].contains(&end));
+    assert_eq!(way.unwrap().borrow().push, Some("north"));
+}
+
 /// Route 104's bush stands in the way to an item ball (omega_ruby_bush.ctm), Rusturf
 /// Tunnel's rock in the way on (omega_ruby_smash.ctm, spike 137). P walks round either as round
 /// anything standing; Shift and P clears it, and says the move as the player reaches it. One
@@ -2336,6 +2409,13 @@ fn test_the_users_keys_map_to_the_actions() {
         .map(str::to_string),
     );
     assert_eq!(bound_keys(&DEFAULT_BINDINGS), expected);
+    for mode in [LIST, DIRECTION, TOUCH] {
+        assert_eq!(
+            [",", "."].map(|key| bound(mode, key)),
+            [PATH_PREVIOUS, PATH_NEXT],
+            "{mode}"
+        );
+    }
     assert_eq!(
         ["j", "l", "i", "o", "k", "enter"].map(|key| bound(TOUCH, key)),
         [
