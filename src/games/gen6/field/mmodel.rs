@@ -212,6 +212,17 @@ pub fn rail_way(head: &[u8]) -> Result<f64> {
         .to_degrees())
 }
 
+/// Where it is in the world, in cells, a cell's centre whole: (20.31, 24.0). The circle pad
+/// moves the player a seventh of a cell a frame and stops them anywhere; the D-pad keeps them to
+/// the centres (movie38 and movie39, spike A).
+pub fn place(head: &[u8]) -> Result<(f64, f64)> {
+    let cell = CELL as f64;
+    Ok((
+        (f32(head, WORLD_X)? - cell / 2.0) / cell,
+        (f32(head, WORLD_Z)? - cell / 2.0) / cell,
+    ))
+}
+
 /// The cell it is standing in, (x, z), or None for a model the game has not placed yet.
 ///
 /// Where it is in the world, +0x114, says which cell it is in. On the grid +0x94 is the cell a

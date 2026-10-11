@@ -521,6 +521,7 @@ impl FieldReader {
             *self.rails.corridor.borrow_mut() = None;
             return Ok(Some(Field {
                 on_bike: bike,
+                place: Some(mmodel::place(&head)?),
                 ..Field::new(zone, cell)
             }));
         }

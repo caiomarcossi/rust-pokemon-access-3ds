@@ -1513,6 +1513,79 @@ fn hedge() -> Vec<Cell> {
     (80..120).filter(|&x| x != 95).map(|x| (x, 177)).collect()
 }
 
+/// South of the hedge's one-cell gap, an item ball north through it: Seafloor Cavern's gap
+/// between two pillars, where the player was refused "2 north" off its line (movie38).
+fn gap(place: (f64, f64)) -> Field {
+    Field {
+        interactables: vec![Interactable {
+            source: place_source(FURNITURE_SOURCE, 1).unwrap(),
+            ..Interactable::new("items", "item ball", (95, 174))
+        }],
+        place: Some(place),
+        ..Field::new(street().zone, (95, 179))
+    }
+}
+
+/// movie38 (spike A): told "2 north" a third of a cell east of the gap's line, the player was
+/// refused it for a hundred seconds. Lined up, or off the line with no corner to catch, nothing
+/// more is said.
+#[test]
+fn test_p_says_to_line_up_first_where_a_corner_would_catch_a_player_off_the_line() {
+    let mut said_for: Vec<String> = Vec::new();
+    for (place, blocked) in [
+        ((95.31, 179.0), hedge()),
+        ((95.0, 179.0), hedge()),
+        ((94.72, 179.0), hedge()),
+        ((95.31, 179.0), Vec::new()),
+    ] {
+        let mut rig = navigator(Want {
+            blocked,
+            ..on(gap(place))
+        });
+        rig.press(PATHFIND);
+        said_for.extend(said(&rig.backend));
+    }
+    assert_eq!(
+        said_for,
+        [
+            "a little west, then 5 north",
+            "5 north",
+            "a little east, then 5 north",
+            "5 north"
+        ]
+    );
+}
+
+/// Stopped off the line before the gap: "a little west", once, then "lined up" as soon as
+/// the player is on it, sneaking or not (Orion, 2026-10-11).
+#[test]
+fn test_guiding_says_which_way_to_line_up_once_stopped_and_lined_up_once_there() {
+    let now = Rc::new(Slot::new(0.0));
+    let clock = now.clone();
+    let mut rig = navigator(Want {
+        blocked: hedge(),
+        clock: Rc::new(move || clock.get()),
+        ..on(gap((95.0, 179.0)))
+    });
+    rig.press(PATHFIND);
+
+    fn stand(rig: &mut Rig, now: &Slot<f64>, x: f64, after: f64) {
+        now.set(now.get() + after);
+        *rig.field.r#where.borrow_mut() = Some(gap((x, 179.0)));
+        let r#where = rig.field.poll().unwrap().unwrap();
+        rig.nav.follow(&r#where).unwrap();
+    }
+
+    stand(&mut rig, &now, 95.43, 0.1);
+    stand(&mut rig, &now, 95.43, 0.1);
+    stand(&mut rig, &now, 95.43, 0.3);
+    stand(&mut rig, &now, 95.43, 0.3);
+    stand(&mut rig, &now, 95.14, 0.1);
+    stand(&mut rig, &now, 95.0, 0.1);
+    stand(&mut rig, &now, 95.0, 0.5);
+    assert_eq!(said(&rig.backend), ["5 north", "a little west", "lined up"]);
+}
+
 /// Walls round the cells from (91, 178) to (100, 185), but for a gap two cells wide at (95,
 /// 177) for a big boulder and, where asked, a gate.
 fn pen(gate: Option<Cell>) -> Vec<Cell> {

@@ -315,6 +315,11 @@ pub struct Field {
     /// to face a thing and how far it is then, which P says, since there is no ground to find a way
     /// over.
     pub steer: Option<Steer>,
+    /// Where the player stands in the world, in cells, a cell's centre whole: (20.31, 24.0) in
+    /// `cell` (20, 24). The circle pad stops them anywhere, and a step past a wall's corner is
+    /// refused to a player off the centre on the corner's side (movie38, spike A). None where it is
+    /// not read: on a rail, and in Sun.
+    pub place: Option<(f64, f64)>,
 }
 
 /// `Callable[[Interactable], str]`, a `Field.steer`. It can raise, as the Python's reads a table by

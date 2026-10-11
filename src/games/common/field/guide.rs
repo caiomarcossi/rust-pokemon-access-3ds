@@ -61,6 +61,15 @@ pub const SETTLE: f64 = 0.3;
 /// Degrees the camera must have turned since the way was last said for it to be said again.
 pub const MOVED: f64 = 3.0;
 
+/// How far off a cell's centre the player may stand and be lined up with a leg, in cells: half
+/// the seventh of a cell the circle pad moves them a frame. Off by 0.18 a step past a wall's corner
+/// was refused, and off by 0.01 it went (movie38, spike A); between the two is not known.
+pub const LINED_UP: f64 = 0.07;
+
+/// Seconds the player must stand still off a leg's line before being told which way to line up:
+/// a tap of the circle pad moves them for about a fifth of a second (movie38, spike A).
+pub const STOPPED: f64 = 0.25;
+
 /// What an item is kept by: `Interactable::key`.
 pub type Key = (String, String, i64, Option<i64>);
 
@@ -117,6 +126,14 @@ pub struct Guidance {
     /// For a big boulder, the way it is to be pushed, whose side the path ends on and is found
     /// again to.
     pub push: Option<&'static str>,
+    /// Where in the world the player was last seen (`Field.place`), and `still` since when.
+    pub place: Option<(f64, f64)>,
+    pub still: f64,
+    /// The place last told whether it is lined up with the next leg, so a player standing still
+    /// hears it once.
+    pub judged: Option<(f64, f64)>,
+    /// The way the player was last told to step to line up, "a little west", until they are.
+    pub nudge: Option<&'static str>,
 }
 
 impl Guidance {
@@ -380,6 +397,85 @@ type Past = (
     Option<f64>,
     Option<Interactable>,
 );
+
+/// The way to step to line up with the leg from `path[at]`, where the player stands off its
+/// line and would catch a wall's corner on it: "a little west". None where they are lined up,
+/// or nothing beside the leg is in the way: off the line in open ground, the step is taken.
+///
+/// In Seafloor Cavern the way north was a gap a cell wide between two pillars, and the player,
+/// told "2 north" there, stood 0.18 to 0.46 of a cell east or west of its line and was refused it
+/// for a hundred seconds (movie38, spike A).
+fn nudge(
+    ground: &Ground,
+    place: Option<(f64, f64)>,
+    path: &[Cell],
+    at: i64,
+) -> Result<Option<&'static str>> {
+    let Some(place) = place else {
+        return Ok(None);
+    };
+    if at + 1 >= path.len() as i64 {
+        return Ok(None);
+    }
+    let cell = path[at as usize];
+    let next = path[at as usize + 1];
+    let (dx, dz) = (next.0 - cell.0, next.1 - cell.1);
+    if dx.abs() + dz.abs() != 1 {
+        return Ok(None);
+    }
+    let off = if dx == 0 {
+        place.0 - cell.0 as f64
+    } else {
+        place.1 - cell.1 as f64
+    };
+    if off.abs() <= LINED_UP {
+        return Ok(None);
+    }
+    let side = if off > 0.0 { 1 } else { -1 };
+    let mut ahead: Vec<Cell> = Vec::new();
+    for &step in &path[at as usize + 1..] {
+        let last = ahead.last().copied().unwrap_or(cell);
+        if (step.0 - last.0, step.1 - last.1) != (dx, dz) {
+            break;
+        }
+        ahead.push(step);
+    }
+    let mut all = true;
+    for &(x, z) in &ahead {
+        let beside = if dx == 0 {
+            (x + side, z)
+        } else {
+            (x, z + side)
+        };
+        if !ground.open(beside)? {
+            all = false;
+            break;
+        }
+    }
+    if all {
+        return Ok(None);
+    }
+    Ok(Some(if dx == 0 {
+        if side > 0 {
+            "a little west"
+        } else {
+            "a little east"
+        }
+    } else if side > 0 {
+        "a little north"
+    } else {
+        "a little south"
+    }))
+}
+
+/// Whether a player told `nudge` now stands within `LINED_UP` of the line it was for.
+fn lined(nudge: &str, place: (f64, f64), cell: Cell) -> bool {
+    if nudge.ends_with("west") || nudge.ends_with("east") {
+        (place.0 - cell.0 as f64).abs() <= LINED_UP
+    } else {
+        (place.1 - cell.1 as f64).abs() <= LINED_UP
+    }
+}
 
 /// The ways a big boulder is to be pushed, whose sides a way to it ends on: `push` where it
 /// can be pushed so, otherwise every way it can be (`Interactable.pushes`); none for anything
@@ -1033,6 +1129,7 @@ impl Guide {
             .rev()
             .map(|(i, &cell)| (cell, i as i64))
             .collect();
+        let nudge = nudge(&ground, r#where.place, &path, 0)?;
         let since = (self.clock)();
         let first = legs.first().map(|leg| leg.direction);
         self.guidance = Some(Rc::new(RefCell::new(Guidance {
@@ -1054,6 +1151,10 @@ impl Guide {
             blocker: blocker.clone(),
             asked,
             push: pushing,
+            place: r#where.place,
+            still: (self.clock)(),
+            judged: r#where.place,
+            nudge,
         })));
         let first = first.ok_or_else(|| Error::index("list index out of range"))?;
         if first != heading {
@@ -1065,6 +1166,9 @@ impl Guide {
                 String::new()
             };
             text += &to_push;
+            if let Some(nudge) = nudge {
+                text += &format!("{nudge}, then ");
+            }
             text += &spoken(&legs, r#where)?;
             if short {
                 text += &format!(", then can't continue{blocker}");
@@ -1096,7 +1200,7 @@ impl Guide {
             if settled && let Some(bearing) = r#where.bearing {
                 self.turned(r#where, &guidance, bearing)?;
             }
-            return Ok(());
+            return self.line_up(r#where, &guidance);
         }
         if visit != guidance.borrow().visit {
             self.guidance = None;
@@ -1107,6 +1211,12 @@ impl Guide {
             return Ok(());
         }
         let was = std::mem::replace(&mut guidance.borrow_mut().cell, r#where.cell);
+        {
+            let mut guidance = guidance.borrow_mut();
+            guidance.place = r#where.place;
+            guidance.still = (self.clock)();
+            guidance.nudge = None;
+        }
         let heading = pathfind::towards(was, r#where.cell);
         let mut at = guidance.borrow().at(r#where.cell)?;
         if at.is_none() && self.slack != 0 {
@@ -1190,6 +1300,56 @@ impl Guide {
     /// walkway 7 cells south of its door (spike 160). What stands unlisted stays: Sootopolis
     /// Gym's invisible blockers shut the corridors up to Wallace, and cleared away, the Lass
     /// pacing the lower floor was said to be in the way up to him (spike 167).
+    /// Within a cell of the way, tell a player who has stopped off the next leg's line, where
+    /// a corner would catch them on it, which way to step, "a little west"; and once they come
+    /// within `LINED_UP` of it, moving or not, "lined up" (Orion, 2026-10-11, who lined up by
+    /// sneaking: a gentle tilt of the circle pad moves them a little at a time).
+    fn line_up(&self, r#where: &Field, guidance: &Rc<RefCell<Guidance>>) -> Result<()> {
+        let Some(place) = r#where.place else {
+            return Ok(());
+        };
+        let now = (self.clock)();
+        if Some(place) != guidance.borrow().place {
+            let lined_up = {
+                let mut guidance = guidance.borrow_mut();
+                guidance.place = Some(place);
+                guidance.still = now;
+                match guidance.nudge {
+                    Some(nudge) if lined(nudge, place, r#where.cell) => {
+                        guidance.nudge = None;
+                        true
+                    }
+                    _ => false,
+                }
+            };
+            if lined_up {
+                (self.tell)("lined up");
+            }
+            return Ok(());
+        }
+        {
+            let mut guidance = guidance.borrow_mut();
+            if now - guidance.still < STOPPED || Some(place) == guidance.judged {
+                return Ok(());
+            }
+            guidance.judged = Some(place);
+        }
+        let Some(at) = guidance.borrow().at(r#where.cell)? else {
+            return Ok(());
+        };
+        let (hm, height) = {
+            let guidance = guidance.borrow();
+            (guidance.hm, guidance.height)
+        };
+        let ground = self.ground(r#where, hm, height)?;
+        let nudge = nudge(&ground, Some(place), &guidance.borrow().path, at)?;
+        if let Some(nudge) = nudge {
+            guidance.borrow_mut().nudge = Some(nudge);
+            (self.tell)(nudge);
+        }
+        Ok(())
+    }
+
     fn up_to(
         &self,
         r#where: &Field,
