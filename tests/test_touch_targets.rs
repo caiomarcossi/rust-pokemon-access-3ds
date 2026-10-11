@@ -365,6 +365,133 @@ fn test_a_button_the_game_names_inside_the_menus_backdrop_is_its_own() {
     );
 }
 
+fn floats(values: &[f32]) -> Vec<u8> {
+    values
+        .iter()
+        .flat_map(|value| value.to_le_bytes())
+        .collect()
+}
+
+/// Super Training's carousel moves its party's pictures while their touch areas and parents
+/// stay put, and a tap selects what is drawn there: the middle was said "Breloom" with Sceptile
+/// drawn in it (2026-10-10, live from omega_ruby_bottom-screen5's end).
+#[test]
+fn test_a_touch_area_is_named_by_the_picture_now_lying_in_it() {
+    let memory = FakeMemory::new();
+    let classes = FakeClasses::new(memory.clone());
+    let fake = FakeLayouts::new(&memory, &classes);
+    let (bounding, picture) = (
+        classes.add(lyt::BOUNDING_CLASS),
+        classes.add(lyt::PICTURE_CLASS),
+    );
+    let (_work, group) = fake.screen(0x08200000);
+    let mut pictures: IndexMap<i64, String> = IndexMap::new();
+    let mut places: Vec<i64> = Vec::new();
+    for (i, (x, name)) in [(-80.0f32, "Sceptile"), (0.0, "Latios"), (80.0, "Breloom")]
+        .into_iter()
+        .enumerate()
+    {
+        let parent = group + 0x1000 * (i as i64 + 1);
+        fake.pane(parent, group);
+        fake.pane_with_vtable(parent + 0x200, parent, Some(bounding));
+        fake.pane_with_vtable(parent + 0x400, parent, Some(picture));
+        for pane in [parent + 0x200, parent + 0x400] {
+            memory.write(pane + lyt::SCALE_X, &floats(&[1.0]));
+            memory.write(pane + lyt::SCALE_Y, &floats(&[1.0]));
+            memory.write(pane + lyt::WIDTH, &floats(&[40.0, 30.0]));
+        }
+        for pane in [parent + 0x200, parent + 0x400] {
+            memory.write(pane + lyt::X, &floats(&[x]));
+        }
+        pictures.insert(parent + 0x400, name.to_string());
+        places.push(parent + 0x400);
+    }
+    fake.track().unwrap();
+    let mut targets = TouchTargets::new(
+        fake.layouts.clone(),
+        Rc::new(Vec::new),
+        Rc::new(|_box| Ok(String::new())),
+        Rc::new(|_pane| Ok(None)),
+        Rc::new(|_root| None),
+        Rc::new(|_line: &str| {}),
+        Options {
+            picture_name: Some(Rc::new(move |pane| Ok(pictures.get(&pane).cloned()))),
+            ..Options::default()
+        },
+    );
+    let named = |targets: &mut TouchTargets| -> IndexMap<i64, String> {
+        targets
+            .targets()
+            .unwrap()
+            .into_iter()
+            .map(|t| (t.x, t.name))
+            .collect()
+    };
+    assert_eq!(
+        named(&mut targets),
+        IndexMap::from([
+            (80, "Sceptile".to_string()),
+            (160, "Latios".to_string()),
+            (240, "Breloom".to_string())
+        ])
+    );
+    for (pane, x) in [(places[0], 80.0f32), (places[2], -80.0)] {
+        memory.write(pane + lyt::X, &floats(&[x]));
+    }
+    fake.layouts.refresh();
+    let after = named(&mut targets);
+    assert_eq!(
+        (
+            after[&80].as_str(),
+            after[&160].as_str(),
+            after[&240].as_str()
+        ),
+        ("Breloom", "Latios", "Sceptile")
+    );
+}
+
+/// The Pokémon-Amie menu's backdrop, a touch area over the whole page, hangs from a pane
+/// holding no picture of a Pokémon, and was said "Sceptile" by the one lying within it from
+/// another pane, rather than "close" (omega_ruby_bottom-screen2: `68` in `f`, the Pokémon's
+/// picture in `8`).
+#[test]
+fn test_a_touch_area_holding_no_such_picture_is_not_named_by_one_lying_in_it() {
+    let memory = FakeMemory::new();
+    let classes = FakeClasses::new(memory.clone());
+    let fake = FakeLayouts::new(&memory, &classes);
+    let (bounding, picture) = (
+        classes.add(lyt::BOUNDING_CLASS),
+        classes.add(lyt::PICTURE_CLASS),
+    );
+    let (_work, group) = fake.screen(0x08200000);
+    let (backdrop, pokemon) = (group + 0x1200, group + 0x2200);
+    fake.pane(group + 0x1000, group);
+    fake.pane(group + 0x2000, group);
+    fake.pane_with_vtable(backdrop, group + 0x1000, Some(bounding));
+    fake.pane_with_vtable(pokemon, group + 0x2000, Some(picture));
+    for (pane, (width, height)) in [(backdrop, (320.0f32, 180.0f32)), (pokemon, (40.0, 30.0))] {
+        memory.write(pane + lyt::SCALE_X, &floats(&[1.0]));
+        memory.write(pane + lyt::SCALE_Y, &floats(&[1.0]));
+        memory.write(pane + lyt::WIDTH, &floats(&[width, height]));
+    }
+    fake.track().unwrap();
+    let mut targets = TouchTargets::new(
+        fake.layouts.clone(),
+        Rc::new(Vec::new),
+        Rc::new(|_box| Ok(String::new())),
+        Rc::new(|_pane| Ok(None)),
+        Rc::new(|_root| None),
+        Rc::new(|_line: &str| {}),
+        Options {
+            picture_name: Some(Rc::new(move |pane| {
+                Ok((pane == pokemon).then(|| "Sceptile".to_string()))
+            })),
+            ..Options::default()
+        },
+    );
+    assert!(targets.targets().unwrap().is_empty());
+}
+
 /// Pokémon-Amie's Pokémon is stroked, not tapped: its target's key slides along the path
 /// (spike C).
 #[test]

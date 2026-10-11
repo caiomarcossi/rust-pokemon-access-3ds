@@ -183,7 +183,9 @@ pub fn towns() -> &'static TownFacilities {
 /// file gives them: Places 143, Pokémon 144, Trainers 145, Bases 146, Berries 147 (movie17); and the
 /// Pokémon-Amie page's menu, opened by tapping its Pokémon, images of their words: PLAY 77,
 /// DECORATE 78, SWITCH 79, in the middle, on the left and on the right (spike A,
-/// omega_ruby_bottom-screen2).
+/// omega_ruby_bottom-screen2); and Super Training's page, whose lower-left button
+/// `spar_button.bclim` opens the regimen menu, by line 84, "Super Training"
+/// (omega_ruby_bottom-screen5).
 pub fn touch_words() -> &'static (i64, IndexMap<&'static str, i64>) {
     static TOUCH_WORDS: OnceLock<(i64, IndexMap<&'static str, i64>)> = OnceLock::new();
     TOUCH_WORDS.get_or_init(|| {
@@ -202,6 +204,7 @@ pub fn touch_words() -> &'static (i64, IndexMap<&'static str, i64>) {
                 ("kwg_button01.bclim", 77),
                 ("kwg_button02.bclim", 78),
                 ("kwg_button03.bclim", 79),
+                ("spar_button.bclim", 84),
             ]),
         )
     })
@@ -222,6 +225,37 @@ pub fn dexnav_words() -> &'static (i64, IndexMap<&'static str, i64>) {
                 ("search_check_button.bclim", 12),
             ]),
         )
+    })
+}
+/// Super Training's bags, drawn as pictures alone in the list its page opens, by the image each
+/// draws and the line of text file 24 the game names the bag with: line N is the bag of
+/// `sand_bagNN.bclim`, HP Bag S at 1 to Soothing Bag at 26 (omega_ruby_bottom-screen5). The bag
+/// hanging beside the Pokémon, `sand_bag00.bclim`, has no line (line 0 is empty) and is left out.
+pub fn training_bags() -> &'static (i64, IndexMap<&'static str, i64>) {
+    static TRAINING_BAGS: OnceLock<(i64, IndexMap<&'static str, i64>)> = OnceLock::new();
+    TRAINING_BAGS.get_or_init(|| {
+        let names = (1..27).map(|n| {
+            let image: &'static str = Box::leak(format!("sand_bag{n:02}.bclim").into_boxed_str());
+            (image, n)
+        });
+        (24, names.collect())
+    })
+}
+/// Super Training's regimens, drawn as pictures alone in the menu a round is chosen from, by the
+/// Balloon Bot each draws and the line of text file 44 the game titles the regimen with: line N-1
+/// is the regimen of `stage_pokeNN.bclim`, 'Practice against Scatterbug!' at 0 to 'Watch It!
+/// Multiple Mega Evolutions!' at 37. The tutorials drew `stage_poke01` and `stage_poke02`,
+/// Scatterbug and Spewpa; Level 1's page drew `stage_poke03` to `stage_poke08` at (64, 105), (160,
+/// 105), (256, 105), (64, 178), (160, 178) and (256, 178), which are Magnemite's Sp. Atk, Wailmer's
+/// HP, Axew's Attack, Tentacool's Sp. Def, Noibat's Speed and Geodude's Defense (Khai, 2026-10-10).
+pub fn training_regimens() -> &'static (i64, IndexMap<&'static str, i64>) {
+    static TRAINING_REGIMENS: OnceLock<(i64, IndexMap<&'static str, i64>)> = OnceLock::new();
+    TRAINING_REGIMENS.get_or_init(|| {
+        let names = (1..39).map(|n| {
+            let image: &'static str = Box::leak(format!("stage_poke{n:02}.bclim").into_boxed_str());
+            (image, n - 1)
+        });
+        (44, names.collect())
     })
 }
 /// Pictures a button draws only while what it shows is caught: said "caught" after its name.
@@ -417,18 +451,24 @@ pub fn rom() -> &'static RomLayout {
         bike: Some(MACH_BIKE),
         acro: Some(ACRO_BIKE),
         files: vec![sky::ARCHIVE.to_string()],
-        touch_words: [touch_words(), bag_pockets(), dexnav_words()]
-            .into_iter()
-            .map(|(file, lines)| {
-                (
-                    *file,
-                    lines
-                        .iter()
-                        .map(|(image, &line)| (image.to_string(), line))
-                        .collect(),
-                )
-            })
-            .collect(),
+        touch_words: [
+            touch_words(),
+            bag_pockets(),
+            dexnav_words(),
+            training_bags(),
+            training_regimens(),
+        ]
+        .into_iter()
+        .map(|(file, lines)| {
+            (
+                *file,
+                lines
+                    .iter()
+                    .map(|(image, &line)| (image.to_string(), line))
+                    .collect(),
+            )
+        })
+        .collect(),
         entrances: ENTRANCES.into_iter().collect(),
         caught: CAUGHT_IMAGES
             .iter()

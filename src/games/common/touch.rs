@@ -399,6 +399,7 @@ impl TouchTargets {
                 groups.insert(touch, group);
             }
             let owned = own_parts(&groups);
+            let mut filled: Option<IndexMap<i64, String>> = None;
             // Touch area -> the words on screen in its button, or with none the game's word for
             // its picture: the Pokémon-Amie page's PLAY, DECORATE and SWITCH lie within the touch
             // area behind its menu, and are buttons of their own (spike A). A button with words
@@ -440,7 +441,7 @@ impl TouchTargets {
                         .expect("inserted above")
                         .insert(image.clone());
                 }
-                if let Some(picture_name) = &self.picture_name {
+                if let Some(picture_name) = self.picture_name.clone() {
                     // What the game fills a picture with comes first, as it is drawn: the Bag's
                     // party slot is its Pokémon's icon, then its level (movie21).
                     let mut pictured: Option<String> = None;
@@ -451,6 +452,49 @@ impl TouchTargets {
                         {
                             pictured = Some(word);
                             break;
+                        }
+                    }
+                    let parent = u32(&layouts.pane(touch)?, lyt::PARENT)?;
+                    let nothing = pictured.is_none()
+                        && said.is_empty()
+                        && image.as_deref().is_none_or(str::is_empty);
+                    let mut beside = false;
+                    if nothing {
+                        for p in layouts.children(root, parent) {
+                            if tree.get(&p).map(String::as_str) == Some(lyt::PICTURE_CLASS)
+                                && picture_name(p)?.is_some_and(|word| !word.is_empty())
+                            {
+                                beside = true;
+                                break;
+                            }
+                        }
+                    }
+                    if beside {
+                        // Super Training's carousel moves its party's pictures between touch
+                        // areas that stay put, so a tap selects what is drawn at the place, not
+                        // the picture the area's own pane holds (2026-10-10, live from
+                        // omega_ruby_bottom-screen5's end). Only an area whose own pane holds such
+                        // a picture beside it, moved away: the Amie menu's backdrop, holding
+                        // none, took the Pokémon lying within it for its name, not "close".
+                        if filled.is_none() {
+                            let mut found: IndexMap<i64, String> = IndexMap::new();
+                            for (&p, kind) in &tree {
+                                if kind == lyt::PICTURE_CLASS
+                                    && shown(&layouts, p)?
+                                    && let Some(word) = picture_name(p)?
+                                    && !word.is_empty()
+                                {
+                                    found.insert(p, word);
+                                }
+                            }
+                            filled = Some(found);
+                        }
+                        pictured = None;
+                        for (&p, word) in filled.as_ref().expect("filled above") {
+                            if self.lies_in(p, touch)? {
+                                pictured = Some(word.clone());
+                                break;
+                            }
                         }
                     }
                     if let Some(pictured) = pictured {
@@ -725,16 +769,7 @@ impl TouchTargets {
         let mut todo: Vec<i64> = vec![parent];
         while let Some(here) = todo.pop() {
             todo.extend(layouts.children(root, here).into_iter().rev());
-            if !self.middles.contains_key(&here) {
-                let pane = layouts.pane(here)?;
-                let found = if f32(&pane, shape.scale_x)? > 0.0 {
-                    Some(middle(&pane, &shape)?)
-                } else {
-                    None
-                };
-                self.middles.insert(here, found);
-            }
-            let middle = self.middles[&here];
+            let middle = self.middle_of(here)?;
             if width > 0.0
                 && let Some(middle) = middle
                 && here != parent
@@ -747,6 +782,36 @@ impl TouchTargets {
         }
         self.groups.insert(touch, out.clone());
         Ok(out)
+    }
+
+    /// A pane's middle, or None where it is not laid out, found once per walk.
+    fn middle_of(&mut self, pane: i64) -> Result<Option<(f64, f64)>> {
+        if !self.middles.contains_key(&pane) {
+            let head = self.layouts.pane(pane)?;
+            let shape = self.layouts.shape;
+            let found = if f32(&head, shape.scale_x)? > 0.0 {
+                Some(middle(&head, &shape)?)
+            } else {
+                None
+            };
+            self.middles.insert(pane, found);
+        }
+        Ok(self.middles[&pane])
+    }
+
+    /// Does the pane's middle lie within the touch area, as `group` tests it? A pane not laid
+    /// out lies nowhere.
+    fn lies_in(&mut self, pane: i64, touch: i64) -> Result<bool> {
+        let shape = self.layouts.shape;
+        let head = self.layouts.pane(touch)?;
+        let (across, down) = middle(&head, &shape)?;
+        let width = f32(&head, shape.width)? * f32(&head, shape.scale_x)?;
+        let height = f32(&head, shape.height)? * f32(&head, shape.scale_y)?;
+        let middle = self.middle_of(pane)?;
+        Ok(width > 0.0
+            && middle.is_some_and(|middle| {
+                (middle.0 - across).abs() * 2.0 <= width && (middle.1 - down).abs() * 2.0 <= height
+            }))
     }
 
     fn name(&self, pane: i64) -> Result<String> {

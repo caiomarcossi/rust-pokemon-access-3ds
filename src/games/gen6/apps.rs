@@ -60,6 +60,8 @@ pub struct RunningApp {
     pub running: Option<String>,
     /// Where the process running begins, as last found.
     pub process: Option<i64>,
+    /// The vtable the process last found begins with.
+    vtable: i64,
     /// Whether the process running is of a class that has run before this session.
     pub back: bool,
     ran: HashSet<String>,
@@ -82,6 +84,7 @@ impl RunningApp {
             pointer: None,
             running: None,
             process: None,
+            vtable: 0,
             back: false,
             ran: HashSet::new(),
         }
@@ -116,6 +119,10 @@ impl RunningApp {
     ///
     /// A pointer into memory with no process there yet, as between two screens, is waited out: the
     /// running app is the last one found until a process is.
+    ///
+    /// The same pointer is news too when the process it lands in has begun with another class
+    /// since: Super Training's regimen menu and the regimen it starts are built at one address,
+    /// and the manager points at the same word in both (omega_ruby_bottom-screen5).
     pub fn poll(&mut self) -> Result<Option<String>> {
         let Some(manager) = self.manager else {
             return Ok(None);
@@ -126,13 +133,17 @@ impl RunningApp {
             return Ok(None);
         }
         let pointer = u32(&head, MANAGER_RUNNING)?;
-        if Some(pointer) == self.pointer {
+        if Some(pointer) == self.pointer
+            && let Some(process) = self.process
+            && u32(&self.memory.read(process, 4)?, 0)? == self.vtable
+        {
             return Ok(None);
         }
         let Some((process, vtable)) = self.process(manager, pointer)? else {
             return Ok(None);
         };
         self.process = Some(process);
+        self.vtable = vtable;
         self.pointer = Some(pointer);
         // Read afresh every time: a module's memory is the next module's once it is unloaded, so a
         // name kept for a vtable's address could be another app's by now.

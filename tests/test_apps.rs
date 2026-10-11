@@ -85,6 +85,18 @@ fn test_another_app_built_where_the_last_was_is_news() {
     assert_eq!(game.app.poll().unwrap().as_deref(), Some(BAG));
 }
 
+/// Super Training's regimen menu and the regimen it starts: one address, one pointer
+/// (omega_ruby_bottom-screen5).
+#[test]
+fn test_another_app_built_where_the_last_was_with_the_manager_at_the_same_word_is_news() {
+    let mut game = Game::new();
+    game.run(FIELD, 0x64);
+    game.app.poll().unwrap();
+    game.run(BAG, 0x64);
+    assert_eq!(game.app.poll().unwrap().as_deref(), Some(BAG));
+    assert_eq!(game.app.poll().unwrap(), None);
+}
+
 /// The field coming back after a battle builds its map blocks again where they were, and its
 /// whole sweeps found nothing a reader asks for by class (spike 134).
 #[test]

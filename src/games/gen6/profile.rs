@@ -62,7 +62,10 @@ use crate::games::gen6::screens::habitat::HabitatReader;
 use crate::games::gen6::screens::lists::{CONTROLLER_CLASS, ListReader};
 use crate::games::gen6::screens::mapcursor::MapCursor;
 use crate::games::gen6::screens::partyicons::PartyIcons;
-use crate::games::gen6::screens::{amie, buttons, distribution, partyicons, summary, townmap};
+use crate::games::gen6::screens::training::{Bags, Goals, Round, TrainingPage};
+use crate::games::gen6::screens::{
+    amie, buttons, distribution, partyicons, summary, townmap, training,
+};
 use crate::py::{self, Error, Log, PySet, Result};
 
 /// What the heap is swept for: message windows, list controllers, the device manager a choice box
@@ -72,15 +75,17 @@ use crate::py::{self, Error, Log, PySet, Result};
 /// that says which app is running, and the button managers and touch bars that say whose
 /// buttons take taps (`buttons`), and the AreaNav's navigator, which says whose icon each picture of
 /// its Pokémon Distribution draws, and its views, which say which of its layouts it draws; the
-/// party and the icons the Bag draws it with; and the Pokémon-Amie page, which says whose icon its
-/// Pokémon is. A game's own readers add what they find their objects
+/// party and the icons the Bag draws it with; the Pokémon-Amie page, which says whose icon its
+/// Pokémon is; Super Training's, which says whose each party slot's is; and the balls of its
+/// Balloon Bots, which say when a shot is coming. A game's own readers add what they find their
+/// objects
 /// by (`Gen6Profile.classes`): ORAS's DexNav, the player's work its hidden Pokémon's record is found
 /// through.
 ///
 /// Not TextBoxes or cursor windows: walking each layout's tree finds every one that can be placed on
 /// screen (spike 62). And the linear heap is not swept: the battle builds its layouts there, and its
 /// message window leads to their pool (spike 64).
-pub const HEAP_CLASSES: [&str; 25] = [
+pub const HEAP_CLASSES: [&str; 27] = [
     msgwin::CLASSES[0],
     msgwin::CLASSES[1],
     talk::CLASSES[0],
@@ -103,6 +108,8 @@ pub const HEAP_CLASSES: [&str; 25] = [
     townmap::VIEWS[3].0,
     townmap::VIEWS[4].0,
     amie::CLASS,
+    training::CLASS,
+    training::MISSILE,
     pokemon::PARAM_CLASS,
     partyicons::ICON_CLASS,
     buttons::MANAGER_CLASS,
@@ -184,6 +191,10 @@ pub struct Gen6Profile {
     pub distribution: Rc<RefCell<Distribution>>,
     pub views: RefCell<townmap::Views>,
     pub amie: Rc<RefCell<AmiePage>>,
+    pub training: Rc<RefCell<TrainingPage>>,
+    pub goals: Rc<Goals>,
+    pub bags: Rc<Bags>,
+    pub sparring: RefCell<Round>,
     pub buttons: Rc<RefCell<buttons::Buttons>>,
     pub party_icons: Rc<RefCell<PartyIcons>>,
     pub standings: Option<Rc<RefCell<dyn StandingsReader>>>,
@@ -466,6 +477,15 @@ impl Gen6Profile {
                 .map(|text| text.species.clone())
                 .unwrap_or_default(),
         )));
+        // So does Super Training's, with the party; and its rounds' goals are on the top screen.
+        let training = Rc::new(RefCell::new(TrainingPage::new(
+            memory.clone(),
+            names.clone(),
+            text.as_ref()
+                .map(|text| text.species.clone())
+                .unwrap_or_default(),
+        )));
+        let goals = Rc::new(Goals::new(layouts.clone(), image_of.clone()));
         // The DexNav draws a Pokémon caught in colour, and only those are said so: "Ralts",
         // "Zigzagoon caught", with a comma under pauses (Orion, 2026-10-06).
         let caught = format!("{}{CAUGHT}", if ui.pauses { ", " } else { " " });
@@ -482,11 +502,24 @@ impl Gen6Profile {
                 })
                 .collect()
         });
+        // And the training bags in its page's list, pictures with no touch area of their own.
+        let bags = Rc::new(Bags::new(
+            layouts.clone(),
+            image_of.clone(),
+            images.clone().unwrap_or_default(),
+            Some({
+                let buttons = buttons.clone();
+                Rc::new(move || buttons.borrow_mut().idle()) as Idle
+            }),
+        ));
+        // A round says its score, clock and banners, and warns of a Bot's shot.
+        let sparring = Round::new(layouts.clone(), image_of.clone(), memory.clone(), None);
         let picture_name: PictureName = {
-            let (apps, distribution, amie, party_icons) = (
+            let (apps, distribution, amie, training, party_icons) = (
                 apps.clone(),
                 distribution.clone(),
                 amie.clone(),
+                training.clone(),
                 party_icons.clone(),
             );
             Rc::new(move |pane: i64| {
@@ -507,6 +540,11 @@ impl Gen6Profile {
                         }));
                     }
                     if let Some(name) = amie.borrow().name(pane)?
+                        && !name.is_empty()
+                    {
+                        return Ok(Some(name));
+                    }
+                    if let Some(name) = training.borrow().name(pane)?
                         && !name.is_empty()
                     {
                         return Ok(Some(name));
@@ -544,10 +582,14 @@ impl Gen6Profile {
                 idle: Some(idle),
                 slide,
                 gestures: Some({
-                    let (amie, apps) = (amie.clone(), apps.clone());
+                    let (amie, goals, bags, apps) =
+                        (amie.clone(), goals.clone(), bags.clone(), apps.clone());
                     Rc::new(move || {
                         let running = apps.borrow().running.clone();
-                        amie.borrow_mut().strokes(running.as_deref())
+                        let mut found = amie.borrow_mut().strokes(running.as_deref())?;
+                        found.extend(goals.targets(running.as_deref())?);
+                        found.extend(bags.targets(running.as_deref())?);
+                        Ok(found)
                     })
                 }),
             },
@@ -661,6 +703,10 @@ impl Gen6Profile {
             distribution,
             views: RefCell::new(views),
             amie,
+            training,
+            goals,
+            bags,
+            sparring: RefCell::new(sparring),
             buttons,
             party_icons,
             standings,
@@ -717,6 +763,8 @@ impl Gen6Profile {
             .track(found.of(&[distribution::CLASS]), adding);
         self.views.borrow_mut().track(&found.heap, adding)?;
         self.amie.borrow_mut().track(&found.heap, adding)?;
+        self.training.borrow_mut().track(&found.heap, adding)?;
+        self.sparring.borrow_mut().track(&found.heap, adding)?;
         self.buttons.borrow_mut().track(
             found.of(&[buttons::MANAGER_CLASS]),
             found.of(&[buttons::BAR_CLASS]),
@@ -930,7 +978,7 @@ impl Gen6Profile {
     /// `poll_screen(hold, with_choices)`. Named apart from `poll_screen` because the runtime's
     /// `Profile::poll_screen` takes neither.
     pub fn poll_screen_with(&self, hold: bool, with_choices: bool) -> Result<()> {
-        let (texts, on_screen, sides, items) = phase(&*self.memory, "screen", || {
+        let (texts, on_screen, sides, items, round_lines) = phase(&*self.memory, "screen", || {
             // The field's layouts come back where they were when a menu screen closes, and a
             // layout found before it was built is taken in once it is.
             let revived = self.layouts.revive()?;
@@ -960,9 +1008,15 @@ impl Gen6Profile {
                 standings.borrow_mut().poll(&on_screen)?;
             }
             self.map_cursor.borrow_mut().poll()?;
+            let running = self.apps.borrow().running.clone();
+            let round_lines = self.sparring.borrow_mut().poll(running.as_deref())?;
             let items = self.cursors.borrow_mut().poll(&on_screen)?;
-            Ok((texts, on_screen, sides, items))
+            Ok((texts, on_screen, sides, items, round_lines))
         })?;
+        for (line, category) in &round_lines {
+            (self.log)(&format!("round: {line}"));
+            self.speech.say(line, *category);
+        }
         let mut labels = self.lists.borrow().labels();
         labels.extend(self.announcements.borrow_mut().recent_labels());
         if with_choices {

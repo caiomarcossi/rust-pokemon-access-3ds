@@ -48,7 +48,10 @@ pub const BUTTON_PREFIX: &str = "btn";
 /// Pokémon- Amie, the PSS and Super Training all draw it, and the game names it nowhere; it is said
 /// by what it does, as Orion names buttons (spike A). Behind the menu its Pokémon opens, the page
 /// draws `msg_win_c`, a message window's backing, 320 by 180, as a touch area, and a tap on it
-/// closes the menu (omega_ruby_bottom-screen2).
+/// closes the menu (omega_ruby_bottom-screen2). Super Training's `list_button`, 48 by 48 in the
+/// lower right of its PlayNav page, opens the list of training bags; the game names it only in a
+/// sentence ("Tap that button in the lower-right corner!"), so the word is pa3ds's (Khai,
+/// 2026-10-09, omega_ruby_bottom-screen5).
 pub fn own_words() -> &'static IndexMap<&'static str, &'static str> {
     static OWN_WORDS: OnceLock<IndexMap<&'static str, &'static str>> = OnceLock::new();
     OWN_WORDS.get_or_init(|| {
@@ -65,9 +68,17 @@ pub fn own_words() -> &'static IndexMap<&'static str, &'static str> {
             ("complete3", "platinum crown"),
             ("menu_bg_button", "start"),
             ("msg_win_c", "close"),
+            ("list_button", "training bags"),
         ])
     })
 }
+
+/// Pictures whose texture's name starts with these, by pa3ds's words for what they do. The
+/// regimen menu of Super Training draws the Balloon Bot of each regimen, `stage_poke01` and on, as
+/// the button that starts it, and the game titles each (`TRAINING_REGIMENS`); once a regimen is
+/// cleared the same button draws `stage_icon00_rock.bclim` instead, which the game does not title
+/// (Khai's session of 2026-10-09 23:31).
+pub const OWN_PREFIXES: [(&str, &str); 1] = [("stage_icon", "start")];
 
 pub const PREVIOUS: &str = "previous";
 /// What the ◀ and ▶ in the top bar's corners do: the PlayNav's pages and the sub-screen
@@ -82,11 +93,18 @@ pub const NEXT: &str = "next";
 /// accent the game itself writes everywhere else ("Choose a Pokémon."), and a screen reader says
 /// the two differently (the user, 2026-09-16); `intro_famale.bclim`, which names the girl on the
 /// opening's choice of boy or girl, is Game Freak's own misspelling, and a screen reader reads it
-/// aloud as written (the user, 2026-09-21). Each is the word the picture is of, spelt as it is
-/// spelt elsewhere; none is a name pa3ds invented.
+/// aloud as written (the user, 2026-09-21); Super Training's `gameover_c.bclim` runs two words
+/// together and is said "game over". Each is the word the picture is of, spelt as it is spelt
+/// elsewhere; none is a name pa3ds invented.
 pub fn spellings() -> &'static IndexMap<&'static str, &'static str> {
     static SPELLINGS: OnceLock<IndexMap<&'static str, &'static str>> = OnceLock::new();
-    SPELLINGS.get_or_init(|| IndexMap::from([("pokemon", "pokémon"), ("famale", "female")]))
+    SPELLINGS.get_or_init(|| {
+        IndexMap::from([
+            ("pokemon", "pokémon"),
+            ("famale", "female"),
+            ("gameover", "game over"),
+        ])
+    })
 }
 
 /// Said of a button that is only the plate other buttons' words are written on, and of a slot of
@@ -197,6 +215,11 @@ pub fn words(texture: &str) -> String {
     };
     if let Some(own) = own_words().get(stem) {
         return own.to_string();
+    }
+    for (prefix, own) in OWN_PREFIXES {
+        if stem.starts_with(prefix) {
+            return own.to_string();
+        }
     }
     let replaced = stem.replace('_', " ");
     let mut said = py::split(&replaced);

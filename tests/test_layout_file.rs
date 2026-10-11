@@ -395,3 +395,12 @@ fn test_a_texture_called_an_icon_is_said_without_the_word() {
     // A move's and a contest's: the move-forget screen's (Orion, 2026-10-01).
     assert_eq!(words("waza_con_change.bclim"), "change");
 }
+
+#[test]
+fn test_super_trainings_buttons_are_said_by_what_they_do() {
+    assert_eq!(words("list_button.bclim"), "training bags");
+    // A regimen's Balloon Bot has no words of its own: the game's title for it is the word.
+    assert_eq!(words("stage_poke01.bclim"), "stage poke01");
+    // The same button once the regimen is cleared (2026-10-10).
+    assert_eq!(words("stage_icon00_rock.bclim"), "start");
+}
