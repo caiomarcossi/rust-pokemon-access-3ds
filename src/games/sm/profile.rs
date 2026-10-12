@@ -139,6 +139,8 @@ pub struct SunProfile {
     pub navigator: RefCell<Navigator>,
     /// The name of the place the player was last polled in.
     place: RefCell<Option<String>>,
+    /// The zone the player was last polled in.
+    zone: Cell<Option<i64>>,
     /// The zone last listed and what was in it (people by kind alone, since they walk).
     listed: RefCell<Option<Listed>>,
     /// Whether a sweep has been taken in since the last listing.
@@ -313,6 +315,7 @@ impl SunProfile {
             field: reader,
             navigator: RefCell::new(navigator),
             place: RefCell::new(None),
+            zone: Cell::new(None),
             listed: RefCell::new(None),
             relist: Cell::new(false),
         }
@@ -628,6 +631,13 @@ impl Profile for SunProfile {
                 return Ok(None);
             };
             self._arrive(at.zone)?;
+            // The chase after Kukui's call ends on the field, which its last beats wait for.
+            if self.zone.get() != Some(at.zone) {
+                self.zone.set(Some(at.zone));
+                if let Some(scenes) = &self.scenes {
+                    scenes.borrow_mut().arrived(at.zone, &mut self.narrate());
+                }
+            }
             let same_zone = self
                 .listed
                 .borrow()

@@ -11,12 +11,14 @@ use indexmap::IndexMap;
 use super::fake_emulator::FakeEmulator;
 use super::fake_memory::{CODE, FakeClasses, FakeMemory};
 use super::fake_speech::Recorder;
+use crate::core::config::Ui;
 use crate::core::discovery::Found;
 use crate::core::memory::{self, Cache, ExactCache, Memory, RpcMemory};
 use crate::core::rpc::{MAX_READ, Process, Rpc, UdpRpc};
 use crate::core::rtti::ClassNames;
 use crate::core::speech::Speech;
 use crate::games::common::field::things::Field;
+use crate::games::common::scenes::{Beat, Scene};
 use crate::games::common::session::Profile;
 use crate::games::sm::camera;
 use crate::games::sm::field::{self, SunFieldReader, Walls};
@@ -1171,6 +1173,54 @@ fn test_walking_into_another_zone_of_the_area_is_not_a_warp() {
     let at = reader.poll().unwrap();
     assert!(at.is_some() && at.unwrap().zone == LIVING_ROOM);
     assert_eq!(reader.visit(), before);
+}
+
+/// The chase after Kukui's call ends on the field, Route 1's zone 0x0, and the beats over its
+/// arrival waited out a timer from the demo's start (movie1_opening.ctm, 2026-10-13).
+#[test]
+fn test_a_beat_waiting_for_a_zone_comes_as_the_field_arrives_there() {
+    let bedroom = Bedroom::new();
+    let scene = Scene {
+        page: None,
+        words: None,
+        zone: None,
+        beats: vec![Beat {
+            text: "A field.".to_string(),
+            demo: false,
+            zone: Some(BEDROOM),
+            at: 0.0,
+        }],
+        demo: Some(6),
+    };
+    let emu = FakeEmulator::new(served(&bedroom.memory));
+    let memory: Rc<dyn Memory> = Rc::new(RpcMemory::new(connect(&emu)));
+    let profile = SunProfile::with(
+        memory.clone(),
+        names(&memory),
+        Rc::new(Speech::plain(bedroom.recorder.clone())),
+        silent(),
+        Options {
+            ui: Some(Ui {
+                descriptions: true,
+                ..Ui::default()
+            }),
+            zones: Some(Rc::new(rom())),
+            scenes: vec![scene],
+            ..Options::default()
+        },
+    );
+    profile.track(&bedroom.found).unwrap();
+    let scenes = profile.scenes.as_ref().unwrap();
+    scenes.borrow_mut().demo(Some(6), &mut |_: &str| {});
+    assert!(bedroom.recorder.spoken().is_empty());
+    profile.poll_field().unwrap();
+    assert!(
+        bedroom
+            .recorder
+            .spoken()
+            .iter()
+            .any(|line| line.contains("A field."))
+    );
 }
 
 /// Sun's player walks anywhere, a body a cell and a half across: counted as leaving the way,

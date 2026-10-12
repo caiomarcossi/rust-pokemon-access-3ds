@@ -205,7 +205,7 @@ text = "Magma glows to the north."
 
 /// Sun numbers its demos, 55 Kukui's call and 6 the chase after it (Khai, sun_1.ctm,
 /// 2026-09-30): the chase is described from Sun's own file as it starts, a beat as each second
-/// comes.
+/// comes, and the arrival after it once the field has come, in Route 1's zone 0x0.
 #[test]
 fn test_a_scene_of_suns_is_said_over_the_demo_it_plays_as() -> Result<()> {
     let (log, logged) = logging();
@@ -237,6 +237,13 @@ fn test_a_scene_of_suns_is_said_over_the_demo_it_plays_as() -> Result<()> {
             .is_some_and(|last| last.starts_with("Somewhere else, a girl"))
     );
     now.set(500.0);
+    reader.poll(&mut say);
+    assert_eq!(said.borrow().len(), 10);
+    reader.arrived(0x0, &mut say);
+    now.set(501.0);
+    reader.poll(&mut say);
+    assert!(said.borrow().len() == 11 && said.borrow()[10].starts_with("On the ground"));
+    now.set(506.0);
     reader.poll(&mut say);
     assert_eq!(said.borrow().len(), 12);
     Ok(())
