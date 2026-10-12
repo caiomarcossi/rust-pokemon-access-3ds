@@ -182,6 +182,9 @@ pub struct Game {
     /// The sprite of its invisible blocker, a move model drawn as nothing that stands in the way:
     /// listed as nobody, and solid but where it stands in for a rotating door's arm.
     pub blocker: Option<i64>,
+    /// The sprites the player is drawn as: a model drawn as one, standing in for the player in a
+    /// scene, is the player and not listed.
+    pub player_looks: HashSet<i64>,
     /// Zones whose chunks' floors are joined by stairs, each listed under exits where it meets
     /// the floor above: Sootopolis Gym's two, the way back up from its lower floor.
     pub stairs: HashSet<i64>,
@@ -228,6 +231,7 @@ impl Game {
             doors: None,
             ice: None,
             blocker: None,
+            player_looks: HashSet::new(),
             stairs: HashSet::new(),
             apps: Vec::new(),
             warps: IndexMap::new(),

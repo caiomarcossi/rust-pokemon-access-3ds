@@ -2333,6 +2333,59 @@ fn test_the_invisible_blocker_is_nobody_and_stands_in_the_way() -> Result<()> {
     Ok(())
 }
 
+/// Spike 203: deep in the Cave of Origin three models drawn as nothing stand in a row in front
+/// of Groudon, which stands in the magma, with its script; in Sootopolis City one stands on each
+/// locked door. Each was listed as a nameless person, and so was the player in the Magma Suit,
+/// a work object at their own cell drawn as `MAGMA_HERO_RS`. The three are one Groudon; the
+/// door's is nobody, and in the way; the suit is the player.
+#[test]
+fn test_a_model_drawn_as_nothing_is_what_it_stands_in_for() -> Result<()> {
+    let (groudon, script) = (0x101B, 0x2E8);
+    let mut town = Town::new();
+    let data = zone_file(&ZoneSpec {
+        npcs: &[
+            (groudon, 100, 165, script, None),
+            (mmodel::NONDRAW, 99, 170, script, None),
+            (mmodel::NONDRAW, 100, 170, script, None),
+            (mmodel::NONDRAW, 106, 171, 0x2F0, None),
+        ],
+        warps: &[(0xE1, WARP_DOOR, 106, 171, None, None)],
+        info: &town_info(),
+        ..ZoneSpec::default()
+    });
+    town.memory.write(FILE, &data);
+    town.memory
+        .u32(HOLDER, &[FILE, OTHER, 0x11 | (data.len() as i64) << 8]);
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given::default(),
+        Game {
+            player_looks: oras::PLAYER_LOOKS.collect(),
+            ..game()
+        },
+    );
+    town.model(1, TOWN, 1, mmodel::NONDRAW, (99, 170));
+    town.model(2, TOWN, 2, mmodel::NONDRAW, (100, 170));
+    town.model(3, TOWN, 3, mmodel::NONDRAW, (106, 171));
+    town.model(4, TOWN, 4, 0xB1, (94, 172));
+    let people = |r#where: &Field| -> IndexMap<(i64, i64), i64> {
+        r#where
+            .interactables
+            .iter()
+            .filter(|item| item.category == "people")
+            .map(|item| (item.cell, item.code))
+            .collect()
+    };
+    let r#where = town.r#where()?;
+    assert_eq!(people(&r#where), IndexMap::from([((99, 170), groudon)]));
+    assert!(!town.reader.ground(&r#where, None)?.open((106, 171))?);
+    // Once Groudon itself stands where it can be listed, it is listed and not its stand-ins.
+    town.model(5, TOWN, 0, groudon, (100, 165));
+    let r#where = town.r#where()?;
+    assert_eq!(people(&r#where), IndexMap::from([((100, 165), groudon)]));
+    Ok(())
+}
+
 /// Spike 161: Fortree Gym's third door, arms north and west two cells long about the corner at
 /// (23, 23), stood with the ground walled at (21, 23) and (21, 24). Walked into westward from
 /// (23, 22), it would swing its west arm through that quarter, and the game did not turn it;

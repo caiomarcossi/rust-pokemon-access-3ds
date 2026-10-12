@@ -64,6 +64,8 @@ pub const NPC_INDEX: i64 = 0x00;
 
 pub const NPC_SPRITE: i64 = 0x02;
 
+pub const NPC_SCRIPT: i64 = 0x08;
+
 pub const NPC_FLAG: i64 = 0x0A;
 
 /// The cell an NPC record starts its move model in.

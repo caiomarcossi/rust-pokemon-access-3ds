@@ -715,6 +715,13 @@ fn ice_floors(memory: Rc<dyn Memory>) -> Rc<dyn IceReader> {
 /// Sootopolis Gym, and the Gym's module sets them in place.
 pub const STOPPER: i64 = 0x8A;
 
+/// The player's looks among the ROM's sprite ids, `HEROINE_RS` and `HERO_RS` through the contest
+/// outfits to `MAGMA_HERO_RS` and `AQUA_HERO_RS` (spike 87): putting the Magma Suit on in the
+/// Cave of Origin fills a work object at the player's own cell with `MAGMA_HERO_RS` (spike 203).
+///
+/// Python's is a frozenset of the range; a `Range` here, collected where a set is wanted.
+pub const PLAYER_LOOKS: std::ops::Range<i64> = 0xAB..0xB3;
+
 /// Omega Ruby and Alpha Sapphire as the gen 6 readers read them.
 pub fn game() -> &'static Game {
     static GAME: OnceLock<Game> = OnceLock::new();
@@ -735,6 +742,7 @@ pub fn game() -> &'static Game {
         doors: Some(rotating_doors),
         ice: Some(ice_floors),
         blocker: Some(STOPPER),
+        player_looks: PLAYER_LOOKS.collect(),
         stairs: HashSet::from([SOOTOPOLIS_GYM]),
         apps: vec![Soaring::of],
         warps: warps().clone(),

@@ -88,6 +88,10 @@ pub const NEAR: f64 = 0.5;
 pub const DRAWN: i64 = 0x898;
 /// `WKOBJCODE00` to `WKOBJCODE15` in the ROM's sprite list (spike 88).
 pub const WORK_OBJECTS: Range<i64> = 0x7A..0x8A;
+/// `NONDRAW` in the ROM's sprite list: a model drawn as nothing, standing in for what the player
+/// talks to there. ORAS stands 23 in nine zones: on each of Sootopolis City's ten locked doors,
+/// and in front of Groudon deep in the Cave of Origin (spike 203).
+pub const NONDRAW: i64 = 0x0;
 /// The character of a Poké Ball lying on the ground, seen on Route 102 (spike 78).
 pub const ITEM_BALL: i64 = 0x2000;
 /// Model codes from here up to `PROP_MODEL` are Pokémon: the movers' Machoke `0x103f`.

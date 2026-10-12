@@ -48,10 +48,10 @@ use crate::games::gen6::field::features::{
 use crate::games::gen6::field::rail::{self, Rails, keep};
 use crate::games::gen6::field::terrain::{FarCells, FarFloors, FarHeights, FarMatrices, Terrain};
 use crate::games::gen6::field::zonedata::{
-    FURNITURE, LZ11, NPC, NPC_INDEX, NPC_X, NPC_Z, TRIGGER_HEIGHT, TRIGGER_SCRIPT, TRIGGER_WIDTH,
-    TRIGGER_X, TRIGGER_Y, TRIGGER_Z, WARP, WARP_DOOR, WARP_OUT, WARP_STAIRS, WARP_STREET, WARP_Y,
-    ZoneData, arrival, from_world, on_rail, read_furniture, read_records, read_triggers, read_zone,
-    zone_files,
+    FURNITURE, LZ11, NPC, NPC_INDEX, NPC_SCRIPT, NPC_SPRITE, NPC_X, NPC_Z, TRIGGER_HEIGHT,
+    TRIGGER_SCRIPT, TRIGGER_WIDTH, TRIGGER_X, TRIGGER_Y, TRIGGER_Z, WARP, WARP_DOOR, WARP_OUT,
+    WARP_STAIRS, WARP_STREET, WARP_Y, ZoneData, arrival, from_world, on_rail, read_furniture,
+    read_records, read_triggers, read_zone, zone_files,
 };
 use crate::games::gen6::field::zonetable::{
     INFO_KIND, INFO_MATRIX, INFO_NAME, INFO_PARENT, INFO_SIZE, NAME_MASK, UNDERWATER, ZONE_LIMIT,
@@ -211,6 +211,8 @@ pub struct FieldReader {
     doors: Option<Rc<dyn DoorReader>>,
     /// The sprite of the game's invisible blocker (`Game.blocker`), or None.
     blocker: Option<i64>,
+    /// The sprites the player is drawn as (`Game.player_looks`).
+    player_looks: HashSet<i64>,
     /// Zones whose floors' stairs are listed (`Game.stairs`).
     stairs: HashSet<i64>,
     /// The game's rooms of thin ice, or None in a game without them.
@@ -352,6 +354,7 @@ impl FieldReader {
             features,
             doors: game.doors.map(|make| make(memory.clone())),
             blocker: game.blocker,
+            player_looks: game.player_looks.clone(),
             stairs: game.stairs.clone(),
             ice: game.ice.map(|make| make(memory.clone())),
             decorations: text
@@ -1363,7 +1366,7 @@ impl FieldReader {
             }
             let (line, a, x) = mmodel::rail(&head)?;
             if let Some(cell) = corridor.at(line, a, x)? {
-                out.push(self.model_item(model, &head, cell, (1, 1))?);
+                out.push(self.model_item(model, &head, cell, (1, 1), None)?);
             }
         }
         Ok(out)
@@ -1509,13 +1512,22 @@ impl FieldReader {
     /// no parked model, however walled in: Seafloor Cavern's room 0x69 has walls north and west of
     /// its north-west hole, and the boulder pushed into it was left out, its hole still listed and
     /// a wall (movie37).
+    ///
+    /// A model drawn as nothing is called what it stands in for (`stand_ins`), once: the three in
+    /// front of Groudon are one "Groudon", the first by its record, and none once Groudon itself
+    /// is listed. It is left out on a door, which is listed already; and one drawn as the player
+    /// is the player, as the Magma Suit is put on in the Cave of Origin: listed there as "person,
+    /// here" (spike 203).
     fn people(&self, zone: i64) -> Result<Vec<Interactable>> {
         let mut out: Vec<Interactable> = Vec::new();
+        // What each stand-in is called -> the stand-in of the lowest record listed as it.
+        let mut standing_in: IndexMap<i64, Interactable> = IndexMap::new();
         let mut chunks: Vec<Rc<Chunk>> = Vec::new();
         for chunk in self.chunks_loaded()? {
             chunks.push(self.terrain.flattened(&chunk, None, false)?);
         }
         let holes = self.holes(zone)?;
+        let mut stand_ins: Option<(IndexMap<i64, i64>, HashSet<Cell>)> = None;
         let models = self.models.borrow().clone();
         for model in models {
             let head = self.memory.read(model, mmodel::HEAD)?;
@@ -1528,37 +1540,112 @@ impl FieldReader {
             if !holes.contains(&cell) && walled_in(&chunks, cell)? {
                 continue;
             }
-            if let Some(blocker) = self.blocker
-                && mmodel::drawn_as(&*self.memory, model, &head, self.drawn)? == blocker
-            {
+            let code = mmodel::drawn_as(&*self.memory, model, &head, self.drawn)?;
+            if Some(code) == self.blocker || self.player_looks.contains(&code) {
                 continue;
             }
+            let mut stood_in = None;
+            if code == mmodel::NONDRAW && mmodel::zone_of(&head)? == zone {
+                if stand_ins.is_none() {
+                    stand_ins = Some(self.stand_ins()?);
+                }
+                let (by_index, doors) = stand_ins.as_ref().expect("just read");
+                stood_in = by_index.get(&mmodel::index_of(&head)?).copied();
+                if stood_in.is_none() && doors.contains(&cell) {
+                    continue;
+                }
+            }
             let (cell, size) = mmodel::footprint(&head, cell)?;
-            out.push(self.model_item(model, &head, cell, size)?);
+            // `stood_in or code`: a stand-in's sprite is never NONDRAW, 0, so never falsy.
+            let called = match stood_in {
+                Some(sprite) if sprite != 0 => sprite,
+                _ => code,
+            };
+            let item = self.model_item(model, &head, cell, size, Some(called))?;
+            match stood_in {
+                None => out.push(item),
+                Some(stood_in) => {
+                    let replaces = match standing_in.get(&stood_in) {
+                        None => true,
+                        Some(first) => mmodel::index_of(&head)? < first.record.unwrap_or((0, 0)).1,
+                    };
+                    if replaces {
+                        standing_in.insert(stood_in, item);
+                    }
+                }
+            }
+        }
+        let listed: HashSet<i64> = out.iter().map(|item| item.code).collect();
+        for (code, item) in standing_in {
+            if !listed.contains(&code) {
+                out.push(item);
+            }
         }
         Ok(out)
+    }
+
+    /// What the zone's models drawn as nothing stand in for, by their records' indices: the
+    /// sprite of another record with the same script, as the three in a row in front of Groudon
+    /// deep in the Cave of Origin have its script, where Groudon itself stands in the magma; and
+    /// the cells of the zone's warps, where Sootopolis City's ten stand, one on each locked door
+    /// (spike 203).
+    fn stand_ins(&self) -> Result<(IndexMap<i64, i64>, HashSet<Cell>)> {
+        let Some(data) = self.current()? else {
+            return Ok((IndexMap::new(), HashSet::new()));
+        };
+        let records = read_records(&*self.memory, &data, NPC)?;
+        let mut drawn: IndexMap<i64, i64> = IndexMap::new();
+        for record in &records {
+            if u16(record, NPC_SPRITE)? != mmodel::NONDRAW && u16(record, NPC_SCRIPT)? != 0 {
+                drawn.insert(u16(record, NPC_SCRIPT)?, u16(record, NPC_SPRITE)?);
+            }
+        }
+        let mut stand_ins: IndexMap<i64, i64> = IndexMap::new();
+        for record in &records {
+            if u16(record, NPC_SPRITE)? == mmodel::NONDRAW
+                && let Some(sprite) = drawn.get(&u16(record, NPC_SCRIPT)?)
+            {
+                stand_ins.insert(u16(record, NPC_INDEX)?, *sprite);
+            }
+        }
+        let mut doors: HashSet<Cell> = HashSet::new();
+        for record in read_records(&*self.memory, &data, WARP)? {
+            if on_rail(&record)? {
+                continue;
+            }
+            let (x0, z0) = (from_world(s16(&record, 8)?), from_world(s16(&record, 12)?));
+            for x in x0..x0 + 1.max(u16(&record, 14)?) {
+                for z in z0..z0 + 1.max(u16(&record, 16)?) {
+                    doors.insert((x, z));
+                }
+            }
+        }
+        Ok((stand_ins, doors))
     }
 
     /// The cells the game's invisible blockers stand in, with how high: listed as nobody, and in
     /// the way all the same, as Sootopolis Gym's are, across the corridors up from its rooms
     /// (spike 167). Round a zone's rotating doors they stand in for the doors' arms, which the
-    /// doors are walked through by (spike 161).
+    /// doors are walked through by (spike 161). So is a model drawn as nothing, as on each of
+    /// Sootopolis City's locked doors (spike 203).
     fn unseen(&self, zone: i64) -> Result<IndexMap<Cell, Option<f64>>> {
-        let mut out: IndexMap<Cell, Option<f64>> = IndexMap::new();
-        let Some(blocker) = self.blocker else {
-            return Ok(out);
-        };
-        if let Some(doors) = &self.doors
-            && !doors.doors(zone)?.is_empty()
-        {
-            return Ok(out);
+        let mut unseen: HashSet<i64> = HashSet::from([mmodel::NONDRAW]);
+        if let Some(blocker) = self.blocker {
+            let rotating = match &self.doors {
+                Some(doors) => !doors.doors(zone)?.is_empty(),
+                None => false,
+            };
+            if !rotating {
+                unseen.insert(blocker);
+            }
         }
+        let mut out: IndexMap<Cell, Option<f64>> = IndexMap::new();
         let models = self.models.borrow().clone();
         for model in models {
             let head = self.memory.read(model, mmodel::HEAD)?;
             if !mmodel::in_use(&head)?
                 || mmodel::index_of(&head)? == mmodel::PLAYER_INDEX
-                || mmodel::drawn_as(&*self.memory, model, &head, self.drawn)? != blocker
+                || !unseen.contains(&mmodel::drawn_as(&*self.memory, model, &head, self.drawn)?)
             {
                 continue;
             }
@@ -1570,7 +1657,8 @@ impl FieldReader {
     }
 
     /// A model as what it is, standing in `size` cells from `cell`: an item ball or a thing by its
-    /// model code, a person otherwise.
+    /// model code, a person otherwise; `code` is the sprite it is called by, where that is not the
+    /// one it is drawn with.
     ///
     /// Told apart by its slot and the record it was built from: walking into the next zone fills
     /// the slots of the zone left with the new zone's people, and the way to a Youngster on Route
@@ -1581,8 +1669,12 @@ impl FieldReader {
         head: &[u8],
         cell: Cell,
         size: (i64, i64),
+        code: Option<i64>,
     ) -> Result<Interactable> {
-        let code = mmodel::drawn_as(&*self.memory, model, head, self.drawn)?;
+        let code = match code {
+            Some(code) => code,
+            None => mmodel::drawn_as(&*self.memory, model, head, self.drawn)?,
+        };
         let source = u32(head, mmodel::ZONE)? << 32 | model;
         let (category, kind) = if code == mmodel::ITEM_BALL {
             ("items", "item ball")
