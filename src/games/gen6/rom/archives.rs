@@ -290,6 +290,22 @@ pub struct GameText {
     /// The ROM's zone table, which the game's in RAM is byte for byte (`FieldReader`); empty
     /// where it is not read. Left out of the comparison, as the dataclass leaves it.
     pub zone_table: Vec<u8>,
+    /// What the game calls each item, by its number; none where they are not read.
+    pub items: Vec<String>,
+    /// A file of the "story" text or the "text" as its lines, control sequences in, each as the
+    /// ROM has it: the lines a scene follows (`games.common.scenes`). Left out of the comparison,
+    /// as the dataclass leaves it.
+    pub lines: IndexMap<String, TextLines>,
+}
+
+/// `Callable[[int], Sequence[bytes]]`: a text archive's file as its lines (`lines_of`).
+#[derive(Clone)]
+pub struct TextLines(pub Rc<dyn Fn(i64) -> Result<Vec<Vec<u8>>>>);
+
+impl std::fmt::Debug for TextLines {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("TextLines")
+    }
 }
 
 impl PartialEq for GameText {
@@ -321,6 +337,7 @@ impl PartialEq for GameText {
             && self.bike == other.bike
             && self.acro == other.acro
             && self.species == other.species
+            && self.items == other.items
     }
 }
 
@@ -360,6 +377,8 @@ impl Default for GameText {
             files: IndexMap::new(),
             species: Vec::new(),
             zone_table: Vec::new(),
+            items: Vec::new(),
+            lines: IndexMap::new(),
         }
     }
 }
@@ -680,6 +699,20 @@ impl GameText {
             files: files_of(rom, layout)?,
             species,
             zone_table: table.clone(),
+            items: match layout.items {
+                Some(file) => lines_of_file(&files, file)?,
+                None => Vec::new(),
+            },
+            lines: IndexMap::from([
+                (
+                    "story".to_string(),
+                    TextLines(Rc::new(lines_of(story.clone()))),
+                ),
+                (
+                    "text".to_string(),
+                    TextLines(Rc::new(lines_of(files.clone()))),
+                ),
+            ]),
         };
         if layout.protagonists && !text.protagonists_hold() {
             return Err(Error::new(

@@ -36,6 +36,8 @@ pub struct Focus {
 /// watch finds it a look or two on, so the name came a moment after the page and 20 of sun_4.ctm's
 /// 23 pages were named (issue 4). A fifth of a second at the runtime's tick.
 pub const SPEAKER_POLLS: i64 = 12;
+/// Who a scene's description is said as, a speaker of pa3ds's own (ADR-0038).
+pub const NARRATOR: &str = "Narration";
 
 /// `speaker: Callable[[int], str | None]`: who is showing a window's page. It reads the game's
 /// memory (`sm.talk.Speakers.name_for`), so it can raise, and the Rust one returns a `Result` for
@@ -256,6 +258,20 @@ impl Announcements {
     /// Another app has started: a battle beginning, or the field coming back after one.
     pub fn forget_sides(&mut self) {
         self.sides.clear();
+    }
+
+    /// Say a scene's description as the narrator's line: named when it takes over from whoever
+    /// spoke last, a speaker or the game's own unnamed text, and plain while it goes on, as a
+    /// speaker is (Orion, 2026-10-12). A speaker after it is named again.
+    pub fn narrate(&mut self, text: &str) {
+        let said = if self.said_speaker.as_deref() == Some(NARRATOR) {
+            text.to_string()
+        } else {
+            format!("{NARRATOR}: {text}")
+        };
+        self.said_speaker = Some(NARRATOR.to_string());
+        (self.log)(&format!("scene [{NARRATOR}]: {text}"));
+        self.speech.say(&said, Category::Scene);
     }
 
     /// Python's `_say` of a `TextWritten`, apart from the page's: it names nobody, so it cannot

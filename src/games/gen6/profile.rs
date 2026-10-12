@@ -35,6 +35,7 @@ use crate::games::common::field::things::{
 use crate::games::common::layout::Layouts;
 use crate::games::common::layout_file::{LayoutFile, LayoutFiles};
 use crate::games::common::pictures::CAUGHT;
+use crate::games::common::scenes::{Scenes, load as load_scenes};
 use crate::games::common::screen::{Pictures, ScreenText, ScreenTextReader};
 use crate::games::common::screen_announce::ScreenAnnouncer;
 use crate::games::common::session::Profile;
@@ -42,7 +43,7 @@ use crate::games::common::touch::{
     self, FileOf, Idle, ImageOf, Lists, OnScreen, PictureName, Tap, TextOf, TouchTargets,
 };
 use crate::games::common::{lyt, msgwin, pokemon, strbuf};
-use crate::games::gen6::apps::{BATTLE, FIELD, MANAGER_CLASS, RunningApp};
+use crate::games::gen6::apps::{BATTLE, DEMO, FIELD, MANAGER_CLASS, RunningApp};
 use crate::games::gen6::field::dowsing::Lights;
 use crate::games::gen6::field::reader::{FieldReader, MOVE_MODEL_CLASS};
 use crate::games::gen6::field::speaker::SpeakerReader;
@@ -222,6 +223,9 @@ pub struct Gen6Profile {
     on_bike: Cell<bool>,
     pub announcements: Rc<RefCell<Announcements>>,
     pub screen_announcer: RefCell<ScreenAnnouncer>,
+    /// The scenes the game shows without words, described where the player asks and the game has
+    /// descriptions in their language (ADR-0038).
+    pub scenes: Option<RefCell<Scenes>>,
     /// The Pokédex's habitat map draws the Pokémon's places and never names them (spike 152).
     pub habitat: RefCell<HabitatReader>,
     /// An Extra: the conditions the game draws as a star, said as numbers (ADR-0017).
@@ -646,6 +650,23 @@ impl Gen6Profile {
             .dowsing
             .map(|offset| RefCell::new(Lights::new(memory.clone(), offset)));
         let screen_announcer = ScreenAnnouncer::with(speech.clone(), log.clone(), ui.pauses);
+        // The scenes the game shows without words, described where the player asks and the game
+        // has descriptions in their language (ADR-0038).
+        let scenes = match &text {
+            Some(text) if ui.descriptions => {
+                let file = game
+                    .scenes
+                    .iter()
+                    .find(|(held, _)| *held == text.language)
+                    .map(|(_, file)| *file);
+                // Python raises out of `__init__` here; `new` returns no `Result`, and nothing the
+                // file or the ROM holds raises in `load` but a line number in digits no int reads.
+                let loaded = load_scenes(file, &line_of(text), &word_of(text), &log)
+                    .unwrap_or_else(|error| panic!("{error:?}"));
+                Some(RefCell::new(Scenes::with_monotonic(loaded)))
+            }
+            _ => None,
+        };
         let habitat = HabitatReader::new(
             memory.clone(),
             layouts.clone(),
@@ -727,6 +748,7 @@ impl Gen6Profile {
             on_bike: Cell::new(false),
             announcements,
             screen_announcer: RefCell::new(screen_announcer),
+            scenes,
             habitat: RefCell::new(habitat),
             conditions,
             archived: RefCell::new(HashSet::new()),
@@ -874,6 +896,11 @@ impl Gen6Profile {
         if started == BATTLE {
             self.battle.borrow_mut().begin();
         }
+        if started == DEMO
+            && let Some(scenes) = &self.scenes
+        {
+            scenes.borrow_mut().demo(&mut self.narrate());
+        }
         for app in self.own.iter() {
             app.started();
         }
@@ -908,7 +935,24 @@ impl Gen6Profile {
         if said && self.apps.borrow().running.as_deref() == Some(FIELD) {
             self.look_for_speakers(&shown)?;
         }
+        if said && let Some(scenes) = &self.scenes {
+            for page in &shown {
+                if let Shown::Page(page) = page {
+                    scenes.borrow_mut().heard(
+                        page.index,
+                        &page.text,
+                        self.zone.get(),
+                        &mut self.narrate(),
+                    );
+                }
+            }
+        }
         Ok(said)
+    }
+
+    /// `self.announcements.narrate`, as the scenes are handed it to say a beat with.
+    fn narrate(&self) -> impl FnMut(&str) + '_ {
+        move |line: &str| self.announcements.borrow_mut().narrate(line)
     }
 
     /// Ask for a sweep when the field shows a page no talk object kept is showing. A door
@@ -1124,6 +1168,9 @@ impl Gen6Profile {
     /// The listing reads every model in the pool, so it is made only on a change of zone and
     /// after each sweep, not every poll.
     pub fn poll_field(&self) -> Result<()> {
+        if let Some(scenes) = &self.scenes {
+            scenes.borrow_mut().poll(&mut self.narrate());
+        }
         if let Some((app, process)) = own_running(&self.apps, &self.own) {
             return phase(&*self.memory, app.name(), || app.poll(process));
         }
@@ -1134,7 +1181,8 @@ impl Gen6Profile {
             let Some(mut at) = field.poll()? else {
                 return Ok(None);
             };
-            if Some(at.zone) != self.zone.get() {
+            let arrived = Some(at.zone) != self.zone.get();
+            if arrived {
                 self.zone.set(Some(at.zone));
                 self.unheard.borrow_mut().clear();
             }
@@ -1146,6 +1194,10 @@ impl Gen6Profile {
                 ));
             }
             self.arrive(at.zone)?;
+            // After the place's name, which a scene across Hoenn's towns follows town by town.
+            if arrived && let Some(scenes) = &self.scenes {
+                scenes.borrow_mut().arrived(at.zone, &mut self.narrate());
+            }
             self.poll_decorating(&at)?;
             // A hidden Pokémon shows and goes between sweeps, so its record is read every poll.
             let hiding = field.hidden(at.zone)?;
@@ -1429,6 +1481,42 @@ impl FieldSource for OwnApps {
 
     fn ground(&self, r#where: &Field, height: Option<f64>) -> Result<Ground> {
         self.field.ground(r#where, height)
+    }
+}
+
+/// A line of the "story" text or the "text" by its file and number, as the ROM has it, or
+/// None.
+fn line_of(text: &GameText) -> impl Fn(&str, i64, i64) -> Result<Option<Vec<u8>>> + '_ {
+    move |archive: &str, file: i64, number: i64| {
+        let lines = match text.lines.get(archive) {
+            Some(lines) => (lines.0)(file)?,
+            None => Vec::new(),
+        };
+        Ok(if number < lines.len() as i64 {
+            Some(lines[number as usize].clone())
+        } else {
+            None
+        })
+    }
+}
+
+/// The game's own word for what a description names as `{kind:number}`, or None.
+fn word_of(text: &GameText) -> impl Fn(&str, i64) -> Option<String> + '_ {
+    move |kind: &str, number: i64| {
+        if kind == "place" {
+            return text.place(number);
+        }
+        let said: &[String] = match kind {
+            "pokemon" => &text.species,
+            "trainer" => &text.trainers,
+            "item" => &text.items,
+            _ => &[],
+        };
+        if number < said.len() as i64 && !said[number as usize].is_empty() {
+            Some(said[number as usize].clone())
+        } else {
+            None
+        }
     }
 }
 

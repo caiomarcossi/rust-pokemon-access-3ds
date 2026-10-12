@@ -134,6 +134,9 @@ pub struct RomLayout {
     /// The same file and the Acro Bike's line, which a hop up a bumpy slope is said with; None in
     /// a game without bumpy slopes.
     pub acro: Option<(i64, i64)>,
+    /// The text file of the items' names, a line an item by its number: the Red Orb is 534 in
+    /// ORAS. Named in the descriptions of scenes (`games.common.scenes`).
+    pub items: Option<i64>,
     /// Archives a game's own readers read for themselves, handed over whole (`GameText.files`):
     /// ORAS's sky's map of places (`oras.field.sky`).
     pub files: Vec<String>,
@@ -202,6 +205,7 @@ impl RomLayout {
             decorations: None,
             bike: None,
             acro: None,
+            items: None,
             files: Vec::new(),
             entrances: HashSet::new(),
         }

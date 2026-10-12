@@ -44,6 +44,8 @@ to install.
 - **The Bag's party** for an evolution stone: whether each Pokémon can use it, in party order
   ("UNABLE!"), with its species where pa3ds has found your party ("Metagross UNABLE!").
 - **Where you are**: the place name when you arrive somewhere new.
+- **Scenes** the game shows without words, described in pa3ds's own words when
+  [`descriptions`](#settings) is on: Groudon waking, the ride down to it, the sky clearing.
 - **The map**: exits, signs, people, items, berry spots and more, each with its direction and
   distance ("door, 1 of 3, 3 east 2 north"), and the way to any of them on foot. An exit says
   what it is: a door, stairs up or down, a passage between rooms with no floor between them, a
@@ -251,6 +253,7 @@ overwritten. Each setting has a comment in the file saying what it does.
 | `interrupt` | `false` | Cut off speech when a menu's cursor moves, instead of queueing. pa3ds's own keys always cut off speech. |
 | `unfocused` | `false` | Keep saying what the game shows while another window is in front. |
 | `tones` | `true` | A short tone as the map's cursor or touch mode moves: higher the further up, panned the further right. |
+| `descriptions` | `false` | Describe the scenes the game shows without words, after the line each scene follows, said as "Narration:" the way a speaker is named. So far in English, for Omega Ruby's scenes from Groudon waking in Seafloor Cavern to the sky clearing after it is caught. |
 | **`[pa3ds.navigation]`** | | |
 | `positions` | `true` | Say where a thing is in the list: "door, 1 of 3". |
 | `position_first` | `true` | Say the place in the list before the way to it. `false` says "door, 1 north, 1 of 3". |

@@ -28,6 +28,9 @@ pub const MANAGER_CLASS: &str = "N10gamesystem15GameProcManagerE";
 pub const FIELD: &str = "N5field12FieldmapProcE";
 /// A battle's process, which starts once a battle, however many switches and Bags it holds.
 pub const BATTLE: &str = "N3btl14BattleMainProcE";
+/// A scene of the game's own, played in its module: Groudon woken in Seafloor Cavern, the opening
+/// before the title. Its process is the same in every one, and says nothing of which (spike 203).
+pub const DEMO: &str = "N3app10field_demo4ProcE";
 pub const MANAGER_RUNNING: i64 = 0x10;
 pub const PROCESS_MANAGER: i64 = 0x1C;
 /// How far into a process the manager's pointer may land. The Pokédex's lands deepest yet: 0x150.

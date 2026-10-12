@@ -135,6 +135,9 @@ pub struct Game {
     pub titles: HashSet<i64>,
     /// Its words for what the game never names, a folder a language (`pa3ds.core.names`).
     pub data: Data,
+    /// Its descriptions of scenes, a `scenes.toml` a language from the same folder as `data`
+    /// (`games.common.scenes`): Python reads `data / language / "scenes.toml"`.
+    pub scenes: Data,
     /// Where its ROM keeps the game's own words (`archives`).
     pub rom: RomLayout,
     /// Where a move model keeps the sprite it is drawn with (`mmodel.drawn_as`).
@@ -217,6 +220,7 @@ impl Game {
             name: name.to_string(),
             titles: titles.into_iter().collect(),
             data,
+            scenes: &[],
             rom,
             drawn,
             hidden: None,

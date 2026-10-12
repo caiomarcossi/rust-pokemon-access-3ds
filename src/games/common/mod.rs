@@ -40,3 +40,5 @@ pub mod strbuf;
 pub mod text;
 
 pub mod touch;
+
+pub mod scenes;

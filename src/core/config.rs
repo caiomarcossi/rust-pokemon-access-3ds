@@ -92,6 +92,7 @@ pub struct Ui {
     pub interrupt: bool,
     pub unfocused: bool,
     pub tones: bool,
+    pub descriptions: bool,
 }
 
 impl Default for Ui {
@@ -101,6 +102,7 @@ impl Default for Ui {
             interrupt: false,
             unfocused: false,
             tones: true,
+            descriptions: false,
         }
     }
 }
@@ -112,6 +114,7 @@ impl Table for Ui {
             ("interrupt", Value::Bool(self.interrupt)),
             ("unfocused", Value::Bool(self.unfocused)),
             ("tones", Value::Bool(self.tones)),
+            ("descriptions", Value::Bool(self.descriptions)),
         ]
     }
 
@@ -121,6 +124,7 @@ impl Table for Ui {
             ("interrupt", Value::Bool(value)) => self.interrupt = value,
             ("unfocused", Value::Bool(value)) => self.unfocused = value,
             ("tones", Value::Bool(value)) => self.tones = value,
+            ("descriptions", Value::Bool(value)) => self.descriptions = value,
             _ => {}
         }
     }
@@ -206,7 +210,7 @@ fn defaults(name: &str) -> Vec<(&'static str, Value)> {
 }
 
 /// What each setting does, as the file's comment above it says it.
-pub const EXPLAINED: [(&str, &str); 12] = [
+pub const EXPLAINED: [(&str, &str); 13] = [
     (
         "pa3ds.keys",
         "answer pa3ds's keys and bind Azahar's buttons, as keys.toml says",
@@ -235,6 +239,11 @@ pub const EXPLAINED: [(&str, &str); 12] = [
         "pa3ds.ui.tones",
         "a short tone as a map's cursor or touch mode moves, higher the further up and panned the \
          further right, to say where the cursor is",
+    ),
+    (
+        "pa3ds.ui.descriptions",
+        "describe the scenes the game shows without words, as Groudon wakes: pa3ds's own words, \
+         said after the line each scene follows; for the scenes described so far, in English",
     ),
     (
         "pa3ds.navigation.positions",

@@ -40,10 +40,13 @@ pub enum Category {
     /// The next leg of a path, said as the player walks up to each turn. It queues: two turns a
     /// step apart are both heard, the second after the first.
     Guidance,
+    /// A description of what the game shows without words (`games.common.scenes`). It queues, so
+    /// the line a scene follows is heard whole first.
+    Scene,
 }
 
 impl Category {
-    pub const ALL: [Category; 9] = [
+    pub const ALL: [Category; 10] = [
         Category::Menu,
         Category::Prompt,
         Category::Screen,
@@ -53,6 +56,7 @@ impl Category {
         Category::Warning,
         Category::Key,
         Category::Guidance,
+        Category::Scene,
     ];
 
     /// The category's value, as the settings file names it.
@@ -67,6 +71,7 @@ impl Category {
             Category::Warning => "warning",
             Category::Key => "key",
             Category::Guidance => "guidance",
+            Category::Scene => "scene",
         }
     }
 }

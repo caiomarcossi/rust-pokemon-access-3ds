@@ -1,0 +1,199 @@
+# What Omega Ruby shows without words, in pa3ds's own words, said under [pa3ds.ui] descriptions.
+#
+# A scene follows a line of the game's text in a zone: `story:402:30` is the story text's file 402,
+# line 30, the same line in every language, and `text:147:67` the rest of the game's text
+# (`games.common.scenes`). Its beats are said one after another: a beat with `demo` waits for a
+# scene of the game's own to start, one with `zone` for the player to arrive there, then `at`
+# seconds. A name the game shows is never written here: `{pokemon:383}` is the game's own word,
+# out of the player's ROM, as are `{trainer:N}`, `{item:N}` and `{place:N}`.
+#
+# Each scene was described from screenshots of a replay (spike 203, movie40_groudon_awakens and
+# movie41_cave_of_origin); the seconds are from the moment its demo or line came there.
+
+# Seafloor Cavern, zone 0x6f: Archie's "Augh... You...", after Maxie's battle and before Groudon
+# wakes, a demo of 65 s.
+[[scene]]
+after = "story:402:30"
+zone = 0x6f
+
+[[scene.beat]]
+text = "{trainer:235} walks to the edge of the lava, where {pokemon:383} lies curled up, grey as stone."
+
+[[scene.beat]]
+demo = true
+at = 6
+text = "{trainer:235} holds up the {item:534}. It blazes with red light, and cracks of light run across {pokemon:383}'s stone shell."
+
+[[scene.beat]]
+at = 15
+text = "{pokemon:383} rises out of the lava, red again. It opens its eyes and looks up at the cavern roof."
+
+[[scene.beat]]
+at = 30
+text = "It towers over the lava as {trainer:235} and you watch from the shore."
+
+[[scene.beat]]
+at = 40
+text = "{pokemon:383} bursts out into the open sky over the sea in a flash of light."
+
+[[scene.beat]]
+at = 50
+text = "The sky turns a fierce burning yellow, and {pokemon:383} roars."
+
+# Tabitha's "Child! You're coming, too! Hurry up!": the lava pool is empty, and everyone runs out
+# of the cavern onto Route 128, zone 0x39.
+[[scene]]
+after = "story:402:42"
+zone = 0x6f
+
+[[scene.beat]]
+text = "The lava pool is empty. {pokemon:383} is gone."
+
+[[scene.beat]]
+zone = 0x39
+text = "The sky blazes white and gold. You stand on a sandbar in the sea with {trainer:178}, {trainer:235} and {trainer:691}, under a burning sun."
+
+# Route 128: Tabitha's "Let's go. Boss Maxie...".
+[[scene]]
+after = "story:148:30"
+zone = 0x39
+
+[[scene.beat]]
+text = "{trainer:235} and {trainer:691} leave."
+
+# Archie's "So...I'll be waitin' for you in Sootopolis.", before Steven comes.
+[[scene]]
+after = "story:148:58"
+zone = 0x39
+
+[[scene.beat]]
+text = "{trainer:178} leaves. You stand alone on the sandbar, looking into the glare."
+
+[[scene.beat]]
+at = 9
+text = "Someone flies down out of the glare and lands beside you."
+
+# Steven's "Good luck to you."
+[[scene]]
+after = "story:148:46"
+zone = 0x39
+
+[[scene.beat]]
+text = "{trainer:557} flies off into the glare."
+
+# The Cave of Origin's deepest floor, zone 0x76, each time the player comes down into it: the
+# only way on is north, where the floor narrows onto a ledge at the magma, and the scene where the
+# Magma Suit goes on starts as the player walks into that narrowing (an invisible trigger seven
+# cells wide at (17, 24), which fills it). Nothing stands there; a sighted player sees the floor
+# narrow toward the glow.
+[[scene]]
+zone = 0x76
+
+[[scene.beat]]
+text = "The stairs come down at the east end of a passage. It runs west, then north through a gap into a wide hall, which narrows at its north end toward a river of glowing magma."
+
+# The Magma Suit goes on as the scene starts, and its line comes after.
+[[scene]]
+after = "story:395:5"
+zone = 0x76
+
+[[scene.beat]]
+text = "The suit is red, with heavy boots and a round helmet you look out through."
+
+# "fitted the suit with the Blue Orb!"
+[[scene]]
+after = "story:395:6"
+zone = 0x76
+
+[[scene.beat]]
+text = "The {item:535} glows, and a bubble of blue light closes around you."
+
+[[scene.beat]]
+at = 4
+text = "Blue light washes over the river of magma beside you, then everything flashes white."
+
+# Groudon's roar there.
+[[scene]]
+after = "story:395:4"
+zone = 0x76
+
+[[scene.beat]]
+text = "{pokemon:383} rears up out of the magma beside you."
+
+# "The sound cut out...", then a demo of 24 s, to zone 0x7a.
+[[scene]]
+after = "story:395:13"
+zone = 0x76
+
+[[scene.beat]]
+demo = true
+at = 2
+text = "You leap onto {pokemon:383}'s back."
+
+[[scene.beat]]
+at = 8
+text = "{pokemon:383} wades into the magma and carries you along a river of fire, deeper and deeper."
+
+[[scene.beat]]
+at = 16
+text = "A blinding light fills the tunnel ahead, and {pokemon:383} carries you into it."
+
+# Zone 0x7a, Groudon's "Gurrrooouuuhhh!!!" as the player faces it, then a demo of 56 s to the
+# battle.
+[[scene]]
+after = "story:391:0"
+zone = 0x7a
+
+[[scene.beat]]
+demo = true
+text = "Great crystals glow over the magma. {pokemon:383} stands before you."
+
+[[scene.beat]]
+at = 14
+text = "Pink light pours over {pokemon:383} and seals it inside a giant crystal."
+
+[[scene.beat]]
+at = 30
+text = "The crystal turns red and breaks, and a golden Omega symbol shines."
+
+[[scene.beat]]
+at = 40
+text = "{pokemon:383} bursts out in its primal form, huge and blazing with lava, and towers over you."
+
+# "Gotcha! Groudon was caught!", then a demo of 40 s and the field across Hoenn's towns, to
+# Sootopolis.
+[[scene]]
+after = "text:147:67"
+zone = 0x7a
+
+[[scene.beat]]
+demo = true
+text = "The crystals overhead glow softly. You make your way back out through the cave."
+
+[[scene.beat]]
+at = 13
+text = "Far above, light rises from the crater of {place:198} into the burning sky, and the glare bursts apart."
+
+[[scene.beat]]
+at = 25
+text = "The sky turns deep blue, and green sparkles drift down like snow over a calm sea."
+
+[[scene.beat]]
+zone = 0x6
+text = "People come out and look up at the sparkling sky."
+
+[[scene.beat]]
+zone = 0x15
+text = "{trainer:518} looks up at the sky."
+
+[[scene.beat]]
+zone = 0x12
+text = "A crowd looks up at the sky, and on the shore a group in red hoods watches it too."
+
+[[scene.beat]]
+zone = 0x13
+text = "By a rocket on its launch tower, {trainer:694} looks up at the sky."
+
+[[scene.beat]]
+zone = 0x1c7
+text = "The glare is gone. Your friends wait on the pier before the cave."

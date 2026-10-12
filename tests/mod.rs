@@ -45,6 +45,7 @@ mod test_rename;
 mod test_rom;
 mod test_rpc;
 mod test_rtti;
+mod test_scenes;
 mod test_screen;
 mod test_script;
 mod test_sky;

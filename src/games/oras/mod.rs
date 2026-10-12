@@ -47,6 +47,10 @@ pub const DATA: Data = &[
     ("ko", include_str!("data/ko/sprites.toml")),
 ];
 
+/// Each language's `scenes.toml` from the same folder, where there is one
+/// (`games.common.scenes.FILE`).
+pub const SCENES: Data = &[("en", include_str!("data/en/scenes.toml"))];
+
 pub const OMEGA_RUBY: i64 = 0x000400000011C400;
 pub const ALPHA_SAPPHIRE: i64 = 0x000400000011C500;
 
@@ -362,13 +366,15 @@ pub const CONDITIONS: (i64, i64) = (123, 50);
 /// A Secret Base's decorations by number, as the save numbers them: Small Desk 0, Small Chair 10,
 /// the Welcome Mats 0x13 to 0x17, Your Location 0xad (spike 154).
 pub const DECORATION_NAMES: i64 = 56;
-/// The items' names, a line an item by its number, and the Mach Bike's: "Mach Bike" in English and
-/// "マッハじてんしゃ" in Japanese, the Acro Bike's the line after (spike 158). File 116 holds the same
-/// lines.
-pub const MACH_BIKE: (i64, i64) = (114, 718);
+/// The items' names, a line an item by its number: the Red Orb at 534 (spike 203). File 116
+/// holds the same lines.
+pub const ITEM_NAMES: i64 = 114;
+/// The Mach Bike's line of the items' names: "Mach Bike" in English and "マッハじてんしゃ" in
+/// Japanese, the Acro Bike's the line after (spike 158).
+pub const MACH_BIKE: (i64, i64) = (ITEM_NAMES, 718);
 /// The Acro Bike's line of the items' names: "Acro Bike", which hops up a bumpy slope
 /// (spike 159).
-pub const ACRO_BIKE: (i64, i64) = (114, 719);
+pub const ACRO_BIKE: (i64, i64) = (ITEM_NAMES, 719);
 
 /// The warp kinds that are the way into one building and no other, 16 of them, each used by that
 /// building's entrance alone (2026-10-06): `0x0f01` Devon Corporation in Rustboro, `0x1001` the
@@ -450,6 +456,7 @@ pub fn rom() -> &'static RomLayout {
         decorations: Some(DECORATION_NAMES),
         bike: Some(MACH_BIKE),
         acro: Some(ACRO_BIKE),
+        items: Some(ITEM_NAMES),
         files: vec![sky::ARCHIVE.to_string()],
         touch_words: [
             touch_words(),
@@ -743,6 +750,7 @@ pub fn game() -> &'static Game {
         ice: Some(ice_floors),
         blocker: Some(STOPPER),
         player_looks: PLAYER_LOOKS.collect(),
+        scenes: SCENES,
         stairs: HashSet::from([SOOTOPOLIS_GYM]),
         apps: vec![Soaring::of],
         warps: warps().clone(),
