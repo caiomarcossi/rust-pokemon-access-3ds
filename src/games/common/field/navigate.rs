@@ -468,6 +468,10 @@ impl Navigator {
             return self.rename(&r#where);
         }
         if action == PATHFIND || action == PATHFIND_HM {
+            if !r#where.walkable {
+                self.say("can't walk now");
+                return Ok(());
+            }
             let Some(item) = self.chosen_item(&r#where)? else {
                 self.say("nothing here");
                 return Ok(());

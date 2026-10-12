@@ -611,10 +611,14 @@ impl Gen6Profile {
         );
         let navigator = Navigator::new(
             Rc::new(OwnApps {
-                field: field.borrow().clone(),
+                field: field.clone(),
                 running: {
                     let (apps, own) = (apps.clone(), own.clone());
                     Rc::new(move || own_running(&apps, &own))
+                },
+                on_field: {
+                    let apps = apps.clone();
+                    Rc::new(move || matches!(apps.borrow().running.as_deref(), Some(FIELD) | None))
                 },
             }),
             speech.clone(),
@@ -1452,22 +1456,51 @@ fn own_running(
 }
 
 /// What the navigator reads the map through: what one of the game's own apps lists while it
-/// runs (`OwnApp.listed`), and the field's everywhere else.
+/// runs (`OwnApp.listed`), and the field's while the field runs or its map is still loaded under
+/// another screen, where the player cannot walk (`Field.walkable`). A battle or a scene unloads
+/// the map and runs with the field's models still in memory as they were: after Groudon's
+/// capture the keys listed it in the cave left behind (Orion, 2026-10-12). A map loaded is not
+/// enough alone: arriving in a new place, the field runs a second or so before a sweep finds its
+/// chunks (movie41, 751.7 s in Littleroot).
 struct OwnApps {
-    field: Rc<FieldReader>,
+    /// The profile's field reader.
+    field: Rc<RefCell<Rc<FieldReader>>>,
     running: Rc<dyn Fn() -> Option<(Rc<dyn OwnApp>, i64)>>,
+    /// Whether the field is the app running.
+    on_field: Rc<dyn Fn() -> bool>,
+}
+
+impl OwnApps {
+    fn field(&self) -> Rc<FieldReader> {
+        self.field.borrow().clone()
+    }
 }
 
 impl FieldSource for OwnApps {
     fn visit(&self) -> Option<(i64, i64)> {
-        self.field.visit()
+        self.field().visit()
     }
 
     fn poll(&self) -> Result<Option<Field>> {
-        match (self.running)() {
-            None => self.field.poll(),
-            Some((app, process)) => app.listed(process),
+        if let Some((app, process)) = (self.running)() {
+            return app.listed(process);
         }
+        let field = self.field();
+        let r#where = field.poll()?;
+        let Some(r#where) = r#where else {
+            return Ok(None);
+        };
+        if (self.on_field)() {
+            return Ok(Some(r#where));
+        }
+        Ok(if field.chunks_loaded()?.is_empty() {
+            None
+        } else {
+            Some(Field {
+                walkable: false,
+                ..r#where
+            })
+        })
     }
 
     fn interactables(&self, r#where: &Field) -> Result<Field> {
@@ -1475,12 +1508,12 @@ impl FieldSource for OwnApps {
         if r#where.steer.is_some() {
             Ok(r#where.clone())
         } else {
-            self.field.interactables(r#where)
+            self.field().interactables(r#where)
         }
     }
 
     fn ground(&self, r#where: &Field, height: Option<f64>) -> Result<Ground> {
-        self.field.ground(r#where, height)
+        self.field().ground(r#where, height)
     }
 }
 

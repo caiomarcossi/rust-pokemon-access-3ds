@@ -8,13 +8,17 @@ use indexmap::IndexMap;
 
 use super::fake_memory::{CODE, FakeMemory};
 use super::fake_speech::Recorder;
-use super::test_field::{HOUSE, PC_TILE, POOCHYENA, TOWN, TOWN_BLOCK, TOWN_CHUNK, Town, border};
+use super::test_field::{
+    HOUSE, PC_TILE, POOCHYENA, ROUTE_BLOCK, TOWN, TOWN_BLOCK, TOWN_CHUNK, Town, border,
+};
 use crate::core::memory::{Cache, Memory};
 use crate::core::names::Names;
 use crate::core::rtti::ClassNames;
 use crate::core::speech::Speech;
-use crate::games::common::field::keys::MODE_TOGGLE;
+use crate::games::common::field::keys::{ITEM_NEXT, MODE_TOGGLE, PATHFIND};
 use crate::games::common::field::things::WARP_SOURCE;
+use crate::games::gen6::apps::{BATTLE, DEMO, FIELD};
+use crate::games::gen6::field::mapblock;
 use crate::games::gen6::field::mmodel::PLAYER_INDEX;
 use crate::games::gen6::game::{Game, OwnApp};
 use crate::games::gen6::profile::{Gen6Profile, Options};
@@ -188,6 +192,44 @@ fn test_a_hidden_pokemon_is_guided_to_as_a_search_finds_it_and_once() {
         made.poll_field().unwrap();
     }
     assert_eq!(finds(), 3);
+}
+
+/// A battle or a scene unloads the map and runs with the field's models still in memory: after
+/// Groudon's capture the keys listed it in the cave left behind (Orion, 2026-10-12). While the map
+/// is still loaded under another screen the list is read, and P finds no way; and the item chosen
+/// is kept for when the field comes back.
+#[test]
+fn test_there_is_no_map_once_another_screen_has_unloaded_it() {
+    let (control, heard) = profile(&Town::new(), None, None, no_log());
+    for _ in 0..2 {
+        control.navigator.borrow_mut().press(ITEM_NEXT).unwrap();
+    }
+    let walked = heard.spoken();
+    let town = Town::new();
+    let (made, backend) = profile(&town, None, None, no_log());
+    let running = |name: &str| made.apps.borrow_mut().running = Some(name.to_string());
+    made.navigator.borrow_mut().press(ITEM_NEXT).unwrap();
+    running(DEMO);
+    made.navigator.borrow_mut().press(PATHFIND).unwrap();
+    for block in [TOWN_BLOCK, ROUTE_BLOCK] {
+        town.memory.u32(block + mapblock::STATE, &[0]);
+    }
+    running(BATTLE);
+    made.navigator.borrow_mut().press(ITEM_NEXT).unwrap();
+    for block in [TOWN_BLOCK, ROUTE_BLOCK] {
+        town.memory.u32(block + mapblock::STATE, &[mapblock::READY]);
+    }
+    running(FIELD);
+    made.navigator.borrow_mut().press(ITEM_NEXT).unwrap();
+    assert_eq!(
+        backend.spoken(),
+        [
+            walked[0].as_str(),
+            "can't walk now",
+            "no map",
+            walked[1].as_str()
+        ]
+    );
 }
 
 /// AreaNav's words still say it, a moment later, as they always have.

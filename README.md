@@ -162,7 +162,10 @@ pa3ds's keys work only while Azahar's game window is in front, and they never re
 They do nothing while your screen reader's modifier key (Insert or Caps Lock) or a Windows key is
 held.
 
-The map's list has three **modes**. The apostrophe steps through them.
+The map's list has three **modes**. The apostrophe steps through them. Once a battle or a scene
+has put the map away, the map's keys say "no map"; while another screen runs over a map still
+there, the list still answers but `P` says "can't walk now". The thing you had chosen is kept for
+when the map comes back. Touch mode and the battle's keys work throughout.
 
 **In every mode**
 

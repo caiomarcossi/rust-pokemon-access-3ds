@@ -288,7 +288,9 @@ impl Interactable {
 }
 
 /// Where the player is, and what is around them.
-#[derive(Debug, Clone, PartialEq, Default)]
+///
+/// `Default` is written out, since `walkable` defaults to true.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Field {
     pub zone: i64,
     pub cell: (i64, i64),
@@ -317,9 +319,30 @@ pub struct Field {
     pub steer: Option<Steer>,
     /// Where the player stands in the world, in cells, a cell's centre whole: (20.31, 24.0) in
     /// `cell` (20, 24). The circle pad stops them anywhere, and a step past a wall's corner is
-    /// refused to a player off the centre on the corner's side (movie38, spike A). None where it is
-    /// not read: on a rail, and in Sun.
+    /// refused to a player off the centre on the corner's side (movie38, spike 202). None where it
+    /// is not read: on a rail, and in Sun.
     pub place: Option<(f64, f64)>,
+    /// Whether the player can walk now: not while another screen runs over a map still loaded,
+    /// where the list is still read but P finds no way (Orion, 2026-10-12).
+    pub walkable: bool,
+}
+
+impl Default for Field {
+    fn default() -> Self {
+        Field {
+            zone: 0,
+            cell: (0, 0),
+            interactables: Vec::new(),
+            on_rail: false,
+            heading: None,
+            bearing: None,
+            on_bike: false,
+            reach: None,
+            steer: None,
+            place: None,
+            walkable: true,
+        }
+    }
 }
 
 /// `Callable[[Interactable], str]`, a `Field.steer`. It can raise, as the Python's reads a table by
