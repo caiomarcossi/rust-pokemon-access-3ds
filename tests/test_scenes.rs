@@ -11,6 +11,7 @@ use crate::core::speech::Speech;
 use crate::games::common::announce::{Announcements, Speaker};
 use crate::games::common::dialogue::{PageShown, Shown};
 use crate::games::common::scenes::{Scenes, last_page, load};
+use crate::games::sm::field;
 use crate::py::{Log, Result};
 
 /// A part of a story line: text, or a control sequence given as (code, args...).
@@ -145,7 +146,7 @@ text = "{item:9999} is nowhere."
     reader.poll(&mut say);
     assert_eq!(*said.borrow(), ["Maxie walks to the lava."]);
     now.set(30.0);
-    reader.demo(&mut say);
+    reader.demo(None, &mut say);
     assert_eq!(last(), "The Orb glows.");
     now.set(39.0);
     reader.poll(&mut say);
@@ -199,6 +200,45 @@ text = "Magma glows to the north."
         said,
         ["Magma glows to the north.", "Magma glows to the north."]
     );
+    Ok(())
+}
+
+/// Sun numbers its demos, 55 Kukui's call and 6 the chase after it (Khai, sun_1.ctm,
+/// 2026-09-30): the chase is described from Sun's own file as it starts, a beat as each second
+/// comes.
+#[test]
+fn test_a_scene_of_suns_is_said_over_the_demo_it_plays_as() -> Result<()> {
+    let (log, logged) = logging();
+    let scenes = load(
+        field::in_language(field::SCENES, "en"),
+        &|_: &str, _: i64, _: i64| Ok(None),
+        &|_: &str, _: i64| None,
+        &log,
+    )?;
+    assert!(logged.borrow().is_empty());
+    let said: RefCell<Vec<String>> = RefCell::new(Vec::new());
+    let now = Rc::new(Cell::new(100.0));
+    let clock = now.clone();
+    let mut reader = Scenes::new(scenes, Rc::new(move || clock.get()));
+    let mut say = |text: &str| said.borrow_mut().push(text.to_string());
+    reader.demo(Some(55), &mut say);
+    reader.demo(None, &mut say);
+    assert!(said.borrow().is_empty());
+    reader.demo(Some(6), &mut say);
+    assert!(said.borrow().len() == 1 && said.borrow()[0].starts_with("After the call"));
+    now.set(101.0);
+    reader.poll(&mut say);
+    assert_eq!(said.borrow().len(), 1);
+    now.set(102.0);
+    reader.poll(&mut say);
+    assert!(
+        said.borrow()
+            .last()
+            .is_some_and(|last| last.starts_with("Somewhere else, a girl"))
+    );
+    now.set(500.0);
+    reader.poll(&mut say);
+    assert_eq!(said.borrow().len(), 12);
     Ok(())
 }
 

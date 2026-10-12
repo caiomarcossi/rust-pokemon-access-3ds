@@ -37,6 +37,15 @@ pub fn read(path: &Path) -> IndexMap<String, Value> {
     let Ok(text) = String::from_utf8(bytes) else {
         return IndexMap::new();
     };
+    read_text(Some(&text))
+}
+
+/// `read` of a file the binary carries, by its text: None where the game has no such file, as a
+/// missing file reads as nothing.
+pub fn read_text(text: Option<&str>) -> IndexMap<String, Value> {
+    let Some(text) = text else {
+        return IndexMap::new();
+    };
     // `tomllib` takes U+FEFF for an invalid statement where the `toml` crate skips it.
     if text.starts_with('\u{feff}') {
         return IndexMap::new();

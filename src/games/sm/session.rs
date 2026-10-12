@@ -16,6 +16,7 @@ use crate::core::rtti::ClassNames;
 use crate::core::speech::Speech;
 use crate::core::window;
 use crate::games::common::session::{Profile, Session, Setup};
+use crate::games::common::{pictures, scenes};
 use crate::games::sm::heaps::Blocks;
 use crate::games::sm::profile::{Options, REQUIRED, SunProfile, heap_classes};
 use crate::games::sm::text::SunText;
@@ -141,6 +142,19 @@ pub fn start(rpc: Rc<dyn Rpc>, speech: Rc<Speech>, setup: Setup) -> Result<Sessi
         let live = live.clone();
         Rc::new(move || live.spans())
     };
+    let buttons = pictures::buttons(field::in_language(field::PICTURES, &setup.language));
+    // Sun's scenes are found by their demo's number, so none follows a line and none names a
+    // thing the game does (ADR-0038).
+    let described = if setup.ui.descriptions {
+        scenes::load(
+            field::in_language(field::SCENES, &setup.language),
+            &|_: &str, _: i64, _: i64| Ok(None),
+            &|_: &str, _: i64| None,
+            &setup.log,
+        )?
+    } else {
+        Vec::new()
+    };
     let profile: Rc<dyn Profile> = Rc::new(SunProfile::with(
         exact.clone(),
         names,
@@ -160,6 +174,8 @@ pub fn start(rpc: Rc<dyn Rpc>, speech: Rc<Speech>, setup: Setup) -> Result<Sessi
                 let exact = exact.clone();
                 Rc::new(move |reads: &[(i64, i64)]| exact.read_each(reads))
             }),
+            buttons: Some(buttons),
+            scenes: described,
         },
     ));
 

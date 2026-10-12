@@ -11,10 +11,10 @@ use super::fake_layouts::FakeLayouts;
 use super::fake_memory::{CODE, FakeClasses, FakeMemory};
 use crate::core::rtti::ClassNames;
 use crate::games::common::cursors::reader::CursorReader;
-use crate::games::common::lyt;
 use crate::games::common::screen::{ScreenText, ScreenTextReader, join};
+use crate::games::common::{lyt, pictures};
 use crate::games::sm::lyt::SHAPE;
-use crate::games::sm::msgwin;
+use crate::games::sm::{field, msgwin};
 
 const MENU: i64 = 0x08200000;
 const CURSOR: i64 = 0x08300000;
@@ -89,7 +89,14 @@ impl Title {
             IndexMap::new(),
             HashSet::new(),
         );
-        let reader = CursorReader::with(fake.layouts.clone(), names, None, true, None);
+        let reader = CursorReader::with(
+            fake.layouts.clone(),
+            names,
+            None,
+            true,
+            None,
+            IndexMap::new(),
+        );
         let mut title = Title {
             memory,
             classes,
@@ -308,6 +315,33 @@ fn test_a_button_of_pictures_alone_is_said_by_its_panes_name() {
     title.memory.write(title.icon + SHAPE.name, &name);
     title.move_((1.0, -129.0), (312.0, 20.0));
     assert_eq!(title.heard(), said(&[(&["pokémon"], false)]));
+}
+
+/// The passport's photo choice: `Hero_00` to `Hero_07`, each a Parts pane of one picture, were
+/// said "hero" (Khai, sun_1.ctm, 2026-09-30). Sun's English data file describes each photo.
+#[test]
+fn test_a_button_of_pictures_alone_is_said_by_pa3ds_own_words_where_it_has_some() {
+    let mut title = Title::new();
+    title.reader = CursorReader::with(
+        title.fake.layouts.clone(),
+        Rc::new(ClassNames::new(title.memory.clone(), CODE)),
+        None,
+        true,
+        None,
+        pictures::buttons(field::in_language(field::PICTURES, "en")),
+    );
+    title.heard();
+    let mut name = b"Hero_00".to_vec();
+    name.extend([0; 9]);
+    title.memory.write(title.icon + SHAPE.name, &name);
+    title.move_((1.0, -129.0), (304.0, 20.0));
+    assert_eq!(
+        title.heard(),
+        said(&[(
+            &["Boy, fair skin, blond hair, blue eyes, black cap with a white logo, white T-shirt"],
+            false
+        )])
+    );
 }
 
 /// The Yes and No's own `Null_Cur`s are hidden and never placed: its item is its words.

@@ -44,30 +44,32 @@ pub struct CursorReader {
 impl CursorReader {
     /// `CursorReader(layouts, names)`: no layout files, no cursor panes, no picture names.
     pub fn new(layouts: Rc<Layouts>, names: Rc<ClassNames>) -> Self {
-        CursorReader::with(layouts, names, None, false, None)
+        CursorReader::with(layouts, names, None, false, None, IndexMap::new())
     }
 
     /// `CursorReader(layouts, names, files)`.
     pub fn with_files(layouts: Rc<Layouts>, names: Rc<ClassNames>, files: Rc<LayoutFiles>) -> Self {
-        CursorReader::with(layouts, names, Some(files), false, None)
+        CursorReader::with(layouts, names, Some(files), false, None, IndexMap::new())
     }
 
     /// `cursor_panes` reads Sun's cursor pane and its boxes' pointers, which ORAS and X have
     /// none of. `pictures` says what the game calls what a picture draws now, by its image
-    /// (`gen6.rom.textures`), or None.
+    /// (`gen6.rom.textures`), or None. `buttons` is pa3ds's own words for a button of pictures
+    /// alone, by its pane's name, said in place of that name: the passport's photos.
     pub fn with(
         layouts: Rc<Layouts>,
         names: Rc<ClassNames>,
         files: Option<Rc<LayoutFiles>>,
         cursor_panes: bool,
         pictures: Option<Pictures>,
+        buttons: IndexMap<String, String>,
     ) -> Self {
         let panes = Rc::new(Panes::new(layouts, files, pictures, cursor_panes));
         let said = Rc::new(Said::default());
         CursorReader {
             menus: MenuCursors::new(panes.clone(), said.clone(), names),
             pictures: PictureCursors::new(panes.clone(), said.clone()),
-            cursor_panes: CursorPanes::new(panes.clone(), said.clone()),
+            cursor_panes: CursorPanes::new(panes.clone(), said.clone(), buttons),
             keys: KeyCursors::new(panes.clone(), said.clone()),
             frames: MovedFrames::new(panes.clone(), said.clone()),
             choices: ChoiceFrames::new(panes.clone(), said.clone()),

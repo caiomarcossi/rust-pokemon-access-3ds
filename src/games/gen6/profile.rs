@@ -361,6 +361,7 @@ impl Gen6Profile {
             Some(files.clone()),
             false,
             named_by_image,
+            IndexMap::new(),
         );
         let battlers = Rc::new(Battlers::new(memory.clone(), names.clone()));
         let gauges = Rc::new(Gauges::new(memory.clone(), names.clone()));
@@ -903,7 +904,7 @@ impl Gen6Profile {
         if started == DEMO
             && let Some(scenes) = &self.scenes
         {
-            scenes.borrow_mut().demo(&mut self.narrate());
+            scenes.borrow_mut().demo(None, &mut self.narrate());
         }
         for app in self.own.iter() {
             app.started();

@@ -1,0 +1,62 @@
+# What Sun shows without words, in pa3ds's own words, said under [pa3ds.ui] descriptions.
+#
+# Sun numbers its demos (`App::AppDemo::AppDemoProc` +0x24), so a scene here is said over the demo
+# it plays as, `demo = 6`, where Omega Ruby's follows a line of the game's text
+# (`games.common.scenes`). Its beats are said one after another, each `at` seconds after the demo
+# started. A name the game shows is never written here.
+#
+# Described by Khai from screenshots of sun_1.ctm at real speed (2026-09-30), and carried over from
+# his branch's demos.toml.
+
+# The chase after Kukui's call, demo 6, unskippable. Before it the camera leaves the monitor for
+# the desk; the game says "Three months later..." itself at 71 s, and the field takes over at about
+# 89 s with the arrival, which plays without the player until Mom speaks at about 114 s.
+[[scene]]
+demo = 6
+
+[[scene.beat]]
+text = "After the call, the camera turned to your desk: a travel magazine open on pictures of tropical islands, and a plane ticket."
+
+[[scene.beat]]
+at = 2
+text = "Somewhere else, a girl in a white sun hat and white dress runs through a gleaming white building, a big bag over her shoulder."
+
+[[scene.beat]]
+at = 10
+text = "She stops at a railing and looks back, holding the bag close."
+
+[[scene.beat]]
+at = 19
+text = "She runs on into a glass-roofed garden, along a white bridge through the trees."
+
+[[scene.beat]]
+at = 30
+text = "Men in white uniforms and caps are after her. One blocks the bridge ahead."
+
+[[scene.beat]]
+at = 40
+text = "They close in, one of them grinning. She stops, clutching the bag."
+
+[[scene.beat]]
+at = 50
+text = "A burst of blue light flares around her."
+
+[[scene.beat]]
+at = 55
+text = "A glowing ball of light rises through the glass roof into the sky."
+
+[[scene.beat]]
+at = 61
+text = "The game's title logo appears."
+
+[[scene.beat]]
+at = 76
+text = "From high above: a green island ringed by reefs, with a town by the harbour and an old volcano crater."
+
+[[scene.beat]]
+at = 92
+text = "On the ground: a seaside lawn with palm trees and a low fence. A boy in a white shirt walks across the grass."
+
+[[scene.beat]]
+at = 97
+text = "A grey wooden house on stilts, with a porch, steps and a mailbox. A small Pokémon trots by."

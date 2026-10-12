@@ -89,8 +89,9 @@ pub const CLASSES: [&str; 7] = [MANAGER, STATE, THING, WARP, ITEM, PROP, camera:
 /// nothing went down.
 pub const HEAPS: [i64; 1] = [3];
 
-/// Names of pa3ds's own for what Sun never names, a folder a language (`pa3ds.core.names`). None
-/// ship yet; the player's own are kept all the same.
+/// Names of pa3ds's own for what Sun never names, a folder a language (`pa3ds.core.names`). No
+/// character's name ships yet, only the words for the passport's photos (`pictures.buttons`); the
+/// player's own names are kept all the same.
 ///
 /// A function: Python's is the folder beside the module, and the nearest here is the source
 /// tree's, since `Names::load` reads a path where `include_str!` would carry the file.
@@ -100,6 +101,22 @@ pub fn names() -> PathBuf {
         .join("games")
         .join("sm")
         .join("data")
+}
+
+/// Python's `NAMES / language / "pictures.toml"`, the passport photos' words, as the binary
+/// carries it: a file a language.
+pub const PICTURES: &[(&str, &str)] = &[("en", include_str!("data/en/pictures.toml"))];
+/// Python's `NAMES / language / "scenes.toml"`, the cutscenes' descriptions, as the binary
+/// carries it.
+pub const SCENES: &[(&str, &str)] = &[("en", include_str!("data/en/scenes.toml"))];
+
+/// The file among `files` in `language`, or None where Sun has none in it, as a missing file
+/// reads as nothing.
+pub fn in_language(files: &[(&str, &'static str)], language: &str) -> Option<&'static str> {
+    files
+        .iter()
+        .find(|(held, _)| *held == language)
+        .map(|(_, file)| *file)
 }
 
 /// The manager to the end of its models: the player at +0x0c, then 31 more.

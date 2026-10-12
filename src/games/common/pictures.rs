@@ -9,13 +9,19 @@
 //! need to start making per-language tables"). A texture's name is an English word whatever the
 //! ROM's language, and "empty", "on" and "off" are pa3ds's own, so a player in French hears "fight"
 //! and "female" as written here. A table per language, in code or in a data file beside the names
-//! (`pa3ds.core.names`), is where they would go when someone asks; the signs need none.
+//! (`pa3ds.core.names`), is where they would go when someone asks; the signs need none. Sun's
+//! passport photos are the first there, words for what no name says (`buttons`).
 
 use std::sync::OnceLock;
 
 use indexmap::IndexMap;
 
+use crate::core::toml;
 use crate::py;
+
+/// A game's words for its buttons of pictures alone in one language, beside its names
+/// (`data/<language>/`): Sun's passport photos, which are a pane name each and no words.
+pub const PICTURES_FILE: &str = "pictures.toml";
 
 /// The word a texture name ends in to say its picture is a button, or `btn` short for it, as the
 /// PlayNav's `return_btn` and the Pokédex's `up_btn` (movie24). Left unsaid.
@@ -260,6 +266,16 @@ pub fn pane_words(name: &str) -> Option<String> {
     } else {
         Some(words(&parts.join(" ")))
     }
+}
+
+/// pa3ds's own words for a game's buttons of pictures alone, by pane name, from
+/// `data/<language>/pictures.toml`: the names rule's data file a game and a language
+/// (`pa3ds.core.names`). Empty where the language has none.
+///
+/// Python reads the file at a path; the binary carries it, so this takes its text, None where
+/// the game has no file in the language (`scenes::load`).
+pub fn buttons(text: Option<&str>) -> IndexMap<String, String> {
+    toml::strings(toml::read_text(text).get("buttons"))
 }
 
 /// The sign of a Box mark's texture, or None for any other texture.

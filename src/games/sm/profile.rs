@@ -37,6 +37,7 @@ use crate::games::common::field::navigate::{self, Navigator};
 use crate::games::common::field::things::{Field, Interactable, describe};
 use crate::games::common::layout::Layouts;
 use crate::games::common::lyt as common_lyt;
+use crate::games::common::scenes::{Scene, Scenes};
 use crate::games::common::screen::{ScreenText, ScreenTextReader};
 use crate::games::common::screen_announce::ScreenAnnouncer;
 use crate::games::common::session::Profile;
@@ -97,6 +98,10 @@ pub struct Options {
     /// Python's `phases`: the cache whose `phase` each poll opens. None is `nullcontext`, no phase.
     pub phases: Option<Rc<dyn Cache>>,
     pub read_each: Option<ReadEach>,
+    /// pa3ds's own words for buttons of pictures alone, by pane name (`pictures::buttons`).
+    pub buttons: Option<IndexMap<String, String>>,
+    /// pa3ds's own words for the cutscenes, by demo (`scenes::load`).
+    pub scenes: Vec<Scene>,
 }
 
 /// Sun's readers, and what each sweep and poll does with them.
@@ -125,6 +130,7 @@ pub struct SunProfile {
     pub langselect: RefCell<LangSelectReader>,
     pub battle: RefCell<SunBattleReader>,
     pub apps: RefCell<RunningApp>,
+    pub scenes: Option<RefCell<Scenes>>,
     /// The message windows read: the last sweep's, and any a util has held since.
     windows: RefCell<Vec<i64>>,
     utils: RefCell<Vec<i64>>,
@@ -172,7 +178,9 @@ impl SunProfile {
 
     /// `phases` opens a named phase of `memory`'s cache round each poll, as ORAS's page cache
     /// has (`memory.ExactCache.phase`): the reads a poll makes are fetched together at the start
-    /// of the next poll of its kind, where each was sent alone (issue 4).
+    /// of the next poll of its kind, where each was sent alone (issue 4). `buttons` is pa3ds's
+    /// own words for buttons of pictures alone, by pane name (`pictures.buttons`), and `scenes`
+    /// its words for the cutscenes, by demo (`scenes.load`).
     pub fn with(
         memory: Rc<dyn Memory>,
         names: Rc<ClassNames>,
@@ -191,6 +199,8 @@ impl SunProfile {
             walls,
             phases,
             read_each,
+            buttons,
+            scenes,
         } = options;
         // The layout readers follow pointers down each layout's tree to its words, and read only
         // inside the blocks the last walk found, as the field's do (ADR-0035).
@@ -218,7 +228,14 @@ impl SunProfile {
             IndexMap::new(),
             HashSet::new(),
         );
-        let cursors = CursorReader::with(layouts.clone(), names.clone(), None, true, None);
+        let cursors = CursorReader::with(
+            layouts.clone(),
+            names.clone(),
+            None,
+            true,
+            None,
+            buttons.unwrap_or_default(),
+        );
         let ui = ui.unwrap_or_default();
         let screen_announcer = ScreenAnnouncer::with(speech.clone(), log.clone(), ui.pauses);
         let speakers = Rc::new(Speakers::new(memory.clone(), names.clone()));
@@ -231,6 +248,10 @@ impl SunProfile {
             }),
             true,
         )));
+        // The scenes the game shows without words, described where the player asks and Sun has
+        // descriptions in their language, each over the demo it plays as (ADR-0038).
+        let scenes = (ui.descriptions && !scenes.is_empty())
+            .then(|| RefCell::new(Scenes::with_monotonic(scenes)));
         let langselect = LangSelectReader::new(memory.clone(), names.clone(), text.clone());
         // The HP box is the battle reader's to say, from the gauges behind its panels, and a
         // gauge's pointers are followed only inside the blocks the last walk found (spike 124).
@@ -285,6 +306,7 @@ impl SunProfile {
             langselect: RefCell::new(langselect),
             battle: RefCell::new(battle),
             apps: RefCell::new(running),
+            scenes,
             windows: RefCell::new(Vec::new()),
             utils: RefCell::new(Vec::new()),
             zones,
@@ -294,6 +316,11 @@ impl SunProfile {
             listed: RefCell::new(None),
             relist: Cell::new(false),
         }
+    }
+
+    /// The announcements' `narrate`, which `Scenes` says each beat through.
+    fn narrate(&self) -> impl FnMut(&str) + '_ {
+        move |text: &str| self.announcements.borrow_mut().narrate(text)
     }
 
     /// `with self._phase(name): body`.
@@ -486,19 +513,35 @@ impl Profile for SunProfile {
     }
 
     /// Whether another app has started since the last poll: the moment to sweep for its
-    /// objects and learn the classes its module brings. One read a poll.
+    /// objects and learn the classes its module brings. One read a poll, and one more as a demo
+    /// starts, for its number: the moment its scene's description starts.
     fn poll_app(&self) -> Result<bool> {
-        let (started, late) = self.phase("app", || {
+        let (started, late, demo) = self.phase("app", || {
             let started = self.apps.borrow_mut().poll()?;
             let late = if started.is_none() {
                 self.apps.borrow_mut().late_name()?
             } else {
                 None
             };
-            Ok((started, late))
+            let named = match &started {
+                None => late.as_deref(),
+                Some((_, name)) => name.as_deref(),
+            };
+            let demo = if named == Some(apps::DEMO) {
+                self.apps.borrow().demo()?
+            } else {
+                None
+            };
+            Ok((started, late, demo))
         })?;
         if let Some(late) = late {
             (self.log)(&format!("app: the one started is {}", demangle(&late)));
+        }
+        if let Some(demo) = demo {
+            (self.log)(&format!("app: demo {demo}"));
+            if let Some(scenes) = &self.scenes {
+                scenes.borrow_mut().demo(Some(demo), &mut self.narrate());
+            }
         }
         let Some((pointer, name)) = started else {
             return Ok(false);
@@ -577,6 +620,9 @@ impl Profile for SunProfile {
     /// when that changes. The listing reads every model and actor, so it is made only on a
     /// change of zone and after each sweep, not every poll.
     fn poll_field(&self) -> Result<()> {
+        if let Some(scenes) = &self.scenes {
+            scenes.borrow_mut().poll(&mut self.narrate());
+        }
         let listing = self.phase("field", || {
             let Some(at) = self.field.poll()? else {
                 return Ok(None);

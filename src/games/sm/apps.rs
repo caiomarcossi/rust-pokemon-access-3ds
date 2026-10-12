@@ -33,6 +33,11 @@ pub const RECORD_PROCESS: i64 = 0x0C;
 /// may be read only once the heaps' watch has handed them over, a look after: named as the pointer
 /// moved, three of five went unnamed over sun_3.ctm.
 pub const NAME_POLLS: i64 = 300;
+/// Every cutscene of Sun's, Kukui's call among them (Khai, sun_1.ctm, 2026-09-30).
+pub const DEMO: &str = "N3App7AppDemo11AppDemoProcE";
+/// Which demo the process plays, a u32 the same all through it: 55 Kukui's call, 6 the chase
+/// after it. The rest of the process read the same in both.
+pub const DEMO_NUMBER: i64 = 0x24;
 
 /// Tracks the process manager and says when another process has started.
 pub struct RunningApp {
@@ -44,6 +49,8 @@ pub struct RunningApp {
     pointer: Option<i64>,
     /// Polls left to name the process running now, which started unnamed.
     unnamed: i64,
+    /// The process running now, once it has been named.
+    process: Option<i64>,
 }
 
 impl RunningApp {
@@ -62,6 +69,7 @@ impl RunningApp {
             manager: None,
             pointer: None,
             unnamed: 0,
+            process: None,
         }
     }
 
@@ -95,6 +103,7 @@ impl RunningApp {
             return Ok(None);
         }
         self.pointer = Some(pointer);
+        self.process = None;
         let name = self.name(pointer)?;
         self.unnamed = if name.as_deref().is_some_and(|name| !name.is_empty()) {
             0
@@ -125,7 +134,22 @@ impl RunningApp {
         Ok(name)
     }
 
-    fn name(&self, record: i64) -> Result<Option<String>> {
+    /// Which demo the process running now plays, its word at `DEMO_NUMBER`, once it has been
+    /// named and while the word lies inside the small blocks; else None. Asked only of a process
+    /// named `DEMO`.
+    pub fn demo(&self) -> Result<Option<i64>> {
+        let (Some(process), Some(blocks)) = (self.process, &self.blocks) else {
+            return Ok(None);
+        };
+        let mut spans: Vec<(i64, i64)> = blocks().to_vec();
+        spans.sort();
+        if !inside(&spans, process + DEMO_NUMBER, 4) {
+            return Ok(None);
+        }
+        Ok(Some(u32(&self.memory.read(process + DEMO_NUMBER, 4)?, 0)?))
+    }
+
+    fn name(&mut self, record: i64) -> Result<Option<String>> {
         let Some(blocks) = &self.blocks else {
             return Ok(None);
         };
@@ -135,11 +159,14 @@ impl RunningApp {
             return Ok(None);
         }
         let process = u32(&self.memory.read(record + RECORD_PROCESS, 4)?, 0)?;
-        if inside(&spans, process, 4) {
-            self.names.of_object(process)
-        } else {
-            Ok(None)
+        if !inside(&spans, process, 4) {
+            return Ok(None);
         }
+        let name = self.names.of_object(process)?;
+        if name.is_some() {
+            self.process = Some(process);
+        }
+        Ok(name)
     }
 }
 

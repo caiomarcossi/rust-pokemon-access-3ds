@@ -3264,6 +3264,7 @@ fn test_a_cursor_over_pictures_alone_says_what_the_game_calls_them() {
         None,
         false,
         Some(pictures),
+        IndexMap::new(),
     );
     menu.reader.track([menu.window]).unwrap();
     assert_eq!(menu.heard_with(&[]), said(&[(&["French"], true)]));

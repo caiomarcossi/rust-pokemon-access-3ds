@@ -10,6 +10,10 @@
 //! anywhere else, as after losing a battle in it. A scene with no line is said each time the player
 //! arrives in its zone: a room whose way on nothing shows but the room itself.
 //!
+//! Sun's demos keep their number (`App::AppDemo::AppDemoProc` +0x24, Khai, 2026-09-30), so a scene
+//! of Sun's is found by it, `demo = 6` for the chase after Kukui's call, in no zone and after no
+//! line.
+//!
 //! A name the game shows is never written into a description: `{pokemon:383}` is the game's own
 //! word for Groudon, out of the player's ROM, and so are `{trainer:N}`, `{item:N}` and `{place:N}`.
 //!
@@ -54,14 +58,16 @@ pub struct Beat {
 }
 
 /// A description and the line it follows: the last page of the line's message, by its index and
-/// a pattern of its words, or None for a scene said on arriving; and the zone it is said in.
+/// a pattern of its words, or None for a scene said on arriving or as a demo starts; the zone it
+/// is said in; or the number of the demo it is said over.
 #[derive(Debug, Clone)]
 pub struct Scene {
     pub page: Option<i64>,
     /// Python's pattern, `fullmatch`ed: here anchored at both ends, `\A(?:...)\z`.
     pub words: Option<Regex>,
-    pub zone: i64,
+    pub zone: Option<i64>,
     pub beats: Vec<Beat>,
+    pub demo: Option<i64>,
 }
 
 /// The index of a message's last page, and a pattern its text matches as the dialogue reader
@@ -115,15 +121,21 @@ pub type Word<'a> = &'a dyn Fn(&str, i64) -> Option<String>;
 /// The scenes of a file, each with the line it follows out of the ROM and its names in the
 /// game's own words. A line is `story:402:30`, the story text's file 402 and its line 30, or
 /// `text:147:67` out of the rest of the game's text; a scene with none is said on arriving in its
-/// zone. A scene whose line or names the ROM does not have is left out, and logged.
+/// zone, or as its demo starts, `demo = 6`, where the game numbers them. A scene whose line or
+/// names the ROM does not have is left out, and logged.
 ///
 /// Python reads the file at a path; the binary carries it, so this takes its text, None where
 /// the game has no file in the language, as `toml.read` of a missing file is nothing.
 pub fn load(text: Option<&str>, line: Line, word: Word, log: &Log) -> Result<Vec<Scene>> {
     let mut scenes: Vec<Scene> = Vec::new();
-    for table in tables(read(text).get("scene")) {
+    for table in tables(toml::read_text(text).get("scene")) {
         let after = str_of(table.get("after"));
         let zone = int_of(table.get("zone"));
+        // `isinstance(demo, int) and not isinstance(demo, bool)`.
+        let demo = match table.get("demo") {
+            Some(Value::Integer(number)) => Some(*number),
+            _ => None,
+        };
         let (archive, at) = partition(&after);
         let (file, number) = partition(at);
         let raw = if py::isdigit(file) && py::isdigit(number) {
@@ -140,12 +152,12 @@ pub fn load(text: Option<&str>, line: Line, word: Word, log: &Log) -> Result<Vec
             .map(|held| beat(held, word))
             .collect();
         let kept: Vec<Beat> = beats.iter().flatten().cloned().collect();
-        let Some(zone) = zone else {
-            log_left_out(log, &after);
-            continue;
-        };
-        if (!after.is_empty() && page.is_none()) || kept.is_empty() || kept.len() < beats.len() {
-            log_left_out(log, &after);
+        if (!after.is_empty() && page.is_none())
+            || (demo.is_none() && zone.is_none())
+            || kept.is_empty()
+            || kept.len() < beats.len()
+        {
+            log_left_out(log, &after, demo);
             continue;
         }
         let (page, words) = match page {
@@ -157,31 +169,21 @@ pub fn load(text: Option<&str>, line: Line, word: Word, log: &Log) -> Result<Vec
             words,
             zone,
             beats: kept,
+            demo,
         });
     }
     Ok(scenes)
 }
 
-fn log_left_out(log: &Log, after: &str) {
-    let after = if after.is_empty() { "arriving" } else { after };
-    log(&format!(
-        "scene after {after}: left out, the ROM does not have its line or its names"
-    ));
-}
-
-/// `toml.read`: a TOML text as its top-level tables, or empty when there is nothing readable.
-fn read(text: Option<&str>) -> IndexMap<String, Value> {
-    let Some(text) = text else {
-        return IndexMap::new();
+fn log_left_out(log: &Log, after: &str, demo: Option<i64>) {
+    let what = match demo {
+        _ if !after.is_empty() => after.to_string(),
+        None => "arriving".to_string(),
+        Some(demo) => format!("demo {demo}"),
     };
-    // `tomllib` takes U+FEFF for an invalid statement where the `toml` crate skips it.
-    if text.starts_with('\u{feff}') {
-        return IndexMap::new();
-    }
-    match text.parse::<::toml::Table>() {
-        Ok(loaded) => toml::table(Some(&Value::Table(loaded))),
-        Err(_) => IndexMap::new(),
-    }
+    log(&format!(
+        "scene after {what}: left out, the ROM does not have its line or its names"
+    ));
 }
 
 /// `text.partition(":")`'s head and tail.
@@ -304,7 +306,7 @@ impl Scenes {
     /// A page of dialogue just said, in the zone the player is in.
     pub fn heard(&mut self, page: i64, text: &str, zone: Option<i64>, say: Say) {
         let found = self.scenes.iter().position(|scene| {
-            Some(scene.zone) == zone
+            scene.zone == zone
                 && scene.page == Some(page)
                 && scene
                     .words
@@ -316,10 +318,18 @@ impl Scenes {
         }
     }
 
-    /// A scene of the game's own has started.
-    pub fn demo(&mut self, say: Say) {
+    /// A scene of the game's own has started, by its number where the game keeps one: a beat
+    /// waiting for it comes, or else the scene said over it starts.
+    pub fn demo(&mut self, number: Option<i64>, say: Say) {
         if self.waiting().is_some_and(|beat| beat.demo) {
             self.came(say);
+        } else if let Some(number) = number
+            && let Some(found) = self
+                .scenes
+                .iter()
+                .position(|scene| scene.demo == Some(number))
+        {
+            self.start(found, say);
         }
     }
 
@@ -335,10 +345,9 @@ impl Scenes {
             }
             self.scene = None;
         }
-        let found = self
-            .scenes
-            .iter()
-            .position(|scene| scene.words.is_none() && scene.zone == zone);
+        let found = self.scenes.iter().position(|scene| {
+            scene.words.is_none() && scene.demo.is_none() && scene.zone == Some(zone)
+        });
         if let Some(found) = found {
             self.start(found, say);
         }

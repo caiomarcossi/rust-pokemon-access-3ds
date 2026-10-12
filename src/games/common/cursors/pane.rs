@@ -39,15 +39,18 @@ pub struct CursorPanes {
     /// Cursor pane on screen -> where it was at the last poll and the pane it was fitted to,
     /// an anchor of 0 where none was and the words inside it were its item.
     fits: IndexMap<i64, Spot>,
+    /// pa3ds's own words for a button of pictures alone, by its pane's name.
+    buttons: IndexMap<String, String>,
 }
 
 impl CursorPanes {
-    pub fn new(panes: Rc<Panes>, said: Rc<Said>) -> Self {
+    pub fn new(panes: Rc<Panes>, said: Rc<Said>, buttons: IndexMap<String, String>) -> Self {
         CursorPanes {
             layouts: panes.layouts.clone(),
             panes,
             said,
             fits: IndexMap::new(),
+            buttons,
         }
     }
 
@@ -116,14 +119,20 @@ impl CursorPanes {
     }
 
     /// The words of a group's pane name, for a group holding no TextBox at all: `Btn_Fight` is
-    /// "fight", `Btn_Pokemon_00` "pokémon". None for a group with words, or a name without any.
+    /// "fight", `Btn_Pokemon_00` "pokémon", or pa3ds's own words for it where it has some. None
+    /// for a group with words, or a name without any.
     fn button_name(&self, root: i64, group: i64) -> Result<Option<String>> {
         for (&pane, name) in &self.layouts.tree(root) {
             if name == lyt::TEXTBOX_CLASS && self.panes.below(pane, group)? {
                 return Ok(None);
             }
         }
-        Ok(pane_words(&self.panes.pane_name(group)?))
+        let name = self.panes.pane_name(group)?;
+        Ok(self
+            .buttons
+            .get(&name)
+            .cloned()
+            .or_else(|| pane_words(&name)))
     }
 
     /// Does the group hold TextBoxes, none of them shown? Words shown but not yet read the same

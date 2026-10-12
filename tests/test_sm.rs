@@ -648,3 +648,38 @@ fn test_the_app_started_is_named_through_the_record_the_manager_points_at() {
     memory.u32(manager + apps::RUNNING, &[0x33000000]);
     assert_eq!(running.poll().unwrap(), Some((0x33000000, None)));
 }
+
+/// Every cutscene is an `AppDemoProc`, and its +0x24 says which: 6 the chase after Kukui's call
+/// (Khai, sun_1.ctm, 2026-09-30). None before it is named, or once another app runs.
+#[test]
+fn test_a_demo_says_which_it_plays_once_it_is_named() {
+    let memory = FakeMemory::new();
+    let classes = FakeClasses::new(memory.clone());
+    let manager = 0x30010000;
+    memory.u32(manager, &[classes.add(apps::MANAGER_CLASS)]);
+    let (process, record) = (0x3417E714, 0x3417E790);
+    memory.u32(process, &[classes.add(apps::DEMO)]);
+    memory.u32(process + apps::DEMO_NUMBER, &[6]);
+    memory.u32(record + apps::RECORD_PROCESS, &[process]);
+    let blocks: Rc<RefCell<Rc<Vec<Span>>>> =
+        Rc::new(RefCell::new(Rc::new(vec![(0x30010000, 0x30010040)])));
+    let held: Blocks = {
+        let blocks = blocks.clone();
+        Rc::new(move || blocks.borrow().clone())
+    };
+    let mut running = apps::RunningApp::with(memory.clone(), names(&memory), Some(held));
+    running.track([manager]).unwrap();
+    memory.u32(manager + apps::RUNNING, &[record]);
+    assert_eq!(running.poll().unwrap(), Some((record, None)));
+    assert_eq!(running.demo().unwrap(), None);
+    *blocks.borrow_mut() = Rc::new(vec![
+        (0x30010000, 0x30010040),
+        (0x3417E6F4, 0x3417E760),
+        (0x3417E770, 0x3417E7A0),
+    ]);
+    assert_eq!(running.late_name().unwrap(), Some(apps::DEMO.to_string()));
+    assert_eq!(running.demo().unwrap(), Some(6));
+    memory.u32(manager + apps::RUNNING, &[0x33000000]);
+    running.poll().unwrap();
+    assert_eq!(running.demo().unwrap(), None);
+}
