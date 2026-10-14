@@ -296,6 +296,9 @@ pub struct GameText {
     /// ROM has it: the lines a scene follows (`games.common.scenes`). Left out of the comparison,
     /// as the dataclass leaves it.
     pub lines: IndexMap<String, TextLines>,
+    /// (outdoor zone, furniture index) of every plate that says only a door's name
+    /// (`plates.door_signs`).
+    pub door_signs: HashSet<(i64, i64)>,
 }
 
 /// `Callable[[int], Sequence[bytes]]`: a text archive's file as its lines (`lines_of`).
@@ -338,6 +341,7 @@ impl PartialEq for GameText {
             && self.acro == other.acro
             && self.species == other.species
             && self.items == other.items
+            && self.door_signs == other.door_signs
     }
 }
 
@@ -379,6 +383,7 @@ impl Default for GameText {
             zone_table: Vec::new(),
             items: Vec::new(),
             lines: IndexMap::new(),
+            door_signs: HashSet::new(),
         }
     }
 }
@@ -438,6 +443,9 @@ impl GameText {
         let mut doors: IndexMap<(i64, i64), String> = IndexMap::new();
         // Place -> what its town's row calls each facility, which a plate may hold.
         let mut listed: IndexMap<i64, Vec<String>> = IndexMap::new();
+        // Every facility the list's text names, from the first line a town's row lists: the
+        // lines before are the places' descriptions and the list's own words, "No" among them.
+        let mut every: Vec<String> = Vec::new();
         if let Some(towns) = &layout.towns {
             let facilities: Vec<String> = message_lines(item(&files, towns.text)?)?
                 .iter()
@@ -449,7 +457,9 @@ impl GameText {
                 }
             }
             let size = crate::games::gen6::field::zonetable::INFO_SIZE;
-            for (zone, lines) in town_rows(rom, towns, table.len() as i64 / size)? {
+            let rows = town_rows(rom, towns, table.len() as i64 / size)?;
+            for (zone, lines) in &rows {
+                let (zone, lines) = (*zone, lines);
                 let place = u16(
                     &table,
                     zone * size + crate::games::gen6::field::zonetable::INFO_NAME,
@@ -461,6 +471,12 @@ impl GameText {
                         .map(|&line| facilities[line as usize].clone()),
                 );
             }
+            let first = rows
+                .iter()
+                .flat_map(|(_zone, lines)| lines.iter().copied())
+                .min()
+                .unwrap_or(facilities.len() as i64);
+            every = py::slice_from(&facilities, first).to_vec();
         }
         // The plates and the streets name what is otherwise said by its kind, so a ROM without
         // their files, as a version laid out otherwise might be, is read for the rest.
@@ -473,7 +489,8 @@ impl GameText {
             };
             let some = !story.is_empty();
             let lines = lines_of(story.clone());
-            let named = plates::plate_names(&read, &table, &lines, &outside, Some(&listed))?;
+            let named =
+                plates::plate_names(&read, &table, &lines, &outside, Some(&listed), &every)?;
             for (door, words) in named {
                 doors.entry(door).or_insert(words);
             }
@@ -492,6 +509,8 @@ impl GameText {
                 }
             }
         }
+        let door_signs =
+            plates::door_signs(&read, &table, &lines_of(story.clone()), &outside, &doors)?;
         let mut street_to: IndexMap<(i64, i64), String> = IndexMap::new();
         if let Some(street_marks) = layout
             .street_marks
@@ -713,6 +732,7 @@ impl GameText {
                     TextLines(Rc::new(lines_of(files.clone()))),
                 ),
             ]),
+            door_signs,
         };
         if layout.protagonists && !text.protagonists_hold() {
             return Err(Error::new(

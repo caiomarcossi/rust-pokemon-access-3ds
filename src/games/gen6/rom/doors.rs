@@ -46,10 +46,12 @@ pub const GYM: i64 = 0x11;
 ///    kind as a shared facility only where its town lists that facility: Lumiose lists
 ///    "Boutique Couture" where five towns list "Boutique" (spike 107). What kind is which
 ///    facility is worked out from the towns' own doors alone, as before.
-/// 5. A warp into a Gym's room is named for the facility its town's row lists just before the
-///    one the most towns share, the Pokémon Center: in every one of X's eight Gym towns the Gym
-///    comes there, and in no other town does anything (spike 107). ORAS lists the Center first,
-///    so nothing is named so there.
+/// 5. A warp into a Gym's room is named for the first facility its town's row lists that no
+///    other town's does. In X's Gym towns the Gym comes first, before the Pokémon Center (spike
+///    107); in ORAS's after the Center and the Poké Mart, where a town has one, and before
+///    whatever else only that town has: "Mauville City Gym" ahead of "Rydel's Cycles", where
+///    the Gym's plate had named it "Mauville City Pokémon Gym Leader: Wattson" (Orion,
+///    2026-10-13).
 pub fn door_facilities(
     rom: &Rom,
     zones: Option<&[Vec<u8>]>,
@@ -147,8 +149,6 @@ pub fn door_facilities(
     }
     let mut shared: IndexMap<i64, i64> = IndexMap::new();
     let mut taken: HashSet<i64> = HashSet::new();
-    // The facility the most towns share, the Pokémon Center.
-    let mut centre: Option<i64> = None;
     let mut by_towns: Vec<(&i64, &HashSet<i64>)> = behind.iter().collect();
     by_towns.sort_by_key(|(_building, towns)| std::cmp::Reverse(towns.len()));
     for (&building, towns) in by_towns {
@@ -166,9 +166,6 @@ pub fn door_facilities(
             let line = common.into_iter().next().expect("one facility is common");
             shared.insert(building, line);
             taken.insert(line);
-            if centre.is_none() {
-                centre = Some(line);
-            }
         }
     }
 
@@ -214,11 +211,18 @@ pub fn door_facilities(
             Some(ordered) if !ordered.is_empty() => ordered.clone(),
             _ => rows.get(&parent(zone)?).cloned().unwrap_or_default(),
         };
-        if let Some(centre) = centre
-            && let Some(at) = ordered.iter().position(|&line| line == centre)
-            && at > 0
-        {
-            named.entry((zone, slot)).or_insert(ordered[at - 1]);
+        let here = place(zone)?;
+        let own_only: Vec<i64> = ordered
+            .iter()
+            .copied()
+            .filter(|line| {
+                !listed
+                    .iter()
+                    .any(|(town, lines)| *town != here && lines.contains(line))
+            })
+            .collect();
+        if let Some(&first) = own_only.first() {
+            named.entry((zone, slot)).or_insert(first);
         }
     }
     Ok(named)

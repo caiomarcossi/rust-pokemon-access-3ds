@@ -171,7 +171,7 @@ fn test_a_plate_names_the_door_it_stands_by() -> Result<()> {
             (LAB, crate::games::gen6::field::zonedata::WARP_DOOR, 50, 10),
         ],
     )?;
-    let named = plates::plate_names(&zones, &table(), &story, &HashSet::from([TOWN]), None)?;
+    let named = plates::plate_names(&zones, &table(), &story, &HashSet::from([TOWN]), None, &[])?;
     assert_eq!(
         named,
         IndexMap::from([((TOWN, 0), "Café Soleil".to_string())])
@@ -188,7 +188,7 @@ fn test_a_plate_of_one_line_names_a_door_further_off() -> Result<()> {
         &[(CAFE, crate::games::gen6::field::zonedata::WARP_DOOR, 10, 11)],
     )?;
     assert_eq!(
-        plates::plate_names(&zones, &table(), &story, &HashSet::from([TOWN]), None)?,
+        plates::plate_names(&zones, &table(), &story, &HashSet::from([TOWN]), None, &[])?,
         IndexMap::from([((TOWN, 0), "Café Soleil".to_string())])
     );
     let zones = town(
@@ -196,7 +196,7 @@ fn test_a_plate_of_one_line_names_a_door_further_off() -> Result<()> {
         &[(CAFE, crate::games::gen6::field::zonedata::WARP_DOOR, 10, 11)],
     )?;
     assert_eq!(
-        plates::plate_names(&zones, &table(), &story, &HashSet::from([TOWN]), None)?,
+        plates::plate_names(&zones, &table(), &story, &HashSet::from([TOWN]), None, &[])?,
         IndexMap::<(i64, i64), String>::new()
     );
     Ok(())
@@ -350,6 +350,7 @@ fn test_a_plate_of_more_than_one_line_is_named_by_what_its_towns_list_calls_it()
         &story,
         &HashSet::from([TOWN]),
         Some(&facilities),
+        &[],
     )?;
     assert_eq!(
         named,
@@ -357,6 +358,81 @@ fn test_a_plate_of_more_than_one_line_is_named_by_what_its_towns_list_calls_it()
             ((TOWN, 0), "shack".to_string()),
             ((TOWN, 1), "Café Soleil".to_string()),
         ])
+    );
+    Ok(())
+}
+
+/// Slateport's list is full at six and leaves out the Oceanic Museum, whose plate says its
+/// slogan first and its name on the next page: the list's text still names it (Orion,
+/// 2026-10-13). Only a whole line, or two run together as the Japanese break a name: a plate
+/// of one line keeps its own words where a facility is within them, "Poké Ball Boutique".
+#[test]
+fn test_a_plate_is_named_by_a_line_that_is_a_facility_of_the_lists_text() -> Result<()> {
+    let mut museum: Vec<i64> = "The endless sea.".chars().map(|c| c as i64).collect();
+    museum.extend([
+        crate::games::common::text::MARKER,
+        1,
+        crate::games::common::text::PAGE_CLEAR,
+    ]);
+    museum.extend("Oceanic Museum".chars().map(|c| c as i64));
+    let said = vec![
+        MessageLine::from("Poké Ball Boutique"),
+        MessageLine::from(museum),
+        MessageLine::from("Welcome!\nSlateport\nMarket"),
+    ];
+    let story = move |file: i64| -> Result<Vec<Vec<u8>>> {
+        if file == STORY {
+            message_lines(&message_file(&said))
+        } else {
+            Ok(Vec::new())
+        }
+    };
+    let zones = town(
+        &[(1, 10, 8), (2, 30, 8), (3, 50, 8)],
+        &[
+            (CAFE, crate::games::gen6::field::zonedata::WARP_DOOR, 10, 10),
+            (CAFE, crate::games::gen6::field::zonedata::WARP_DOOR, 30, 10),
+            (CAFE, crate::games::gen6::field::zonedata::WARP_DOOR, 50, 10),
+        ],
+    )?;
+    let every = ["Boutique", "Oceanic Museum", "Slateport Market"].map(String::from);
+    let named = plates::plate_names(
+        &zones,
+        &table(),
+        &story,
+        &HashSet::from([TOWN]),
+        None,
+        &every,
+    )?;
+    assert_eq!(
+        named,
+        IndexMap::from([
+            ((TOWN, 0), "Poké Ball Boutique".to_string()),
+            ((TOWN, 1), "Oceanic Museum".to_string()),
+            ((TOWN, 2), "Slateport Market".to_string()),
+        ])
+    );
+    Ok(())
+}
+
+/// Mauville Hills' "Apt. 13 / Wattson's Home" says nothing its door is not called (Orion,
+/// 2026-10-13); a plate that says more than the name is not one.
+#[test]
+fn test_a_plate_saying_only_its_doors_name_is_a_door_sign() -> Result<()> {
+    let zones = town(
+        &[(1, 10, 8), (5, 30, 8)],
+        &[
+            (CAFE, crate::games::gen6::field::zonedata::WARP_DOOR, 10, 10),
+            (CAFE, crate::games::gen6::field::zonedata::WARP_DOOR, 30, 10),
+        ],
+    )?;
+    let doors = IndexMap::from([
+        ((TOWN, 0), "Café Soleil".to_string()),
+        ((TOWN, 1), "shack".to_string()),
+    ]);
+    assert_eq!(
+        plates::door_signs(&zones, &table(), &story, &HashSet::from([TOWN]), &doors)?,
+        HashSet::from([(TOWN, 0)])
     );
     Ok(())
 }

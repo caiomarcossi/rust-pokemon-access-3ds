@@ -126,6 +126,9 @@ pub type Speaker = Rc<dyn Fn() -> Option<(i64, Option<Named>)>>;
 /// `Callable[[bool], str | None]`: the player's side of the battle as last said, or the enemy's.
 /// It reads a contest's portraits (`oras.screens.contest`), so it can raise.
 pub type Sides = Rc<dyn Fn(bool) -> Result<Option<String>>>;
+/// `Callable[[int, int], bool]`: whether a slot on a map is a sign that says only the name of a
+/// door there.
+pub type DoorSign = Rc<dyn Fn(i64, i64) -> bool>;
 
 /// `Navigator.__init__`'s arguments after `field`, `speech` and `log`, each as the Python
 /// defaults it: set what differs with `..Options::default()`.
@@ -149,6 +152,9 @@ pub struct Options {
     pub touch: Option<TouchTargets>,
     /// Those a game's own apps list, after the field's: ORAS's sky's.
     pub categories: Vec<String>,
+    /// Whether a slot on a map is a sign that says only the name of a door there, which the
+    /// list leaves out with `[pa3ds.navigation] hide_door_signs`.
+    pub door_sign: Option<DoorSign>,
 }
 
 impl Default for Options {
@@ -170,6 +176,7 @@ impl Default for Options {
             sides: None,
             touch: None,
             categories: Vec::new(),
+            door_sign: None,
         }
     }
 }
@@ -268,6 +275,7 @@ pub struct Navigator {
     speaker: Speaker,
     /// The player's side of the battle as last said, or the enemy's, or None out of one.
     sides: Sides,
+    door_sign: DoorSign,
     /// What the open dialog is renaming, the one alone where its checkbox may say so, and
     /// what it was called, since the player may have walked on by the time they press OK.
     renaming: Option<(Named, Option<Named>, String)>,
@@ -289,6 +297,8 @@ pub struct Navigator {
 
 impl Navigator {
     /// `categories` are those a game's own apps list, after the field's: ORAS's sky's.
+    /// `door_sign` says whether a slot on a map is a sign that says only the name of a door
+    /// there, which the list leaves out with `[pa3ds.navigation] hide_door_signs`.
     pub fn new(field: Rc<dyn FieldSource>, speech: Rc<Speech>, log: Log, options: Options) -> Self {
         let Options {
             bindings,
@@ -307,6 +317,7 @@ impl Navigator {
             sides,
             touch,
             categories,
+            door_sign,
         } = options;
         let wording = navigation.unwrap_or_default();
         let names = names.unwrap_or_else(|| Rc::new(Names::default()));
@@ -359,6 +370,7 @@ impl Navigator {
             asker: asker.unwrap_or_default(),
             speaker: speaker.unwrap_or_else(|| Rc::new(|| None)),
             sides: sides.unwrap_or_else(|| Rc::new(|_player| Ok(None))),
+            door_sign: door_sign.unwrap_or_else(|| Rc::new(|_zone, _slot| false)),
             renaming: None,
             mode: LIST,
             hiding: false,
@@ -650,7 +662,13 @@ impl Navigator {
     }
 
     fn items(&self, r#where: &Field) -> Result<Vec<Interactable>> {
-        let items = r#where.of(&self.categories[self.category as usize]);
+        let mut items = r#where.of(&self.categories[self.category as usize]);
+        if self.wording.hide_door_signs {
+            // A person's source has a record's index where a sign's has its kind.
+            items.retain(|item| {
+                item.move_model || !(self.door_sign)(item.home.unwrap_or(r#where.zone), item.source)
+            });
+        }
         if !self.hiding {
             return Ok(items);
         }

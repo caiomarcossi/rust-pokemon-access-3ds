@@ -23,7 +23,7 @@ use crate::games::common::field::keys::{
     PATH_PREVIOUS, PATHFIND, PATHFIND_HM, PATHFIND_OFF, RENAME, RENAME_SPEAKER, SOUTH, TOUCH, WEST,
     bound_keys,
 };
-use crate::games::common::field::navigate::{LeadsTo, Navigator, Options, Sides, Street};
+use crate::games::common::field::navigate::{DoorSign, LeadsTo, Navigator, Options, Sides, Street};
 use crate::games::common::field::things::{
     FURNITURE_SOURCE, Field, Interactable, WARP_SOURCE, place_source,
 };
@@ -314,6 +314,7 @@ struct Want {
     street: Option<Street>,
     clock: Rc<dyn Fn() -> f64>,
     navigation: Option<Navigation>,
+    door_sign: Option<DoorSign>,
 }
 
 impl Default for Want {
@@ -331,6 +332,7 @@ impl Default for Want {
             street: None,
             clock: Rc::new(|| 0.0),
             navigation: None,
+            door_sign: None,
         }
     }
 }
@@ -385,6 +387,7 @@ fn navigator(want: Want) -> Rig {
             street: want.street,
             clock: Some(want.clock),
             navigation: want.navigation,
+            door_sign: want.door_sign,
             moves: Some(IndexMap::from([
                 (SURF, "Surf".to_string()),
                 (CUT, "Cut".to_string()),
@@ -613,6 +616,57 @@ fn test_a_big_boulder_pushed_says_how_far_from_its_start_where_asked() {
             "object, 1 east 4 north, moved 5 east, moveable west or south, 1 of 3"
         ]
     );
+}
+
+/// Mauville Hills' second floor: Apt. 13's plate, sign 12, which says only the name its door is
+/// called, and Apt. 4's, which says the flat is vacant; and a person whose source is the plate's.
+fn hills() -> Field {
+    Field {
+        interactables: vec![
+            Interactable {
+                code: 13,
+                source: place_source(FURNITURE_SOURCE, 12).unwrap(),
+                ..Interactable::new("signs", "sign", (51, 35))
+            },
+            Interactable {
+                code: 4,
+                source: place_source(FURNITURE_SOURCE, 3).unwrap(),
+                ..Interactable::new("signs", "sign", (60, 35))
+            },
+            Interactable {
+                code: 0x10,
+                source: 12,
+                move_model: true,
+                ..Interactable::new("people", "person", (52, 38))
+            },
+        ],
+        ..Field::new(0x1BE, (50, 40))
+    }
+}
+
+/// Orion, 2026-10-13: Mauville Hills' doors are named by their plates, and each plate
+/// listed beside its door said the name a second time. A person is never taken for one.
+#[test]
+fn test_a_sign_saying_only_its_doors_name_is_left_out_unless_asked_for() {
+    let door_sign: DoorSign = Rc::new(|zone, slot| (zone, slot) == (0x1BE, 12));
+    let mut hiding = navigator(Want {
+        door_sign: Some(door_sign.clone()),
+        ..on(hills())
+    });
+    hiding.press(CATEGORY_NEXT);
+    hiding.press(CATEGORY_NEXT);
+    let mut shown = navigator(Want {
+        door_sign: Some(door_sign),
+        navigation: Some(Navigation {
+            hide_door_signs: false,
+            ..Navigation::default()
+        }),
+        ..on(hills())
+    });
+    shown.press(CATEGORY_NEXT);
+    let mut both = said(&hiding.backend);
+    both.extend(said(&shown.backend));
+    assert_eq!(both, ["signs, 1", "people, 1", "signs, 2"]);
 }
 
 #[test]

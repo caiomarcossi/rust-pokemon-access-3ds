@@ -138,6 +138,7 @@ pub struct Navigation {
     pub turn_by_turn: bool,
     pub guide_to_hidden: bool,
     pub track_boulders: bool,
+    pub hide_door_signs: bool,
 }
 
 impl Default for Navigation {
@@ -148,6 +149,7 @@ impl Default for Navigation {
             turn_by_turn: true,
             guide_to_hidden: true,
             track_boulders: false,
+            hide_door_signs: true,
         }
     }
 }
@@ -160,6 +162,7 @@ impl Table for Navigation {
             ("turn_by_turn", Value::Bool(self.turn_by_turn)),
             ("guide_to_hidden", Value::Bool(self.guide_to_hidden)),
             ("track_boulders", Value::Bool(self.track_boulders)),
+            ("hide_door_signs", Value::Bool(self.hide_door_signs)),
         ]
     }
 
@@ -170,6 +173,7 @@ impl Table for Navigation {
             ("turn_by_turn", Value::Bool(value)) => self.turn_by_turn = value,
             ("guide_to_hidden", Value::Bool(value)) => self.guide_to_hidden = value,
             ("track_boulders", Value::Bool(value)) => self.track_boulders = value,
+            ("hide_door_signs", Value::Bool(value)) => self.hide_door_signs = value,
             _ => {}
         }
     }
@@ -210,7 +214,7 @@ fn defaults(name: &str) -> Vec<(&'static str, Value)> {
 }
 
 /// What each setting does, as the file's comment above it says it.
-pub const EXPLAINED: [(&str, &str); 13] = [
+pub const EXPLAINED: [(&str, &str); 14] = [
     (
         "pa3ds.keys",
         "answer pa3ds's keys and bind Azahar's buttons, as keys.toml says",
@@ -270,6 +274,11 @@ pub const EXPLAINED: [(&str, &str); 13] = [
         "say how far a big boulder has moved from where its room starts it, as in \"big boulder, \
          2 east, moved 1 north\", so you know which you have pushed; the game shows where each \
          boulder is, never where it started",
+    ),
+    (
+        "pa3ds.navigation.hide_door_signs",
+        "leave a sign out of the list when all it says is the name of a door beside it, as \
+         Mauville Hills' \"Apt. 13 Wattson's Home\"; a sign that says more, as a Gym's does, stays",
     ),
     (
         "pa3ds.extras.conditions",

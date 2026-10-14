@@ -119,13 +119,16 @@ pub fn outdoors(zones: &IndexMap<i64, Zone>, table: &[u8]) -> Result<HashSet<i64
 /// (zone, warp slot) -> what the plate beside that door says, for every door a plate names.
 /// `story` gives a file of the story text archive, in the player's language, as its lines.
 /// `facilities` is place -> what its town's list calls each facility: a plate holding one of
-/// them is named by it alone (`_facility`).
+/// them is named by it alone (`_facility`). `every` is every facility the list's text names,
+/// a town's or not: a plate with a line that is one of them, and that does not name the
+/// building otherwise, is named by it (`_named`).
 pub fn plate_names(
     zones: &IndexMap<i64, Zone>,
     table: &[u8],
     story: &dyn Fn(i64) -> Result<Vec<Vec<u8>>>,
     outside: &HashSet<i64>,
     facilities: Option<&IndexMap<i64, Vec<String>>>,
+    every: &[String],
 ) -> Result<IndexMap<(i64, i64), String>> {
     let no_facilities = IndexMap::new();
     let facilities = facilities.unwrap_or(&no_facilities);
@@ -151,17 +154,24 @@ pub fn plate_names(
         if doors.is_empty() {
             continue;
         }
-        for (record, line) in plates_of(&code, furniture, &lines)? {
+        for (_index, record, line) in plates_of(&code, furniture, &lines)? {
             let words = first_page(item(&lines, line)?)?;
             let Some(mut words) = words.filter(|words| !words.is_empty()) else {
                 continue;
             };
             let said = words_of(item(&lines, line)?)?;
+            let name = self::named(item(&lines, line)?, every)?;
             if first_lines(item(&lines, line)?)?.contains('\n') {
                 let listed = facilities
                     .get(&place(table, zone)?)
                     .map_or(&[][..], Vec::as_slice);
-                words = facility(&said, listed).unwrap_or(words);
+                words = facility(&said, listed)
+                    .or_else(|| name.clone().filter(|name| !name.is_empty()))
+                    .unwrap_or(words);
+            } else if let Some(name) = name.filter(|name| !name.is_empty())
+                && !holds(&words, &name)
+            {
+                words = name;
             }
             let far = if !said.contains('\n') { FAR } else { NEAR };
             let mut nearest: Vec<(i64, i64)> = Vec::new();
@@ -281,7 +291,7 @@ pub fn entrance_names(
             let code = script_of(data)?;
             let lines = story(row(table, zone, INFO_STORY)?)?;
             if let Some(code) = code {
-                for (_record, line) in plates_of(&code, furniture, &lines)? {
+                for (_index, _record, line) in plates_of(&code, furniture, &lines)? {
                     held.push(held_in(&words_of(item(&lines, line)?)?, &facilities));
                 }
             }
@@ -552,6 +562,44 @@ fn facility(said: &str, listed: &[String]) -> Option<String> {
     }
 }
 
+/// The one facility of `every` that a line of the plate is, on any page, or two lines run
+/// together, since the Japanese and Korean break a name over two; None for none or two. A town's
+/// list is full at six, and Slateport's leaves out the Oceanic Museum, whose plate says "The
+/// endless sea sustains all life." first and its name on the next page: the list's text still
+/// names it. A whole line, not words within one, as `_facility` takes: X's "Autumnal Avenue
+/// Ahead" plate holds "Boutique" in "Poké Ball Boutique".
+fn named(raw: &[u8], every: &[String]) -> Result<Option<String>> {
+    let tokens = match text::tokens(raw) {
+        Ok(tokens) => tokens,
+        Err(error) if error.is(Kind::ValueError) => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    let joined: String = tokens
+        .into_iter()
+        .map(|token| match token {
+            Token::Text(words) => words,
+            Token::Control(_) => "\n".to_string(),
+        })
+        .collect();
+    let lines: Vec<String> = joined
+        .split('\n')
+        .map(|line| py::split(line).concat())
+        .collect();
+    let mut runs: HashSet<String> = lines.iter().cloned().collect();
+    for pair in lines.windows(2) {
+        runs.insert(format!("{}{}", pair[0], pair[1]));
+    }
+    let named: HashSet<&String> = every
+        .iter()
+        .filter(|name| !name.is_empty() && runs.contains(&py::split(name).concat()))
+        .collect();
+    Ok(if named.len() == 1 {
+        named.into_iter().next().cloned()
+    } else {
+        None
+    })
+}
+
 /// The facilities of a town's list a plate's words hold, spaces left out of the match.
 /// (Python's `_held`.)
 fn held_in<'a>(
@@ -574,15 +622,51 @@ fn holds(said: &str, name: &str) -> bool {
     py::split(said).concat().contains(&py::split(name).concat())
 }
 
-/// Each furniture record the zone's script shows a plate for, with the line of the story
-/// text it shows: a record that shows one line in a plate's style, and no other.
+/// (zone, furniture index) of every plate outdoors that says nothing but the name of a door
+/// of its zone, `doors` being every door's name: in Mauville Hills "Apt. 13 / Wattson's Home"
+/// stands by the door it names, and listed both said it twice (Orion, 2026-10-13). A plate
+/// that says more is kept, a Gym's with its leader, the Oceanic Museum's with its slogan.
+pub fn door_signs(
+    zones: &IndexMap<i64, Zone>,
+    table: &[u8],
+    story: &dyn Fn(i64) -> Result<Vec<Vec<u8>>>,
+    outside: &HashSet<i64>,
+    doors: &IndexMap<(i64, i64), String>,
+) -> Result<HashSet<(i64, i64)>> {
+    let mut out: HashSet<(i64, i64)> = HashSet::new();
+    let mut inside: Vec<i64> = outside.iter().copied().collect();
+    inside.sort();
+    for zone in inside {
+        let Some((data, furniture, warps)) = zones.get(&zone) else {
+            continue;
+        };
+        let code = script_of(data)?;
+        let names: HashSet<&String> = (0..warps.len() as i64)
+            .filter_map(|slot| doors.get(&(zone, slot)))
+            .collect();
+        let Some(code) = code.filter(|_| !names.is_empty()) else {
+            continue;
+        };
+        let lines = story(row(table, zone, INFO_STORY)?)?;
+        for (index, _record, line) in plates_of(&code, furniture, &lines)? {
+            let said = py::split(&words_of(item(&lines, line)?)?).join(" ");
+            if names.contains(&&said) {
+                out.insert((zone, index));
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Each furniture record the zone's script shows a plate for, by its index, with the line of
+/// the story text it shows: a record that shows one line in a plate's style, and no other.
 fn plates_of<'a>(
     code: &script::Script,
     furniture: &'a [Vec<u8>],
     lines: &[Vec<u8>],
-) -> Result<Vec<(&'a Vec<u8>, i64)>> {
+) -> Result<Vec<(i64, &'a Vec<u8>, i64)>> {
     let mut out = Vec::new();
-    for record in furniture {
+    for (index, record) in furniture.iter().enumerate() {
         let mut shown: IndexSet<i64> = IndexSet::new();
         for (line, style) in script::sign_lines(code, u16(record, 0)?)? {
             if style == script::PLATE {
@@ -592,7 +676,7 @@ fn plates_of<'a>(
         if shown.len() == 1 {
             let line = shown.pop().expect("one line is shown");
             if line < lines.len() as i64 {
-                out.push((record, line));
+                out.push((index as i64, record, line));
             }
         }
     }

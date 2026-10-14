@@ -27,10 +27,11 @@ use crate::games::common::field::ground::Ground;
 use crate::games::common::field::guide::FieldSource;
 use crate::games::common::field::keys::Bindings;
 use crate::games::common::field::navigate::{
-    LeadsTo, Navigator, Options as NavigatorOptions, Sides, Street,
+    DoorSign, LeadsTo, Navigator, Options as NavigatorOptions, Sides, Street,
 };
 use crate::games::common::field::things::{
-    Field, Interactable, WARP_SOURCE, bearing, describe, source_kind, source_number,
+    FURNITURE_SOURCE, Field, Interactable, WARP_SOURCE, bearing, describe, source_kind,
+    source_number,
 };
 use crate::games::common::layout::Layouts;
 use crate::games::common::layout_file::{LayoutFile, LayoutFiles};
@@ -638,6 +639,7 @@ impl Gen6Profile {
                 }),
                 leads_to: Some(leads_to_of(text.clone(), field.clone())),
                 street: Some(street_of(text.clone())),
+                door_sign: Some(door_sign_of(text.clone())),
                 moves: text.as_ref().map(|text| text.moves.clone()),
                 bike: text.as_ref().and_then(|text| text.bike.clone()),
                 acro: text.as_ref().and_then(|text| text.acro.clone()),
@@ -1575,6 +1577,17 @@ fn game_place(text: Option<&GameText>, zone: i64, slot: i64) -> Option<String> {
         return None;
     }
     text.door(zone, source_number(slot))
+}
+
+/// Whether a slot on a map is a sign that says only the name of a door there
+/// (`plates.door_signs`).
+fn door_sign_of(text: Option<Rc<GameText>>) -> DoorSign {
+    Rc::new(move |zone, slot| {
+        text.as_ref().is_some_and(|text| {
+            source_kind(slot) == FURNITURE_SOURCE
+                && text.door_signs.contains(&(zone, source_number(slot)))
+        })
+    })
 }
 
 /// What the game calls the place an exit from `here` into `there` arrives in, or None when

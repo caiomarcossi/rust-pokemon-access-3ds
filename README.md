@@ -267,6 +267,7 @@ overwritten. Each setting has a comment in the file saying what it does.
 | `turn_by_turn` | `true` | Say each turn of the way P found as you reach it. `false` says the way once, and P again says it from where you stand. |
 | `guide_to_hidden` | `true` | When a DexNav search finds the Pokémon you searched for, or the DexNav finds one by itself while it is open and you are in touch mode, find the way to it as P does, and keep P on it. One found while the AreaNav is open is left alone. |
 | `track_boulders` | `false` | Say how far a big boulder has moved from where its room starts it, so you know which you have pushed: "big boulder, 2 east, moved 1 north". Nothing is added for one that has not moved. Off by default, since the game shows where each boulder is but never where it started. |
+| `hide_door_signs` | `true` | Leave a sign out of the list when all it says is the name of a door beside it, which the door is already called: Mauville Hills' "Apt. 13 Wattson's Home". A sign that says more, as a Gym's does with its leader, stays. |
 | **`[pa3ds.extras]`** | | Extras: see [below](#extras). |
 | `conditions` | `false` | Say a Pokémon's contest conditions as numbers on its summary and in the Pokéblock Case: "Conditions Coolness 116 Beauty 70 Cuteness 70 Cleverness 70 Toughness 70". |
 | **`[azahar]`** | | Azahar's own settings: see [above](#azahar-settings-pa3ds-needs). |
