@@ -114,6 +114,107 @@ fn test_a_sign_shows_the_line_and_style_its_case_calls_the_helper_with() {
     assert_eq!(script::sign_lines(&code, 8).unwrap(), []);
 }
 
+/// A zone's script whose entry point switches on each number to a case calling its own
+/// function, the cells given.
+pub(crate) fn case_script(bodies: &IndexMap<i64, Vec<i64>>) -> Vec<u8> {
+    let count = bodies.len() as i64;
+    let cases = 5 + 2 * count;
+    let mut at = cases + 2 * count;
+    let mut code = vec![script::SWITCH, 8, script::CASETBL, count, 0];
+    let mut starts: Vec<i64> = Vec::new();
+    for body in bodies.values() {
+        starts.push(at);
+        at += body.len() as i64;
+    }
+    for (j, &number) in bodies.keys().enumerate() {
+        let j = j as i64;
+        code.extend([number, (cases + 2 * j - (5 + 2 * j)) * 4]);
+    }
+    for (j, &start) in starts.iter().enumerate() {
+        code.extend([script::CALL, (start - (cases + 2 * j as i64)) * 4]);
+    }
+    for body in bodies.values() {
+        code.extend_from_slice(body);
+    }
+    let size = script::HEADER.size() + 4 * code.len() as i64;
+    let mut head = script::HEADER
+        .pack([
+            size,
+            script::MAGIC,
+            10,
+            10,
+            0,
+            8,
+            script::HEADER.size(),
+            size,
+            0,
+            0,
+            0,
+        ])
+        .unwrap();
+    head.extend(code.iter().flat_map(|&cell| {
+        i32::try_from(cell)
+            .expect("a cell fits struct's i")
+            .to_le_bytes()
+    }));
+    head
+}
+
+/// `push(value)`: Pawn's packed push of a constant.
+pub(crate) fn push(value: i64) -> i64 {
+    (value & 0xFFFF) << 16 | script::PUSH_CONSTANT
+}
+
+/// Every vending machine's case calls a function that pushes the shared script, 0x28f0 to
+/// 0x28f4 by where it stands, and hands it to a native (spike 210). A number below the shared
+/// scripts' is not one, nor is a native given more.
+#[test]
+fn test_a_case_that_hands_a_shared_scripts_number_to_a_native_runs_it() {
+    let code = script::read(&case_script(&IndexMap::from([
+        (
+            5,
+            vec![
+                script::PROC,
+                push(0x28F0),
+                script::NATIVE,
+                29,
+                4,
+                script::RETN,
+            ],
+        ),
+        (
+            6,
+            vec![
+                script::PROC,
+                push(0x12),
+                script::NATIVE,
+                29,
+                4,
+                script::RETN,
+            ],
+        ),
+        (
+            7,
+            vec![
+                script::PROC,
+                push(0x28F4),
+                push(1),
+                script::NATIVE,
+                29,
+                8,
+                script::RETN,
+            ],
+        ),
+    ])))
+    .unwrap()
+    .expect("a script");
+    let runs: Vec<Option<i64>> = [5, 6, 7, 8]
+        .iter()
+        .map(|&number| code.runs(number).unwrap())
+        .collect();
+    assert_eq!(runs, [Some(0x28F0), None, None, None]);
+}
+
 /// The game stores a script's cells compact, seven bits a byte, and a data offset past the
 /// stored bytes' end, since it counts the cells expanded.
 #[test]

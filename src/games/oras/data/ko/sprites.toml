@@ -1,13 +1,14 @@
-# What to call the people on ORAS's maps in Korean, when nothing better is known.
+# What to call the people and things on ORAS's maps in Korean, when nothing better is known.
 #
 # The same as data/en/sprites.toml, in this language: a key is the sprite a move model is
 # drawn with (findings, spikes 75 and 89), and a name is looked for in order — what the
 # player has called them, what the game calls them out of the player's own ROM, and only
 # then this file. So it is heard only when pa3ds cannot read the ROM.
 #
-# Every word here is the ROM's own, in this language. The English table's Nurse, and the
-# people and trainers' looks it names by what their sprite's id says, are words of pa3ds's
-# own that the ROM has nothing for, so they are not here.
+# Each table names what the English one does (Orion, 2026-10-14). Most words are the ROM's
+# own in this language, out of the line the English word's comment names. Where the ROM has
+# none, as for the Nurse and the people the English table calls by what their sprite's id
+# says, the word is pa3ds's own, as the English one is.
 
 [sprites]
 # People the ROM never lists as trainers, read off lines of its own text that name them —
@@ -27,6 +28,7 @@
 "0x134" = "유대아저씨"                     # Mr. Bonding: "I'm Mr. Bonding, the expert on O-Powers!" (story 570:43)
 "0x139" = "게임 디렉터"                    # Game Director: "I'm the Game Director." (story 530:0)
 "0x1030" = "고래왕자"                     # Wailmer: its model names Nidoran♂ too, and draws Wailmer's body
+"0x12a" = "간호사"                       # Nurse: wally.ctm: "Welcome to the Pokémon Center", in two Centers on two saves
 
 # The game's own words for the story's people, for kinds of trainer and for the Pokémon on
 # the map, as `archives` reads them (findings, spikes 90 and 193):
@@ -153,3 +155,237 @@
 "0x103d" = "그란돈"
 "0x103e" = "가이오가"
 "0x103f" = "근육몬"
+
+# Shared looks the game never names, called what the ROM's own id for the sprite says they are
+# (file 94, `spikes/85_rom_names.py sprite`), since everyone drawn as one hears the same word:
+# WOMAN_RS is Mrs. Birch in Littleroot and a woman in 27 other zones. A `_ROOM_RS` sprite is
+# the same look indoors. Every one here stands on ORAS's maps; STOPPER3, an invisible blocker
+# outside Mauville Gym, is left out.
+"0x119" = "청년"                        # Young man: BROTHER_RS: Littleroot and Route 101
+"0x11c" = "남자아이"                      # Little boy: CHILDBOY_RS
+"0x150" = "남자아이"                      # Little boy: CHILDBOY_ROOM_RS
+"0x11d" = "여자아이"                      # Little girl: CHILDGIRL_RS
+"0x151" = "여자아이"                      # Little girl: CHILDGIRL_ROOM_RS
+"0x11e" = "할아버지"                      # Old man: OLDMAN_RS
+"0x152" = "할아버지"                      # Old man: OLDMAN_ROOM_RS
+"0x11f" = "할머니"                       # Old woman: OLDWOMAN_RS
+"0x153" = "할머니"                       # Old woman: OLDWOMAN_ROOM_RS
+"0x120" = "덩치 큰 남자"                   # Big man: BIGMAN1_RS
+"0x121" = "덩치 큰 남자"                   # Big man: BIGMAN2_RS
+"0x154" = "덩치 큰 남자"                   # Big man: BIGMAN1_ROOM_RS
+"0x155" = "덩치 큰 남자"                   # Big man: BIGMAN2_ROOM_RS
+"0x70" = "덩치 큰 남자"                    # Big man: BIGMAN, X's sprite, once in ORAS
+"0x122" = "아저씨"                       # Middle-aged man: OYAJI1_RS: Mauville, as are the four after it
+"0x123" = "아저씨"                       # Middle-aged man: OYAJI2_RS
+"0x124" = "아저씨"                       # Middle-aged man: OYAJI3_RS
+"0x125" = "아저씨"                       # Middle-aged man: OYAJI4_RS
+"0x126" = "아저씨"                       # Middle-aged man: OYAJI5_RS
+"0x128" = "여자"                        # Woman: WOMAN_RS
+"0x142" = "여자"                        # Woman: WOMAN2_RS
+"0x156" = "여자"                        # Woman: WOMAN_ROOM_RS
+"0x132" = "남자"                        # Man: MAN_RS
+"0x157" = "남자"                        # Man: MAN_ROOM_RS
+"0x31" = "남자"                         # Man: MAN1, X's sprite, once in ORAS
+"0x131" = "소녀"                        # Girl: GIRL_RS
+"0x10c" = "청년"                        # Young man: COUPLE_M_RS: the young couples' man
+"0x10d" = "젊은 여자"                     # Young woman: COUPLE_F_RS: and woman
+"0x10a" = "쌍둥이"                       # Twin: TWIN1_RS
+"0x10b" = "쌍둥이"                       # Twin: TWIN2_RS
+"0x127" = "미궁대왕"                      # Trick Master: KARAKURI_RS, "They call me... The Trick Master!" (story 208:9)
+"0x129" = "선글라스를 쓴 남자"                # Man in sunglasses: SUNGLASS_RS
+"0x12b" = "점원"                        # Clerk: SHOP_M_RS
+"0x12c" = "접수원"                       # Receptionist: INFORMATION_RS
+"0x3e" = "접수원"                        # Receptionist: INFORMATIONW, X's sprite
+"0x12d" = "체육관 가이드"                   # Gym guide: DANPEI_RS: in all eight Gym towns, as X's DANPEI is in all eight Gyms
+"0x12e" = "배달원"                       # Delivery person: DELIVER1_RS: in all sixteen Pokémon Centers
+"0x12f" = "배달원"                       # Delivery person: DELIVER2_RS: likewise
+"0x133" = "조수"                        # Assistant: ASSISTANT_M_RS
+"0x5f" = "조수"                         # Assistant: ASSISTANTM, X's sprite
+"0x137" = "기모노를 입은 여자"                # Woman in a kimono: KIMONO3_RS
+"0x140" = "회사원"                       # Office worker: OFFICEWORKER_RS
+"0x141" = "게임하는 소년"                   # Boy playing a game: GAMEBOY_RS
+"0x108" = "리포터"                       # Reporter: REPORTER_RS
+"0x109" = "카메라맨"                      # Cameraman: CAMERAMAN_RS
+"0x10e" = "선배"                        # Older teammate: ELDER_RS: the elder of each pair of Teammates, Anna & Meg and three more (spike 193)
+"0x10f" = "후배"                        # Younger teammate: JUNIOR_RS: and the younger
+
+# Trainers' looks the ROM leaves unnamed, one trainer or none of a class standing as each, or a
+# pair class beside the class (spike 90); called by the class their id and their trainers share.
+"0xdd" = "학원 끝난 아이"                   # Schoolkid: text 21:135
+"0x145" = "학원 끝난 아이"                  # Schoolkid: text 21:135
+"0x146" = "학원 끝난 아이"                  # Schoolkid: text 21:136
+"0x143" = "반바지 꼬마"                    # Youngster: text 21:129
+"0x144" = "짧은 치마"                     # Lass: text 21:131
+"0x147" = "등산가"                       # Hiker: text 21:156
+"0x148" = "아로마 아가씨"                   # Aroma Lady: text 21:132
+"0xe5" = "수영팬티소년"                     # Swimmer ♂: text 21:138
+"0x15c" = "튜브걸"                       # Tuber: text 21:142
+"0xea" = "포켓몬 브리더"                    # Pokémon Breeder: text 21:152
+"0xeb" = "포켓몬 브리더"                    # Pokémon Breeder: text 21:153
+"0xef" = "낚시꾼"                        # Fisherman: text 21:134
+"0x101" = "트라이애슬리트"                   # Triathlete: text 21:143
+"0x149" = "엘리트 트레이너"                  # Ace Trainer: text 21:148
+"0x14a" = "엘리트 트레이너"                  # Ace Trainer: text 21:149
+"0x14b" = "달인"                        # Expert: text 21:161
+"0x14c" = "달인"                        # Expert: text 21:189
+"0x14d" = "무서운 아저씨"                   # Street Thug: text 21:227
+"0x14e" = "무서운 아가씨"                   # Delinquent: text 21:228
+
+# Things standing on the map that the game never names, called by a word of the line it shows.
+"0x200b" = "가시"                       # bush: story 254:3, the line Cut asks with
+"0x200c" = "금이 간 바위"                  # cracked boulder: story 254:1, the line Rock Smash asks with
+"0x2009" = "큰 바위"                     # big boulder: story 254:5, the line Strength asks with
+
+# Things standing on the map, by the model their sprite's record in a/1/3/7 draws (spike 211), and
+# called what the game calls that thing among the Secret Base decorations (text 56) or the items
+# (text 114).
+"0x204a" = "루리리인형"                    # Azurill Doll: text 56:111
+"0x204b" = "에나비인형"                    # Skitty Doll: text 56:112
+"0x204c" = "파비코인형"                    # Swablu Doll: text 56:113
+"0x204d" = "라프라스인형"                   # Lapras Doll: text 56:120
+"0x204e" = "잠만보인형"                    # Snorlax Doll: text 56:118
+"0x204f" = "쪽빛구슬"                     # Blue Orb: text 114:535
+"0x2050" = "주홍구슬"                     # Red Orb: text 114:534
+"0x2056" = "마그마슈트"                    # Magma Suit: text 114:741
+"0x2057" = "아쿠아슈트"                    # Aqua Suit: text 114:742
+"0x2058" = "여울소금"                     # Shoal Salt: text 114:70
+"0x2059" = "여울조개껍질"                   # Shoal Shell: text 114:71
+"0x205b" = "편지"                       # letter: LETTER: in Steven's house; the item, text 114:725, is the one to him
+
+[tiles]
+# What each kind of use tile is: a cell of the map the player faces and presses A at, with no
+# record behind it (spike 83). The game runs one script for each kind wherever it stands, and each
+# of those shows one line of text file 155, which says what is there; the word here is taken from
+# that line (spike 210). The PC's and the TV's are the game's own names for them. The PC's word is
+# read from the ROM ahead of this one.
+"0xd5" = "PC"                         # the PC's own lines (archives.PC_LINES)
+"0xd7" = "TV"                         # text 56:138, the TV among the Secret Base decorations
+"0xd8" = "포켓몬 상품"                     # text 155:0
+"0xd9" = "포켓몬 잡지"                     # text 155:9
+"0xda" = "수납 가구"                      # text 155:2
+"0xdb" = "편리해 보이는 상품"                 # text 155:3
+"0xdc" = "많은 포켓몬 상품"                  # text 155:4
+"0xdd" = "쓰레기통"                       # text 155:6
+"0xde" = "포켓몬 그림책"                    # text 155:7
+"0xdf" = "항아리"                        # text 155:10
+
+[furniture]
+# What a piece of furniture is, by the game's shared script it runs: a record's own number from
+# 0x7d0 up, or the one its zone's script runs for it (spike 210). Every vending machine runs one of
+# 0x28f0 to 0x28f4, and is called what the game calls the one among the Secret Base decorations
+# (text 56:144); the wardrobes say so (story 460:35).
+"0x28f0" = "자동판매기"                    # text 56:144
+"0x28f1" = "자동판매기"                    # text 56:144
+"0x28f2" = "자동판매기"                    # text 56:144
+"0x28f3" = "자동판매기"                    # text 56:144
+"0x28f4" = "자동판매기"                    # text 56:144
+"0x284e" = "의상케이스"                    # story 460:35
+# The elevators' word is the Mauville Hills computer's, story 264:15; the bedrooms', the lines the
+# player's room shows.
+"0x27da" = "엘리베이터"                    # elevator: Mauville's and the Lilycove Department Store's doors
+"0x27db" = "엘리베이터"                    # elevator: Mauville's and the Lilycove Department Store's doors
+"0x27dc" = "엘리베이터"                    # elevator: Mauville's and the Lilycove Department Store's doors
+"0x27dd" = "엘리베이터"                    # elevator: Mauville's and the Lilycove Department Store's doors
+"0x27de" = "엘리베이터"                    # elevator: Mauville's and the Lilycove Department Store's doors
+"0x27df" = "엘리베이터"                    # elevator: Mauville's and the Lilycove Department Store's doors
+"0x27e0" = "엘리베이터"                    # elevator: Mauville's and the Lilycove Department Store's doors
+"0x27e1" = "엘리베이터"                    # elevator: Mauville's and the Lilycove Department Store's doors
+"0x27e2" = "엘리베이터"                    # elevator: Mauville's and the Lilycove Department Store's doors
+"0x27e3" = "엘리베이터"                    # elevator: Mauville's and the Lilycove Department Store's doors
+"0x27e4" = "엘리베이터"                    # elevator: Mauville's and the Lilycove Department Store's doors
+"0x27e5" = "엘리베이터"                    # elevator: Mauville's and the Lilycove Department Store's doors
+"0x27e6" = "엘리베이터"                    # elevator: Mauville's and the Lilycove Department Store's doors
+"0x27e7" = "엘리베이터"                    # elevator: Mauville's and the Lilycove Department Store's doors
+"0x27e8" = "엘리베이터"                    # elevator: Mauville's and the Lilycove Department Store's doors
+"0x27e9" = "엘리베이터"                    # elevator: Mauville's and the Lilycove Department Store's doors
+"0x27ea" = "엘리베이터"                    # elevator: Mauville's and the Lilycove Department Store's doors
+"0x27eb" = "엘리베이터"                    # elevator: Mauville's and the Lilycove Department Store's doors
+"0x2956" = "시계"                       # clock: story 253:36, the player's room and the neighbour's
+"0x2961" = "Wii U"                    # Wii U: story 253:43, both rooms
+"0x2962" = "타운맵"                      # Town Map: text 114:442
+"0x2963" = "노트"                       # notebook: story 253:41, both rooms
+"0x2965" = "노트"                       # notebook: Mom's, in both houses
+
+[places]
+# Furniture the game shows alike in many zones, each with a message of its own zone's, so named by
+# its slot as the player's names file names one: zone, furniture, index (spike 211). A slot is in a
+# group where its message opens as the group's does in any one language; Omega Ruby and Alpha
+# Sapphire have the same.
+"0xaa:furniture:0" = "침대"             # bed: story 341:8, "There's a bed.", in the Magma Hideout
+"0xaa:furniture:1" = "침대"             # bed
+"0xaa:furniture:2" = "침대"             # bed
+"0xaa:furniture:3" = "침대"             # bed
+"0xaa:furniture:4" = "침대"             # bed
+"0xaa:furniture:5" = "침대"             # bed
+"0xaa:furniture:6" = "침대"             # bed
+"0xaa:furniture:7" = "침대"             # bed
+"0x5d:furniture:0" = "침대"             # bed: story 420:16, in the Aqua Hideout
+"0x5d:furniture:1" = "침대"             # bed
+"0x5d:furniture:2" = "침대"             # bed
+"0x5d:furniture:3" = "침대"             # bed
+"0x5d:furniture:4" = "침대"             # bed
+"0x5d:furniture:5" = "침대"             # bed
+"0x5d:furniture:6" = "침대"             # bed
+"0x5d:furniture:7" = "침대"             # bed
+"0x188:furniture:0" = "침대"            # bed: story 169:14, at the Weather Institute
+"0x188:furniture:1" = "침대"            # bed
+"0xda:furniture:0" = "침대"             # bed: story 70:0, "It's a bed.", on the S.S. Tidal
+"0xe4:furniture:0" = "포켓몬 저널"         # Pokémon Journal: story 58:5, "Aha! Pokémon Journal", in the Pokémon Centers
+"0xe8:furniture:0" = "포켓몬 저널"         # Pokémon Journal
+"0xec:furniture:0" = "포켓몬 저널"         # Pokémon Journal
+"0xf0:furniture:0" = "포켓몬 저널"         # Pokémon Journal
+"0xf6:furniture:0" = "포켓몬 저널"         # Pokémon Journal
+"0xfd:furniture:0" = "포켓몬 저널"         # Pokémon Journal
+"0x103:furniture:0" = "포켓몬 저널"        # Pokémon Journal
+"0x109:furniture:0" = "포켓몬 저널"        # Pokémon Journal
+"0x116:furniture:0" = "포켓몬 저널"        # Pokémon Journal
+"0x11c:furniture:0" = "포켓몬 저널"        # Pokémon Journal
+"0x12d:furniture:0" = "포켓몬 저널"        # Pokémon Journal
+"0x135:furniture:0" = "포켓몬 저널"        # Pokémon Journal
+"0x14a:furniture:0" = "포켓몬 저널"        # Pokémon Journal
+"0x155:furniture:0" = "포켓몬 저널"        # Pokémon Journal
+"0x161:furniture:0" = "포켓몬 저널"        # Pokémon Journal
+"0x206:furniture:0" = "포켓몬 저널"        # Pokémon Journal
+"0x115:furniture:5" = "호연레인저"         # Hoenn Rangers: story 587:13, "Hoenn's Local Heroes / The Hoenn Rangers Coexistence Force!": posters, figures, a face board
+"0x115:furniture:6" = "호연레인저"         # Hoenn Rangers
+"0x143:furniture:4" = "호연레인저"         # Hoenn Rangers
+"0x143:furniture:5" = "호연레인저"         # Hoenn Rangers
+"0x148:furniture:0" = "호연레인저"         # Hoenn Rangers
+"0x151:furniture:1" = "호연레인저"         # Hoenn Rangers
+"0x151:furniture:2" = "호연레인저"         # Hoenn Rangers
+"0x188:furniture:4" = "호연레인저"         # Hoenn Rangers
+"0x188:furniture:5" = "호연레인저"         # Hoenn Rangers
+"0x1c2:furniture:10" = "호연레인저"        # Hoenn Rangers
+"0x1c2:furniture:11" = "호연레인저"        # Hoenn Rangers
+"0x20d:furniture:0" = "호연레인저"         # Hoenn Rangers
+"0x91:furniture:1" = "잠긴 문"           # locked door: story 366:5, "The door is locked.", in Sea Mauville
+"0x92:furniture:1" = "잠긴 문"           # locked door
+"0x92:furniture:2" = "잠긴 문"           # locked door
+"0x92:furniture:3" = "잠긴 문"           # locked door
+"0x92:furniture:4" = "잠긴 문"           # locked door
+"0x175:furniture:0" = "잠긴 문"          # locked door: story 206:0, the Trick House's scroll doors
+"0x176:furniture:0" = "잠긴 문"          # locked door
+"0x177:furniture:0" = "잠긴 문"          # locked door
+"0x178:furniture:0" = "잠긴 문"          # locked door
+"0x179:furniture:0" = "잠긴 문"          # locked door
+"0x17a:furniture:0" = "잠긴 문"          # locked door
+"0xaa:furniture:8" = "프로젝트 AZOTH"     # Project AZOTH: story 341:0, "PROJECT AZOTH / File No. 1", in both hideouts
+"0xaa:furniture:9" = "프로젝트 AZOTH"     # Project AZOTH
+"0xaa:furniture:10" = "프로젝트 AZOTH"    # Project AZOTH
+"0xaa:furniture:11" = "프로젝트 AZOTH"    # Project AZOTH
+"0xab:furniture:1" = "프로젝트 AZOTH"     # Project AZOTH
+"0x5d:furniture:8" = "프로젝트 AZOTH"     # Project AZOTH
+"0x5d:furniture:9" = "프로젝트 AZOTH"     # Project AZOTH
+"0x5d:furniture:10" = "프로젝트 AZOTH"    # Project AZOTH
+"0x5d:furniture:11" = "프로젝트 AZOTH"    # Project AZOTH
+"0x5e:furniture:1" = "프로젝트 AZOTH"     # Project AZOTH
+"0xad:furniture:0" = "마그마단의 단기"       # Team Magma flag: story 338:0, "It's the Team Magma flag!"
+"0xad:furniture:1" = "마그마단의 단기"       # Team Magma flag
+"0xae:furniture:2" = "마그마단의 단기"       # Team Magma flag
+"0x60:furniture:4" = "아쿠아단의 단기"       # Team Aqua flag: story 417:4, "It's the Team Aqua flag!"
+"0x60:furniture:5" = "아쿠아단의 단기"       # Team Aqua flag
+"0x61:furniture:2" = "아쿠아단의 단기"       # Team Aqua flag
+"0xdf:furniture:0" = "루리리인형"          # Azurill Doll: text 56:111
+"0xe1:furniture:0" = "루리리인형"          # Azurill Doll: text 56:111
+"0x18f:furniture:0" = "루리리인형"         # Azurill Doll: text 56:111
+

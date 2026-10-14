@@ -59,7 +59,7 @@ use crate::games::gen6::field::zonetable::{
     ZoneTable,
 };
 use crate::games::gen6::field::{fieldmap, mapblock, mmodel};
-use crate::games::gen6::game::Game;
+use crate::games::gen6::game::{FurnitureKind, Game};
 use crate::games::gen6::rom::archives::GameText;
 use crate::games::gen6::rom::maps::{ChunkSource, StreetSource};
 use crate::py::{self, Error, PySet, Result};
@@ -80,22 +80,19 @@ pub const PC_TILE: i64 = 0xD5;
 
 /// The cell kinds the game runs a script for when the player faces one and presses A: every kind
 /// in the field's table of (kind test, script) pairs (spike 83). The PC is called what the game
-/// calls it where the ROM can be read (`FieldReader`'s `words`) and "PC" where it cannot. The rest
-/// are read by facing them like a prop, and are called what a prop is until each has been seen:
-/// which is the trash can, a bookshelf or a vase is in the scripts, which pa3ds does not read, and
-/// the game's text has only what each of them says, never a word for one.
+/// calls it where the ROM can be read (`FieldReader`'s `words`). The rest, and the PC without the
+/// ROM, are called what the game's shipped table says each kind is, `0xdd` a trash can (spike B),
+/// and what a prop is where it says nothing: the game's text has only what each of them says,
+/// never a word for one.
 ///
-/// Python's `USE_TILES` dict: `{PC_TILE: "PC", **dict.fromkeys(range(0xD7, 0xE0), "object")}`, as
-/// the lookup `USE_TILES.get(kind)`.
-pub fn use_tiles(kind: i64) -> Option<&'static str> {
-    if kind == PC_TILE {
-        Some("PC")
-    } else if (0xD7..0xE0).contains(&kind) {
-        Some("object")
-    } else {
-        None
-    }
+/// Python's `USE_TILES` frozenset, `{PC_TILE, *range(0xD7, 0xE0)}`, as the test `kind in
+/// USE_TILES`.
+pub fn use_tiles(kind: i64) -> bool {
+    kind == PC_TILE || (0xD7..0xE0).contains(&kind)
 }
+
+/// What a thing the player reads by facing it is, where nothing says more.
+pub const PROP: &str = "object";
 
 /// Sweeps a zone listed with no chunk asks for before leaving the rest to the schedule.
 pub const ASKS: i64 = 4;
@@ -244,7 +241,7 @@ pub struct FieldReader {
     decorations: Vec<String>,
     /// (zone, a furniture record's script) -> what it is, where it is no sign (`Game.furniture`):
     /// a Secret Base's PC and flag.
-    furniture_kinds: IndexMap<(i64, i64), String>,
+    furniture_kinds: IndexMap<(i64, i64), FurnitureKind>,
     /// The game's Secret Bases, or None in a game without them.
     secret_bases: Option<Rc<dyn SecretBaseReader>>,
     /// (zone, sprite) of the move models that are a barrier's beam (`Game.barriers`).
@@ -275,9 +272,14 @@ pub struct FieldReader {
     outdoors: HashSet<i64>,
     /// Where the game keeps the sprite a move model is drawn with (`mmodel.drawn_as`).
     drawn: i64,
-    /// The game's own word for a kind of use tile, where it has one: the PC's, out of the ROM
-    /// (`archives.PC_LINES`), ahead of `USE_TILES`' own.
+    /// What each kind of use tile is: the game's own word where it has one, the PC's out of
+    /// the ROM (`archives.PC_LINES`), ahead of the shipped table's.
     words: IndexMap<i64, String>,
+    /// What furniture is by the game's shared script it runs: a vending machine.
+    furniture_words: IndexMap<i64, String>,
+    /// (zone, a furniture record's script) -> the shared script it runs
+    /// (`plates.shared_furniture`).
+    shared: IndexMap<(i64, i64), i64>,
     models: RefCell<Vec<i64>>,
     player: Slot<Option<i64>>,
     holder: RefCell<Option<Holder>>,
@@ -329,13 +331,17 @@ impl common::Corridor for rail::Corridor {
 impl FieldReader {
     /// `game` says what one gen 6 game has of its own, `text` is what was read from the player's
     /// ROM, or None without one, and `image` the executable, where ORAS lists its Secret Bases'
-    /// spots.
+    /// spots. `tiles` and `furniture` are what the shipped table says each kind of use tile is,
+    /// and each piece of furniture by the shared script it runs (`Names.words`).
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         memory: Rc<dyn Memory>,
         game: &Game,
         text: Option<&GameText>,
         image: &[u8],
         clock: Rc<dyn Fn() -> f64>,
+        tiles: Option<&IndexMap<i64, String>>,
+        furniture: Option<&IndexMap<i64, String>>,
     ) -> Rc<FieldReader> {
         let chunks: Option<Rc<dyn ChunkSource>> = text.and_then(|text| text.map_chunks.clone());
         let terrain = Terrain::new(
@@ -355,10 +361,12 @@ impl FieldReader {
                 .map(|streets: Rc<dyn StreetSource>| {
                     Rc::new(move |chunks: &[i64]| streets.network(chunks)) as rail::Streets
                 });
-        let words = match text.and_then(|text| text.pc.clone()) {
-            Some(pc) if !pc.is_empty() => IndexMap::from([(PC_TILE, pc)]),
-            _ => IndexMap::new(),
-        };
+        let mut words: IndexMap<i64, String> = tiles.cloned().unwrap_or_default();
+        if let Some(pc) = text.and_then(|text| text.pc.clone())
+            && !pc.is_empty()
+        {
+            words.insert(PC_TILE, pc);
+        }
         let features: Vec<Rc<dyn Feature>> = game
             .features
             .iter()
@@ -405,6 +413,8 @@ impl FieldReader {
             outdoors: text.map(|text| text.outdoors.clone()).unwrap_or_default(),
             drawn: game.drawn,
             words,
+            furniture_words: furniture.cloned().unwrap_or_default(),
+            shared: text.map(|text| text.shared.clone()).unwrap_or_default(),
             models: RefCell::new(Vec::new()),
             player: Slot::new(None),
             holder: RefCell::new(None),
@@ -1228,23 +1238,40 @@ impl FieldReader {
         }
     }
 
-    /// What a furniture record is: a sign, unless the game's table of them says otherwise. The PC
-    /// in a Secret Base is called what the game calls a PC, as the Pokémon Center's is.
+    /// What a furniture record is: a sign, unless the game's table of them says otherwise, or
+    /// the shipped table says what the shared script it runs is: the one its zone's case runs,
+    /// or its own number, which is a shared script's from 2000 up (spike B). Every vending
+    /// machine is one of five, 0x28f0 to 0x28f4. The PC in a Secret Base is called what the
+    /// game calls a PC, as the Pokémon Center's is: the table gives it the PC's kind of use
+    /// tile.
     fn furniture_kind(&self, home: Option<i64>, item: &Interactable) -> String {
         let kind = match home {
             Some(home) => self.furniture_kinds.get(&(home, item.code)),
             None => None,
         };
         let Some(kind) = kind else {
-            return item.kind.clone();
-        };
-        if Some(kind.as_str()) == use_tiles(PC_TILE) {
-            return match self.words.get(&PC_TILE) {
-                Some(word) if !word.is_empty() => word.clone(),
-                _ => kind.clone(),
+            let shared = match home {
+                None => item.code,
+                Some(home) => self
+                    .shared
+                    .get(&(home, item.code))
+                    .copied()
+                    .unwrap_or(item.code),
             };
+            return self
+                .furniture_words
+                .get(&shared)
+                .cloned()
+                .unwrap_or_else(|| item.kind.clone());
+        };
+        match kind {
+            FurnitureKind::Tile(tile) => self
+                .words
+                .get(tile)
+                .cloned()
+                .unwrap_or_else(|| PROP.to_string()),
+            FurnitureKind::Word(word) => word.clone(),
         }
-        kind.clone()
     }
 
     /// Why to sweep now rather than on schedule, or None.
@@ -1720,9 +1747,9 @@ impl FieldReader {
         let (category, kind) = if code == mmodel::ITEM_BALL {
             ("items", "item ball")
         } else if self.clears.contains_key(&code) {
-            (OBSTACLES, "object")
+            (OBSTACLES, PROP)
         } else if code >= mmodel::PROP_MODEL {
-            ("signs", "object")
+            ("signs", PROP)
         } else if self.barriers.contains(&(mmodel::zone_of(head)?, code)) {
             (OBSTACLES, BARRIER)
         } else {
@@ -1870,7 +1897,7 @@ impl FieldReader {
         let mut found: IndexMap<i64, Vec<Cell>> = IndexMap::new();
         for chunk in self.chunks_loaded()? {
             for (cell, kind) in chunk.kinds() {
-                if use_tiles(kind).is_some() {
+                if use_tiles(kind) {
                     let at = self.zone_at(cell)?;
                     if at == Some(zone) || at.is_none() {
                         found.entry(kind).or_default().push(cell);
@@ -1882,8 +1909,8 @@ impl FieldReader {
         for (kind, cells) in found {
             for (first, size) in runs(cells) {
                 let called = match self.words.get(&kind) {
-                    Some(word) if !word.is_empty() => word.as_str(),
-                    _ => use_tiles(kind).expect("a kind found is a use tile's"),
+                    Some(word) => word.as_str(),
+                    None => PROP,
                 };
                 out.push(Interactable {
                     size,

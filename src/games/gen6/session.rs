@@ -40,7 +40,7 @@ pub fn start(
     // place of a folder.
     let named = {
         let fingerprint = &setup.process.name;
-        let shipped = game.sprites(&setup.language);
+        let table = game.table(&setup.language);
         let mine = setup.names_home.as_ref().map(|home| {
             home.join("names")
                 .join(&setup.language)
@@ -59,7 +59,7 @@ pub fn start(
             ("rom".to_string(), fingerprint.to_string()),
             ("language".to_string(), setup.language.clone()),
         ]);
-        Rc::new(Names::new(Some(&shipped), mine.as_deref(), Some(&header))?)
+        Rc::new(Names::from_table(&table, mine.as_deref(), &header)?)
     };
     let text = game_text(&setup, &game.rom)?.map(Rc::new);
     let mut pictures = None;

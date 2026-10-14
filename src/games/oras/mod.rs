@@ -18,8 +18,8 @@ use crate::games::gen6::field::features::{
     DoorReader, Feature, HiddenReader, IceReader, SecretBaseReader,
 };
 use crate::games::gen6::field::mmodel;
-use crate::games::gen6::field::reader::{FLAG, PC_TILE, use_tiles};
-use crate::games::gen6::game::{Data, Game};
+use crate::games::gen6::field::reader::{FLAG, PC_TILE};
+use crate::games::gen6::game::{Data, FurnitureKind, Game};
 use crate::games::gen6::rom::archives::{BOY, GIRL, GameText};
 use crate::games::gen6::rom::layout::{RomLayout, TownFacilities};
 use crate::games::oras::field::ash::AshPiles;
@@ -691,23 +691,21 @@ pub const BIG_BOULDER: i64 = 0x2009;
 /// four switches, one on each middle platform at (11, 25), (28, 27), (32, 13) and (6, 13), pressed by
 /// facing them (spike 163): each sets a work value of its own to 1, which arms the lifts on its
 /// platform, and the entrance's lift goes to Liza and Tate once all four are set.
-pub fn furniture() -> &'static IndexMap<(i64, i64), String> {
-    static FURNITURE: OnceLock<IndexMap<(i64, i64), String>> = OnceLock::new();
+pub fn furniture() -> &'static IndexMap<(i64, i64), FurnitureKind> {
+    static FURNITURE: OnceLock<IndexMap<(i64, i64), FurnitureKind>> = OnceLock::new();
     FURNITURE.get_or_init(|| {
         let mut out = IndexMap::new();
         for &zone in secret_bases_zones() {
-            out.insert(
-                (zone, BASE_PC),
-                use_tiles(PC_TILE)
-                    .expect("the PC's tile has a name")
-                    .to_string(),
-            );
+            out.insert((zone, BASE_PC), FurnitureKind::Tile(PC_TILE));
         }
         for &zone in secret_bases_zones() {
-            out.insert((zone, BASE_FLAG), FLAG.to_string());
+            out.insert((zone, BASE_FLAG), FurnitureKind::Word(FLAG.to_string()));
         }
         for script in 0x1..0x5 {
-            out.insert((MOSSDEEP_GYM, script), SWITCH.1.to_string());
+            out.insert(
+                (MOSSDEEP_GYM, script),
+                FurnitureKind::Word(SWITCH.1.to_string()),
+            );
         }
         out
     })

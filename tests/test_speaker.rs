@@ -17,7 +17,6 @@ use crate::games::gen6::field::speaker::SpeakerReader;
 use crate::games::gen6::game::Game;
 use crate::games::{gen6::field::mmodel, gen6::field::talk};
 use crate::games::{oras, xy};
-use crate::py;
 
 const WINDOW: i64 = 0x08286988;
 const OTHER_WINDOW: i64 = 0x082878B8;
@@ -53,14 +52,14 @@ fn standing(memory: &FakeMemory, at: i64, character: i64, slot: i64) {
 fn reader(memory: &Rc<FakeMemory>) -> SpeakerReader {
     SpeakerReader::with_default_drawn(
         memory.clone(),
-        Rc::new(Names::new(Some(&shipped_names()), None, None).unwrap()),
+        Rc::new(Names::new(Some(&shipped_names()), None, None, None, None).unwrap()),
     )
 }
 
 /// `Names.load(game.DATA, language, "sango-1")` with no home: the player has named nobody. The
 /// binary carries the table (`Game::sprites`) rather than a folder to read it from.
 fn shipped(game: &Game, language: &str) -> Names {
-    Names::new(Some(&game.sprites(language)), None, None).unwrap()
+    Names::new(Some(&game.sprites(language)), None, None, None, None).unwrap()
 }
 
 #[test]
@@ -88,7 +87,7 @@ fn test_a_work_object_speaks_as_whoever_it_was_filled_with() {
     ]);
     let speaker = SpeakerReader::with_default_drawn(
         memory.clone(),
-        Rc::new(Names::new(Some(&named), None, None).unwrap()),
+        Rc::new(Names::new(Some(&named), None, None, None, None).unwrap()),
     );
     speaker.track([TALK]);
     assert_eq!(speaker.character_of(WINDOW).unwrap(), Some(0x13A));
@@ -104,7 +103,7 @@ fn test_somebody_named_alone_speaks_as_that_name() {
     talking(&memory, TALK, WINDOW, NORMAN_MODEL);
     standing(&memory, NORMAN_MODEL, 0xDA, 7);
     let shipped = IndexMap::from([("0xda".to_string(), "Youngster".to_string())]);
-    let names = Rc::new(Names::new(Some(&shipped), None, None).unwrap());
+    let names = Rc::new(Names::new(Some(&shipped), None, None, None, None).unwrap());
     let speaker = SpeakerReader::with_default_drawn(memory.clone(), names.clone());
     speaker.track([TALK]);
     assert_eq!(
@@ -292,28 +291,15 @@ fn keys(table: &IndexMap<String, String>) -> HashSet<String> {
     table.keys().cloned().collect()
 }
 
-/// The user, 2026-09-23: a fallback in every language the game carries. Each is the ROM's own
-/// words in that language (spikes 90 and 91), so each names the same sprites as the English but
-/// for the words of pa3ds's own the ROM has nothing for: the Nurse, the shared looks named by
-/// their sprite's id, the bush, and the cracked and big boulders, whose words the English table
-/// copies from a sentence of the game's own.
+/// The user, 2026-09-23: a fallback in every language the game carries, each the ROM's own
+/// words in that language (spikes 90 and 91). Since 2026-10-14 each names the same sprites as
+/// the English (Orion): where the ROM has no word, as for the Nurse, it is pa3ds's own.
 #[test]
 fn test_every_language_ships_a_table_of_the_same_people() {
     let english = keys(&oras::game().sprites("en"));
-    let looks = "0x119 0x11c 0x150 0x11d 0x151 0x11e 0x152 0x11f 0x153 0x120 0x121 0x154 0x155 0x70
-        0x122 0x123 0x124 0x125 0x126 0x128 0x142 0x156 0x132 0x157 0x31 0x131 0x10c 0x10d 0x10a
-        0x10b 0x127 0x129 0x12b 0x12c 0x3e 0x12d 0x12e 0x12f 0x133 0x5f 0x137 0x140 0x141 0x108
-        0x109 0x10e 0x10f 0xdd 0x145 0x146 0x143 0x144 0x147 0x148 0xe5 0x15c 0xea 0xeb 0xef 0x101
-        0x149 0x14a 0x14b 0x14c 0x14d 0x14e";
-    let mut ours: HashSet<String> = ["0x12a", "0x200b", "0x200c", "0x2009"]
-        .into_iter()
-        .map(String::from)
-        .collect();
-    ours.extend(py::split(looks).into_iter().map(String::from));
     for language in ["ja", "fr", "it", "de", "es", "ko"] {
         let table = oras::game().sprites(language);
-        let expected: HashSet<String> = english.difference(&ours).cloned().collect();
-        assert_eq!(keys(&table), expected, "{language}");
+        assert_eq!(keys(&table), english, "{language}");
         assert!(table.values().all(|name| !name.is_empty()), "{language}");
     }
     assert_eq!(
@@ -324,11 +310,15 @@ fn test_every_language_ships_a_table_of_the_same_people() {
         shipped(oras::game(), "ja").sprite(0x118).as_deref(),
         Some("ママ")
     );
+    assert_eq!(
+        shipped(oras::game(), "de").sprite(0x204E).as_deref(),
+        Some("Relaxo-Puppe")
+    );
 }
 
 /// Spike 108: X's fallback names are the ROM's own words in each of its seven languages, the
-/// story's people among them; the Nurse is pa3ds's own English, and the Spanish text never gives
-/// the player's mother a word of her own, so Spanish has no Mom.
+/// story's people among them. The Nurse is pa3ds's own word in every language, and so is the
+/// Spanish Mom, whom the Spanish text calls only "tu madre".
 #[test]
 fn test_x_ships_a_table_in_every_language_it_carries() {
     let english = keys(&xy::game().sprites("en"));
@@ -339,13 +329,7 @@ fn test_x_ships_a_table_in_every_language_it_carries() {
     assert!(characters.is_subset(&english));
     for language in ["ja", "fr", "it", "de", "es", "ko"] {
         let table = xy::game().sprites(language);
-        let ours: HashSet<String> = if language == "es" {
-            ["0x3b", "0x7"].into_iter().map(String::from).collect()
-        } else {
-            ["0x3b"].into_iter().map(String::from).collect()
-        };
-        let expected: HashSet<String> = english.difference(&ours).cloned().collect();
-        assert_eq!(keys(&table), expected, "{language}");
+        assert_eq!(keys(&table), english, "{language}");
         assert!(table.values().all(|name| !name.is_empty()), "{language}");
     }
     assert_eq!(

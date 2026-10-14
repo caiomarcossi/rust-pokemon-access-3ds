@@ -7,8 +7,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use indexmap::IndexMap;
 
-use crate::core::names::{KINDS, Names};
+use crate::core::names::{FURNITURE, KINDS, Names, TILES};
 use crate::games::common::field::things;
+use crate::games::{oras, xy};
 
 const NORMAN: i64 = 0x13F;
 const WALLY: i64 = 0xB4;
@@ -196,6 +197,87 @@ fn test_a_shipped_table_that_is_not_there_is_no_names_at_all() {
         &tmp_path.join("home"),
     );
     assert_eq!(names.sprite(NORMAN), None);
+    assert_eq!(names.words(TILES), IndexMap::<i64, String>::new());
+}
+
+/// A use tile by its kind, a trash can wherever it stands, and furniture by the shared script
+/// it runs, a vending machine (spike 210); a key that is no number is a typo, left out, and the
+/// rest of the table read.
+#[test]
+fn test_the_shipped_table_says_what_each_kind_of_use_tile_and_furniture_is() {
+    let tmp_path = TmpPath::new();
+    let data = shipped(
+        &tmp_path,
+        "[tiles]\n\"0xdd\" = \"trash can\"\n\"trash\" = \"bin\"\n\
+         [furniture]\n\"0x28f0\" = \"vending machine\"\n",
+    );
+    let names = Names::load(&data, "en", "sango-1", None, "").unwrap();
+    assert_eq!(
+        names.words(TILES),
+        IndexMap::from([(0xDD, "trash can".to_string())])
+    );
+    assert_eq!(
+        names.words(FURNITURE),
+        IndexMap::from([(0x28F0, "vending machine".to_string())])
+    );
+}
+
+/// The PC's word was "PC" in the code until 2026-10-14, heard in every language where the
+/// ROM could not be read; it is each table's now.
+#[test]
+fn test_every_shipped_table_says_what_the_pc_is() {
+    let header = IndexMap::new();
+    for game in [oras::game(), xy::game()] {
+        for (language, _) in game.data.iter() {
+            let names = Names::from_table(&game.table(language), None, &header).unwrap();
+            assert!(!names.words(TILES)[&0xD5].is_empty(), "{language}");
+        }
+    }
+}
+
+/// The Magma Hideout's first bed: its zone's furniture 0, furniture's tag being 0 (spike 211).
+const BED: (i64, i64) = (0xAA, 0);
+
+/// A bed is its zone's own message in each of three zones, so the shipped table names it by
+/// its slot; the player's name for the slot and the game's own word still come first.
+#[test]
+fn test_the_shipped_table_names_a_slot_behind_the_player_and_the_game() {
+    let tmp_path = TmpPath::new();
+    let data = shipped(&tmp_path, "[places]\n\"0xaa:furniture:0\" = \"bed\"\n");
+    let names = load(&data, "en", "sango-1", &tmp_path.join("home"));
+    assert_eq!(names.place(BED.0, BED.1).as_deref(), Some("bed"));
+    names.use_game(
+        None,
+        Some(Rc::new(|zone, slot| {
+            ((zone, slot) == BED).then(|| "Hideout".to_string())
+        })),
+    );
+    assert_eq!(names.place(BED.0, BED.1).as_deref(), Some("Hideout"));
+    names.name_place(BED.0, BED.1, "Maxie's bed").unwrap();
+    assert_eq!(names.place(BED.0, BED.1).as_deref(), Some("Maxie's bed"));
+}
+
+/// Each game's tables name the same things in every language (Orion, 2026-10-14): a word
+/// the ROM has none for in one language is pa3ds's own there, as "Nurse" is in English.
+#[test]
+fn test_every_language_names_what_english_does() {
+    for game in [oras::game(), xy::game()] {
+        let english = game.table("en");
+        for (language, _) in game.data.iter() {
+            let theirs = game.table(language);
+            for (section, keys) in &english {
+                let keys: std::collections::HashSet<String> = match keys {
+                    ::toml::Value::Table(table) => table.keys().cloned().collect(),
+                    _ => continue,
+                };
+                let held: std::collections::HashSet<String> = match theirs.get(section) {
+                    Some(::toml::Value::Table(table)) => table.keys().cloned().collect(),
+                    _ => std::collections::HashSet::new(),
+                };
+                assert_eq!(held, keys, "{language} {section}");
+            }
+        }
+    }
 }
 
 /// Sharing names is copying the file, so it is written sorted and as words, not as a dump,
@@ -289,7 +371,7 @@ fn test_a_name_may_hold_anything_a_player_can_type() {
 #[test]
 fn test_names_without_a_home_are_kept_for_this_run_only() {
     let shipped = IndexMap::from([("0x13f".to_string(), "Norman".to_string())]);
-    let names = Names::new(Some(&shipped), None, None).unwrap();
+    let names = Names::new(Some(&shipped), None, None, None, None).unwrap();
     names.name_sprite(WALLY, "Wally").unwrap();
     assert_eq!(names.sprite(WALLY).as_deref(), Some("Wally"));
     assert_eq!(names.sprite(NORMAN).as_deref(), Some("Norman"));
@@ -314,7 +396,7 @@ fn places(path: &Path) -> Vec<(String, String)> {
 fn test_a_place_is_written_map_kind_number() {
     let tmp_path = TmpPath::new();
     let mine = tmp_path.join("sango-1.toml");
-    let names = Names::new(None, Some(&mine), None).unwrap();
+    let names = Names::new(None, Some(&mine), None, None, None).unwrap();
     names
         .name_place(0x10, 1 << 32 | 3, "Devon Corporation")
         .unwrap();
@@ -344,7 +426,7 @@ fn test_a_file_written_the_old_way_is_read_and_kept_the_new_way() {
         "[places]\n\"0x10:4294967299\" = \"Devon Corporation\"\n\"0x10:warp:4\" = \"House\"\n",
     )
     .unwrap();
-    let names = Names::new(None, Some(&mine), None).unwrap();
+    let names = Names::new(None, Some(&mine), None, None, None).unwrap();
     assert_eq!(
         names.place(0x10, 1 << 32 | 3).as_deref(),
         Some("Devon Corporation")

@@ -1,4 +1,4 @@
-# What to call the people on X and Y's maps, when nothing better is known.
+# What to call the people and things on X and Y's maps, when nothing better is known.
 #
 # A key is an overworld sprite, the one a move model is drawn with (findings, spikes 75, 89 and
 # 100), so a name here is everyone drawn as it, everywhere in the game. A name is looked for in
@@ -81,3 +81,7 @@
 "0x70" = "Hiker"                      # BIGMAN
 "0xa3" = "Swimmer ♂"                  # SWIMMERM2
 "0xa4" = "Swimmer ♀"                  # SWIMMERW2
+
+[tiles]
+# The PC: what the ROM calls it, heard only where the ROM cannot be read.
+"0xd5" = "PC"                         # archives.PC_LINES

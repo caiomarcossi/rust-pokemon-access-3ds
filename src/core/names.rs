@@ -22,7 +22,9 @@
 //! Two things get named, and they are keyed differently because they are different. A **sprite** is
 //! one character everywhere in the game, so naming Norman once names him in every scene; the shipped
 //! table is per language, beside the game's code. A **place** is a slot on one map — the zone list's
-//! (map, slot) — so a sign named in Petalburg says nothing about a sign in Rustboro.
+//! (map, slot) — so a sign named in Petalburg says nothing about a sign in Rustboro. The shipped
+//! table names some slots too: furniture each zone shows a message of its own for, but the same
+//! thing in many, as the Pokémon Journals and the beds are.
 //!
 //! The player's names live in `names/<language>/<rom>.toml` under their own folder, laid out the same
 //! way as the shipped table beside the game's code: **TOML, per language, one file a ROM**
@@ -52,6 +54,11 @@ use crate::py::{self, Result};
 pub const SPRITES: &str = "sprites";
 pub const PLACES: &str = "places";
 pub const SECTIONS: [&str; 2] = [SPRITES, PLACES];
+/// The shipped table's words for each kind of use tile, by the kind (`words`).
+pub const TILES: &str = "tiles";
+/// The shipped table's words for furniture by the game's shared script it runs (`words`).
+pub const FURNITURE: &str = "furniture";
+pub const WORDS: [&str; 2] = [TILES, FURNITURE];
 
 /// What the game itself calls a character, where RAM does not say but the ROM does.
 pub type GameSprite = Rc<dyn Fn(i64) -> Option<String>>;
@@ -131,6 +138,10 @@ fn either(first: Option<String>, second: impl FnOnce() -> Option<String>) -> Opt
 /// The names pa3ds has for what the game leaves unnamed, the player's ahead of the shipped.
 pub struct Names {
     shipped: IndexMap<String, String>,
+    words: IndexMap<String, IndexMap<String, String>>,
+    /// The shipped table's slots: furniture the game shows alike in many zones, each its own
+    /// zone's message, as the 16 Pokémon Journals are (spike C).
+    shipped_places: IndexMap<String, String>,
     path: Option<PathBuf>,
     /// What to write at the top of the player's file: the game and the language, which the
     /// file cannot work out for itself and a person reading it cannot either.
@@ -151,6 +162,8 @@ impl Names {
         shipped: Option<&IndexMap<String, String>>,
         mine_path: Option<&Path>,
         header: Option<&IndexMap<String, String>>,
+        words: Option<&IndexMap<String, IndexMap<String, String>>>,
+        places: Option<&IndexMap<String, String>>,
     ) -> Result<Self> {
         let mut mine: IndexMap<String, IndexMap<String, String>> = SECTIONS
             .iter()
@@ -176,6 +189,8 @@ impl Names {
         }
         let names = Names {
             shipped: shipped.cloned().unwrap_or_default(),
+            words: words.cloned().unwrap_or_default(),
+            shipped_places: places.cloned().unwrap_or_default(),
             path: mine_path.map(Path::to_path_buf),
             header: header.cloned().unwrap_or_default(),
             game_sprite: RefCell::new(Rc::new(|_character| None)),
@@ -190,12 +205,13 @@ impl Names {
 
     /// `Names()`: no shipped names, no file, no header.
     pub fn empty() -> Self {
-        Names::new(None, None, None).expect("nothing is read without a file")
+        Names::new(None, None, None, None, None).expect("nothing is read without a file")
     }
 
     /// The names for one game, one language and one player.
     ///
-    /// `data/<language>/sprites.toml` from the game's own package, and the player's
+    /// `data/<language>/sprites.toml` from the game's own package, its characters' names, its
+    /// words for use tiles and furniture and its names for slots, and the player's
     /// `names/<language>/<fingerprint>.toml` under `home`. `title` is what the emulator says it
     /// is running, for the comment at the top of that file; without it the ROM names itself.
     pub fn load(
@@ -205,8 +221,7 @@ impl Names {
         home: Option<&Path>,
         title: &str,
     ) -> Result<Names> {
-        let shipped =
-            toml::strings(toml::read(&data.join(language).join("sprites.toml")).get(SPRITES));
+        let table = toml::read(&data.join(language).join("sprites.toml"));
         let mine = home.map(|home| {
             home.join("names")
                 .join(language)
@@ -220,7 +235,50 @@ impl Names {
             ("rom".to_string(), fingerprint.to_string()),
             ("language".to_string(), language.to_string()),
         ]);
-        Names::new(Some(&shipped), mine.as_deref(), Some(&header))
+        Names::from_table(&table, mine.as_deref(), &header)
+    }
+
+    /// `cls(toml.strings(table.get(SPRITES)), mine, header, {section: ... for section in
+    /// WORDS}, toml.strings(table.get(PLACES)))`, the shipped table read: `load`'s, and the runtime's, which reads the table the
+    /// binary carries (`Game::table`).
+    pub fn from_table(
+        table: &IndexMap<String, ::toml::Value>,
+        mine: Option<&Path>,
+        header: &IndexMap<String, String>,
+    ) -> Result<Names> {
+        let words: IndexMap<String, IndexMap<String, String>> = WORDS
+            .iter()
+            .map(|section| (section.to_string(), toml::strings(table.get(*section))))
+            .collect();
+        Names::new(
+            Some(&toml::strings(table.get(SPRITES))),
+            mine,
+            Some(header),
+            Some(&words),
+            Some(&toml::strings(table.get(PLACES))),
+        )
+    }
+
+    /// What the shipped table says each of a kind of thing is, by its number: in `TILES` a
+    /// kind of use tile, `0xdd` a trash can wherever it stands; in `FURNITURE` the shared script
+    /// a record runs, every vending machine one of five (Orion, 2026-10-14; spike B). So each is
+    /// said as what it is before anyone has named it. A word for what a thing is rather than a
+    /// name, so a name the player gives one slot still comes first, and the game's own word for
+    /// a kind, the PC's, ahead of it (`FieldReader`). A key that is not a number is a typo, and
+    /// left out.
+    pub fn words(&self, section: &str) -> IndexMap<i64, String> {
+        static HEX: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new("^0x[0-9a-fA-F]+$").expect("a valid pattern"));
+        let mut out = IndexMap::new();
+        if let Some(table) = self.words.get(section) {
+            for (key, said) in table {
+                if HEX.is_match(key) {
+                    let number = py::int_base16(key).expect("a key of hexadecimal digits");
+                    out.insert(number, said.clone());
+                }
+            }
+        }
+        out
     }
 
     /// Ask the game for its own word for a character and for a slot on a map, ahead of the
@@ -246,15 +304,18 @@ impl Names {
         })
     }
 
-    /// What to call this slot on this map, or None: the player's name, then the game's.
+    /// What to call this slot on this map, or None: the player's name, the game's, then the
+    /// shipped table's.
     pub fn place(&self, map_id: i64, slot: i64) -> Option<String> {
-        let mine = self.mine.borrow()[PLACES]
-            .get(&place_key(map_id, slot))
-            .cloned();
-        either(mine, || {
-            let game_place = self.game_place.borrow().clone();
-            game_place(map_id, slot)
-        })
+        let key = place_key(map_id, slot);
+        let mine = self.mine.borrow()[PLACES].get(&key).cloned();
+        either(
+            either(mine, || {
+                let game_place = self.game_place.borrow().clone();
+                game_place(map_id, slot)
+            }),
+            || self.shipped_places.get(&key).cloned(),
+        )
     }
 
     /// Give this character a name, and keep it. An empty name gives it back to the game's own
@@ -264,7 +325,7 @@ impl Names {
     }
 
     /// Give this slot on this map a name, and keep it. An empty name gives it back to the
-    /// game's own word, or to silence.
+    /// game's own word, the shipped table, or silence.
     pub fn name_place(&self, map_id: i64, slot: i64, said: &str) -> Result<()> {
         self.keep(PLACES, &place_key(map_id, slot), said)
     }

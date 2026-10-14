@@ -56,7 +56,14 @@ to install.
   ladder up or down, the name of the building behind it, or in a hideout a teleporter and where
   it comes out ("teleporter, 3 east, out at 17 east 8 south"). Something the game builds out of
   several pieces is one thing at its nearest cell: Seafloor Cavern's submarine is one sign, and
-  an elevator's two-cell door one. The game's invisible walls are never listed. What stands in
+  an elevator's two-cell door one. The game's invisible walls are never listed. A PC is said as
+  a PC, and in Omega Ruby and Alpha Sapphire so is everything else you read by facing it that is
+  the same wherever it stands, in the words of what it shows you: a TV, a trash can, Pokémon
+  magazines, Pokémon picture books, a vase, a vending machine, a wardrobe, an elevator, the
+  Pokémon Journal in each Pokémon Center, the hideouts' beds and flags, the Hoenn Rangers'
+  posters and figures, and the dolls in Littleroot's bedrooms, until you name it something else.
+  Townsfolk are called by how they look ("Old man", "Clerk", "Nurse") in every language the game
+  carries. What stands in
   your way until a move clears it is under obstacles: bushes for Cut, cracked boulders for Rock
   Smash, Mauville Gym's barriers, and big boulders for Strength with the holes they can be pushed into ("hole, 2
   east 3 south"): push

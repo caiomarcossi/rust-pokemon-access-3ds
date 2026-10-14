@@ -1,12 +1,13 @@
-# What to call the people on X and Y's maps in Italian, when nothing better is known.
+# What to call the people and things on X and Y's maps in Italian, when nothing better is known.
 #
 # The same as data/en/sprites.toml, in this language: a key is the sprite a move model is
 # drawn with (findings, spikes 75, 89 and 100), and a name is looked for in order — what the
 # player has called them, what the game calls them out of the player's own ROM, and only
 # then this file. So it is heard only when pa3ds cannot read the ROM.
 #
-# Every word here is the ROM's own, in this language. The English table's Nurse is a word of
-# pa3ds's own that the ROM has nothing for, so it is not here.
+# Each table names what the English one does (Orion, 2026-10-14). Most words are the ROM's
+# own in this language, out of the line the English word's comment names; the Nurse is a
+# word of pa3ds's own, as the English one is.
 
 [sprites]
 # People the ROM never lists as trainers, read off lines of its own text that name them —
@@ -17,6 +18,7 @@
 "0x9b" = "Clem"                       # Bonnie: "You can call me Bonnie." (story 404:0)
 "0x97" = "Sapiente della megaevoluzione"# the Mega Evolution guru: "People call me the Mega Evolution guru!" (story 281:6)
 "0x98" = "Game Director"              # the Game Director: "Hello! I am the Game Director." (story 272:0)
+"0x3b" = "Infermiera"                 # Nurse: PCWOMAN1, at the counter in all 16 Pokémon Centers (spike 101)
 
 # The game's own words for the story's people and for kinds of trainer, as `archives`
 # reads them (findings, spikes 90 and 108): spikes/108_x_people.py table it.
@@ -76,3 +78,7 @@
 "0x70" = "Montanaro"
 "0xa3" = "Nuotatore"
 "0xa4" = "Nuotatrice"
+
+[tiles]
+# The PC: what the ROM calls it, heard only where the ROM cannot be read.
+"0xd5" = "PC"                         # archives.PC_LINES

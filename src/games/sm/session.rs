@@ -90,7 +90,13 @@ pub fn start(rpc: Rc<dyn Rpc>, speech: Rc<Speech>, setup: Setup) -> Result<Sessi
         ("rom".to_string(), fingerprint.to_string()),
         ("language".to_string(), setup.language.clone()),
     ]);
-    let named = Rc::new(Names::new(None, mine.as_deref(), Some(&header))?);
+    let named = Rc::new(Names::new(
+        None,
+        mine.as_deref(),
+        Some(&header),
+        None,
+        None,
+    )?);
     // The field's move models are in a heap of their own, beside the dialogue's, and the field
     // reads its pointers only inside a small block the last walk found (spike 113). The running
     // process is in heap 6, two small blocks (`sm.apps`, spike 116).

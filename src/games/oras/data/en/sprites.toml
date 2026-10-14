@@ -1,4 +1,4 @@
-# What to call the people on ORAS's maps, when nothing better is known.
+# What to call the people and things on ORAS's maps, when nothing better is known.
 #
 # A key is an overworld sprite, the one a move model is drawn with (findings, spikes 75 and 89),
 # so a name here is everyone drawn as it, everywhere in the game. A name is looked for in order:
@@ -107,6 +107,22 @@
 "0x200b" = "bush"                     # omega_ruby_bush.ctm: "You can't pass because of prickly thorns, but a Pokémon may be able to cut the tree."
 "0x200c" = "cracked boulder"          # omega_ruby_smash.ctm: "It's a cracked boulder. A Pokémon may be able to break it."
 "0x2009" = "big boulder"              # omega_ruby_strength-boulders.ctm: "It's a big boulder, but a Pokémon may be able to push it aside."
+
+# Things standing on the map, by the model their sprite's record in a/1/3/7 draws (spike 211), and
+# called what the game calls that thing among the Secret Base decorations (text 56) or the items
+# (text 114).
+"0x204a" = "Azurill Doll"             # DOLL_RURIRI: text 56:111, in both houses in Littleroot
+"0x204b" = "Skitty Doll"              # DOLL_ENEKO: text 56:112
+"0x204c" = "Swablu Doll"              # DOLL_TIRUTTO: text 56:113
+"0x204d" = "Lapras Doll"              # DOLL_RAPURASU: text 56:120
+"0x204e" = "Snorlax Doll"             # DOLL_KABIGON: text 56:118
+"0x204f" = "Blue Orb"                 # AIIRONOTAMA: text 114:535, on Mt. Pyre's summit
+"0x2050" = "Red Orb"                  # BENIIRONOTAMA: text 114:534, beside it
+"0x2056" = "Magma Suit"               # MAGMASUIT: text 114:741, in the Magma Hideout
+"0x2057" = "Aqua Suit"                # AQUASUIT: text 114:742, in the Aqua Hideout
+"0x2058" = "Shoal Salt"               # ASASE_SHIO: text 114:70, in Shoal Cave
+"0x2059" = "Shoal Shell"              # ASASE_KAIGARA: text 114:71, in Shoal Cave
+"0x205b" = "letter"                   # LETTER: in Steven's house; the item, text 114:725, is the one to him
 
 # The game's own words, copied from the ROM's English text by `spikes/90_sprite_trainers.py`: the
 # story's people by the trainer each is, and every other sprite that two trainers or more of one
@@ -236,3 +252,140 @@
 "0x103d" = "Groudon"                  # EV_POKE48
 "0x103e" = "Kyogre"                   # EV_POKE49
 "0x103f" = "Machoke"                  # EV_POKE50
+
+[tiles]
+# What each kind of use tile is: a cell of the map the player faces and presses A at, with no
+# record behind it (spike 83). The game runs one script for each kind wherever it stands, and each
+# of those shows one line of text file 155, which says what is there; the word here is taken from
+# that line (spike 210). The PC's and the TV's are the game's own names for them. The PC's word is
+# read from the ROM ahead of this one.
+"0xd5" = "PC"                         # the PC's own lines (archives.PC_LINES)
+"0xd7" = "TV"                         # text 56:138, the TV among the Secret Base decorations
+"0xd8" = "Pokémon knickknacks"        # text 155:0
+"0xd9" = "Pokémon magazines"          # text 155:9
+"0xda" = "cabinet"                    # text 155:2
+"0xdb" = "useful items"               # text 155:3
+"0xdc" = "Pokémon novelties"          # text 155:4
+"0xdd" = "trash can"                  # text 155:6
+"0xde" = "Pokémon picture books"      # text 155:7
+"0xdf" = "vase"                       # text 155:10
+
+[furniture]
+# What a piece of furniture is, by the game's shared script it runs: a record's own number from
+# 0x7d0 up, or the one its zone's script runs for it (spike 210). Every vending machine runs one of
+# 0x28f0 to 0x28f4, and is called what the game calls the one among the Secret Base decorations
+# (text 56:144); the wardrobes say so (story 460:35).
+"0x28f0" = "vending machine"          # text 56:144
+"0x28f1" = "vending machine"          # text 56:144
+"0x28f2" = "vending machine"          # text 56:144
+"0x28f3" = "vending machine"          # text 56:144
+"0x28f4" = "vending machine"          # text 56:144
+"0x284e" = "wardrobe"                 # story 460:35
+# The elevators' word is the Mauville Hills computer's, story 264:15; the bedrooms', the lines the
+# player's room shows.
+"0x27da" = "elevator"                 # Mauville's and the Lilycove Department Store's doors
+"0x27db" = "elevator"                 # Mauville's and the Lilycove Department Store's doors
+"0x27dc" = "elevator"                 # Mauville's and the Lilycove Department Store's doors
+"0x27dd" = "elevator"                 # Mauville's and the Lilycove Department Store's doors
+"0x27de" = "elevator"                 # Mauville's and the Lilycove Department Store's doors
+"0x27df" = "elevator"                 # Mauville's and the Lilycove Department Store's doors
+"0x27e0" = "elevator"                 # Mauville's and the Lilycove Department Store's doors
+"0x27e1" = "elevator"                 # Mauville's and the Lilycove Department Store's doors
+"0x27e2" = "elevator"                 # Mauville's and the Lilycove Department Store's doors
+"0x27e3" = "elevator"                 # Mauville's and the Lilycove Department Store's doors
+"0x27e4" = "elevator"                 # Mauville's and the Lilycove Department Store's doors
+"0x27e5" = "elevator"                 # Mauville's and the Lilycove Department Store's doors
+"0x27e6" = "elevator"                 # Mauville's and the Lilycove Department Store's doors
+"0x27e7" = "elevator"                 # Mauville's and the Lilycove Department Store's doors
+"0x27e8" = "elevator"                 # Mauville's and the Lilycove Department Store's doors
+"0x27e9" = "elevator"                 # Mauville's and the Lilycove Department Store's doors
+"0x27ea" = "elevator"                 # Mauville's and the Lilycove Department Store's doors
+"0x27eb" = "elevator"                 # Mauville's and the Lilycove Department Store's doors
+"0x2956" = "clock"                    # story 253:36, the player's room and the neighbour's
+"0x2961" = "Wii U"                    # story 253:43, both rooms
+"0x2962" = "Town Map"                 # text 114:442, the item; both rooms
+"0x2963" = "notebook"                 # story 253:41, both rooms
+"0x2965" = "notebook"                 # Mom's, in both houses
+
+[places]
+# Furniture the game shows alike in many zones, each with a message of its own zone's, so named by
+# its slot as the player's names file names one: zone, furniture, index (spike 211). A slot is in a
+# group where its message opens as the group's does in any one language; Omega Ruby and Alpha
+# Sapphire have the same.
+"0xaa:furniture:0" = "bed"            # story 341:8, "There's a bed.", in the Magma Hideout
+"0xaa:furniture:1" = "bed"
+"0xaa:furniture:2" = "bed"
+"0xaa:furniture:3" = "bed"
+"0xaa:furniture:4" = "bed"
+"0xaa:furniture:5" = "bed"
+"0xaa:furniture:6" = "bed"
+"0xaa:furniture:7" = "bed"
+"0x5d:furniture:0" = "bed"            # story 420:16, in the Aqua Hideout
+"0x5d:furniture:1" = "bed"
+"0x5d:furniture:2" = "bed"
+"0x5d:furniture:3" = "bed"
+"0x5d:furniture:4" = "bed"
+"0x5d:furniture:5" = "bed"
+"0x5d:furniture:6" = "bed"
+"0x5d:furniture:7" = "bed"
+"0x188:furniture:0" = "bed"           # story 169:14, at the Weather Institute
+"0x188:furniture:1" = "bed"
+"0xda:furniture:0" = "bed"            # story 70:0, "It's a bed.", on the S.S. Tidal
+"0xe4:furniture:0" = "Pokémon Journal"  # story 58:5, "Aha! Pokémon Journal", in the Pokémon Centers
+"0xe8:furniture:0" = "Pokémon Journal"
+"0xec:furniture:0" = "Pokémon Journal"
+"0xf0:furniture:0" = "Pokémon Journal"
+"0xf6:furniture:0" = "Pokémon Journal"
+"0xfd:furniture:0" = "Pokémon Journal"
+"0x103:furniture:0" = "Pokémon Journal"
+"0x109:furniture:0" = "Pokémon Journal"
+"0x116:furniture:0" = "Pokémon Journal"
+"0x11c:furniture:0" = "Pokémon Journal"
+"0x12d:furniture:0" = "Pokémon Journal"
+"0x135:furniture:0" = "Pokémon Journal"
+"0x14a:furniture:0" = "Pokémon Journal"
+"0x155:furniture:0" = "Pokémon Journal"
+"0x161:furniture:0" = "Pokémon Journal"
+"0x206:furniture:0" = "Pokémon Journal"
+"0x115:furniture:5" = "Hoenn Rangers"   # story 587:13, "Hoenn's Local Heroes / The Hoenn Rangers Coexistence Force!": posters, figures, a face board
+"0x115:furniture:6" = "Hoenn Rangers"
+"0x143:furniture:4" = "Hoenn Rangers"
+"0x143:furniture:5" = "Hoenn Rangers"
+"0x148:furniture:0" = "Hoenn Rangers"
+"0x151:furniture:1" = "Hoenn Rangers"
+"0x151:furniture:2" = "Hoenn Rangers"
+"0x188:furniture:4" = "Hoenn Rangers"
+"0x188:furniture:5" = "Hoenn Rangers"
+"0x1c2:furniture:10" = "Hoenn Rangers"
+"0x1c2:furniture:11" = "Hoenn Rangers"
+"0x20d:furniture:0" = "Hoenn Rangers"
+"0x91:furniture:1" = "locked door"    # story 366:5, "The door is locked.", in Sea Mauville
+"0x92:furniture:1" = "locked door"
+"0x92:furniture:2" = "locked door"
+"0x92:furniture:3" = "locked door"
+"0x92:furniture:4" = "locked door"
+"0x175:furniture:0" = "locked door"   # story 206:0, the Trick House's scroll doors
+"0x176:furniture:0" = "locked door"
+"0x177:furniture:0" = "locked door"
+"0x178:furniture:0" = "locked door"
+"0x179:furniture:0" = "locked door"
+"0x17a:furniture:0" = "locked door"
+"0xaa:furniture:8" = "Project AZOTH"  # story 341:0, "PROJECT AZOTH / File No. 1", in both hideouts
+"0xaa:furniture:9" = "Project AZOTH"
+"0xaa:furniture:10" = "Project AZOTH"
+"0xaa:furniture:11" = "Project AZOTH"
+"0xab:furniture:1" = "Project AZOTH"
+"0x5d:furniture:8" = "Project AZOTH"
+"0x5d:furniture:9" = "Project AZOTH"
+"0x5d:furniture:10" = "Project AZOTH"
+"0x5d:furniture:11" = "Project AZOTH"
+"0x5e:furniture:1" = "Project AZOTH"
+"0xad:furniture:0" = "Team Magma flag"  # story 338:0, "It's the Team Magma flag!"
+"0xad:furniture:1" = "Team Magma flag"
+"0xae:furniture:2" = "Team Magma flag"
+"0x60:furniture:4" = "Team Aqua flag"   # story 417:4, "It's the Team Aqua flag!"
+"0x60:furniture:5" = "Team Aqua flag"
+"0x61:furniture:2" = "Team Aqua flag"
+"0xdf:furniture:0" = "Azurill Doll"   # story 65:25, "It's an Azurill Doll!", where the doll stands
+"0xe1:furniture:0" = "Azurill Doll"
+"0x18f:furniture:0" = "Azurill Doll"   # in the moving truck

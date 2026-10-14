@@ -40,7 +40,7 @@ use crate::games::gen6::field::zonedata::{
 use crate::games::gen6::field::zonetable::{
     INFO_KIND, INFO_MATRIX, INFO_NAME, INFO_PARENT, INFO_SIZE, UNDERWATER,
 };
-use crate::games::gen6::game::{FeatureFactory, Game, SecretBaseFactory};
+use crate::games::gen6::game::{FeatureFactory, FurnitureKind, Game, SecretBaseFactory};
 use crate::games::gen6::rom::archives::GameText;
 use crate::games::gen6::rom::maps::{ChunkSource, StreetSource};
 use crate::games::oras;
@@ -165,12 +165,16 @@ pub(crate) fn game() -> Game {
     Game::new("test", [], &[], oras::rom().clone(), mmodel::DRAWN)
 }
 
-/// `field_reader`'s keyword arguments that are the ROM's words and chunks, each as the Python
-/// defaults it: set what differs with `..Given::default()`. The rest are the game's fields,
-/// given as a `Game { .., ..game() }`.
+/// `field_reader`'s keyword arguments that are the ROM's words, chunks and `shared` furniture,
+/// and the shipped table's `tiles` and `furniture_words`, each as the Python defaults it: set what
+/// differs with `..Given::default()`. The rest are the game's fields, given as a
+/// `Game { .., ..game() }`.
 #[derive(Default)]
 pub(crate) struct Given {
     pub words: IndexMap<i64, String>,
+    pub tiles: Option<IndexMap<i64, String>>,
+    pub furniture_words: Option<IndexMap<i64, String>>,
+    pub shared: IndexMap<(i64, i64), i64>,
     pub streets: Option<rail::Streets>,
     pub outdoors: HashSet<i64>,
     pub street_records: rail::Records,
@@ -185,10 +189,14 @@ pub(crate) struct Given {
     pub clock: Option<Rc<dyn Fn() -> f64>>,
 }
 
-/// A field reader of `game`, and the ROM's words and chunks given.
+/// A field reader of `game`, the ROM's words, chunks and `shared` furniture given, and the
+/// shipped table's `tiles` and `furniture_words`.
 pub(crate) fn field_reader(memory: Rc<FakeMemory>, given: Given, game: Game) -> Rc<FieldReader> {
     let Given {
         words,
+        tiles,
+        furniture_words,
+        shared,
         streets,
         outdoors,
         street_records,
@@ -217,6 +225,7 @@ pub(crate) fn field_reader(memory: Rc<FakeMemory>, given: Given, game: Game) -> 
                 matrix: matrices,
             }) as Rc<dyn ChunkSource>
         }),
+        shared,
         ..GameText::default()
     };
     FieldReader::new(
@@ -225,6 +234,8 @@ pub(crate) fn field_reader(memory: Rc<FakeMemory>, given: Given, game: Game) -> 
         Some(&text),
         b"image",
         clock.unwrap_or_else(|| Rc::new(py::time::monotonic)),
+        tiles.as_ref(),
+        furniture_words.as_ref(),
     )
 }
 
@@ -2457,6 +2468,51 @@ fn test_furniture_of_one_script_that_touches_is_one_thing() -> Result<()> {
     Ok(())
 }
 
+/// A vending machine's record runs a script of its zone's, whose case runs one of five shared
+/// ones; an elevator's door is a shared script's own number (spike B). The shipped table says
+/// what each is; a record of the zone's own script stays a sign.
+#[test]
+fn test_furniture_is_what_the_shipped_table_says_the_shared_script_it_runs_is() -> Result<()> {
+    let mut town = Town::new();
+    let data = zone_file(&ZoneSpec {
+        furniture: &[(9, 90, 160), (0x27E3, 98, 159), (5, 92, 165)],
+        info: &town_info(),
+        ..ZoneSpec::default()
+    });
+    town.memory.write(FILE, &data);
+    town.memory
+        .u32(HOLDER, &[FILE, OTHER, 0x11 | (data.len() as i64) << 8]);
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given {
+            shared: IndexMap::from([((TOWN, 9), 0x28F4)]),
+            furniture_words: Some(IndexMap::from([
+                (0x28F4, "vending machine".to_string()),
+                (0x27E3, "elevator".to_string()),
+            ])),
+            ..Given::default()
+        },
+        game(),
+    );
+    let mut seen: Vec<((i64, i64), String)> = town
+        .r#where()?
+        .interactables
+        .iter()
+        .filter(|item| !item.move_model && source_kind(item.source) == FURNITURE_SOURCE)
+        .map(|item| (item.cell, item.kind.clone()))
+        .collect();
+    seen.sort();
+    assert_eq!(
+        seen,
+        [
+            ((90, 160), "vending machine".to_string()),
+            ((92, 165), "sign".to_string()),
+            ((98, 159), "elevator".to_string())
+        ]
+    );
+    Ok(())
+}
+
 /// Spike 161: Fortree Gym's third door, arms north and west two cells long about the corner at
 /// (23, 23), stood with the ground walled at (21, 23) and (21, 24). Walked into westward from
 /// (23, 22), it would swing its west arm through that quarter, and the game did not turn it;
@@ -2633,6 +2689,17 @@ pub(crate) const SHELF_TILE: i64 = 0xD90E0001;
 #[test]
 fn test_a_use_tile_is_listed_by_its_kind_and_a_run_of_one_kind_is_one_thing() -> Result<()> {
     let mut town = Town::new();
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given {
+            tiles: Some(IndexMap::from([(PC_KIND, "PC".to_string())])),
+            ..Given::default()
+        },
+        Game {
+            hidden: Some(dex_nav),
+            ..game()
+        },
+    );
     town.block_tiles(
         TOWN_BLOCK,
         TOWN_CHUNK,
@@ -2663,6 +2730,54 @@ fn test_a_use_tile_is_listed_by_its_kind_and_a_run_of_one_kind_is_one_thing() ->
           object 16 east 2 north"
                 .to_string()
         )
+    );
+    Ok(())
+}
+
+/// Every cell of one kind runs one script, so the kind says what it is: `0xd9` a bookshelf
+/// wherever it stands (spike B). The PC's word is the ROM's, ahead of the shipped table's.
+#[test]
+fn test_a_use_tile_is_what_the_shipped_table_says_its_kind_is_and_the_pc_what_the_rom_says()
+-> Result<()> {
+    let mut town = Town::new();
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given {
+            words: IndexMap::from([(PC_KIND, "パソコン".to_string())]),
+            tiles: Some(IndexMap::from([
+                (PC_KIND, "PC".to_string()),
+                (SHELF_TILE >> 24, "bookshelf".to_string()),
+            ])),
+            ..Given::default()
+        },
+        Game {
+            hidden: Some(dex_nav),
+            ..game()
+        },
+    );
+    town.block_tiles(
+        TOWN_BLOCK,
+        TOWN_CHUNK,
+        (80, 160),
+        &border(160),
+        &[
+            ((95, 170), PC_TILE),
+            ((100, 165), SHELF_TILE),
+            ((101, 165), SHELF_TILE),
+        ],
+    );
+    let signs = town.r#where()?.of("signs");
+    let seen: Vec<(String, (i64, i64))> = signs
+        .iter()
+        .filter(|item| [(95, 170), (100, 165)].contains(&item.cell))
+        .map(|item| (item.kind.clone(), item.size))
+        .collect();
+    assert_eq!(
+        seen,
+        [
+            ("パソコン".to_string(), (1, 1)),
+            ("bookshelf".to_string(), (2, 1))
+        ]
     );
     Ok(())
 }
@@ -3321,7 +3436,7 @@ fn test_every_kind_of_place_on_one_map_is_numbered_apart() -> Result<()> {
         HashMap::from([
             ("door", WARP_SOURCE),
             ("edge", EDGE_SOURCE),
-            ("PC", TILE_SOURCE),
+            ("object", TILE_SOURCE),
             ("sign", FURNITURE_SOURCE),
         ])
     );
@@ -4042,8 +4157,11 @@ fn test_a_secret_bases_pc_flag_and_way_out_are_listed_as_what_they_are() -> Resu
                 ("exits".to_string(), "way out".to_string(), None),
             )]),
             furniture: IndexMap::from([
-                ((TOWN, oras::BASE_PC), "PC".to_string()),
-                ((TOWN, oras::BASE_FLAG), "flag".to_string()),
+                ((TOWN, oras::BASE_PC), FurnitureKind::Tile(PC_KIND)),
+                (
+                    (TOWN, oras::BASE_FLAG),
+                    FurnitureKind::Word("flag".to_string()),
+                ),
             ]),
             ..game()
         },
@@ -4125,11 +4243,12 @@ fn test_the_decorating_cursor_says_what_stands_under_it() -> Result<()> {
         town.memory.clone(),
         Given {
             decorations,
+            tiles: Some(IndexMap::from([(PC_KIND, "PC".to_string())])),
             ..Given::default()
         },
         Game {
             secret_bases: Some(given_bases(bases.clone())),
-            furniture: IndexMap::from([((TOWN, oras::BASE_PC), "PC".to_string())]),
+            furniture: IndexMap::from([((TOWN, oras::BASE_PC), FurnitureKind::Tile(PC_KIND))]),
             ..game()
         },
     );

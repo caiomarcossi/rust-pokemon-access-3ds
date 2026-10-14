@@ -658,6 +658,31 @@ pub fn door_signs(
     Ok(out)
 }
 
+/// (zone, a furniture record's script) -> the shared script its case runs (`Script.runs`):
+/// what the record is wherever it stands, as every vending machine is one of five scripts.
+pub fn shared_furniture(zones: &IndexMap<i64, Zone>) -> Result<IndexMap<(i64, i64), i64>> {
+    let mut out: IndexMap<(i64, i64), i64> = IndexMap::new();
+    for (&zone, (data, furniture, _warps)) in zones {
+        let code = if furniture.is_empty() {
+            None
+        } else {
+            script_of(data)?
+        };
+        let Some(code) = code else {
+            continue;
+        };
+        for record in furniture {
+            let number = u16(record, 0)?;
+            if number < script::SHARED
+                && let Some(runs) = code.runs(number)?
+            {
+                out.insert((zone, number), runs);
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// Each furniture record the zone's script shows a plate for, by its index, with the line of
 /// the story text it shows: a record that shows one line in a plate's style, and no other.
 fn plates_of<'a>(

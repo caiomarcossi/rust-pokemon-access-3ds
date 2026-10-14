@@ -7,7 +7,7 @@ use indexmap::IndexMap;
 
 use super::fake_rom::{MessageLine, message_file};
 use super::test_field::{ZoneSpec, zone_file};
-use super::test_script::sign_script;
+use super::test_script::{case_script, push, sign_script};
 use crate::games::common::garc::message_lines;
 use crate::games::{gen6::rom::plates, gen6::rom::script};
 use crate::py::Result;
@@ -592,6 +592,45 @@ fn test_where_a_buildings_way_out_comes_out_in_its_towns_place_is_outdoors() -> 
     assert_eq!(
         plates::outdoors(&zones, &table())?,
         HashSet::from([TOWN, UPPER, LAB])
+    );
+    Ok(())
+}
+
+/// Every vending machine is a record of its zone's own script whose case runs one of five
+/// shared ones (spike 210); a record of a shared script's own number is left to its number.
+#[test]
+fn test_furniture_whose_case_runs_a_shared_script_is_that_script() -> Result<()> {
+    let code = case_script(&IndexMap::from([
+        (
+            9,
+            vec![
+                script::PROC,
+                push(0x28F4),
+                script::NATIVE,
+                90,
+                4,
+                script::RETN,
+            ],
+        ),
+        (3, vec![script::PROC, script::RETN]),
+    ]));
+    let data = zone_file(&ZoneSpec {
+        furniture: &[(9, 90, 160), (3, 92, 160), (0x27E3, 98, 159)],
+        sections: 4,
+        script: &code,
+        ..ZoneSpec::default()
+    });
+    let zone = crate::games::gen6::field::zonedata::zone_file(&data)?.expect("a zone data file");
+    let furniture = crate::games::gen6::field::zonedata::records(
+        &data,
+        &zone,
+        crate::games::gen6::field::zonedata::FURNITURE,
+    )?;
+    let zones: IndexMap<i64, plates::Zone> =
+        IndexMap::from([(TOWN, (data, furniture, Vec::new()))]);
+    assert_eq!(
+        plates::shared_furniture(&zones)?,
+        IndexMap::from([((TOWN, 9), 0x28F4)])
     );
     Ok(())
 }

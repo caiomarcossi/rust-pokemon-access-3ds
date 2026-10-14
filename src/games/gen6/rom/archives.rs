@@ -299,6 +299,9 @@ pub struct GameText {
     /// (outdoor zone, furniture index) of every plate that says only a door's name
     /// (`plates.door_signs`).
     pub door_signs: HashSet<(i64, i64)>,
+    /// (zone, a furniture record's script) -> the game's shared script it runs
+    /// (`plates.shared_furniture`).
+    pub shared: IndexMap<(i64, i64), i64>,
 }
 
 /// `Callable[[int], Sequence[bytes]]`: a text archive's file as its lines (`lines_of`).
@@ -342,6 +345,7 @@ impl PartialEq for GameText {
             && self.species == other.species
             && self.items == other.items
             && self.door_signs == other.door_signs
+            && self.shared == other.shared
     }
 }
 
@@ -384,6 +388,7 @@ impl Default for GameText {
             items: Vec::new(),
             lines: IndexMap::new(),
             door_signs: HashSet::new(),
+            shared: IndexMap::new(),
         }
     }
 }
@@ -733,6 +738,7 @@ impl GameText {
                 ),
             ]),
             door_signs,
+            shared: plates::shared_furniture(&read)?,
         };
         if layout.protagonists && !text.protagonists_hold() {
             return Err(Error::new(

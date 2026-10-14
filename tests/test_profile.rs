@@ -123,7 +123,7 @@ fn names(shipped: &[(&str, &str)]) -> Rc<Names> {
         .iter()
         .map(|(key, name)| (key.to_string(), name.to_string()))
         .collect();
-    Rc::new(Names::new(Some(&shipped), None, None).unwrap())
+    Rc::new(Names::new(Some(&shipped), None, None, None, None).unwrap())
 }
 
 /// The game turns the place's name when the place changes, not the zone: walking out of a house

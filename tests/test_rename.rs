@@ -392,7 +392,16 @@ fn test_the_box_for_an_exit_into_another_place_says_the_place() {
 /// So a correction is a few keystrokes, and so the player hears what it is called now.
 #[test]
 fn test_a_thing_already_named_starts_the_box_with_the_name_it_has() {
-    let names = Rc::new(Names::new(Some(&shipped(&[("0x13f", "Norman")])), None, None).unwrap());
+    let names = Rc::new(
+        Names::new(
+            Some(&shipped(&[("0x13f", "Norman")])),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap(),
+    );
     let (mut nav, _, dialog, _) = navigator(Wanted {
         names: Some(names),
         ..Wanted::default()
@@ -535,7 +544,16 @@ fn test_a_cancelled_box_changes_nothing() {
 /// "Rival" comes back after the player's "May" is cleared, and the player is told it has.
 #[test]
 fn test_an_empty_name_gives_the_thing_back_to_the_shipped_table() {
-    let names = Rc::new(Names::new(Some(&shipped(&[("0x13f", "Norman")])), None, None).unwrap());
+    let names = Rc::new(
+        Names::new(
+            Some(&shipped(&[("0x13f", "Norman")])),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap(),
+    );
     let (mut nav, backend, _, _) = navigator(Wanted {
         answer: Some(String::new()),
         names: Some(names.clone()),
@@ -569,14 +587,14 @@ fn test_an_empty_name_with_nothing_shipped_says_it_has_no_name() {
 fn test_a_name_is_there_again_the_next_time_pa3ds_starts() {
     let tmp_path = TmpPath::new();
     let path = tmp_path.join("sango-1.toml");
-    let names = Rc::new(Names::new(None, Some(&path), None).unwrap());
+    let names = Rc::new(Names::new(None, Some(&path), None, None, None).unwrap());
     let (mut nav, _, _, _) = navigator(Wanted {
         names: Some(names),
         ..Wanted::default()
     });
     nav.press(ITEM_NEXT).unwrap();
     rename(&mut nav);
-    let again = Names::new(None, Some(&path), None).unwrap();
+    let again = Names::new(None, Some(&path), None, None, None).unwrap();
     assert_eq!(again.place(MART, 1).as_deref(), Some("the Mart's sign"));
 }
 
@@ -668,7 +686,16 @@ fn youngsters() -> Field {
 /// on his record's map, and the other Youngster keeps the sprite's.
 #[test]
 fn test_one_youngster_is_named_alone_while_the_box_stays_ticked() {
-    let names = Rc::new(Names::new(Some(&shipped(&[("0xda", "Youngster")])), None, None).unwrap());
+    let names = Rc::new(
+        Names::new(
+            Some(&shipped(&[("0xda", "Youngster")])),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap(),
+    );
     let (mut nav, backend, dialog, _) = navigator(Wanted {
         answer: Some("Youngster Calvin".to_string()),
         names: Some(names.clone()),
@@ -729,7 +756,16 @@ fn test_the_box_unticked_names_everyone_drawn_alike_and_one_named_alone_keeps_th
 
 #[test]
 fn test_clearing_a_name_given_alone_gives_the_one_back_to_the_sprites() {
-    let names = Rc::new(Names::new(Some(&shipped(&[("0xda", "Youngster")])), None, None).unwrap());
+    let names = Rc::new(
+        Names::new(
+            Some(&shipped(&[("0xda", "Youngster")])),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap(),
+    );
     names.name_place(ROUTE, MODEL_SOURCE | 7, "Calvin").unwrap();
     let (mut nav, backend, _, _) = navigator(Wanted {
         answer: Some(String::new()),

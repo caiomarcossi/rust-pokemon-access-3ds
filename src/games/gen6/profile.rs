@@ -16,7 +16,7 @@ use crate::core::binary::u32;
 use crate::core::config::{Extras, Navigation, Ui};
 use crate::core::discovery::{Discovery, Found, HEAP_SPAN, LINEAR_SPAN, within};
 use crate::core::memory::{Cache, Memory, phase};
-use crate::core::names::{GamePlace, GameSprite, Names};
+use crate::core::names::{FURNITURE, GamePlace, GameSprite, Names, TILES};
 use crate::core::rtti::{ClassNames, demangle};
 use crate::core::speech::{Category, Speech};
 use crate::core::tones::Tones;
@@ -381,6 +381,8 @@ impl Gen6Profile {
             text.as_deref(),
             &image,
             Rc::new(py::time::monotonic),
+            Some(&named.words(TILES)),
+            Some(&named.words(FURNITURE)),
         );
         let classes: IndexSet<String> = HEAP_CLASSES
             .iter()

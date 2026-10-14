@@ -80,6 +80,14 @@ pub trait ConditionsReader {
     ) -> Result<()>;
 }
 
+/// `str | int`, what `Game.furniture` says a record is: a word, or the kind of use tile it is
+/// called as.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FurnitureKind {
+    Word(String),
+    Tile(i64),
+}
+
 /// A game's `data` folder as the binary carries it: each language's `sprites.toml`, by the
 /// language's code. Python's is a `Path` to the folder and `pa3ds.core.names` reads
 /// `<language>/sprites.toml` from it; the Rust binary has no folder beside it, so the files are
@@ -168,8 +176,8 @@ pub struct Game {
     /// where the tuple has two.
     pub triggers: IndexMap<(i64, i64), (String, String, Option<i64>)>,
     /// (zone, a furniture record's script) -> what it is, where it is not a sign: a Secret Base's
-    /// PC and flag, Mossdeep Gym's switches.
-    pub furniture: IndexMap<(i64, i64), String>,
+    /// flag, Mossdeep Gym's switches; or the kind of use tile it is called as, a Secret Base's PC.
+    pub furniture: IndexMap<(i64, i64), FurnitureKind>,
     /// The reader of its Secret Bases, given the executable's image to find every spot in, or None
     /// in a game with none: ORAS's (`games.oras.field.secret_base`).
     pub secret_bases: Option<SecretBaseFactory>,
@@ -254,17 +262,22 @@ impl Game {
     /// does not parse, is no names at all. Written for the runtime's `Names.load`, which reads a
     /// folder the Rust binary does not have.
     pub fn sprites(&self, language: &str) -> IndexMap<String, String> {
+        toml::strings(self.table(language).get(crate::core::names::SPRITES))
+    }
+
+    /// `toml.read(data / language / "sprites.toml")` of the table the binary carries: every
+    /// section, the sprites' names, the use tiles' and furniture's words and the slots'.
+    pub fn table(&self, language: &str) -> IndexMap<String, ::toml::Value> {
         let Some((_, text)) = self.data.iter().find(|(held, _)| *held == language) else {
             return IndexMap::new();
         };
-        let found = if text.starts_with('\u{feff}') {
+        if text.starts_with('\u{feff}') {
             IndexMap::new()
         } else {
             match text.parse::<::toml::Table>() {
                 Ok(loaded) => toml::table(Some(&::toml::Value::Table(loaded))),
                 Err(_) => IndexMap::new(),
             }
-        };
-        toml::strings(found.get(crate::core::names::SPRITES))
+        }
     }
 }

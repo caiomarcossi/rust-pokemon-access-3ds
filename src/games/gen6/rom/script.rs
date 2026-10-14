@@ -103,6 +103,12 @@ pub const CASETBL: i64 = 130;
 /// Packed: push the constant in the top half. A call's arguments are pushed so, the last first,
 /// and then their size in bytes.
 pub const PUSH_CONSTANT: i64 = 0xBC;
+/// A function's first instruction, and a call to one of the game's natives: the native's number
+/// and its arguments' size in bytes.
+pub const PROC: i64 = 46;
+pub const NATIVE: i64 = 135;
+/// The first number of the game's shared scripts (`Script.runs`).
+pub const SHARED: i64 = 2000;
 pub const PACKED: i64 = 160;
 /// The style a building's plate is shown in (`sign_lines`).
 pub const PLATE: i64 = 6;
@@ -238,6 +244,33 @@ impl Script {
             }
         }
         Ok(calls)
+    }
+
+    /// The shared script the case `number` runs, or None: its first call is to a function
+    /// that pushes one constant from `SHARED` up and hands it to a native, as every vending
+    /// machine's case does, 0x28f0 to 0x28f4 by where it stands (spike B).
+    pub fn runs(&self, number: i64) -> Result<Option<i64>> {
+        let case = self.cases()?.get(&number).copied();
+        let function = match case {
+            None => None,
+            Some(case) => self.called(case)?,
+        };
+        let body = match function {
+            None => Vec::new(),
+            Some(function) => self.body(function)?,
+        };
+        let ops: Vec<&(i64, Vec<i64>)> = py::slice(&body, 0, 3)
+            .iter()
+            .map(|cell| &self.instructions[cell])
+            .collect();
+        let codes: Vec<i64> = ops.iter().map(|(op, _)| *op).collect();
+        if codes != [PROC, PUSH_CONSTANT, NATIVE] || py::slice_from(&ops[2].1, 1) != [4] {
+            return Ok(None);
+        }
+        let Some(&shared) = ops[1].1.first() else {
+            return Err(Error::index("tuple index out of range"));
+        };
+        Ok((shared >= SHARED).then_some(shared))
     }
 
     /// The cells of the function at `start`, up to its first return.
