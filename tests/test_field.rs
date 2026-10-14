@@ -275,6 +275,8 @@ pub(crate) fn pages(memory: &FakeMemory) -> IndexMap<i64, Vec<u8>> {
 pub(crate) struct ZoneSpec<'a> {
     /// (script, x, z).
     pub furniture: &'a [(i64, i64, i64)],
+    /// (script, x, z, width, height), after `furniture`: Python's `furniture` takes either.
+    pub sized: &'a [(i64, i64, i64, i64, i64)],
     /// (model code, x, z, script), and the flag at +0x0a after them when it is not the usual
     /// 0x7d0 (3000 and up is a trainer).
     pub npcs: &'a [(i64, i64, i64, i64, Option<i64>)],
@@ -294,6 +296,7 @@ impl Default for ZoneSpec<'_> {
     fn default() -> Self {
         ZoneSpec {
             furniture: &[],
+            sized: &[],
             npcs: &[],
             warps: &[],
             info: &[],
@@ -304,7 +307,8 @@ impl Default for ZoneSpec<'_> {
     }
 }
 
-/// A zone data file: `furniture` as (script, x, z), `npcs` as (model code, x, z, script) and
+/// A zone data file: `furniture` as (script, x, z) and its width and height where not 1,
+/// `npcs` as (model code, x, z, script) and
 /// the flag at +0x0a after them when it is not the usual 0x7d0 (3000 and up is a trainer), and
 /// `warps` as (to zone, kind, x, z) in cells, then the height it stands at in world units and
 /// the warp of the zone it goes to that it comes out at, where not 0; `triggers` as (script,
@@ -314,6 +318,9 @@ pub(crate) fn zone_file(spec: &ZoneSpec) -> Vec<u8> {
     let mut records: Vec<u8> = Vec::new();
     for &(script, x, z) in spec.furniture {
         records.extend(le16(&[script, 3, 0, 0, x, z, 1, 1, 0, 0]));
+    }
+    for &(script, x, z, wide, deep) in spec.sized {
+        records.extend(le16(&[script, 3, 0, 0, x, z, wide, deep, 0, 0]));
     }
     for (i, npc) in spec.npcs.iter().enumerate() {
         records.extend(le16(&[
@@ -376,7 +383,7 @@ pub(crate) fn zone_file(spec: &ZoneSpec) -> Vec<u8> {
     }
     let mut entities = le32(&[8 + records.len() as i64]);
     entities.extend([
-        spec.furniture.len() as u8,
+        (spec.furniture.len() + spec.sized.len()) as u8,
         spec.npcs.len() as u8,
         spec.warps.len() as u8,
         spec.triggers.len() as u8,
@@ -2310,7 +2317,7 @@ fn test_a_stair_is_where_the_ground_meets_a_floor_over_it() {
 /// Spike 167: Sootopolis Gym's invisible blockers, sprite 0x8a, rows of three across the
 /// corridors up from its rooms, were listed as nameless people. Nobody is listed there, and the
 /// cell is still in the way. So is `STOPPER3`, ten of them round Seafloor Cavern's submarine and
-/// one on the Sealed Chamber's wall (spike A), but in Mauville Gym, where it is a barrier.
+/// one on the Sealed Chamber's wall (movie44), but in Mauville Gym, where it is a barrier.
 #[test]
 fn test_the_invisible_blocker_is_nobody_and_stands_in_the_way() -> Result<()> {
     let mut town = Town::new();
@@ -2383,12 +2390,70 @@ fn test_a_model_drawn_as_nothing_is_what_it_stands_in_for() -> Result<()> {
             .collect()
     };
     let r#where = town.r#where()?;
-    assert_eq!(people(&r#where), IndexMap::from([((99, 170), groudon)]));
+    let sized: IndexMap<(i64, i64), (i64, (i64, i64))> = r#where
+        .interactables
+        .iter()
+        .filter(|item| item.category == "people")
+        .map(|item| (item.cell, (item.code, item.size)))
+        .collect();
+    assert_eq!(sized, IndexMap::from([((99, 170), (groudon, (2, 1)))]));
     assert!(!town.reader.ground(&r#where, None)?.open((106, 171))?);
     // Once Groudon itself stands where it can be listed, it is listed and not its stand-ins.
     town.model(5, TOWN, 0, groudon, (100, 165));
     let r#where = town.r#where()?;
     assert_eq!(people(&r#where), IndexMap::from([((100, 165), groudon)]));
+    Ok(())
+}
+
+/// Seafloor Cavern's submarine is four furniture records with one script, two 4 by 4 and an
+/// end of 1 by 2 at each side, and was listed as four signs; an elevator's door is two records
+/// side by side with a shared script each, and was two (Orion, movie44). Each is one thing over
+/// the box round it, by its first record; one script's records apart stay apart.
+#[test]
+fn test_furniture_of_one_script_that_touches_is_one_thing() -> Result<()> {
+    let mut town = Town::new();
+    let data = zone_file(&ZoneSpec {
+        sized: &[
+            (1, 107, 166, 4, 4),
+            (1, 111, 166, 4, 4),
+            (1, 106, 167, 1, 2),
+            (1, 115, 167, 1, 2),
+            (0x27E3, 98, 159, 1, 1),
+            (0x27E2, 99, 159, 1, 1),
+            (5, 90, 160, 1, 1),
+            (5, 92, 160, 1, 1),
+        ],
+        info: &town_info(),
+        ..ZoneSpec::default()
+    });
+    town.memory.write(FILE, &data);
+    town.memory
+        .u32(HOLDER, &[FILE, OTHER, 0x11 | (data.len() as i64) << 8]);
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given::default(),
+        Game {
+            elevators: oras::ELEVATORS.collect(),
+            ..game()
+        },
+    );
+    let mut signs: Vec<((i64, i64), (i64, i64), i64)> = town
+        .r#where()?
+        .interactables
+        .iter()
+        .filter(|item| !item.move_model && source_kind(item.source) == FURNITURE_SOURCE)
+        .map(|item| (item.cell, item.size, source_number(item.source)))
+        .collect();
+    signs.sort();
+    assert_eq!(
+        signs,
+        [
+            ((90, 160), (1, 1), 6),
+            ((92, 160), (1, 1), 7),
+            ((98, 159), (2, 1), 4),
+            ((106, 166), (10, 4), 0)
+        ]
+    );
     Ok(())
 }
 

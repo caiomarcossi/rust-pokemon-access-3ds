@@ -54,9 +54,11 @@ to install.
   distance ("door, 1 of 3, 3 east 2 north"), and the way to any of them on foot. An exit says
   what it is: a door, stairs up or down, a passage between rooms with no floor between them, a
   ladder up or down, the name of the building behind it, or in a hideout a teleporter and where
-  it comes out ("teleporter, 3 east, out at 17 east 8 south"). What stands in your way until a
-  move clears it is under obstacles: bushes for Cut, cracked boulders for Rock Smash, Mauville
-  Gym's barriers, and big boulders for Strength with the holes they can be pushed into ("hole, 2
+  it comes out ("teleporter, 3 east, out at 17 east 8 south"). Something the game builds out of
+  several pieces is one thing at its nearest cell: Seafloor Cavern's submarine is one sign, and
+  an elevator's two-cell door one. The game's invisible walls are never listed. What stands in
+  your way until a move clears it is under obstacles: bushes for Cut, cracked boulders for Rock
+  Smash, Mauville Gym's barriers, and big boulders for Strength with the holes they can be pushed into ("hole, 2
   east 3 south"): push
   a boulder into a hole and both leave the list, and the filled hole is floor you can walk over.
   A boulder says the ways it can be pushed from where it stands now, and which push drops it

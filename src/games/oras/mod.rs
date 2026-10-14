@@ -757,6 +757,14 @@ pub const STOPPER: i64 = 0x8A;
 /// Python's is a frozenset; an array here, collected where a set is wanted.
 pub const BLOCKERS: [i64; 2] = [STOPPER, STOPPER3];
 
+/// The shared scripts of the elevators' doors, a furniture record a cell, two side by side: two
+/// doors on each of Mauville City's floors, `0x1bd` and `0x1be`, Mauville Hills' among them, and one
+/// on each of the Lilycove Department Store's five, `0x143` to `0x147`, its first at (8, 9) and
+/// (9, 9). Facing either cell runs the elevator (Orion, 2026-10-13); each was listed as two signs.
+///
+/// Python's is a frozenset of the range; a `Range` here, collected where a set is wanted.
+pub const ELEVATORS: std::ops::Range<i64> = 0x27DA..0x27EC;
+
 /// The player's looks among the ROM's sprite ids, `HEROINE_RS` and `HERO_RS` through the contest
 /// outfits to `MAGMA_HERO_RS` and `AQUA_HERO_RS` (spike 87): putting the Magma Suit on in the
 /// Cave of Origin fills a work object at the player's own cell with `MAGMA_HERO_RS` (spike 203).
@@ -784,6 +792,7 @@ pub fn game() -> &'static Game {
         doors: Some(rotating_doors),
         ice: Some(ice_floors),
         blockers: HashSet::from(BLOCKERS),
+        elevators: ELEVATORS.collect(),
         player_looks: PLAYER_LOOKS.collect(),
         scenes: SCENES,
         stairs: HashSet::from([SOOTOPOLIS_GYM]),

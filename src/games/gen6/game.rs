@@ -186,6 +186,9 @@ pub struct Game {
     /// listed as nobody, and solid but where they stand in for a rotating door's arm. Not where a
     /// sprite is a barrier (`barriers`).
     pub blockers: HashSet<i64>,
+    /// The scripts of the furniture records an elevator's door is, one a cell: side by side, they
+    /// are one thing.
+    pub elevators: HashSet<i64>,
     /// The sprites the player is drawn as: a model drawn as one, standing in for the player in a
     /// scene, is the player and not listed.
     pub player_looks: HashSet<i64>,
@@ -236,6 +239,7 @@ impl Game {
             doors: None,
             ice: None,
             blockers: HashSet::new(),
+            elevators: HashSet::new(),
             player_looks: HashSet::new(),
             stairs: HashSet::new(),
             apps: Vec::new(),

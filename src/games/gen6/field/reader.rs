@@ -111,6 +111,8 @@ pub const TABLE_EVERY: f64 = 2.0;
 /// names one, and its move model's sprite is the invisible blocker it stands elsewhere (spike
 /// 146).
 pub const BARRIER: &str = "barrier";
+/// The key the records of every elevator's door share (`FieldReader._furniture_key`): never said.
+pub const ELEVATOR: &str = "elevator";
 
 pub const SLOPE: &str = "slope";
 pub const BUMPY_SLOPE: &str = "bumpy slope";
@@ -230,6 +232,8 @@ pub struct FieldReader {
     doors: Option<Rc<dyn DoorReader>>,
     /// The sprites of the game's invisible blockers (`Game.blockers`).
     blockers: HashSet<i64>,
+    /// The scripts of the furniture records of elevators' doors (`Game.elevators`).
+    elevators: HashSet<i64>,
     /// The sprites the player is drawn as (`Game.player_looks`).
     player_looks: HashSet<i64>,
     /// Zones whose floors' stairs are listed (`Game.stairs`).
@@ -374,6 +378,7 @@ impl FieldReader {
             features,
             doors: game.doors.map(|make| make(memory.clone())),
             blockers: game.blockers.clone(),
+            elevators: game.elevators.clone(),
             player_looks: game.player_looks.clone(),
             stairs: game.stairs.clone(),
             ice: game.ice.map(|make| make(memory.clone())),
@@ -927,10 +932,12 @@ impl FieldReader {
         let mut home = None;
         if let Some(data) = &data {
             home = self.home(data, &[r#where.zone])?;
+            let mut furniture: Vec<Interactable> = Vec::new();
             for item in read_furniture(&*self.memory, data)? {
                 let kind = self.furniture_kind(home, &item);
-                items.push(Interactable { kind, home, ..item });
+                furniture.push(Interactable { kind, home, ..item });
             }
+            items.extend(joined(furniture, &|item| Some(self.furniture_key(item))));
             let warps = read_records(&*self.memory, data, WARP)?;
             for (i, record) in warps.iter().enumerate() {
                 if !on_rail(record)? {
@@ -1203,6 +1210,22 @@ impl FieldReader {
             });
         }
         Ok(out)
+    }
+
+    /// What makes furniture records that touch one thing (`_joined`): their script, which the
+    /// game runs whichever of them the player faces, as round Seafloor Cavern's submarine, four
+    /// records saying "“Submarine Explorer 1” is painted on the hull" and listed as four signs
+    /// (Orion, 2026-10-13). The ROM has 33 such pairs in 12 zones. An elevator's door is two
+    /// records with a shared script each (`Game.elevators`), both of which run the elevator.
+    ///
+    /// Python's key is the script or `ELEVATOR`, an int or a str; here both are text, which no
+    /// script's number spells as `ELEVATOR` does.
+    fn furniture_key(&self, item: &Interactable) -> String {
+        if self.elevators.contains(&item.code) {
+            ELEVATOR.to_string()
+        } else {
+            item.code.to_string()
+        }
     }
 
     /// What a furniture record is: a sign, unless the game's table of them says otherwise. The PC
@@ -1534,15 +1557,15 @@ impl FieldReader {
     /// its north-west hole, and the boulder pushed into it was left out, its hole still listed and
     /// a wall (movie37).
     ///
-    /// A model drawn as nothing is called what it stands in for (`stand_ins`), once: the three in
-    /// front of Groudon are one "Groudon", the first by its record, and none once Groudon itself
-    /// is listed. It is left out on a door, which is listed already; and one drawn as the player
-    /// is the player, as the Magma Suit is put on in the Cave of Origin: listed there as "person,
-    /// here" (spike 203).
+    /// A model drawn as nothing is called what it stands in for (`stand_ins`), those side by
+    /// side as one (`_joined`): the three in front of Groudon are one "Groudon", the first by its
+    /// record, and none once Groudon itself is listed. It is left out on a door, which is listed
+    /// already; and one drawn as the player is the player, as the Magma Suit is put on in the
+    /// Cave of Origin: listed there as "person, here" (spike 203).
     fn people(&self, zone: i64) -> Result<Vec<Interactable>> {
         let mut out: Vec<Interactable> = Vec::new();
-        // What each stand-in is called -> the stand-in of the lowest record listed as it.
-        let mut standing_in: IndexMap<i64, Interactable> = IndexMap::new();
+        // The stand-ins called what another record draws.
+        let mut standing_in: Vec<Interactable> = Vec::new();
         let mut chunks: Vec<Rc<Chunk>> = Vec::new();
         for chunk in self.chunks_loaded()? {
             chunks.push(self.terrain.flattened(&chunk, None, false)?);
@@ -1588,20 +1611,13 @@ impl FieldReader {
             let item = self.model_item(model, &head, cell, size, Some(called))?;
             match stood_in {
                 None => out.push(item),
-                Some(stood_in) => {
-                    let replaces = match standing_in.get(&stood_in) {
-                        None => true,
-                        Some(first) => mmodel::index_of(&head)? < first.record.unwrap_or((0, 0)).1,
-                    };
-                    if replaces {
-                        standing_in.insert(stood_in, item);
-                    }
-                }
+                Some(_) => standing_in.push(item),
             }
         }
         let listed: HashSet<i64> = out.iter().map(|item| item.code).collect();
-        for (code, item) in standing_in {
-            if !listed.contains(&code) {
+        standing_in.sort_by_key(|item| item.record.unwrap_or((0, 0)));
+        for item in joined(standing_in, &|item| Some(item.code.to_string())) {
+            if !listed.contains(&item.code) {
                 out.push(item);
             }
         }
@@ -2362,6 +2378,42 @@ fn gathered(cells: &HashSet<Cell>, reach: i64) -> Vec<Vec<Cell>> {
             }
         }
         out.push(group);
+    }
+    out
+}
+
+/// `items` with those of one `key` that touch side to side as one thing over the box round
+/// them, as the first of them listed (`_touching`, `_spread`); a key of None is kept apart. One
+/// thing the game builds of several records: Seafloor Cavern's submarine is four furniture
+/// records with one script, an elevator's door two side by side, and three stand-ins in a row
+/// in front of Groudon (spike A).
+fn joined(
+    items: Vec<Interactable>,
+    key: &dyn Fn(&Interactable) -> Option<String>,
+) -> Vec<Interactable> {
+    let mut out: Vec<Interactable> = Vec::new();
+    let mut keyed: IndexMap<String, Vec<Interactable>> = IndexMap::new();
+    for item in items {
+        match key(&item) {
+            None => out.push(item),
+            Some(which) => keyed.entry(which).or_default().push(item),
+        }
+    }
+    for alike in keyed.values() {
+        let cells: HashSet<Cell> = alike.iter().flat_map(|item| item.cells()).collect();
+        for group in touching(&cells) {
+            let group_cells: HashSet<Cell> = group.iter().copied().collect();
+            let first = alike
+                .iter()
+                .find(|item| item.cells().iter().any(|cell| group_cells.contains(cell)))
+                .expect("a group's cells are an item's");
+            let (cell, size) = spread(&group);
+            out.push(Interactable {
+                cell,
+                size,
+                ..first.clone()
+            });
+        }
     }
     out
 }
