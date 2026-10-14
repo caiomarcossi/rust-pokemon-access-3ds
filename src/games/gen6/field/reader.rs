@@ -711,32 +711,7 @@ impl FieldReader {
             self.terrain.rises(&[FALLS])?,
         );
         let surfaces = self.surfaces(r#where.zone)?;
-        if self.zone_at(r#where.cell)?.is_none() {
-            let belts = self.belts_here(r#where.zone)?;
-            return Ok(Ground {
-                decks,
-                cliffs,
-                ladders,
-                doors,
-                hops,
-                falls,
-                surfaces,
-                stacked,
-                level,
-                ice,
-                filled,
-                ..Ground::of(
-                    r#where,
-                    Of {
-                        chunks,
-                        belts,
-                        clears: self.clears.clone(),
-                        solid,
-                        ..Of::default()
-                    },
-                )
-            });
-        }
+        let trusted = self.zone_at(r#where.cell)?.is_some();
         let me = self
             .me
             .upgrade()
@@ -745,7 +720,11 @@ impl FieldReader {
             None => Ok(None),
             Some(chunk) => Ok(Some(laid(&me.terrain, &chunk, stacked, level)?)),
         });
-        let grid = self.grid.borrow().clone();
+        let grid = if trusted {
+            self.grid.borrow().clone()
+        } else {
+            None
+        };
         let belts = self.belts_here(r#where.zone)?;
         Ok(Ground {
             decks,
@@ -765,7 +744,7 @@ impl FieldReader {
                     chunks,
                     grid,
                     belts,
-                    far: if self.terrain.known() {
+                    far: if trusted && self.terrain.known() {
                         Some(far)
                     } else {
                         None

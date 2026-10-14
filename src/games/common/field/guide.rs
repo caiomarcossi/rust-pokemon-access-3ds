@@ -278,14 +278,13 @@ fn over_ice(
             ..Interactable::new("exits", "ice", entry)
         };
         let goals: IndexMap<Cell, Option<&'static str>> = IndexMap::from([(entry, None)]);
-        let onto = search_by(
-            ground,
+        let onto = ground.find(
             r#where.cell,
             &goals,
-            &|cell: Cell| Ok(!cells.contains_key(&cell) && ground.passable(cell)?),
             heading,
-            false,
             Some(&aim),
+            false,
+            Some(&|cell: Cell| Ok(!cells.contains_key(&cell) && ground.passable(cell)?)),
         )?;
         if !reached(ground, &aim, &goals, &onto)? {
             continue;
@@ -535,66 +534,6 @@ fn reached(
     Ok(at.is_some_and(|at| at == ANY_FLOOR || at == walked[walked.len() - 1]))
 }
 
-/// `pathfind.find(...)` over `ground` with `over=ground.over` and `**_walk(ground, start,
-/// item)`, which each of Python's three calls spells out in full.
-fn search(
-    ground: &Ground,
-    start: Cell,
-    goals: &IndexMap<Cell, Option<&'static str>>,
-    heading: &str,
-    closest: bool,
-    item: Option<&Interactable>,
-) -> Result<Option<Vec<Cell>>> {
-    search_by(
-        ground,
-        start,
-        goals,
-        &|cell: Cell| ground.passable(cell),
-        heading,
-        closest,
-        item,
-    )
-}
-
-/// `search` with its own say of which cells may be walked.
-fn search_by(
-    ground: &Ground,
-    start: Cell,
-    goals: &IndexMap<Cell, Option<&'static str>>,
-    walkable: &dyn Fn(Cell) -> Result<bool>,
-    heading: &str,
-    closest: bool,
-    item: Option<&Interactable>,
-) -> Result<Option<Vec<Cell>>> {
-    let r#box = ground.r#box(start, goals.keys().copied())?;
-    let ledge = |cell: Cell| ground.ledge(cell);
-    let toll = |cell: Cell, step: Cell| ground.toll(cell, step);
-    let joined = |cell: Cell, step: Cell| Ok(ground.joined(cell, step));
-    let over = |cell: Cell| ground.over(cell);
-    let walk = walk(ground, start, item)?;
-    let through = |turns: &[i64], cell: Cell, step: Cell| walk.through(turns, cell, step);
-    let arrives = |cell: Cell, turns: &[i64]| walk.arrives(cell, turns);
-    let carry = |cell: Cell| ground.carry(cell);
-    pathfind::find(
-        start,
-        goals,
-        walkable,
-        r#box,
-        &pathfind::Options {
-            heading,
-            ledge: Some(&ledge),
-            toll: Some(&toll),
-            closest,
-            joined: Some(&joined),
-            turns: walk.turns.clone(),
-            through: if walk.active { Some(&through) } else { None },
-            over: Some(&over),
-            arrives: if ground.stacked { Some(&arrives) } else { None },
-            carry: Some(&carry),
-        },
-    )
-}
-
 /// How far along `path` the cell nearest `cell` is, when one is within `slack` cells of it
 /// either way, the furthest along of the nearest; or None.
 fn near(path: &[Cell], cell: Cell, slack: i64) -> Option<i64> {
@@ -606,104 +545,6 @@ fn near(path: &[Cell], cell: Cell, slack: i64) -> Option<i64> {
     match best {
         Some(best) if best.0 <= slack => Some(-best.1),
         _ => None,
-    }
-}
-
-/// What a search from `start` is given to walk the sea's currents, which carry the player their
-/// own way; through the ground's rotating doors, where they stand now and what each step does to
-/// them; and on a stacked ground the floor each step is on, the player's first and last, and the
-/// floor `item` is reached on.
-///
-/// Python returns the keyword arguments for `find` as a dict, `{"carry": ground.carry}` alone
-/// where there are no doors and no floors (`active` is False and `turns` empty): `search_by`
-/// reads them from this, and hands `find` the ground's `carry` every time.
-struct Walk<'a> {
-    ground: &'a Ground,
-    active: bool,
-    turns: pathfind::Turns,
-    crossings: Option<Rc<HashMap<(Cell, Cell), i64>>>,
-    height: Option<f64>,
-    own: i64,
-}
-
-fn walk<'a>(ground: &'a Ground, start: Cell, item: Option<&Interactable>) -> Result<Walk<'a>> {
-    if ground.doors.is_empty() && !ground.stacked {
-        return Ok(Walk {
-            ground,
-            active: false,
-            turns: Vec::new(),
-            crossings: None,
-            height: None,
-            own: ANY_FLOOR,
-        });
-    }
-    // ponytail: every way the doors can stand is searched with the cells, 0.4 to 0.6 s across
-    // Fortree Gym's seven; a search over the doors' turns alone, then the cells, if it grows.
-    let crossings = if ground.doors.is_empty() {
-        None
-    } else {
-        Some(ground.crossings())
-    };
-    if !ground.stacked {
-        return Ok(Walk {
-            ground,
-            active: true,
-            turns: ground.turns(),
-            crossings,
-            height: None,
-            own: ANY_FLOOR,
-        });
-    }
-    let height = item.and_then(|item| item.height);
-    // Where a cell has no floor at the thing's height, the floor the thing stands on is where a
-    // way that falls short ends: P to Wallace, the corridors up to him shut, went down to the
-    // lower floor's room under him, nearer as the crow flies than the way up to him (spike 167).
-    let own = match item {
-        None => ANY_FLOOR,
-        Some(item) => ground.floor(item.cell, height)?,
-    };
-    let mut turns = ground.turns();
-    turns.push(ground.floor(start, ground.level)?);
-    Ok(Walk {
-        ground,
-        active: true,
-        turns,
-        crossings,
-        height,
-        own,
-    })
-}
-
-impl Walk<'_> {
-    fn through(&self, turns: &[i64], cell: Cell, step: Cell) -> Result<Option<pathfind::Turns>> {
-        let ground = self.ground;
-        let doors = if ground.stacked {
-            &turns[..turns.len() - 1]
-        } else {
-            turns
-        };
-        let after = if ground.doors.is_empty() {
-            Some(Vec::new())
-        } else {
-            ground.through(doors, cell, step, self.crossings.as_deref())?
-        };
-        let Some(mut after) = after else {
-            return Ok(None);
-        };
-        if !ground.stacked {
-            return Ok(Some(after));
-        }
-        let Some(floor) = ground.climb(turns[turns.len() - 1], cell, step)? else {
-            return Ok(None);
-        };
-        after.push(floor);
-        Ok(Some(after))
-    }
-
-    fn arrives(&self, cell: Cell, turns: &[i64]) -> Result<bool> {
-        let at = self.ground.floor_at(cell, self.height)?;
-        let floor = at.unwrap_or(self.own);
-        Ok(floor == ANY_FLOOR || floor == turns[turns.len() - 1])
     }
 }
 
@@ -917,28 +758,7 @@ impl Guide {
                 .values()
                 .flat_map(|cells| cells.keys().copied())
                 .collect();
-            let r#box = if aims.is_empty() {
-                walked.r#box(r#where.cell, [r#where.cell])?
-            } else {
-                walked.r#box(r#where.cell, aims)?
-            };
-            let ledge = |cell: Cell| walked.ledge(cell);
-            let joined = |cell: Cell, step: Cell| Ok(walked.joined(cell, step));
-            let over = |cell: Cell| walked.over(cell);
-            let open = |cell: Cell| walked.open(cell);
-            let carry = |cell: Cell| walked.carry(cell);
-            let reached = pathfind::reached(
-                r#where.cell,
-                &|cell: Cell| walked.passable(cell),
-                r#box,
-                &pathfind::Reach {
-                    ledge: Some(&ledge),
-                    joined: Some(&joined),
-                    over: Some(&over),
-                    ends: Some(&open),
-                    carry: Some(&carry),
-                },
-            )?;
+            let reached = walked.reached(r#where.cell, &aims)?;
             for (key, cells) in goals {
                 if cells.keys().any(|cell| reached.contains(cell)) {
                     out.insert(key);
@@ -1016,7 +836,7 @@ impl Guide {
         }
         let sides = sides(item, push);
         let mut goals = aimed(ground.goals(item)?, &sides);
-        let mut path = search(&ground, r#where.cell, &goals, heading, true, Some(item))?;
+        let mut path = ground.find(r#where.cell, &goals, heading, Some(item), true, None)?;
         // ponytail: where the ground is not stacked, a whole map's decks walked at one height, so
         // a way that goes under a deck and later onto it is not found; a stacked one finds it.
         let levels: Vec<Option<f64>> = std::iter::once(height)
@@ -1030,7 +850,7 @@ impl Guide {
         for deck in decks {
             let other = self.ground(r#where, hm, Some(deck))?;
             let aim = aimed(other.goals(item)?, &sides);
-            let found = search(&other, r#where.cell, &aim, heading, false, Some(item))?;
+            let found = other.find(r#where.cell, &aim, heading, Some(item), false, None)?;
             if let Some(found) = found {
                 ground = other;
                 goals = aim;
@@ -1462,7 +1282,7 @@ impl Guide {
             // A boulder a push will not move that way is in the way too (movie46, spike 213).
             clear.shoves = IndexMap::new();
             let goals = aimed(clear.goals(item)?, sides);
-            let way = search(&clear, r#where.cell, &goals, heading, false, Some(item))?;
+            let way = clear.find(r#where.cell, &goals, heading, Some(item), false, None)?;
             let Some(way) = way else {
                 continue;
             };
