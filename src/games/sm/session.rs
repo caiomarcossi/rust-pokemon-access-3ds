@@ -157,6 +157,7 @@ pub fn start(rpc: Rc<dyn Rpc>, speech: Rc<Speech>, setup: Setup) -> Result<Sessi
             &|_: &str, _: i64, _: i64| Ok(None),
             &|_: &str, _: i64| None,
             &setup.log,
+            Some(setup.process.title_id),
         )?
     } else {
         Vec::new()

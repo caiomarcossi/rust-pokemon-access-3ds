@@ -99,6 +99,7 @@ pub fn start(
             tap: setup.tap.clone(),
             slide: setup.slide.clone(),
             tones: setup.tones.clone(),
+            title: Some(setup.process.title_id),
         },
     ));
     // What the game allocates is found where it was allocated, the look after (spike 110).

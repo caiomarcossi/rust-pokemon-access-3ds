@@ -10,6 +10,10 @@
 //! anywhere else, as after losing a battle in it. A scene with no line is said each time the player
 //! arrives in its zone: a room whose way on nothing shows but the room itself.
 //!
+//! Omega Ruby and Alpha Sapphire play their own scenes in rooms of their own, twin zones of one
+//! layout (Seafloor Cavern's 0x6f and 0x6e), but some lines are said in a zone both share, as
+//! Steven's on Route 128: a scene said there names the version it was described in by its title id.
+//!
 //! Sun's demos keep their number (`App::AppDemo::AppDemoProc` +0x24, Khai, 2026-09-30), so a scene
 //! of Sun's is found by it, `demo = 6` for the chase after Kukui's call, in no zone and after no
 //! line.
@@ -122,13 +126,24 @@ pub type Word<'a> = &'a dyn Fn(&str, i64) -> Option<String>;
 /// game's own words. A line is `story:402:30`, the story text's file 402 and its line 30, or
 /// `text:147:67` out of the rest of the game's text; a scene with none is said on arriving in its
 /// zone, or as its demo starts, `demo = 6`, where the game numbers them. A scene whose line or
-/// names the ROM does not have is left out, and logged.
+/// names the ROM does not have is left out, and logged. A scene with a `title` is the running
+/// `title`'s alone: one version's, said at a line in a zone the other version shares.
 ///
 /// Python reads the file at a path; the binary carries it, so this takes its text, None where
 /// the game has no file in the language, as `toml.read` of a missing file is nothing.
-pub fn load(text: Option<&str>, line: Line, word: Word, log: &Log) -> Result<Vec<Scene>> {
+pub fn load(
+    text: Option<&str>,
+    line: Line,
+    word: Word,
+    log: &Log,
+    title: Option<i64>,
+) -> Result<Vec<Scene>> {
     let mut scenes: Vec<Scene> = Vec::new();
     for table in tables(toml::read_text(text).get("scene")) {
+        // `isinstance(only, int)`, a bool among them, as `int_of` reads it.
+        if title.is_some_and(|title| int_of(table.get("title")).is_some_and(|only| only != title)) {
+            continue;
+        }
         let after = str_of(table.get("after"));
         let zone = int_of(table.get("zone"));
         // `isinstance(demo, int) and not isinstance(demo, bool)`.

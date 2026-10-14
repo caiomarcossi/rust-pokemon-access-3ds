@@ -1,4 +1,5 @@
-# What Omega Ruby shows without words, in pa3ds's own words, said under [pa3ds.ui] descriptions.
+# What Omega Ruby and Alpha Sapphire show without words, in pa3ds's own words, said under
+# [pa3ds.ui] descriptions.
 #
 # A scene follows a line of the game's text in a zone: `story:402:30` is the story text's file 402,
 # line 30, the same line in every language, and `text:147:67` the rest of the game's text
@@ -7,8 +8,14 @@
 # seconds. A name the game shows is never written here: `{pokemon:383}` is the game's own word,
 # out of the player's ROM, as are `{trainer:N}`, `{item:N}` and `{place:N}`.
 #
-# Each scene was described from screenshots of a replay (spike 203, movie40_groudon_awakens and
-# movie41_cave_of_origin); the seconds are from the moment its demo or line came there.
+# Each version plays its own scenes in rooms of its own, twin zones of one layout (Seafloor
+# Cavern's 0x6f in Omega Ruby, 0x6e in Alpha Sapphire), but a line said in a zone both share, as on
+# Route 128, is one version's only with its `title`: 0x000400000011C400 Omega Ruby,
+# 0x000400000011C500 Alpha Sapphire.
+#
+# Each scene was described from screenshots of a replay (spike 203, Omega Ruby's
+# movie40_groudon_awakens and movie41_cave_of_origin, and Alpha Sapphire's movie2_cave_of_origin);
+# the seconds are from the moment its demo or line came there.
 
 # Seafloor Cavern, zone 0x6f: Archie's "Augh... You...", after Maxie's battle and before Groudon
 # wakes, a demo of 65 s.
@@ -57,6 +64,7 @@ text = "The sky blazes white and gold. You stand on a sandbar in the sea with {t
 [[scene]]
 after = "story:148:30"
 zone = 0x39
+title = 0x000400000011C400
 
 [[scene.beat]]
 text = "{trainer:235} and {trainer:691} leave."
@@ -65,6 +73,7 @@ text = "{trainer:235} and {trainer:691} leave."
 [[scene]]
 after = "story:148:58"
 zone = 0x39
+title = 0x000400000011C400
 
 [[scene.beat]]
 text = "{trainer:178} leaves. You stand alone on the sandbar, looking into the glare."
@@ -77,6 +86,7 @@ text = "Someone flies down out of the glare and lands beside you."
 [[scene]]
 after = "story:148:46"
 zone = 0x39
+title = 0x000400000011C400
 
 [[scene.beat]]
 text = "{trainer:557} flies off into the glare."
@@ -197,3 +207,191 @@ text = "By a rocket on its launch tower, {trainer:694} looks up at the sky."
 [[scene.beat]]
 zone = 0x1c7
 text = "The glare is gone. Your friends wait on the pier before the cave."
+
+# Alpha Sapphire, from movie1_kyogre_awakens. Seafloor Cavern, zone 0x6e: Maxie's "No... That...",
+# after Archie's battle and before Kyogre wakes, a demo of 65 s.
+[[scene]]
+after = "story:403:30"
+zone = 0x6e
+
+[[scene.beat]]
+text = "{trainer:178} walks to the edge of the water, where {pokemon:382} lies still, grey as stone."
+
+[[scene.beat]]
+demo = true
+at = 6
+text = "{trainer:178} holds up the {item:535}. It blazes with blue light, and light bursts out beneath {pokemon:382}'s stone shell."
+
+[[scene.beat]]
+at = 15
+text = "{pokemon:382} glows blue again. It opens its mouth wide and rises in the water."
+
+[[scene.beat]]
+at = 30
+text = "It swims around the pool as {trainer:178} and you watch from the shore."
+
+[[scene.beat]]
+at = 40
+text = "{pokemon:382} bursts out of the sea into the open sky in a spray of water."
+
+[[scene.beat]]
+at = 50
+text = "Storm clouds close over the sky, heavy rain lashes the sea, and {pokemon:382} roars."
+
+# Shelly's "You, too! Well, hurry up!": the pool is still, and everyone runs out of the cavern onto
+# Route 128, zone 0x39.
+[[scene]]
+after = "story:403:42"
+zone = 0x6e
+
+[[scene.beat]]
+text = "The pool lies still. {pokemon:382} is gone."
+
+[[scene.beat]]
+zone = 0x39
+text = "Black storm clouds fill the sky and heavy rain pours down. You stand on a sandbar in the sea with {trainer:235}, {trainer:178} and {trainer:688}."
+
+# Route 128: Shelly's "Let's go, Archie!".
+[[scene]]
+after = "story:148:14"
+zone = 0x39
+title = 0x000400000011C500
+
+[[scene.beat]]
+text = "{trainer:178} and {trainer:688} leave."
+
+# Maxie's "I will expect your arrival in Sootopolis.", before Steven comes.
+[[scene]]
+after = "story:148:56"
+zone = 0x39
+title = 0x000400000011C500
+
+[[scene.beat]]
+text = "{trainer:235} leaves. You stand alone on the sandbar in the pouring rain."
+
+[[scene.beat]]
+at = 10
+text = "Someone flies down out of the storm and lands beside you."
+
+# Steven's "Good luck to you."
+[[scene]]
+after = "story:148:46"
+zone = 0x39
+title = 0x000400000011C500
+
+[[scene.beat]]
+text = "{trainer:557} flies off into the storm."
+
+# Alpha Sapphire, from movie2_cave_of_origin. The Cave of Origin's deepest floor is zone 0x75, Omega Ruby's 0x76 laid out the
+# same: its warp and its trigger stand on the same cells, but the hall opens onto deep water.
+[[scene]]
+zone = 0x75
+
+[[scene.beat]]
+text = "The stairs come down at the east end of a passage. It runs west, then north through a gap into a wide hall, which narrows at its north end toward a pool of deep blue water."
+
+# The suit goes on as the scene starts, and its line comes after.
+[[scene]]
+after = "story:396:5"
+zone = 0x75
+
+[[scene.beat]]
+text = "The suit is blue with white trim, with yellow lights on its chest and a round helmet you look out through."
+
+# "fitted the suit with the Red Orb!"
+[[scene]]
+after = "story:396:6"
+zone = 0x75
+
+[[scene.beat]]
+text = "The {item:534} glows, and a bubble of red light closes around you."
+
+[[scene.beat]]
+at = 4
+text = "Red light washes over the deep water beside you, then everything flashes white."
+
+# Kyogre's roar there.
+[[scene]]
+after = "story:396:4"
+zone = 0x75
+
+[[scene.beat]]
+text = "{pokemon:382} surges up out of the water beside you."
+
+# "The sound cut out...", then a demo of 24 s, to zone 0x79.
+[[scene]]
+after = "story:396:13"
+zone = 0x75
+
+[[scene.beat]]
+demo = true
+at = 2
+text = "You ride on {pokemon:382}'s back."
+
+[[scene.beat]]
+at = 8
+text = "{pokemon:382} dives and carries you down through deep blue water, past great rocks, deeper and deeper."
+
+[[scene.beat]]
+at = 16
+text = "A blinding light fills the water ahead, and {pokemon:382} carries you into it."
+
+# Zone 0x79, Kyogre's "Krrraaawwwrrr!!!" as the player faces it, then a demo of 57 s to the
+# battle.
+[[scene]]
+after = "story:392:0"
+zone = 0x79
+
+[[scene.beat]]
+demo = true
+text = "Great crystals glow over the water, under falls of water from the cavern roof. {pokemon:382} floats before you."
+
+[[scene.beat]]
+at = 14
+text = "Blue light pours over {pokemon:382} and seals it inside a giant crystal."
+
+[[scene.beat]]
+at = 30
+text = "The crystal goes dark, and a glowing blue Alpha symbol shines."
+
+[[scene.beat]]
+at = 40
+text = "{pokemon:382} bursts out in its primal form, huge and blue with glowing markings, and towers over you."
+
+# "Gotcha! Kyogre was caught!", then a demo of 40 s and the field across Hoenn's towns, to
+# Sootopolis.
+[[scene]]
+after = "text:147:67"
+zone = 0x79
+
+[[scene.beat]]
+demo = true
+text = "The crystals overhead glow softly. You make your way back out through the cave."
+
+[[scene.beat]]
+at = 13
+text = "Far above, green light rises from the crater of {place:198} into the storm clouds, and the clouds burst apart."
+
+[[scene.beat]]
+at = 25
+text = "The sky turns deep blue, and green sparkles drift down like snow over a calm sea."
+
+[[scene.beat]]
+zone = 0x6
+text = "People come out and look up at the sparkling sky."
+
+[[scene.beat]]
+zone = 0x15
+text = "{trainer:518} looks up at the sky."
+
+[[scene.beat]]
+zone = 0x12
+text = "A crowd looks up at the sky, and on the shore a group in blue and white stripes watches it too."
+
+[[scene.beat]]
+zone = 0x13
+text = "By a rocket on its launch tower, {trainer:683} looks up at the sky."
+
+[[scene.beat]]
+zone = 0x1c6
+text = "The rain is gone. Your friends wait on the pier before the cave."

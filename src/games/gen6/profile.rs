@@ -141,6 +141,7 @@ pub struct Options {
     pub tap: Option<Tap>,
     pub slide: Option<touch::Slide>,
     pub tones: Option<Rc<Tones>>,
+    pub title: Option<i64>,
 }
 
 /// The gen 6 readers, and what each sweep and poll does with them, for ORAS or for X and Y.
@@ -291,6 +292,7 @@ impl Gen6Profile {
             tap,
             slide,
             tones,
+            title,
         } = options;
         let cache = memory;
         let memory: Rc<dyn Memory> = cache.clone();
@@ -660,7 +662,7 @@ impl Gen6Profile {
             .map(|offset| RefCell::new(Lights::new(memory.clone(), offset)));
         let screen_announcer = ScreenAnnouncer::with(speech.clone(), log.clone(), ui.pauses);
         // The scenes the game shows without words, described where the player asks and the game
-        // has descriptions in their language (ADR-0038).
+        // has descriptions in their language (ADR-0038), those of the other version left out.
         let scenes = match &text {
             Some(text) if ui.descriptions => {
                 let file = game
@@ -670,7 +672,7 @@ impl Gen6Profile {
                     .map(|(_, file)| *file);
                 // Python raises out of `__init__` here; `new` returns no `Result`, and nothing the
                 // file or the ROM holds raises in `load` but a line number in digits no int reads.
-                let loaded = load_scenes(file, &line_of(text), &word_of(text), &log)
+                let loaded = load_scenes(file, &line_of(text), &word_of(text), &log, title)
                     .unwrap_or_else(|error| panic!("{error:?}"));
                 Some(RefCell::new(Scenes::with_monotonic(loaded)))
             }

@@ -125,6 +125,7 @@ text = "{item:9999} is nowhere."
         },
         &|kind: &str, number: i64| words.get(&(kind, number)).map(|word| word.to_string()),
         &log,
+        None,
     )?;
     assert!(
         scenes.len() == 2
@@ -172,6 +173,59 @@ text = "{item:9999} is nowhere."
     Ok(())
 }
 
+/// Steven's "Good luck to you." on Route 128 is one line in one zone in both versions, and he
+/// flies off into Omega Ruby's glare (movie40) but Alpha Sapphire's rain (Orion's
+/// movie1_kyogre_awakens, 2026-10-14): a scene with a title is the running title's alone.
+#[test]
+fn test_a_scene_of_one_version_is_left_out_of_the_other() -> Result<()> {
+    let file = r#"
+[[scene]]
+after = "story:148:46"
+zone = 0x39
+title = 0x000400000011C400
+[[scene.beat]]
+text = "Steven flies off into the glare."
+
+[[scene]]
+after = "story:148:46"
+zone = 0x39
+[[scene.beat]]
+text = "Steven flies off."
+"#;
+    let lines: IndexMap<(i64, i64), Vec<u8>> =
+        IndexMap::from([((148, 46), line(&[Part::Text("Good luck to you.")]))]);
+    let said_in = |title: Option<i64>| -> Result<Vec<String>> {
+        let (log, logged) = logging();
+        let scenes = load(
+            Some(file),
+            &|archive: &str, file: i64, number: i64| {
+                Ok(if archive == "story" {
+                    lines.get(&(file, number)).cloned()
+                } else {
+                    None
+                })
+            },
+            &|_: &str, _: i64| None,
+            &log,
+            title,
+        )?;
+        assert!(logged.borrow().is_empty());
+        let mut said: Vec<String> = Vec::new();
+        let mut reader = Scenes::with_monotonic(scenes);
+        reader.heard(0, "Good luck to you.", Some(0x39), &mut |text: &str| {
+            said.push(text.to_string())
+        });
+        Ok(said)
+    };
+    assert_eq!(
+        said_in(Some(0x000400000011C400))?,
+        ["Steven flies off into the glare."]
+    );
+    assert_eq!(said_in(Some(0x000400000011C500))?, ["Steven flies off."]);
+    assert_eq!(said_in(None)?, ["Steven flies off into the glare."]);
+    Ok(())
+}
+
 /// The Cave of Origin's deepest room, `0x76`: nothing shows the way on but the room itself
 /// (Orion, 2026-10-12), so it is described each time the player comes down into it.
 #[test]
@@ -189,6 +243,7 @@ text = "Magma glows to the north."
         &|_: &str, _: i64, _: i64| Ok(None),
         &|_: &str, _: i64| None,
         &log,
+        None,
     )?;
     let mut reader = Scenes::with_monotonic(scenes);
     let mut say = |text: &str| said.push(text.to_string());
@@ -214,6 +269,7 @@ fn test_a_scene_of_suns_is_said_over_the_demo_it_plays_as() -> Result<()> {
         &|_: &str, _: i64, _: i64| Ok(None),
         &|_: &str, _: i64| None,
         &log,
+        None,
     )?;
     assert!(logged.borrow().is_empty());
     let said: RefCell<Vec<String>> = RefCell::new(Vec::new());
