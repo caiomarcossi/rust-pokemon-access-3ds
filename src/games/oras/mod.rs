@@ -722,7 +722,7 @@ fn secret_bases(memory: Rc<dyn Memory>, image: &[u8]) -> Rc<dyn SecretBaseReader
 }
 
 /// `lambda memory, _text: AshPiles(memory)`, as a factory `Game.features` holds.
-fn ash_piles(memory: Rc<dyn Memory>, _text: Option<&GameText>) -> Rc<dyn Feature> {
+fn ash_piles(memory: Rc<dyn Memory>, _text: &GameText) -> Rc<dyn Feature> {
     Rc::new(AshPiles::new(memory))
 }
 

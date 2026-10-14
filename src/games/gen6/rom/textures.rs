@@ -417,7 +417,7 @@ pub fn said(textures: &[impl AsRef<str>], text: &GameText) -> Result<Option<Stri
 /// Shared (`Rc<Index>`) as every reader's are, so its methods take `&self`.
 pub struct Index {
     path: PathBuf,
-    text: Option<Rc<GameText>>,
+    text: Rc<GameText>,
     building: Option<JoinHandle<()>>,
     index: RefCell<Option<IndexMap<String, String>>>,
     /// (address, length) of an image -> its names: hashed once, not every poll a cursor
@@ -427,11 +427,7 @@ pub struct Index {
 
 impl Index {
     /// `Index(path, text, building)`.
-    pub fn new(
-        path: PathBuf,
-        text: Option<Rc<GameText>>,
-        building: Option<JoinHandle<()>>,
-    ) -> Self {
+    pub fn new(path: PathBuf, text: Rc<GameText>, building: Option<JoinHandle<()>>) -> Self {
         Index {
             path,
             text,
@@ -442,16 +438,17 @@ impl Index {
     }
 
     /// `Index(path, text)`: the index is already there.
-    pub fn without_building(path: PathBuf, text: Option<Rc<GameText>>) -> Self {
+    pub fn without_building(path: PathBuf, text: Rc<GameText>) -> Self {
         Index::new(path, text, None)
     }
 
     /// What the game calls what this picture draws now, or None.
     pub fn said(&self, memory: &dyn Memory, picture: i64) -> Result<Option<String>> {
         let found = self.names(memory, picture)?;
-        match &self.text {
-            Some(text) if !found.is_empty() => said(&found, text),
-            _ => Ok(None),
+        if !found.is_empty() && self.text.loaded() {
+            said(&found, &self.text)
+        } else {
+            Ok(None)
         }
     }
 
@@ -500,7 +497,7 @@ pub fn start(
     archives: &[String],
     title: &str,
     rom: &str,
-    text: Option<Rc<GameText>>,
+    text: Rc<GameText>,
     log: &dyn Fn(&str),
 ) -> Result<Option<Index>> {
     if path.exists() {

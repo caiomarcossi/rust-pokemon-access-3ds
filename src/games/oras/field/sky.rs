@@ -546,13 +546,10 @@ impl Soaring {
     /// walked as they were. The factory `Game.apps` holds.
     pub fn of(
         memory: Rc<dyn Memory>,
-        text: Option<&GameText>,
+        text: &GameText,
         speech: Rc<Speech>,
         log: Log,
     ) -> Result<Option<Rc<dyn OwnApp>>> {
-        let Some(text) = text else {
-            return Ok(None);
-        };
         let Some(packed) = text.files.get(ARCHIVE) else {
             return Ok(None);
         };

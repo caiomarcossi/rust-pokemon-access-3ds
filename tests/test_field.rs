@@ -231,7 +231,7 @@ pub(crate) fn field_reader(memory: Rc<FakeMemory>, given: Given, game: Game) -> 
     FieldReader::new(
         memory,
         &game,
-        Some(&text),
+        &text,
         b"image",
         clock.unwrap_or_else(|| Rc::new(py::time::monotonic)),
         tiles.as_ref(),

@@ -17,7 +17,7 @@ use crate::core::window;
 use crate::games::common::session::{Profile, Session, Setup};
 use crate::games::gen6::game::Game;
 use crate::games::gen6::profile::{Gen6Profile, Options, REQUIRED};
-use crate::games::gen6::rom::archives::GameText;
+use crate::games::gen6::rom::archives::{GameText, no_text};
 use crate::games::gen6::rom::layout::RomLayout;
 use crate::games::{gen6::gflheap, gen6::rom::textures, gen6::screens::buttons};
 use crate::py::Result;
@@ -61,7 +61,7 @@ pub fn start(
         ]);
         Rc::new(Names::from_table(&table, mine.as_deref(), &header)?)
     };
-    let text = game_text(&setup, &game.rom)?.map(Rc::new);
+    let text = Rc::new(game_text(&setup, &game.rom)?);
     let mut pictures = None;
     if !game.rom.textures.is_empty()
         && let Some(home) = &setup.names_home
@@ -137,14 +137,16 @@ pub fn start(
     })
 }
 
-/// The game's own words out of the player's ROM, or None; the log says which, and why.
+/// The game's own words out of the player's ROM, or `NO_TEXT`; the log says which, and why.
 ///
 /// Not having them costs a place's name said a moment early and the rival's name, both of which
 /// have a fallback — AreaNav's words and "Rival" — so a ROM that cannot be read is logged, not
 /// spoken at every start.
-pub fn game_text(setup: &Setup, layout: &RomLayout) -> Result<Option<GameText>> {
-    setup.words(
-        |image, language| GameText::load(image, language, layout),
-        "the game's own words for places and the rival are off",
-    )
+pub fn game_text(setup: &Setup, layout: &RomLayout) -> Result<GameText> {
+    Ok(setup
+        .words(
+            |image, language| GameText::load(image, language, layout),
+            "the game's own words for places and the rival are off",
+        )?
+        .unwrap_or_else(no_text))
 }

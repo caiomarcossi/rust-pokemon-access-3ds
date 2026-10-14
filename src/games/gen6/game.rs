@@ -99,22 +99,22 @@ pub type Data = &'static [(&'static str, &'static str)];
 pub type HiddenFactory = fn(Rc<dyn Memory>) -> Rc<dyn HiddenReader>;
 /// `Callable[[Memory, bytes], SecretBaseReader]`.
 pub type SecretBaseFactory = fn(Rc<dyn Memory>, &[u8]) -> Rc<dyn SecretBaseReader>;
-/// `Callable[[Memory, GameText | None], Feature]`.
-pub type FeatureFactory = fn(Rc<dyn Memory>, Option<&GameText>) -> Rc<dyn Feature>;
-/// `Callable[[Memory, GameText | None, Speech, Callable[[str], None]], OwnApp | None]`.
+/// `Callable[[Memory, GameText], Feature]`.
+pub type FeatureFactory = fn(Rc<dyn Memory>, &GameText) -> Rc<dyn Feature>;
+/// `Callable[[Memory, GameText, Speech, Callable[[str], None]], OwnApp | None]`.
 pub type AppFactory =
-    fn(Rc<dyn Memory>, Option<&GameText>, Rc<Speech>, Log) -> Result<Option<Rc<dyn OwnApp>>>;
+    fn(Rc<dyn Memory>, &GameText, Rc<Speech>, Log) -> Result<Option<Rc<dyn OwnApp>>>;
 /// `Callable[[Memory], DoorReader]`.
 pub type DoorFactory = fn(Rc<dyn Memory>) -> Rc<dyn DoorReader>;
 /// `Callable[[Memory], IceReader]`.
 pub type IceFactory = fn(Rc<dyn Memory>) -> Rc<dyn IceReader>;
-/// `Callable[[Memory, Layouts, LayoutFiles, GameText | None, Callable[[], str | None]],
+/// `Callable[[Memory, Layouts, LayoutFiles, GameText, Callable[[], str | None]],
 /// StandingsReader]`.
 pub type StandingsFactory = fn(
     Rc<dyn Memory>,
     Rc<Layouts>,
     Rc<LayoutFiles>,
-    Option<&GameText>,
+    &GameText,
     Rc<dyn Fn() -> Option<String>>,
 ) -> Rc<RefCell<dyn StandingsReader>>;
 /// `Callable[[Memory, ClassNames, Layouts, LayoutFiles, RunningApp, GameText, Speech,

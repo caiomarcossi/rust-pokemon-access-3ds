@@ -404,6 +404,12 @@ impl GameText {
         }
     }
 
+    /// Whether this was read out of the player's ROM: `NO_TEXT` is none, which every lookup
+    /// finds nothing in.
+    pub fn loaded(&self) -> bool {
+        !self.places.is_empty()
+    }
+
     /// Read one language's names out of the ROM. A RomError when the language is not one
     /// the game carries or the files are not what the layout says they are.
     pub fn load(rom: &Rom, language: &str, layout: &RomLayout) -> Result<GameText> {
@@ -833,6 +839,14 @@ impl GameText {
             && boy[0] != girl[0]
             && boy.iter().chain(girl).all(|name| !name.is_empty())
     }
+}
+
+/// The game's words where the player's ROM could not be read: none, so every lookup finds
+/// nothing and the readers that need the ROM are off (`GameText.loaded`).
+///
+/// Python's `NO_TEXT`, a constant; a `GameText` holds maps, which no `const` can.
+pub fn no_text() -> GameText {
+    GameText::new(Vec::new(), Vec::new())
 }
 
 /// A touch area of the map, by its pane's name -> what the game calls its place.

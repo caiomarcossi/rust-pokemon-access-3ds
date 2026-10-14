@@ -364,20 +364,20 @@ impl common::Corridor for rail::Corridor {
 
 impl FieldReader {
     /// `game` says what one gen 6 game has of its own, `text` is what was read from the player's
-    /// ROM, or None without one, and `image` the executable, where ORAS lists its Secret Bases'
-    /// spots. `tiles` and `furniture` are what the shipped table says each kind of use tile is,
-    /// and each piece of furniture by the shared script it runs (`Names.words`).
+    /// ROM, or `NO_TEXT` without one, and `image` the executable, where ORAS lists its Secret
+    /// Bases' spots. `tiles` and `furniture` are what the shipped table says each kind of use tile
+    /// is, and each piece of furniture by the shared script it runs (`Names.words`).
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         memory: Rc<dyn Memory>,
         game: &Game,
-        text: Option<&GameText>,
+        text: &GameText,
         image: &[u8],
         clock: Rc<dyn Fn() -> f64>,
         tiles: Option<&IndexMap<i64, String>>,
         furniture: Option<&IndexMap<i64, String>>,
     ) -> Rc<FieldReader> {
-        let chunks: Option<Rc<dyn ChunkSource>> = text.and_then(|text| text.map_chunks.clone());
+        let chunks: Option<Rc<dyn ChunkSource>> = text.map_chunks.clone();
         let terrain = Terrain::new(
             chunks
                 .clone()
@@ -391,12 +391,11 @@ impl FieldReader {
             chunks.map(|chunks| Rc::new(move |number: i64| chunks.matrix(number)) as FarMatrices),
         );
         let streets: Option<rail::Streets> =
-            text.and_then(|text| text.streets.clone())
-                .map(|streets: Rc<dyn StreetSource>| {
-                    Rc::new(move |chunks: &[i64]| streets.network(chunks)) as rail::Streets
-                });
+            text.streets.clone().map(|streets: Rc<dyn StreetSource>| {
+                Rc::new(move |chunks: &[i64]| streets.network(chunks)) as rail::Streets
+            });
         let mut words: IndexMap<i64, String> = tiles.cloned().unwrap_or_default();
-        if let Some(pc) = text.and_then(|text| text.pc.clone())
+        if let Some(pc) = text.pc.clone()
             && !pc.is_empty()
         {
             words.insert(PC_TILE, pc);
@@ -412,10 +411,7 @@ impl FieldReader {
         };
         Rc::new_cyclic(|me| FieldReader {
             me: me.clone(),
-            zones: ZoneTable::new(
-                memory.clone(),
-                text.map(|text| text.zone_table.clone()).unwrap_or_default(),
-            ),
+            zones: ZoneTable::new(memory.clone(), text.zone_table.clone()),
             warp_words: game.warps.clone(),
             features,
             doors: game.doors.map(|make| make(memory.clone())),
@@ -424,9 +420,7 @@ impl FieldReader {
             player_looks: game.player_looks.clone(),
             stairs: game.stairs.clone(),
             ice: game.ice.map(|make| make(memory.clone())),
-            decorations: text
-                .map(|text| text.decorations.clone())
-                .unwrap_or_default(),
+            decorations: text.decorations.clone(),
             furniture_kinds: game.furniture.clone(),
             secret_bases,
             barriers: game.barriers.clone(),
@@ -437,18 +431,13 @@ impl FieldReader {
             height: Slot::new(None),
             ways_of: RefCell::new((None, Vec::new(), Vec::new(), Vec::new())),
             clock,
-            rails: Rails::new(
-                memory.clone(),
-                streets,
-                text.map(|text| text.street_records.clone())
-                    .unwrap_or_default(),
-            ),
+            rails: Rails::new(memory.clone(), streets, text.street_records.clone()),
             belts: game.belts.clone(),
-            outdoors: text.map(|text| text.outdoors.clone()).unwrap_or_default(),
+            outdoors: text.outdoors.clone(),
             drawn: game.drawn,
             words,
             furniture_words: furniture.cloned().unwrap_or_default(),
-            shared: text.map(|text| text.shared.clone()).unwrap_or_default(),
+            shared: text.shared.clone(),
             models: RefCell::new(Vec::new()),
             player: Slot::new(None),
             holder: RefCell::new(None),

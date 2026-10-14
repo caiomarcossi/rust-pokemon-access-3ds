@@ -134,7 +134,7 @@ pub struct Options {
     pub extras: Option<Extras>,
     /// None is `DEFAULT_BINDINGS`.
     pub keys: Option<Bindings>,
-    pub text: Option<Rc<GameText>>,
+    pub text: Rc<GameText>,
     pub pictures: Option<Rc<Index>>,
     /// The executable as read from its code, `b""` when there is none.
     pub image: Vec<u8>,
@@ -153,8 +153,8 @@ pub struct Options {
 pub struct Gen6Profile {
     memory: Rc<dyn Cache>,
     names: Rc<ClassNames>,
-    /// The game's own words out of the player's ROM, or None when it could not be read.
-    text: Option<Rc<GameText>>,
+    /// The game's own words out of the player's ROM, or `NO_TEXT` when it could not be read.
+    text: Rc<GameText>,
     /// The place-name index of the zone the player was last polled in.
     place: Cell<Option<i64>>,
     pub layouts: Rc<Layouts>,
@@ -308,10 +308,7 @@ impl Gen6Profile {
             let memory = memory.clone();
             Rc::new(move |pane: i64| pictures.said(&*memory, pane)) as Pictures
         });
-        let species: Vec<String> = text
-            .as_ref()
-            .map(|text| text.species.clone())
-            .unwrap_or_default();
+        let species: Vec<String> = text.species.clone();
         // The Bag draws each party member's icon, and says nothing of whose it is. Made here,
         // before the screen text reader that asks it, where Python makes it later and reaches it
         // through `self`; making it reads nothing.
@@ -350,12 +347,8 @@ impl Gen6Profile {
                 .collect(),
             None,
             Some(on_screen_named),
-            text.as_ref()
-                .map(|text| text.labels.clone())
-                .unwrap_or_default(),
-            text.as_ref()
-                .map(|text| text.plain.clone())
-                .unwrap_or_default(),
+            text.labels.clone(),
+            text.plain.clone(),
         )));
         let files = Rc::new(LayoutFiles::new(memory.clone()));
         let cursors = CursorReader::with(
@@ -380,7 +373,7 @@ impl Gen6Profile {
         let field = FieldReader::new(
             memory.clone(),
             game,
-            text.as_deref(),
+            &text,
             &image,
             Rc::new(py::time::monotonic),
             Some(&named.words(TILES)),
@@ -407,7 +400,7 @@ impl Gen6Profile {
         let mut own: Vec<Rc<dyn OwnApp>> = Vec::new();
         for make in &game.apps {
             // Python raises out of the profile's making, which ends the runtime.
-            match make(memory.clone(), text.as_deref(), speech.clone(), log.clone()) {
+            match make(memory.clone(), &text, speech.clone(), log.clone()) {
                 Ok(Some(app)) => own.push(app),
                 Ok(None) => {}
                 Err(error) => panic!("{error}"),
@@ -445,16 +438,10 @@ impl Gen6Profile {
         // ORAS's contests' appeals draw who stands where as portraits, said on the keys that say
         // a battle's sides (Orion, 2026-10-09).
         let standings: Option<Rc<RefCell<dyn StandingsReader>>> = game.standings.map(|make| {
-            make(
-                memory.clone(),
-                layouts.clone(),
-                files.clone(),
-                text.as_deref(),
-                {
-                    let apps = apps.clone();
-                    Rc::new(move || apps.borrow().running.clone())
-                },
-            )
+            make(memory.clone(), layouts.clone(), files.clone(), &text, {
+                let apps = apps.clone();
+                Rc::new(move || apps.borrow().running.clone())
+            })
         });
         let pauses = ui.pauses;
         let sides: Sides = {
@@ -483,40 +470,35 @@ impl Gen6Profile {
         let amie = Rc::new(RefCell::new(AmiePage::new(
             memory.clone(),
             names.clone(),
-            text.as_ref()
-                .map(|text| text.species.clone())
-                .unwrap_or_default(),
+            text.species.clone(),
         )));
         // So does Super Training's, with the party; and its rounds' goals are on the top screen.
         let training = Rc::new(RefCell::new(TrainingPage::new(
             memory.clone(),
             names.clone(),
-            text.as_ref()
-                .map(|text| text.species.clone())
-                .unwrap_or_default(),
+            text.species.clone(),
         )));
         let goals = Rc::new(Goals::new(layouts.clone(), image_of.clone()));
         // The DexNav draws a Pokémon caught in colour, and only those are said so: "Ralts",
         // "Zigzagoon caught", with a comma under pauses (Orion, 2026-10-06).
         let caught = format!("{}{CAUGHT}", if ui.pauses { ", " } else { " " });
-        let images: Option<IndexMap<String, String>> = text.as_ref().map(|text| {
-            text.touch_words
-                .iter()
-                .map(|(image, words)| {
-                    let said = if text.caught.contains(image) {
-                        format!("{words}{caught}")
-                    } else {
-                        words.clone()
-                    };
-                    (image.clone(), said)
-                })
-                .collect()
-        });
+        let images: IndexMap<String, String> = text
+            .touch_words
+            .iter()
+            .map(|(image, words)| {
+                let said = if text.caught.contains(image) {
+                    format!("{words}{caught}")
+                } else {
+                    words.clone()
+                };
+                (image.clone(), said)
+            })
+            .collect();
         // And the training bags in its page's list, pictures with no touch area of their own.
         let bags = Rc::new(Bags::new(
             layouts.clone(),
             image_of.clone(),
-            images.clone().unwrap_or_default(),
+            images.clone(),
             Some({
                 let buttons = buttons.clone();
                 Rc::new(move || buttons.borrow_mut().idle()) as Idle
@@ -579,7 +561,7 @@ impl Gen6Profile {
             file_of,
             log.clone(),
             touch::Options {
-                images,
+                images: Some(images),
                 tap,
                 tone: tones.clone().map(|tones| {
                     Rc::new(move |across: f64, down: f64| {
@@ -644,9 +626,9 @@ impl Gen6Profile {
                 leads_to: Some(leads_to_of(text.clone(), field.clone())),
                 street: Some(street_of(text.clone())),
                 door_sign: Some(door_sign_of(text.clone())),
-                moves: text.as_ref().map(|text| text.moves.clone()),
-                bike: text.as_ref().and_then(|text| text.bike.clone()),
-                acro: text.as_ref().and_then(|text| text.acro.clone()),
+                moves: Some(text.moves.clone()),
+                bike: text.bike.clone(),
+                acro: text.acro.clone(),
                 sides: Some(sides),
                 touch: Some(touch),
                 categories: own
@@ -663,42 +645,39 @@ impl Gen6Profile {
         let screen_announcer = ScreenAnnouncer::with(speech.clone(), log.clone(), ui.pauses);
         // The scenes the game shows without words, described where the player asks and the game
         // has descriptions in their language (ADR-0038), those of the other version left out.
-        let scenes = match &text {
-            Some(text) if ui.descriptions => {
-                let file = game
-                    .scenes
-                    .iter()
-                    .find(|(held, _)| *held == text.language)
-                    .map(|(_, file)| *file);
-                // Python raises out of `__init__` here; `new` returns no `Result`, and nothing the
-                // file or the ROM holds raises in `load` but a line number in digits no int reads.
-                let loaded = load_scenes(file, &line_of(text), &word_of(text), &log, title)
-                    .unwrap_or_else(|error| panic!("{error:?}"));
-                Some(RefCell::new(Scenes::with_monotonic(loaded)))
-            }
-            _ => None,
+        let scenes = if ui.descriptions && text.loaded() {
+            let file = game
+                .scenes
+                .iter()
+                .find(|(held, _)| *held == text.language)
+                .map(|(_, file)| *file);
+            // Python raises out of `__init__` here; `new` returns no `Result`, and nothing the
+            // file or the ROM holds raises in `load` but a line number in digits no int reads.
+            let loaded = load_scenes(file, &line_of(&text), &word_of(&text), &log, title)
+                .unwrap_or_else(|error| panic!("{error:?}"));
+            Some(RefCell::new(Scenes::with_monotonic(loaded)))
+        } else {
+            None
         };
         let habitat = HabitatReader::new(
             memory.clone(),
             layouts.clone(),
             files.clone(),
-            text.as_ref()
-                .map(|text| text.map_places.clone())
-                .unwrap_or_default(),
+            text.map_places.clone(),
             speech.clone(),
             log.clone(),
             ui.pauses,
         );
         // An Extra: the conditions the game draws as a star, said as numbers (ADR-0017).
-        let conditions = match (game.conditions, &text) {
-            (Some(make), Some(text)) if extras.unwrap_or_default().conditions => {
+        let conditions = match game.conditions {
+            Some(make) if extras.unwrap_or_default().conditions && text.loaded() => {
                 Some(RefCell::new(make(
                     memory.clone(),
                     names.clone(),
                     layouts.clone(),
                     files.clone(),
                     apps.clone(),
-                    text,
+                    &text,
                     speech.clone(),
                     log.clone(),
                     ui.pauses,
@@ -710,11 +689,11 @@ impl Gen6Profile {
         // the game's own word, behind whatever the player has called them and ahead of pa3ds's.
         let sprite: GameSprite = {
             let text = text.clone();
-            Rc::new(move |character| game_word(text.as_deref(), character))
+            Rc::new(move |character| game_word(&text, character))
         };
         let place: GamePlace = {
             let text = text.clone();
-            Rc::new(move |zone, slot| game_place(text.as_deref(), zone, slot))
+            Rc::new(move |zone, slot| game_place(&text, zone, slot))
         };
         named.use_game(Some(sprite), Some(place));
         Gen6Profile {
@@ -1346,9 +1325,10 @@ impl Gen6Profile {
     /// building in it share a place, so walking out of a house arrives nowhere, as the game has
     /// it (spike 87). The name comes from RAM's index and the ROM's words, ahead of AreaNav's.
     fn arrive(&self, zone: i64) -> Result<()> {
-        let Some(text) = &self.text else {
+        let text = &self.text;
+        if !text.loaded() {
             return Ok(());
-        };
+        }
         let index = self.field().zones.place_index(zone)?;
         let Some(index) = index else {
             return Ok(());
@@ -1556,15 +1536,14 @@ fn name_for(speaker: &Rc<SpeakerReader>) -> Speaker {
 
 /// What the game calls a character that RAM gives only a number: the rival, by the
 /// sprite a work object was filled with (spike 89).
-fn game_word(text: Option<&GameText>, character: i64) -> Option<String> {
-    text.and_then(|text| text.character(character))
+fn game_word(text: &GameText, character: i64) -> Option<String> {
+    text.character(character)
 }
 
 /// What the game calls a slot on a map: the building behind a door in from outdoors,
 /// where the ROM's own tables pair the two (spike 86). Only a warp's slot is a door's: a sign
 /// is numbered in a table of its own.
-fn game_place(text: Option<&GameText>, zone: i64, slot: i64) -> Option<String> {
-    let text = text?;
+fn game_place(text: &GameText, zone: i64, slot: i64) -> Option<String> {
     if source_kind(slot) != WARP_SOURCE {
         return None;
     }
@@ -1573,12 +1552,10 @@ fn game_place(text: Option<&GameText>, zone: i64, slot: i64) -> Option<String> {
 
 /// Whether a slot on a map is a sign that says only the name of a door there
 /// (`plates.door_signs`).
-fn door_sign_of(text: Option<Rc<GameText>>) -> DoorSign {
+fn door_sign_of(text: Rc<GameText>) -> DoorSign {
     Rc::new(move |zone, slot| {
-        text.as_ref().is_some_and(|text| {
-            source_kind(slot) == FURNITURE_SOURCE
-                && text.door_signs.contains(&(zone, source_number(slot)))
-        })
+        source_kind(slot) == FURNITURE_SOURCE
+            && text.door_signs.contains(&(zone, source_number(slot)))
     })
 }
 
@@ -1593,11 +1570,11 @@ fn door_sign_of(text: Option<Rc<GameText>>) -> DoorSign {
 /// The other zone of the player's own matrix is said all the same: Route 119 is two zones
 /// the game calls by one name, and the edge between them was the only exit said bare, "edge"
 /// (the user, 2026-10-03, spike 159).
-fn leads_to_of(text: Option<Rc<GameText>>, field: Rc<RefCell<Rc<FieldReader>>>) -> LeadsTo {
+fn leads_to_of(text: Rc<GameText>, field: Rc<RefCell<Rc<FieldReader>>>) -> LeadsTo {
     Rc::new(move |here, there| {
-        let Some(text) = &text else {
+        if !text.loaded() {
             return Ok(None);
-        };
+        }
         let field = field.borrow().clone();
         let (ours, theirs) = (
             field.zones.place_index(here)?,
@@ -1615,11 +1592,8 @@ fn leads_to_of(text: Option<Rc<GameText>>, field: Rc<RefCell<Rc<FieldReader>>>) 
 
 /// The street of Lumiose's a warp between two of its zones comes out on, in the game's
 /// own words (spike 107): its zones are all "Lumiose City", so the place says nothing.
-fn street_of(text: Option<Rc<GameText>>) -> Street {
+fn street_of(text: Rc<GameText>) -> Street {
     Rc::new(move |zone, slot| {
-        let Some(text) = &text else {
-            return Ok(None);
-        };
         if source_kind(slot) != WARP_SOURCE {
             return Ok(None);
         }

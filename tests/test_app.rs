@@ -24,6 +24,7 @@ use crate::games::common::announce::Announcements;
 use crate::games::common::dialogue::{Shown, TextWritten};
 use crate::games::common::msgwin;
 use crate::games::common::session::{Profile, Session, Setup};
+use crate::games::gen6::rom::archives::no_text;
 use crate::games::gen6::session::game_text;
 use crate::games::{oras, sm};
 use crate::py::{Error, Kind, Log, Result};
@@ -983,10 +984,7 @@ fn test_the_games_own_words_come_from_the_rom_azahar_last_opened() {
     .unwrap();
     let (log, logged) = logger();
     let text = game_text(&Setup::new(process(), log), oras::rom()).unwrap();
-    assert_eq!(
-        text.and_then(|text| text.place(3)),
-        Some("Littleroot Town".to_string())
-    );
+    assert_eq!(text.place(3), Some("Littleroot Town".to_string()));
     assert_eq!(
         *logged.borrow(),
         [format!(
@@ -1005,7 +1003,7 @@ fn test_a_rom_of_another_game_is_refused() {
         rom: Some(other),
         ..Setup::new(process(), log)
     };
-    assert!(game_text(&setup, oras::rom()).unwrap().is_none());
+    assert_eq!(game_text(&setup, oras::rom()).unwrap(), no_text());
     assert!(logged.borrow()[0].contains("the game running is 000400000011c400"));
 }
 
@@ -1013,10 +1011,9 @@ fn test_a_rom_of_another_game_is_refused() {
 fn test_without_a_rom_the_game_runs_on_without_its_own_words() {
     let _home = Home::new();
     let (log, logged) = logger();
-    assert!(
-        game_text(&Setup::new(process(), log), oras::rom())
-            .unwrap()
-            .is_none()
+    assert_eq!(
+        game_text(&Setup::new(process(), log), oras::rom()).unwrap(),
+        no_text()
     );
     assert!(logged.borrow()[0].starts_with("no decrypted ROM of title 000400000011c400"));
 }

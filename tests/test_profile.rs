@@ -22,7 +22,7 @@ use crate::games::gen6::field::mapblock;
 use crate::games::gen6::field::mmodel::PLAYER_INDEX;
 use crate::games::gen6::game::{Game, OwnApp};
 use crate::games::gen6::profile::{Gen6Profile, Options};
-use crate::games::gen6::rom::archives::GameText;
+use crate::games::gen6::rom::archives::{GameText, no_text};
 use crate::games::oras::field::hidden::PLAYER_WORK_CLASS;
 use crate::games::{gen6::gflheap, oras::field::sky};
 use crate::games::{oras, xy};
@@ -85,7 +85,7 @@ fn no_log() -> Log {
 
 fn profile(
     town: &Town,
-    text: Option<GameText>,
+    text: GameText,
     named: Option<Rc<Names>>,
     log: Log,
 ) -> (Gen6Profile, Rc<Recorder>) {
@@ -95,7 +95,7 @@ fn profile(
 /// `profile(town, text, named, log, game)`: Python's `game` defaults to `oras.GAME`.
 fn profile_of(
     town: &Town,
-    text: Option<GameText>,
+    text: GameText,
     named: Option<Rc<Names>>,
     log: Log,
     game: &Game,
@@ -109,7 +109,7 @@ fn profile_of(
         game,
         Options {
             named,
-            text: text.map(Rc::new),
+            text: Rc::new(text),
             ..Options::default()
         },
     );
@@ -131,12 +131,7 @@ fn names(shipped: &[(&str, &str)]) -> Rc<Names> {
 #[test]
 fn test_the_place_is_said_on_arriving_and_not_on_walking_into_a_building() {
     let town = Town::new();
-    let (made, backend) = profile(
-        &town,
-        Some(GameText::new(places(), trainers())),
-        None,
-        no_log(),
-    );
+    let (made, backend) = profile(&town, GameText::new(places(), trainers()), None, no_log());
     made.poll_field().unwrap();
     assert_eq!(backend.spoken(), ["Littleroot Town"]);
     town.model(0, HOUSE, PLAYER_INDEX, 0xAC, (5, 5));
@@ -156,7 +151,7 @@ fn test_the_place_is_said_on_arriving_and_not_on_walking_into_a_building() {
 #[test]
 fn test_a_hidden_pokemon_is_guided_to_as_a_search_finds_it_and_once() {
     let town = Town::new();
-    let (made, backend) = profile(&town, None, None, no_log());
+    let (made, backend) = profile(&town, no_text(), None, no_log());
     made.poll_field().unwrap();
     let finds = || {
         backend
@@ -200,13 +195,13 @@ fn test_a_hidden_pokemon_is_guided_to_as_a_search_finds_it_and_once() {
 /// is kept for when the field comes back.
 #[test]
 fn test_there_is_no_map_once_another_screen_has_unloaded_it() {
-    let (control, heard) = profile(&Town::new(), None, None, no_log());
+    let (control, heard) = profile(&Town::new(), no_text(), None, no_log());
     for _ in 0..2 {
         control.navigator.borrow_mut().press(ITEM_NEXT).unwrap();
     }
     let walked = heard.spoken();
     let town = Town::new();
-    let (made, backend) = profile(&town, None, None, no_log());
+    let (made, backend) = profile(&town, no_text(), None, no_log());
     let running = |name: &str| made.apps.borrow_mut().running = Some(name.to_string());
     made.navigator.borrow_mut().press(ITEM_NEXT).unwrap();
     running(DEMO);
@@ -236,7 +231,7 @@ fn test_there_is_no_map_once_another_screen_has_unloaded_it() {
 #[test]
 fn test_without_the_rom_no_place_is_said_from_the_field() {
     let town = Town::new();
-    let (made, backend) = profile(&town, None, None, no_log());
+    let (made, backend) = profile(&town, no_text(), None, no_log());
     made.poll_field().unwrap();
     assert!(backend.spoken().is_empty());
 }
@@ -261,7 +256,7 @@ fn test_the_rival_is_named_by_the_sprite_they_were_filled_with() {
         ]),
         ..GameText::new(places(), trainers())
     };
-    profile(&town, Some(text), Some(named.clone()), no_log());
+    profile(&town, text, Some(named.clone()), no_log());
     assert_eq!(named.sprite(MAY).as_deref(), Some("ハルカ"));
     assert_eq!(named.sprite(BRENDAN).as_deref(), Some("ユウキ"));
     assert_eq!(named.sprite(0xDA).as_deref(), Some("たんぱんこぞう"));
@@ -272,7 +267,7 @@ fn test_the_rival_is_named_by_the_sprite_they_were_filled_with() {
 fn test_without_the_rom_the_rival_is_what_shipped() {
     let town = Town::new();
     let named = names(&[("0x13a", "May")]);
-    profile(&town, None, Some(named.clone()), no_log());
+    profile(&town, no_text(), Some(named.clone()), no_log());
     assert_eq!(named.sprite(MAY).as_deref(), Some("May"));
 }
 
@@ -287,7 +282,7 @@ fn test_the_roms_door_name_is_a_doors_and_never_a_signs() {
         doors: IndexMap::from([((TOWN, 0), "Pokémon Center".to_string())]),
         ..GameText::new(places(), trainers())
     };
-    profile(&town, Some(text), Some(named.clone()), no_log());
+    profile(&town, text, Some(named.clone()), no_log());
     assert_eq!(
         named.place(TOWN, WARP_SOURCE | 0).as_deref(),
         Some("Pokémon Center")
@@ -306,7 +301,7 @@ fn test_an_exit_into_another_place_is_said_with_it_and_a_door_of_the_town_is_not
         let logged = logged.clone();
         Rc::new(move |line: &str| logged.borrow_mut().push(line.to_string()))
     };
-    let (made, _) = profile(&town, Some(GameText::new(places(), trainers())), None, log);
+    let (made, _) = profile(&town, GameText::new(places(), trainers()), None, log);
     let r#where = town.r#where().unwrap();
     let labels: Vec<String> = r#where
         .of("exits")
@@ -323,7 +318,7 @@ fn test_an_exit_into_another_place_is_said_with_it_and_a_door_of_the_town_is_not
 #[test]
 fn test_without_the_rom_an_exit_is_only_what_it_is() {
     let town = Town::new();
-    let (made, _) = profile(&town, None, None, no_log());
+    let (made, _) = profile(&town, no_text(), None, no_log());
     let labels: Vec<String> = town
         .r#where()
         .unwrap()
@@ -352,10 +347,10 @@ fn test_the_pc_is_listed_by_the_roms_word_for_it() {
         no_log(),
         oras::game(),
         Options {
-            text: Some(Rc::new(GameText {
+            text: Rc::new(GameText {
                 pc: Some("パソコン".to_string()),
                 ..GameText::new(places(), trainers())
-            })),
+            }),
             ..Options::default()
         },
     );
@@ -401,7 +396,7 @@ fn test_soaring_the_way_the_player_faces_is_said_once_a_turn_stops() {
 
     fn soaring(
         memory: Rc<dyn Memory>,
-        _text: Option<&GameText>,
+        _text: &GameText,
         speech: Rc<Speech>,
         log: Log,
     ) -> Result<Option<Rc<dyn OwnApp>>> {
@@ -425,7 +420,7 @@ fn test_soaring_the_way_the_player_faces_is_said_once_a_turn_stops() {
     };
     let (made, backend) = profile_of(
         &town,
-        Some(GameText::new(places(), trainers())),
+        GameText::new(places(), trainers()),
         None,
         no_log(),
         &game,

@@ -238,18 +238,16 @@ impl Standings {
         memory: Rc<dyn Memory>,
         layouts: Rc<Layouts>,
         files: Rc<LayoutFiles>,
-        text: Option<&GameText>,
+        text: &GameText,
         running: Rc<dyn Fn() -> Option<String>>,
     ) -> Rc<RefCell<dyn StandingsReader>> {
         Rc::new(RefCell::new(Standings::new(
             memory,
             layouts,
             files,
-            text.map(|text| text.contest_entrant.clone())
-                .unwrap_or_default(),
+            text.contest_entrant.clone(),
             running,
-            text.map(|text| text.contest_rivals.clone())
-                .unwrap_or_default(),
+            text.contest_rivals.clone(),
         )))
     }
 }
