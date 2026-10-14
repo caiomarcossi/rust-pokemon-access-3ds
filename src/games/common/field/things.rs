@@ -134,14 +134,20 @@ pub const ASH: &str = "ash";
 /// them to record them (the user, 2026-10-03).
 pub const BIKE: &str = "bike";
 
+/// What stands in the way until a move clears it, a category of its own: big boulders, bushes,
+/// cracked boulders, the holes Strength's boulders drop into, and Mauville Gym's barriers. Under
+/// signs they outnumbered the signs in Seafloor Cavern's rooms (Orion, 2026-10-13).
+pub const OBSTACLES: &str = "obstacles";
+
 /// The sea's currents, a category of their own, each by where it lets the player go, as a
 /// teleporter is by where it comes out (Orion, 2026-10-13).
 pub const CURRENTS_CATEGORY: &str = "currents";
 
 /// In the order they are walked and logged.
-pub const CATEGORIES: [&str; 9] = [
+pub const CATEGORIES: [&str; 10] = [
     "exits",
     "signs",
+    OBSTACLES,
     "people",
     "items",
     BERRIES,
@@ -154,8 +160,9 @@ pub const CATEGORIES: [&str; 9] = [
 /// One thing worth walking to, in the player's cells.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Interactable {
-    /// One of `CATEGORIES`: `exits`, `signs`, `people`, `items`, `berries`, `ash`, `bike`,
-    /// `currents` or `pokémon`, or in the sky `towns`, `routes`, `landmarks` or `mirage spots`.
+    /// One of `CATEGORIES`: `exits`, `signs`, `obstacles`, `people`, `items`, `berries`, `ash`,
+    /// `bike`, `currents` or `pokémon`, or in the sky `towns`, `routes`, `landmarks` or `mirage
+    /// spots`.
     pub category: String,
     /// What it is, in pa3ds's own words: `door`, `sign`, `PC`, `person`, `item ball`, `edge`,
     /// `berry spot`, `ash pile`, `hidden Pokémon`, `barrier`, `switch`, `passage`, `trapdoor`,

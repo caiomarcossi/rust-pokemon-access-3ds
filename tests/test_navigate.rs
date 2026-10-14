@@ -536,7 +536,7 @@ fn boulder(
         record: Some((0x69, index)),
         start: Some(start),
         pushes: Some(pushes.to_vec()),
-        ..Interactable::new("signs", "object", cell)
+        ..Interactable::new("obstacles", "object", cell)
     }
 }
 
@@ -576,7 +576,7 @@ fn test_a_big_boulder_says_the_ways_it_can_be_pushed_after_the_way_to_it() {
     assert_eq!(
         said(&rig.backend),
         [
-            "signs, 3",
+            "obstacles, 3",
             "object, 2 of 3, 3 east 9 north, immoveable",
             "object, 3 of 3, 3 west 10 north, moveable north into a hole, east or south",
             "object, 1 of 3, 1 east 4 north, moveable west or south"
@@ -615,12 +615,12 @@ fn test_a_big_boulder_pushed_says_how_far_from_its_start_where_asked() {
     assert_eq!(
         both,
         [
-            "signs, 3",
+            "obstacles, 3",
             "object, 1 of 3, 1 east 4 north, moved 5 east, moveable west or south",
             "object, 3 of 3, 3 west 10 north, moved 1 north, moveable north into a hole, east or \
              south",
             "object, 2 of 3, 3 east 9 north, immoveable",
-            "signs, 3",
+            "obstacles, 3",
             "object, 1 east 4 north, moved 5 east, moveable west or south, 1 of 3"
         ]
     );
@@ -1796,7 +1796,7 @@ fn pen_field() -> Field {
         code: BIG_BOULDER,
         source: 0x08D1F458,
         move_model: true,
-        ..Interactable::new("signs", "object", (95, 177))
+        ..Interactable::new("obstacles", "object", (95, 177))
     });
     interactables.push(Interactable {
         source: place_source(FURNITURE_SOURCE, 1).unwrap(),
@@ -1826,7 +1826,7 @@ fn loose() -> Field {
                 source: 0x08D1F458,
                 move_model: true,
                 pushes: Some(vec![("north", false), ("east", true)]),
-                ..Interactable::new("signs", "object", (95, 177))
+                ..Interactable::new("obstacles", "object", (95, 177))
             },
             Interactable {
                 source: place_source(FURNITURE_SOURCE, 1).unwrap(),
@@ -1900,7 +1900,7 @@ fn test_p_goes_round_a_bush_or_a_rock_and_shift_p_clears_it() {
             code: sprite,
             source: 0x08D1F458,
             move_model: true,
-            ..Interactable::new("signs", "object", (95, 177))
+            ..Interactable::new("obstacles", "object", (95, 177))
         });
         let blocked = Field {
             interactables,
@@ -1978,7 +1978,7 @@ fn test_ctrl_p_hides_what_shift_p_finds_no_way_to_and_shows_it_again() {
         said(&rig.backend),
         [
             "unreachable hidden",
-            "signs, 1",
+            "obstacles, 1",
             "unreachable shown",
             "people, 1"
         ]
@@ -2015,7 +2015,7 @@ fn test_a_rock_with_a_sign_under_it_is_smashed_all_the_same() {
         code: CRACKED_BOULDER,
         source: 0x08D1F458,
         move_model: true,
-        ..Interactable::new("signs", "object", (95, 177))
+        ..Interactable::new("obstacles", "object", (95, 177))
     });
     interactables.push(Interactable {
         source: place_source(FURNITURE_SOURCE, 0).unwrap(),

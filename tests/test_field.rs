@@ -1594,7 +1594,7 @@ fn test_a_barrier_is_listed_as_one_and_stands_across_the_way_its_model_faces() -
     town.memory.write(down + mmodel::FACING_SIN, &f32s(&[1.0]));
     let r#where = town.r#where()?;
     let mut barriers: Vec<((i64, i64), (i64, i64))> = r#where
-        .of("signs")
+        .of("obstacles")
         .iter()
         .filter(|item| item.kind == "barrier")
         .map(|item| (item.cell, item.size))
@@ -1630,7 +1630,7 @@ fn test_a_big_boulder_stands_in_four_cells_and_strength_clears_them_all() -> Res
     town.model_sized(4, TOWN, 3, oras::BIG_BOULDER, (100, 175), (2, 2));
     let r#where = town.r#where()?;
     let boulder = r#where
-        .of("signs")
+        .of("obstacles")
         .into_iter()
         .find(|item| item.code == oras::BIG_BOULDER)
         .unwrap();
@@ -1680,7 +1680,7 @@ fn test_a_big_boulder_keeps_its_record_and_where_the_record_starts_it() -> Resul
     town.model_sized(4, TOWN, 3, oras::BIG_BOULDER, (100, 175), (2, 2));
     let r#where = town.r#where()?;
     let boulder = r#where
-        .of("signs")
+        .of("obstacles")
         .into_iter()
         .find(|item| item.code == oras::BIG_BOULDER)
         .unwrap();
@@ -1794,7 +1794,7 @@ fn test_a_hole_is_listed_until_a_big_boulder_fills_it_and_then_both_are_floor() 
     town.model_sized(5, TOWN, 4, oras::BIG_BOULDER, (100, 179), (2, 2));
     let r#where = town.r#where()?;
     let listed: Vec<(String, (i64, i64), (i64, i64))> = r#where
-        .of("signs")
+        .of("obstacles")
         .into_iter()
         .filter(|item| item.kind == "hole" || item.code == oras::BIG_BOULDER)
         .map(|item| (item.kind.clone(), item.cell, item.size))

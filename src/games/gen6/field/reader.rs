@@ -40,8 +40,8 @@ use crate::games::common::field::ground::{
 };
 use crate::games::common::field::things::{
     BIKE, BIKE_SOURCE, CURRENT_SOURCE, CURRENTS_CATEGORY, DECORATION_SOURCE, DIVE_SOURCE,
-    EDGE_SOURCE, FURNITURE_SOURCE, Field, Interactable, STAIRS_SOURCE, TILE_SOURCE, TRIGGER_SOURCE,
-    WARP_SOURCE, place_source,
+    EDGE_SOURCE, FURNITURE_SOURCE, Field, Interactable, OBSTACLES, STAIRS_SOURCE, TILE_SOURCE,
+    TRIGGER_SOURCE, WARP_SOURCE, place_source,
 };
 use crate::games::gen6::field::features::{
     DoorReader, Feature, HiddenReader, Hiding, IceReader, SecretBaseReader, Tracked,
@@ -160,8 +160,8 @@ pub const HOLE_TILE: i64 = 0xFE;
 
 /// What a hole in a Secret Base's floor is called: the game names it only in the Solid Board's
 /// description, "You can place this over holes to cross over them", never where it is. A hole a big
-/// boulder drops into is one too, listed under signs with the boulders until one fills it (Orion,
-/// 2026-10-11; spike 202): its cells are of a kind of their own (`chunk.HOLE`).
+/// boulder drops into is one too, listed under obstacles with the boulders until one fills it
+/// (Orion, 2026-10-11; spike 202): its cells are of a kind of their own (`chunk.HOLE`).
 pub const HOLE: &str = "hole";
 
 /// The cells of a Secret Base a decoration goes over, by kind, each with its name.
@@ -1699,10 +1699,12 @@ impl FieldReader {
         let source = u32(head, mmodel::ZONE)? << 32 | model;
         let (category, kind) = if code == mmodel::ITEM_BALL {
             ("items", "item ball")
+        } else if self.clears.contains_key(&code) {
+            (OBSTACLES, "object")
         } else if code >= mmodel::PROP_MODEL {
             ("signs", "object")
         } else if self.barriers.contains(&(mmodel::zone_of(head)?, code)) {
-            ("signs", BARRIER)
+            (OBSTACLES, BARRIER)
         } else {
             ("people", "person")
         };
@@ -2038,7 +2040,7 @@ impl FieldReader {
                     code: BOULDER_HOLE,
                     source: place_source(TILE_SOURCE, cell_number(first))?,
                     home: Some(zone),
-                    ..Interactable::new("signs", HOLE, first)
+                    ..Interactable::new(OBSTACLES, HOLE, first)
                 });
                 continue;
             }

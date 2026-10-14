@@ -54,8 +54,10 @@ to install.
   distance ("door, 1 of 3, 3 east 2 north"), and the way to any of them on foot. An exit says
   what it is: a door, stairs up or down, a passage between rooms with no floor between them, a
   ladder up or down, the name of the building behind it, or in a hideout a teleporter and where
-  it comes out ("teleporter, 3 east, out at 17 east 8 south"). Under signs, a big boulder
-  Strength pushes is listed with the holes it can be pushed into ("hole, 2 east 3 south"): push
+  it comes out ("teleporter, 3 east, out at 17 east 8 south"). What stands in your way until a
+  move clears it is under obstacles: bushes for Cut, cracked boulders for Rock Smash, Mauville
+  Gym's barriers, and big boulders for Strength with the holes they can be pushed into ("hole, 2
+  east 3 south"): push
   a boulder into a hole and both leave the list, and the filled hole is floor you can walk over.
   A boulder says the ways it can be pushed from where it stands now, and which push drops it
   into a hole ("big boulder, 2 east, moveable north into a hole or east"), or "immoveable" when
@@ -214,9 +216,9 @@ when the map comes back. Touch mode and the battle's keys work throughout.
 | `K` | The chosen button again. |
 | `Enter` | Tap the chosen button. |
 
-The categories are all, exits, signs, people, items, berries, ash, bike, currents and pokémon;
-while soaring, towns, routes, landmarks and mirage spots. A category with nothing in it is
-skipped.
+The categories are all, exits, signs, obstacles, people, items, berries, ash, bike, currents and
+pokémon; while soaring, towns, routes, landmarks and mirage spots. A category with nothing in it
+is skipped.
 
 **Lining up.** The D-pad walks you from the centre of one cell to the centre of the next. The
 circle pad lets you stop anywhere, partway between cells, and the game refuses a step past a
