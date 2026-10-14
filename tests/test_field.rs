@@ -2309,7 +2309,8 @@ fn test_a_stair_is_where_the_ground_meets_a_floor_over_it() {
 
 /// Spike 167: Sootopolis Gym's invisible blockers, sprite 0x8a, rows of three across the
 /// corridors up from its rooms, were listed as nameless people. Nobody is listed there, and the
-/// cell is still in the way.
+/// cell is still in the way. So is `STOPPER3`, ten of them round Seafloor Cavern's submarine and
+/// one on the Sealed Chamber's wall (spike A), but in Mauville Gym, where it is a barrier.
 #[test]
 fn test_the_invisible_blocker_is_nobody_and_stands_in_the_way() -> Result<()> {
     let mut town = Town::new();
@@ -2317,19 +2318,24 @@ fn test_the_invisible_blocker_is_nobody_and_stands_in_the_way() -> Result<()> {
         town.memory.clone(),
         Given::default(),
         Game {
-            blocker: Some(oras::STOPPER),
+            blockers: HashSet::from(oras::BLOCKERS),
+            barriers: HashSet::from([(ROUTE, oras::STOPPER3)]),
             ..game()
         },
     );
     town.model(1, TOWN, 0, oras::STOPPER, (96, 172));
+    town.model(2, TOWN, 1, oras::STOPPER3, (97, 172));
+    town.model(3, ROUTE, 0, oras::STOPPER3, (98, 172));
     let r#where = town.r#where()?;
-    assert!(
-        r#where
-            .interactables
-            .iter()
-            .all(|item| item.cell != (96, 172))
-    );
+    let seen: Vec<(i64, i64)> = r#where
+        .interactables
+        .iter()
+        .filter(|item| item.move_model)
+        .map(|item| item.cell)
+        .collect();
+    assert_eq!(seen, [(98, 172)]);
     assert!(!town.reader.ground(&r#where, None)?.open((96, 172))?);
+    assert!(!town.reader.ground(&r#where, None)?.open((97, 172))?);
     Ok(())
 }
 

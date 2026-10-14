@@ -746,6 +746,17 @@ fn ice_floors(memory: Rc<dyn Memory>) -> Rc<dyn IceReader> {
 /// Sootopolis Gym, and the Gym's module sets them in place.
 pub const STOPPER: i64 = 0x8A;
 
+/// `STOPPER`, and `STOPPER3` everywhere but Mauville Gym, where it is the barriers: in Seafloor
+/// Cavern ten round the submarine, whose furniture records are what the player reads; on each Regi
+/// chamber's sealed door (Desert Ruins, Island Cave, Ancient Tomb) and on the Sealed Chamber's wall
+/// the player digs through, each on the warp it shuts, the wall's three cells wide at (40, 25); five
+/// each in Dewford Town, Route 104 and Route 109, and one on Route 120. Every one was listed as a
+/// person, and as "Submarine Explorer 1" once the player named one so (Orion, movie44,
+/// 2026-10-13).
+///
+/// Python's is a frozenset; an array here, collected where a set is wanted.
+pub const BLOCKERS: [i64; 2] = [STOPPER, STOPPER3];
+
 /// The player's looks among the ROM's sprite ids, `HEROINE_RS` and `HERO_RS` through the contest
 /// outfits to `MAGMA_HERO_RS` and `AQUA_HERO_RS` (spike 87): putting the Magma Suit on in the
 /// Cave of Origin fills a work object at the player's own cell with `MAGMA_HERO_RS` (spike 203).
@@ -772,7 +783,7 @@ pub fn game() -> &'static Game {
         features: vec![BerrySpots::of, ash_piles],
         doors: Some(rotating_doors),
         ice: Some(ice_floors),
-        blocker: Some(STOPPER),
+        blockers: HashSet::from(BLOCKERS),
         player_looks: PLAYER_LOOKS.collect(),
         scenes: SCENES,
         stairs: HashSet::from([SOOTOPOLIS_GYM]),

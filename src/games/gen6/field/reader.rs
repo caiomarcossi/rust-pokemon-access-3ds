@@ -228,8 +228,8 @@ pub struct FieldReader {
     features: Vec<Rc<dyn Feature>>,
     /// The game's rotating doors, or None in a game without them.
     doors: Option<Rc<dyn DoorReader>>,
-    /// The sprite of the game's invisible blocker (`Game.blocker`), or None.
-    blocker: Option<i64>,
+    /// The sprites of the game's invisible blockers (`Game.blockers`).
+    blockers: HashSet<i64>,
     /// The sprites the player is drawn as (`Game.player_looks`).
     player_looks: HashSet<i64>,
     /// Zones whose floors' stairs are listed (`Game.stairs`).
@@ -373,7 +373,7 @@ impl FieldReader {
             warp_words: game.warps.clone(),
             features,
             doors: game.doors.map(|make| make(memory.clone())),
-            blocker: game.blocker,
+            blockers: game.blockers.clone(),
             player_looks: game.player_looks.clone(),
             stairs: game.stairs.clone(),
             ice: game.ice.map(|make| make(memory.clone())),
@@ -1562,7 +1562,10 @@ impl FieldReader {
                 continue;
             }
             let code = mmodel::drawn_as(&*self.memory, model, &head, self.drawn)?;
-            if Some(code) == self.blocker || self.player_looks.contains(&code) {
+            if self.player_looks.contains(&code)
+                || (self.blockers.contains(&code)
+                    && !self.barriers.contains(&(mmodel::zone_of(&head)?, code)))
+            {
                 continue;
             }
             let mut stood_in = None;
@@ -1615,9 +1618,11 @@ impl FieldReader {
             return Ok((IndexMap::new(), HashSet::new()));
         };
         let records = read_records(&*self.memory, &data, NPC)?;
+        let mut unseen: HashSet<i64> = self.blockers.clone();
+        unseen.insert(mmodel::NONDRAW);
         let mut drawn: IndexMap<i64, i64> = IndexMap::new();
         for record in &records {
-            if u16(record, NPC_SPRITE)? != mmodel::NONDRAW && u16(record, NPC_SCRIPT)? != 0 {
+            if !unseen.contains(&u16(record, NPC_SPRITE)?) && u16(record, NPC_SCRIPT)? != 0 {
                 drawn.insert(u16(record, NPC_SCRIPT)?, u16(record, NPC_SPRITE)?);
             }
         }
@@ -1651,23 +1656,22 @@ impl FieldReader {
     /// Sootopolis City's locked doors (spike 203).
     fn unseen(&self, zone: i64) -> Result<IndexMap<Cell, Option<f64>>> {
         let mut unseen: HashSet<i64> = HashSet::from([mmodel::NONDRAW]);
-        if let Some(blocker) = self.blocker {
-            let rotating = match &self.doors {
-                Some(doors) => !doors.doors(zone)?.is_empty(),
-                None => false,
-            };
-            if !rotating {
-                unseen.insert(blocker);
-            }
+        let rotating = match &self.doors {
+            Some(doors) => !doors.doors(zone)?.is_empty(),
+            None => false,
+        };
+        if !rotating {
+            unseen.extend(self.blockers.iter().copied());
         }
         let mut out: IndexMap<Cell, Option<f64>> = IndexMap::new();
         let models = self.models.borrow().clone();
         for model in models {
             let head = self.memory.read(model, mmodel::HEAD)?;
-            if !mmodel::in_use(&head)?
-                || mmodel::index_of(&head)? == mmodel::PLAYER_INDEX
-                || !unseen.contains(&mmodel::drawn_as(&*self.memory, model, &head, self.drawn)?)
-            {
+            if !mmodel::in_use(&head)? || mmodel::index_of(&head)? == mmodel::PLAYER_INDEX {
+                continue;
+            }
+            let code = mmodel::drawn_as(&*self.memory, model, &head, self.drawn)?;
+            if !unseen.contains(&code) || self.barriers.contains(&(mmodel::zone_of(&head)?, code)) {
                 continue;
             }
             if let Some(cell) = mmodel::cell(&head)? {

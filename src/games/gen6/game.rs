@@ -182,9 +182,10 @@ pub struct Game {
     /// The reader of its rooms of thin ice, or None in a game with none: ORAS's, in Sootopolis
     /// Gym (`games.oras.field.ice`).
     pub ice: Option<IceFactory>,
-    /// The sprite of its invisible blocker, a move model drawn as nothing that stands in the way:
-    /// listed as nobody, and solid but where it stands in for a rotating door's arm.
-    pub blocker: Option<i64>,
+    /// The sprites of its invisible blockers, move models drawn as nothing that stand in the way:
+    /// listed as nobody, and solid but where they stand in for a rotating door's arm. Not where a
+    /// sprite is a barrier (`barriers`).
+    pub blockers: HashSet<i64>,
     /// The sprites the player is drawn as: a model drawn as one, standing in for the player in a
     /// scene, is the player and not listed.
     pub player_looks: HashSet<i64>,
@@ -234,7 +235,7 @@ impl Game {
             features: Vec::new(),
             doors: None,
             ice: None,
-            blocker: None,
+            blockers: HashSet::new(),
             player_looks: HashSet::new(),
             stairs: HashSet::new(),
             apps: Vec::new(),
