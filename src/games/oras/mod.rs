@@ -547,6 +547,8 @@ pub const UNDERWATER_128: i64 = 0x44;
 pub const SEAFLOOR_CAVERN: i64 = 0x62;
 pub const UNDERWATER_126: i64 = 0x42;
 pub const UNDER_SOOTOPOLIS: i64 = 0x4C;
+pub const UNDERWATER_134: i64 = 0xA0;
+pub const UNDERWATER_134_SOUTH: i64 = 0xA1;
 
 /// Mauville Gym's triggers, by their scripts (spike 146): its five floor switches, each one cell,
 /// the two by the entrance at (58, 38) and (66, 38), the three by Wattson at (5, 40), (13, 36) and
@@ -586,6 +588,12 @@ pub const UNDER_SOOTOPOLIS: i64 = 0x4C;
 /// water under the city, at (20, 36), where the light into the city's lake is 3 north. `0x4c`'s
 /// only trigger, script 2, seven wide at (17, 37), leads back to (57, 96). The listing was
 /// replayed (omega_ruby_route-126-dive.ctm); neither was swum through.
+///
+/// The way south under Route 134 to the Sealed Chamber is two zones of sea floor joined the same
+/// way, with no warp in either: `0xa0`'s only trigger, script 2, seven wide at (16, 36), puts the
+/// player in `0xa1` at (19, 6), and `0xa1`'s at (16, 5) puts them back at (19, 35). Diving down
+/// into `0xa0`, the list held nothing but the dive spot; the player swam south and came up in
+/// `0xa1` at (19, 6) (movie44, 2026-10-13).
 ///
 /// Python's value is `tuple[str, str] | tuple[str, str, int]`: the zone is the third item, None
 /// where the tuple has two.
@@ -632,6 +640,22 @@ pub fn triggers() -> &'static IndexMap<(i64, i64), (String, String, Option<i64>)
                 "exits".to_string(),
                 "way out".to_string(),
                 Some(UNDERWATER_126),
+            ),
+        );
+        out.insert(
+            (UNDERWATER_134, 0x2),
+            (
+                PASSAGE.0.to_string(),
+                PASSAGE.1.to_string(),
+                Some(UNDERWATER_134_SOUTH),
+            ),
+        );
+        out.insert(
+            (UNDERWATER_134_SOUTH, 0x2),
+            (
+                PASSAGE.0.to_string(),
+                PASSAGE.1.to_string(),
+                Some(UNDERWATER_134),
             ),
         );
         for &zone in secret_bases_zones() {
