@@ -213,7 +213,7 @@ impl Title {
 
     fn heard(&mut self) -> Vec<Heard> {
         let on_screen = self.seen();
-        let items = self.reader.poll(&on_screen).unwrap();
+        let items = self.reader.poll(&on_screen).unwrap().items;
         items
             .iter()
             .map(|item| {
@@ -290,7 +290,7 @@ fn test_a_button_whose_words_are_shown_but_not_yet_read_waits_for_them() {
         .into_iter()
         .filter(|piece| piece.text != "Mystery Gift")
         .collect();
-    assert!(title.reader.poll(&unread).unwrap().is_empty());
+    assert!(title.reader.poll(&unread).unwrap().items.is_empty());
     assert_eq!(title.heard(), said(&[(&["Mystery Gift"], false)]));
 }
 

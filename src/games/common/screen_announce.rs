@@ -46,8 +46,10 @@ use std::rc::Rc;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::core::speech::{Category, Speech};
-use crate::games::common::cursors::shared::CursorItem;
-use crate::games::common::screen::{ScreenText, by_rows, distinct, in_rows, join, reading_order};
+use crate::games::common::cursors::shared::CursorPoll;
+use crate::games::common::screen::{
+    ScreenPoll, ScreenText, by_rows, distinct, in_rows, join, reading_order,
+};
 use crate::py::{self, Log, Result};
 
 /// Polls after a cursor moves before its details are said, when none of them is still being
@@ -242,42 +244,40 @@ impl ScreenAnnouncer {
         self.speech.say(name, Category::Screen);
     }
 
-    /// Say one poll's worth: `texts` from the screen text reader, `items` and `under` from the
-    /// cursor reader, `on_screen` everything on screen now, the list readers' `labels`, the
-    /// `roots` of every layout still alive, so a menu whose layout is gone is forgotten, and the
-    /// roots of the layouts whose words are `settling`, still being written, the pieces that have
-    /// `left` the screen, and, by layout, the TextBoxes of the list a cursor walks where the
-    /// cursor reader knows it (`CursorReader.lists`), and the `rows` of an app menu's list,
-    /// which are its cursor's however they come on screen (`CursorReader.rows`), and the
-    /// `subject`, asked only as a screen is rewritten, for the name of what it shows where that
-    /// is known: the summary's Pokémon's.
+    /// Say one poll's worth: what the `screen` text reader and the `cursors` reader found, less
+    /// what other readers own, the list readers' `labels`, the `roots` of every layout still
+    /// alive, so a menu whose layout is gone is forgotten, and the `subject`, asked only as a
+    /// screen is rewritten, for the name of what it shows where that is known: the summary's
+    /// Pokémon's.
     ///
     /// A cursor that knows its list owns the list and no more of its layout. The Poké Mart draws
     /// its list, the money, the count in the bag and the chosen item's description in one
     /// layout, and left to the cursor as a menu's layout is, the description was never heard as
     /// the Mart opened, nor the count as it changed (shop.ctm, 2026-09-24).
     ///
-    /// Python's `roots`, `settling`, `left`, `listed`, `moving`, `rows` and `subject` default to
-    /// None, nothing, nothing, None, nothing, nothing and None.
-    #[allow(clippy::too_many_arguments)]
+    /// Python's `roots` and `subject` default to None.
     pub fn say(
         &mut self,
-        texts: &[ScreenText],
-        items: &[CursorItem],
-        under: &[Vec<ScreenText>],
-        on_screen: &[ScreenText],
+        screen: &ScreenPoll,
+        cursors: &CursorPoll,
         labels: &HashSet<String>,
         roots: Option<&IndexSet<i64>>,
-        settling: &IndexSet<i64>,
-        left: &[ScreenText],
-        listed: Option<&IndexMap<i64, HashSet<i64>>>,
-        moving: &HashSet<i64>,
-        rows: &HashSet<i64>,
         subject: Option<Subject>,
     ) -> Result<()> {
         self.polls += 1;
-        let no_lists: IndexMap<i64, HashSet<i64>> = IndexMap::new();
-        let listed = listed.unwrap_or(&no_lists);
+        let (texts, on_screen, settling, left) = (
+            &screen.texts,
+            &screen.on_screen,
+            &screen.settling,
+            &screen.left,
+        );
+        let (items, under, listed, moving, rows) = (
+            &cursors.items,
+            &cursors.under,
+            &cursors.lists,
+            &cursors.moving,
+            &cursors.rows,
+        );
         let mut cursored: HashSet<i64> = rows.clone();
         for pieces in under {
             if !pieces.iter().any(|p| labels.contains(&p.text)) {

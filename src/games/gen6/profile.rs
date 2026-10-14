@@ -37,7 +37,7 @@ use crate::games::common::layout::Layouts;
 use crate::games::common::layout_file::{LayoutFile, LayoutFiles};
 use crate::games::common::pictures::CAUGHT;
 use crate::games::common::scenes::{Scenes, load as load_scenes};
-use crate::games::common::screen::{Pictures, ScreenText, ScreenTextReader};
+use crate::games::common::screen::{Pictures, ScreenPoll, ScreenText, ScreenTextReader};
 use crate::games::common::screen_announce::ScreenAnnouncer;
 use crate::games::common::session::Profile;
 use crate::games::common::touch::{
@@ -1037,7 +1037,7 @@ impl Gen6Profile {
     /// `poll_screen(hold, with_choices)`. Named apart from `poll_screen` because the runtime's
     /// `Profile::poll_screen` takes neither.
     pub fn poll_screen_with(&self, hold: bool, with_choices: bool) -> Result<()> {
-        let (texts, on_screen, sides, items, round_lines) = phase(&*self.memory, "screen", || {
+        let (screen, sides, cursors, round_lines) = phase(&*self.memory, "screen", || {
             // The field's layouts come back where they were when a menu screen closes, and a
             // layout found before it was built is taken in once it is.
             let revived = self.layouts.revive()?;
@@ -1055,22 +1055,22 @@ impl Gen6Profile {
                     .track(self.layouts.panes(lyt::WINDOW_CLASS))?;
             }
             let exclude: HashSet<i64> = self.dialogue.borrow().line_objects().iter().collect();
-            let texts = self.screen.borrow_mut().poll(&exclude, hold)?;
+            let screen = self.screen.borrow_mut().poll(&exclude, hold)?;
             // A message box's lines lead to a window typing into them before any sweep finds it.
-            let lines: Vec<i64> = self.screen.borrow().message_lines().into_iter().collect();
+            let lines: Vec<i64> = screen.message_lines.iter().copied().collect();
             self.dialogue.borrow_mut().watch(&lines);
-            let on_screen = self.screen.borrow().on_screen();
+            let on_screen = &screen.on_screen;
             // The HP box is the battle reader's to say, whole and once it holds still.
-            let sides = self.battle.borrow_mut().poll(&on_screen)?;
-            self.habitat.borrow_mut().poll(&on_screen)?;
+            let sides = self.battle.borrow_mut().poll(on_screen)?;
+            self.habitat.borrow_mut().poll(on_screen)?;
             if let Some(standings) = &self.standings {
-                standings.borrow_mut().poll(&on_screen)?;
+                standings.borrow_mut().poll(on_screen)?;
             }
             self.map_cursor.borrow_mut().poll()?;
             let running = self.apps.borrow().running.clone();
             let round_lines = self.sparring.borrow_mut().poll(running.as_deref())?;
-            let items = self.cursors.borrow_mut().poll(&on_screen)?;
-            Ok((texts, on_screen, sides, items, round_lines))
+            let cursors = self.cursors.borrow_mut().poll(on_screen)?;
+            Ok((screen, sides, cursors, round_lines))
         })?;
         for (line, category) in &round_lines {
             (self.log)(&format!("round: {line}"));
@@ -1081,53 +1081,40 @@ impl Gen6Profile {
         if with_choices {
             labels.extend(self.choices.borrow().labels());
         }
-        let mut kept: Vec<ScreenText> = Vec::new();
-        for text in &texts {
+        let mut texts: Vec<ScreenText> = Vec::new();
+        for text in &screen.texts {
             if !self.battle.borrow().owns(text)? && !self.habitat.borrow().owns(text) {
-                kept.push(text.clone());
+                texts.push(text.clone());
             }
         }
-        let under = self.cursors.borrow().under();
         // A layout built again where it was is the one that was there, and a menu stays a menu:
         // the battle's move list, forgotten while it was gone, was read out whole the moment it
         // showed.
         let mut roots = self.layouts.roots();
         roots.extend(self.layouts.buried());
-        let settling = self.screen.borrow().settling();
-        let left = self.screen.borrow().left();
-        let listed = self.cursors.borrow().lists();
-        let moving = self.cursors.borrow().moving();
-        let rows = self.cursors.borrow().rows();
         let subject = || summary::name(&*self.memory, &self.names, &self.apps.borrow());
         self.screen_announcer.borrow_mut().say(
-            &kept,
-            &items,
-            &under,
-            &on_screen,
+            &ScreenPoll {
+                texts,
+                ..screen.clone()
+            },
+            &cursors,
             &labels,
             Some(&roots),
-            &settling,
-            &left,
-            Some(&listed),
-            &moving,
-            &rows,
             Some(&subject),
         )?;
         if let Some(conditions) = &self.conditions {
             // After the screen's words, and once a cursor's details are said, so they come last.
-            let under: Vec<String> = self
-                .cursors
-                .borrow()
-                .under()
-                .into_iter()
+            let under: Vec<String> = cursors
+                .under
+                .iter()
                 .flatten()
-                .map(|piece| piece.text)
+                .map(|piece| piece.text.clone())
                 .collect();
-            let settling = self.screen.borrow().settling();
             let waiting = self.screen_announcer.borrow().gathering();
             conditions
                 .borrow_mut()
-                .poll(&under, &on_screen, &settling, waiting)?;
+                .poll(&under, &screen.on_screen, &screen.settling, waiting)?;
         }
         self.announcements.borrow_mut().battlers(&sides);
         self.announcements.borrow_mut().screen_polled();

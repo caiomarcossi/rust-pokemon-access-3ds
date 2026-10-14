@@ -29,6 +29,7 @@ use crate::core::rtti::{ClassNames, demangle};
 use crate::core::speech::{Category, Speech};
 use crate::games::common::announce::Announcements;
 use crate::games::common::cursors::reader::CursorReader;
+use crate::games::common::cursors::shared::CursorPoll;
 use crate::games::common::dialogue::DialogueReader;
 use crate::games::common::field::ground::Ground;
 use crate::games::common::field::guide::FieldSource;
@@ -38,7 +39,7 @@ use crate::games::common::field::things::{Field, Interactable, describe};
 use crate::games::common::layout::Layouts;
 use crate::games::common::lyt as common_lyt;
 use crate::games::common::scenes::{Scene, Scenes};
-use crate::games::common::screen::{ScreenText, ScreenTextReader};
+use crate::games::common::screen::{ScreenPoll, ScreenText, ScreenTextReader};
 use crate::games::common::screen_announce::ScreenAnnouncer;
 use crate::games::common::session::Profile;
 use crate::games::sm::apps::{self, RunningApp};
@@ -341,40 +342,36 @@ impl SunProfile {
             self.cursors.borrow_mut().track(windows)?;
         }
         let line_objects: HashSet<i64> = self.dialogue.borrow().line_objects().iter().collect();
-        let mut texts = self.screen.borrow_mut().poll(&line_objects, true)?;
+        let screen = self.screen.borrow_mut().poll(&line_objects, true)?;
         // A message box's lines lead to a window typing into them before any sweep finds it.
-        let lines: Vec<i64> = self.screen.borrow().message_lines().into_iter().collect();
+        let lines: Vec<i64> = screen.message_lines.iter().copied().collect();
         self.dialogue.borrow_mut().watch(&lines);
-        let on_screen = self.screen.borrow().on_screen();
         // The HP box is the battle reader's to say, whole and once it holds still.
-        let sides = self.battle.borrow_mut().poll(&on_screen)?;
-        let items = self.cursors.borrow_mut().poll(&on_screen)?;
+        let sides = self.battle.borrow_mut().poll(&screen.on_screen)?;
+        let cursors = self.cursors.borrow_mut().poll(&screen.on_screen)?;
         // The language choice's buttons are pictures, which only its own reader can name; the
         // other readers keep up with its screen but leave it to that reader.
         if !self.langselect.borrow().showing() {
-            texts.retain(|text| !self.battle.borrow().owns(text));
+            let texts: Vec<ScreenText> = screen
+                .texts
+                .iter()
+                .filter(|text| !self.battle.borrow().owns(text))
+                .cloned()
+                .collect();
             let texts = self._without_plates(texts)?;
-            let under = self.cursors.borrow().under();
+            let cursors = CursorPoll {
+                moving: HashSet::new(),
+                ..cursors
+            };
             // A layout built again where it was is the one that was there, and a menu stays a
             // menu, as in ORAS.
             let mut roots = self.layouts.roots();
             roots.extend(self.layouts.buried());
-            let settling = self.screen.borrow().settling();
-            let left = self.screen.borrow().left();
-            let lists = self.cursors.borrow().lists();
-            let rows = self.cursors.borrow().rows();
             self.screen_announcer.borrow_mut().say(
-                &texts,
-                &items,
-                &under,
-                &on_screen,
+                &ScreenPoll { texts, ..screen },
+                &cursors,
                 &HashSet::new(),
                 Some(&roots),
-                &settling,
-                &left,
-                Some(&lists),
-                &HashSet::new(),
-                &rows,
                 None,
             )?;
         }

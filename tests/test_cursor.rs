@@ -16,7 +16,7 @@ use crate::core::binary;
 use crate::core::memory::Memory;
 use crate::core::rtti::ClassNames;
 use crate::games::common::cursors::reader::CursorReader;
-use crate::games::common::cursors::shared::CursorItem;
+use crate::games::common::cursors::shared::{CursorItem, CursorPoll};
 use crate::games::common::layout_file::LayoutFiles;
 use crate::games::common::lyt;
 use crate::games::common::screen::{Pictures, ScreenText, join};
@@ -53,14 +53,50 @@ fn write_name_in(memory: &FakeMemory, pane: i64, name: &str, shape: &lyt::PaneSh
     memory.write(pane + shape.name, &bytes);
 }
 
+/// The cursor reader, keeping what its last poll found for a test to look at.
+struct Reader {
+    reader: CursorReader,
+    last: CursorPoll,
+}
+
+impl From<CursorReader> for Reader {
+    fn from(reader: CursorReader) -> Self {
+        Reader {
+            reader,
+            last: CursorPoll::default(),
+        }
+    }
+}
+
+impl Reader {
+    fn poll(&mut self, on_screen: &[ScreenText]) -> crate::py::Result<CursorPoll> {
+        self.last = self.reader.poll(on_screen)?;
+        Ok(self.last.clone())
+    }
+}
+
+impl std::ops::Deref for Reader {
+    type Target = CursorReader;
+
+    fn deref(&self) -> &CursorReader {
+        &self.reader
+    }
+}
+
+impl std::ops::DerefMut for Reader {
+    fn deref_mut(&mut self) -> &mut CursorReader {
+        &mut self.reader
+    }
+}
+
 /// `ClassNames(memory, CODE)`.
 fn names_of(memory: &Rc<FakeMemory>) -> Rc<ClassNames> {
     Rc::new(ClassNames::new(memory.clone(), CODE))
 }
 
 /// A reader over the game's layouts, made the way every test but one makes it.
-fn reader_of(fake: &FakeLayouts, memory: &Rc<FakeMemory>) -> CursorReader {
-    CursorReader::new(fake.layouts.clone(), names_of(memory))
+fn reader_of(fake: &FakeLayouts, memory: &Rc<FakeMemory>) -> Reader {
+    CursorReader::new(fake.layouts.clone(), names_of(memory)).into()
 }
 
 /// `CursorReader(fake.layouts, ClassNames(memory, CODE), files)`.
@@ -68,8 +104,8 @@ fn reader_with_files(
     fake: &FakeLayouts,
     memory: &Rc<FakeMemory>,
     files: &Rc<LayoutFiles>,
-) -> CursorReader {
-    CursorReader::with_files(fake.layouts.clone(), names_of(memory), files.clone())
+) -> Reader {
+    CursorReader::with_files(fake.layouts.clone(), names_of(memory), files.clone()).into()
 }
 
 /// `clyt.archive([clyt.layout_file(sections)])`.
@@ -138,7 +174,7 @@ struct Menu {
     memory: Rc<FakeMemory>,
     fake: FakeLayouts,
     window: i64,
-    reader: CursorReader,
+    reader: Reader,
 }
 
 impl Menu {
@@ -190,7 +226,7 @@ impl Menu {
 
     fn heard_with(&mut self, pieces: &[ScreenText]) -> Vec<(Vec<String>, bool)> {
         self.fake.layouts.refresh();
-        let items = self.reader.poll(pieces).unwrap();
+        let items = self.reader.poll(pieces).unwrap().items;
         heard_of(items)
     }
 }
@@ -338,7 +374,7 @@ fn test_a_menu_cursors_rows_are_the_row_it_is_over_and_the_rows_drawn_like_it() 
     all.push(pocket);
     assert_eq!(menu.heard_with(&all), said(&[(&["Quick Claw"], true)]));
     assert_eq!(
-        menu.reader.rows(),
+        menu.reader.last.rows.clone(),
         pieces
             .iter()
             .map(|piece| piece.r#box)
@@ -537,7 +573,8 @@ fn test_what_is_under_the_cursor_is_known_after_a_poll() {
     menu.heard();
     let under: Vec<Vec<String>> = menu
         .reader
-        .under()
+        .last
+        .under
         .iter()
         .map(|pieces| pieces.iter().map(|p| p.text.clone()).collect())
         .collect();
@@ -560,7 +597,7 @@ struct Battle {
     fake: FakeLayouts,
     root: i64,
     marker: i64,
-    reader: CursorReader,
+    reader: Reader,
 }
 
 impl Battle {
@@ -685,7 +722,7 @@ impl Battle {
 
     fn heard_with(&mut self, pieces: &[ScreenText]) -> Vec<(Vec<String>, bool)> {
         self.fake.layouts.refresh();
-        let items = self.reader.poll(pieces).unwrap();
+        let items = self.reader.poll(pieces).unwrap().items;
         heard_of(items)
     }
 }
@@ -818,7 +855,7 @@ struct Keyboard {
     touch: IndexMap<String, i64>,
     cursor: i64,
     second: i64,
-    reader: CursorReader,
+    reader: Reader,
 }
 
 impl Keyboard {
@@ -984,7 +1021,7 @@ impl Keyboard {
                 )
             })
             .collect();
-        heard_of(self.reader.poll(&pieces).unwrap())
+        heard_of(self.reader.poll(&pieces).unwrap().items)
     }
 }
 
@@ -994,7 +1031,7 @@ impl Keyboard {
 fn test_a_keyboards_other_cursor_picture_is_left_to_its_key_cursor() {
     let mut keyboard = Keyboard::with(lyt::PICTURE_CLASS, false, true, true);
     assert_eq!(keyboard.heard(), said(&[(&["!"], true)]));
-    assert_eq!(keyboard.reader.lists(), IndexMap::new());
+    assert_eq!(keyboard.reader.last.lists.clone(), IndexMap::new());
 }
 
 /// The name entry's keys were read a row at a time as the keyboard opened, and the key under
@@ -1020,7 +1057,7 @@ fn test_a_key_cursor_textured_as_a_cursor_is_read_once_as_a_key_cursor() {
     put(&keyboard.memory, keyboard.cursor + lyt::Y, &[45.0]);
     assert_eq!(keyboard.heard(), said(&[(&["!"], true)]));
     assert_eq!(keyboard.heard(), said(&[]));
-    assert_eq!(keyboard.reader.lists(), IndexMap::new());
+    assert_eq!(keyboard.reader.last.lists.clone(), IndexMap::new());
 }
 
 #[test]
@@ -1113,7 +1150,7 @@ struct MainMenu {
     fake: FakeLayouts,
     cursor: i64,
     other: i64,
-    reader: CursorReader,
+    reader: Reader,
 }
 
 impl MainMenu {
@@ -1209,6 +1246,7 @@ impl MainMenu {
         self.reader
             .poll(&pieces)
             .unwrap()
+            .items
             .iter()
             .map(|item| (join(&item.pieces, false), item.opened))
             .collect()
@@ -1238,7 +1276,7 @@ fn test_a_frame_in_the_menus_own_layout_is_a_cursor_once_it_has_moved() {
 fn test_a_frame_drawn_as_a_cursor_says_its_item_as_the_menu_opens() {
     let mut menu = MainMenu::with(false, Some("cursor_lt.bclim"));
     assert_eq!(menu.heard(), lines(&[("CONTINUE Leos Time: 0:35", true)]));
-    assert_eq!(menu.reader.lists(), IndexMap::new());
+    assert_eq!(menu.reader.last.lists.clone(), IndexMap::new());
     menu.place(menu.cursor, 0.0, -33.0, 336.0, 43.0);
     assert_eq!(menu.heard(), lines(&[("MYSTERY GIFT", false)]));
 }
@@ -1333,7 +1371,7 @@ struct Chooser {
     groups: IndexMap<String, i64>,
     words_box: Option<i64>,
     cursor: i64,
-    reader: CursorReader,
+    reader: Reader,
 }
 
 impl Chooser {
@@ -1463,7 +1501,7 @@ impl Chooser {
                 ..ScreenText::placed(words_box, "May", false, 70.0, 90.0, 0.0, 12.5)
             }];
         }
-        heard_of(self.reader.poll(&pieces).unwrap())
+        heard_of(self.reader.poll(&pieces).unwrap().items)
     }
 }
 
@@ -1517,7 +1555,7 @@ struct Dex {
     boxes: Vec<(i64, i64)>,
     plate: i64,
     words: Vec<String>,
-    reader: CursorReader,
+    reader: Reader,
 }
 
 impl Dex {
@@ -1632,7 +1670,7 @@ impl Dex {
     fn heard(&mut self) -> Vec<(Vec<String>, bool)> {
         self.fake.layouts.refresh();
         let pieces = self.pieces();
-        heard_of(self.reader.poll(&pieces).unwrap())
+        heard_of(self.reader.poll(&pieces).unwrap().items)
     }
 }
 
@@ -1671,7 +1709,7 @@ fn test_a_plates_list_is_every_row_it_walks() {
     let mut dex = Dex::new();
     dex.heard();
     assert_eq!(
-        dex.reader.lists(),
+        dex.reader.last.lists.clone(),
         lists_of(
             dex.root,
             dex.boxes.iter().flat_map(|&(number, name)| [number, name])
@@ -1684,7 +1722,7 @@ fn test_a_window_as_tall_as_several_rows_is_no_plate() {
     let mut dex = Dex::with(ROW_YS.len(), 100.0);
     dex.heard();
     assert_eq!(dex.heard(), said(&[]));
-    assert_eq!(dex.reader.lists(), IndexMap::new());
+    assert_eq!(dex.reader.last.lists.clone(), IndexMap::new());
 }
 
 #[test]
@@ -1701,9 +1739,9 @@ fn test_a_plate_that_leaves_the_screen_is_forgotten_and_said_again_when_back() {
     dex.heard();
     dex.fake.visible(dex.plate, false);
     assert_eq!(dex.heard(), said(&[]));
-    assert_ne!(dex.reader.lists(), IndexMap::new());
+    assert_ne!(dex.reader.last.lists.clone(), IndexMap::new());
     assert_eq!(dex.heard(), said(&[]));
-    assert_eq!(dex.reader.lists(), IndexMap::new());
+    assert_eq!(dex.reader.last.lists.clone(), IndexMap::new());
     dex.fake.visible(dex.plate, true);
     dex.heard();
     assert_eq!(dex.heard(), said(&[(&["084", "Magnemite"], true)]));
@@ -1727,7 +1765,7 @@ struct Mart {
     root: i64,
     pieces: Vec<ScreenText>,
     cursor: i64,
-    reader: CursorReader,
+    reader: Reader,
 }
 
 impl Mart {
@@ -1854,7 +1892,7 @@ impl Mart {
 
     fn heard(&mut self) -> Vec<(Vec<String>, bool)> {
         self.fake.layouts.refresh();
-        heard_of(self.reader.poll(&self.pieces).unwrap())
+        heard_of(self.reader.poll(&self.pieces).unwrap().items)
     }
 }
 
@@ -1876,7 +1914,7 @@ struct Contest {
     root: i64,
     pieces: Vec<ScreenText>,
     cursor: i64,
-    reader: CursorReader,
+    reader: Reader,
 }
 
 impl Contest {
@@ -1964,7 +2002,7 @@ impl Contest {
 
     fn heard(&mut self) -> Vec<(Vec<String>, bool)> {
         self.fake.layouts.refresh();
-        heard_of(self.reader.poll(&self.pieces).unwrap())
+        heard_of(self.reader.poll(&self.pieces).unwrap().items)
     }
 }
 
@@ -1978,7 +2016,7 @@ fn test_a_cursor_picture_on_an_empty_pane_says_its_buttons_words() {
     contest.place(contest.cursor, 80.0, -21.0, 16.0, 16.0);
     assert_eq!(contest.heard(), said(&[(&["Iron Defense"], false)]));
     assert_eq!(
-        contest.reader.lists(),
+        contest.reader.last.lists.clone(),
         lists_of(contest.root, contest.pieces.iter().map(|p| p.r#box))
     );
 }
@@ -2007,7 +2045,7 @@ fn test_a_named_cursors_list_is_the_words_beside_those_it_is_over() {
     let mut mart = Mart::new();
     mart.heard();
     assert_eq!(
-        mart.reader.lists(),
+        mart.reader.last.lists.clone(),
         lists_of(mart.root, mart.pieces.iter().map(|p| p.r#box))
     );
 }
@@ -2050,7 +2088,7 @@ struct BoxMenu {
     root: i64,
     pieces: Vec<ScreenText>,
     cursor: i64,
-    reader: CursorReader,
+    reader: Reader,
 }
 
 impl BoxMenu {
@@ -2150,7 +2188,7 @@ impl BoxMenu {
 
     fn heard(&mut self) -> Vec<(Vec<String>, bool)> {
         self.fake.layouts.refresh();
-        heard_of(self.reader.poll(&self.pieces).unwrap())
+        heard_of(self.reader.poll(&self.pieces).unwrap().items)
     }
 }
 
@@ -2171,7 +2209,7 @@ fn test_a_named_cursors_list_is_its_row_and_the_rows_drawn_like_it() {
     let mut r#box = BoxMenu::new();
     r#box.heard();
     assert_eq!(
-        r#box.reader.lists(),
+        r#box.reader.last.lists.clone(),
         lists_of(r#box.root, r#box.pieces.iter().map(|p| p.r#box))
     );
 }
@@ -2240,7 +2278,7 @@ struct BoxGrid {
     at: i64,
     mark: i64,
     cursor: i64,
-    reader: CursorReader,
+    reader: Reader,
     title: ScreenText,
 }
 
@@ -2564,7 +2602,7 @@ impl BoxGrid {
             } else {
                 Vec::new()
             };
-            heard.extend(heard_of(self.reader.poll(&pieces).unwrap()));
+            heard.extend(heard_of(self.reader.poll(&pieces).unwrap().items));
         }
         heard
     }
@@ -2632,6 +2670,7 @@ fn test_an_empty_slot_brings_no_details_and_a_full_one_does() {
                 .reader
                 .poll(&[r#box.title.clone()])
                 .unwrap()
+                .items
                 .iter()
                 .map(|item| item.quiet),
         );
@@ -2655,6 +2694,7 @@ fn test_each_group_of_slots_is_a_cursor_of_its_own() {
                     .reader
                     .poll(&[r#box.title.clone()])
                     .unwrap()
+                    .items
                     .iter()
                     .map(|item| item.cursor),
             );
@@ -2693,6 +2733,7 @@ fn test_a_slot_under_a_pokemon_carried_is_said_without_the_summary() {
                 .reader
                 .poll(&[r#box.title.clone()])
                 .unwrap()
+                .items
                 .iter()
                 .map(|item| (item.pieces[0].text.clone(), item.quiet)),
         );
@@ -2711,12 +2752,12 @@ fn test_a_pointer_on_its_way_to_a_slot_is_moving_with_its_groups() {
     }
     r#box.fake.layouts.refresh();
     assert_eq!(
-        r#box.reader.poll(&[r#box.title.clone()]).unwrap(),
+        r#box.reader.poll(&[r#box.title.clone()]).unwrap().items,
         Vec::<CursorItem>::new()
     );
     let party = r#box.names[7].1;
     assert_eq!(
-        r#box.reader.moving(),
+        r#box.reader.last.moving.clone(),
         HashSet::from([r#box.cursor, party, r#box.root])
     );
     for _ in 0..3 {
@@ -2727,11 +2768,12 @@ fn test_a_pointer_on_its_way_to_a_slot_is_moving_with_its_groups() {
         .reader
         .poll(&[r#box.title.clone()])
         .unwrap()
+        .items
         .iter()
         .map(|item| item.pieces[0].text.clone())
         .collect();
     assert_eq!(texts, vec!["BOX 1, row 2, column 2".to_string()]);
-    assert_eq!(r#box.reader.moving(), HashSet::new());
+    assert_eq!(r#box.reader.last.moving.clone(), HashSet::new());
 }
 
 /// A mark not set is drawn half-transparent, and setting ▲ drew it solid
@@ -2800,7 +2842,7 @@ struct Confirm {
     r#box: i64,
     pieces: Vec<ScreenText>,
     cursor: i64,
-    reader: CursorReader,
+    reader: Reader,
 }
 
 impl Confirm {
@@ -2889,7 +2931,7 @@ impl Confirm {
 
     fn heard(&mut self) -> Vec<(Vec<String>, bool)> {
         self.fake.layouts.refresh();
-        heard_of(self.reader.poll(&self.pieces).unwrap())
+        heard_of(self.reader.poll(&self.pieces).unwrap().items)
     }
 }
 
@@ -2936,7 +2978,7 @@ fn test_a_cursor_picture_beside_the_words_walks_them_as_its_list() {
     let mut confirm = Confirm::new();
     confirm.heard();
     assert_eq!(
-        confirm.reader.lists(),
+        confirm.reader.last.lists.clone(),
         lists_of(confirm.root, confirm.pieces.iter().map(|p| p.r#box))
     );
 }
@@ -2960,7 +3002,7 @@ struct Tutorial {
     pieces: Vec<ScreenText>,
     holder: i64,
     pointer: i64,
-    reader: CursorReader,
+    reader: Reader,
 }
 
 impl Tutorial {
@@ -3034,7 +3076,7 @@ impl Tutorial {
 
     fn heard(&mut self) -> Vec<(Vec<String>, bool)> {
         self.fake.layouts.refresh();
-        heard_of(self.reader.poll(&self.pieces).unwrap())
+        heard_of(self.reader.poll(&self.pieces).unwrap().items)
     }
 }
 
@@ -3047,7 +3089,8 @@ fn test_a_pointer_says_the_button_it_is_about_to_tap() {
     assert_eq!(tutorial.heard(), said(&[]));
     let under: Vec<String> = tutorial
         .reader
-        .under()
+        .last
+        .under
         .iter()
         .flat_map(|pieces| pieces.iter().map(|p| p.text.clone()))
         .collect();
@@ -3076,7 +3119,10 @@ fn test_a_pointer_over_no_touch_area_says_nothing() {
     tutorial.point(0.0, 110.0);
     tutorial.heard();
     assert_eq!(tutorial.heard(), said(&[]));
-    assert_eq!(tutorial.reader.under(), Vec::<Vec<ScreenText>>::new());
+    assert_eq!(
+        tutorial.reader.last.under.clone(),
+        Vec::<Vec<ScreenText>>::new()
+    );
 }
 
 /// The bag's LAST USED ITEM stood under Wally's tap on USE, its screen still up behind the
@@ -3117,7 +3163,7 @@ struct BagParty {
     fake: FakeLayouts,
     root: i64,
     bar: i64,
-    reader: CursorReader,
+    reader: Reader,
     pieces: Vec<ScreenText>,
 }
 
@@ -3205,7 +3251,7 @@ impl BagParty {
 
     fn heard(&mut self) -> Vec<(Vec<String>, bool)> {
         self.fake.layouts.refresh();
-        heard_of(self.reader.poll(&self.pieces).unwrap())
+        heard_of(self.reader.poll(&self.pieces).unwrap().items)
     }
 }
 
@@ -3265,7 +3311,8 @@ fn test_a_cursor_over_pictures_alone_says_what_the_game_calls_them() {
         false,
         Some(pictures),
         IndexMap::new(),
-    );
+    )
+    .into();
     menu.reader.track([menu.window]).unwrap();
     assert_eq!(menu.heard_with(&[]), said(&[(&["French"], true)]));
     menu.r#move(60.0, 60.0);
@@ -3288,7 +3335,7 @@ struct BaseMenu {
     rows: Vec<(i64, &'static str, f64)>,
     pieces: Vec<ScreenText>,
     moved: Vec<i64>,
-    reader: CursorReader,
+    reader: Reader,
 }
 
 impl BaseMenu {
@@ -3440,7 +3487,7 @@ impl BaseMenu {
 
     fn heard(&mut self) -> Vec<(Vec<String>, bool)> {
         self.fake.layouts.refresh();
-        heard_of(self.reader.poll(&self.pieces).unwrap())
+        heard_of(self.reader.poll(&self.pieces).unwrap().items)
     }
 }
 

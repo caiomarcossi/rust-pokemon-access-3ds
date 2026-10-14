@@ -178,6 +178,27 @@ impl ScreenText {
     }
 }
 
+/// What one screen text poll found (`ScreenTextReader.poll`).
+///
+/// Python's two `set`s are `IndexSet`s here, in the order Python iterates them.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ScreenPoll {
+    /// What has come on screen or changed since the last poll, the top screen first.
+    pub texts: Vec<ScreenText>,
+    /// Every piece on screen, reported or not, the top screen first.
+    pub on_screen: Vec<ScreenText>,
+    /// The pieces that left the screen, as they last read: a letter deleted from a name is one
+    /// of them.
+    pub left: Vec<ScreenText>,
+    /// The roots of layouts whose words on screen were not all reported, because some had not
+    /// yet read the same for a poll: words still being written.
+    pub settling: IndexSet<i64>,
+    /// The TextBoxes a message window was typing into, whether or not the dialogue reader has
+    /// found that window yet: handed to it, they lead to the window the moment it types, where a
+    /// sweep took up to 2 s (spike 60).
+    pub message_lines: IndexSet<i64>,
+}
+
 /// Python's `min(a, b)` on floats: `a`, unless `b < a`. A NaN is never smaller, so it stays
 /// whichever side it is on, where `f64::min` would drop it.
 fn min_of(a: f64, b: f64) -> f64 {
@@ -422,15 +443,11 @@ pub struct ScreenTextReader {
     last_said: IndexMap<i64, ScreenText>,
     /// TextBox -> the words it left the screen with, for TextBoxes off screen and tracked.
     gone: IndexMap<i64, String>,
-    /// Roots of layouts with words on screen that have not been reported yet.
-    settling: PySet,
     /// TextBox -> its piece at the last poll, for TextBoxes counted on screen then.
     last: IndexMap<i64, ScreenText>,
     /// TextBoxes counted on screen at the last poll only because they had been the poll before.
     carried: HashSet<i64>,
     on_screen: Vec<ScreenText>,
-    /// The pieces that left the screen at the last poll, as they last read.
-    left: Vec<ScreenText>,
     polls: i64,
     /// Layout root -> the poll its pieces came on screen at, for layouts on screen.
     root_since: IndexMap<i64, i64>,
@@ -438,7 +455,7 @@ pub struct ScreenTextReader {
     box_since: IndexMap<i64, i64>,
     /// Tag processor -> whether it is one a message window embeds, until the next `track`.
     window_tags: IndexMap<i64, bool>,
-    /// TextBoxes a message window was typing into at the last poll.
+    /// TextBoxes a message window is typing into, as this poll finds them.
     message_lines: PySet,
     /// TextBoxes of a layout still tracked that were hidden at the last poll.
     hidden: HashSet<i64>,
@@ -499,11 +516,9 @@ impl ScreenTextReader {
             said: IndexMap::new(),
             last_said: IndexMap::new(),
             gone: IndexMap::new(),
-            settling: PySet::new(),
             last: IndexMap::new(),
             carried: HashSet::new(),
             on_screen: Vec::new(),
-            left: Vec::new(),
             polls: 0,
             root_since: IndexMap::new(),
             box_since: IndexMap::new(),
@@ -516,32 +531,10 @@ impl ScreenTextReader {
         }
     }
 
-    /// Every piece on screen at the last poll, reported or not, the top screen first.
+    /// Every piece on screen at the last poll, reported or not, the top screen first: what touch
+    /// mode names its targets by, as a key asks.
     pub fn on_screen(&self) -> Vec<ScreenText> {
         self.on_screen.clone()
-    }
-
-    /// The pieces that left the screen at the last poll, as they last read: a letter deleted
-    /// from a name is one of them.
-    pub fn left(&self) -> Vec<ScreenText> {
-        self.left.clone()
-    }
-
-    /// The TextBoxes a message window was typing into at the last poll, whether or not the
-    /// dialogue reader has found that window yet: handed to it, they lead to the window the moment
-    /// it types, where a sweep took up to 2 s (spike 60).
-    ///
-    /// Python returns a `set`; the `IndexSet` here is in the order Python iterates it.
-    pub fn message_lines(&self) -> IndexSet<i64> {
-        self.message_lines.copy().iter().collect()
-    }
-
-    /// The roots of layouts whose words on screen at the last poll were not all reported,
-    /// because some had not yet read the same for a poll: words still being written.
-    ///
-    /// Python returns a `set`; the `IndexSet` here is in the order Python iterates it.
-    pub fn settling(&self) -> IndexSet<i64> {
-        self.settling.copy().iter().collect()
     }
 
     /// Read these TextBoxes from now on.
@@ -562,13 +555,14 @@ impl ScreenTextReader {
         self.window_tags.clear();
     }
 
-    /// What has come on screen since the last poll, the top screen first.
+    /// What has come on screen since the last poll, the top screen first, and the rest of what
+    /// this poll found (`ScreenPoll`).
     ///
     /// `exclude` is the TextBoxes message windows lay their pages out in. With `hold`, words are
     /// reported only once they read the same on two polls in a row; without it, at once.
     ///
     /// Python's `exclude` defaults to no TextBoxes and `hold` to True.
-    pub fn poll(&mut self, exclude: &HashSet<i64>, hold: bool) -> Result<Vec<ScreenText>> {
+    pub fn poll(&mut self, exclude: &HashSet<i64>, hold: bool) -> Result<ScreenPoll> {
         self.layouts.refresh();
         self.polls += 1;
         self.message_lines.clear();
@@ -713,7 +707,7 @@ impl ScreenTextReader {
             .copied()
             .filter(|r#box| !now.contains_key(r#box))
             .collect();
-        self.left = going
+        let left: Vec<ScreenText> = going
             .iter()
             .filter_map(|r#box| self.last_said.get(r#box).cloned())
             .collect();
@@ -725,7 +719,7 @@ impl ScreenTextReader {
             self.gone.insert(r#box, words);
             self.last_said.shift_remove(&r#box);
         }
-        self.settling = PySet::of(
+        let settling = PySet::of(
             now.iter()
                 .filter(|(r#box, p)| self.said.get(*r#box) != Some(&p.text))
                 .map(|(_, p)| p.root),
@@ -735,7 +729,13 @@ impl ScreenTextReader {
             .map(|(&r#box, piece)| (r#box, piece.text.clone()))
             .collect();
         out.sort_by_key(reading_order);
-        Ok(out)
+        Ok(ScreenPoll {
+            texts: out,
+            on_screen: self.on_screen.clone(),
+            left,
+            settling: settling.iter().collect(),
+            message_lines: self.message_lines.copy().iter().collect(),
+        })
     }
 
     /// The words of a TextBox being drawn and where they are, or None; and whether code wrote

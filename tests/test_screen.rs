@@ -10,7 +10,7 @@ use super::fake_memory::{CODE, FakeClasses, FakeMemory};
 use crate::core::memory::Memory;
 use crate::core::rtti::ClassNames;
 use crate::games::common::screen::{
-    self, Pictures, ScreenText, ScreenTextReader, after_the_name, in_rows, join,
+    self, Pictures, ScreenPoll, ScreenText, ScreenTextReader, after_the_name, in_rows, join,
 };
 use crate::games::common::{lyt, msgwin, pictures};
 
@@ -32,6 +32,8 @@ struct Game {
     boxes: Vec<i64>,
     texts: i64,
     reader: ScreenTextReader,
+    /// What the last poll found.
+    polled: ScreenPoll,
 }
 
 /// `set()`: the TextBoxes to leave out, none.
@@ -87,6 +89,7 @@ impl Game {
             boxes: Vec::new(),
             texts: 0x08900000,
             reader,
+            polled: ScreenPoll::default(),
         }
     }
 
@@ -162,9 +165,10 @@ impl Game {
     }
 
     fn heard_with(&mut self, exclude: &HashSet<i64>, hold: bool) -> Vec<(String, bool)> {
-        self.reader
-            .poll(exclude, hold)
-            .unwrap()
+        self.polled = self.reader.poll(exclude, hold).unwrap();
+        self.polled
+            .texts
+            .clone()
             .into_iter()
             .map(|t| (t.text, t.changed))
             .collect()
@@ -289,6 +293,7 @@ fn test_a_screen_opening_marks_its_pieces_as_coming_with_it() {
         .reader
         .poll(&none(), true)
         .unwrap()
+        .texts
         .into_iter()
         .map(|p| (p.text, p.with_layout))
         .collect();
@@ -308,6 +313,7 @@ fn test_a_screen_coming_back_is_heard_as_it_came() {
         .reader
         .poll(&none(), true)
         .unwrap()
+        .texts
         .into_iter()
         .map(|p| (p.text, p.changed, p.with_layout))
         .collect();
@@ -337,6 +343,7 @@ fn test_words_that_come_later_in_a_screen_already_up_do_not_come_with_it() {
         .reader
         .poll(&none(), true)
         .unwrap()
+        .texts
         .into_iter()
         .map(|p| (p.text, p.with_layout))
         .collect();
@@ -448,7 +455,7 @@ fn test_a_message_windows_lines_are_handed_on_to_find_the_window() {
     );
     game.sweep();
     game.heard_now();
-    assert_eq!(game.reader.message_lines(), IndexSet::from([line]));
+    assert_eq!(game.polled.message_lines.clone(), IndexSet::from([line]));
 }
 
 /// A torn read left a tag below 0x9c, and taking it for a window's read a negative address.
@@ -459,7 +466,7 @@ fn test_a_tag_processor_too_small_to_be_a_windows_is_not_followed() {
     game.text_box_tagged(BOTTOM + 0x1000, group, "HP", 0x10);
     game.sweep();
     assert_eq!(game.heard_now(), words(&[("HP", false)]));
-    assert_eq!(game.reader.message_lines(), IndexSet::new());
+    assert_eq!(game.polled.message_lines.clone(), IndexSet::new());
 }
 
 #[test]
@@ -560,7 +567,7 @@ fn test_pieces_drawn_side_by_side_are_joined_as_drawn() {
     let (_work, group) = game.screen(BOTTOM);
     party_slot(&mut game, group);
     assert_eq!(
-        join(&game.reader.poll(&none(), false).unwrap(), false),
+        join(&game.reader.poll(&none(), false).unwrap().texts, false),
         "Torchic \u{e08e} L5 19/19"
     );
 }
@@ -571,7 +578,7 @@ fn test_pauses_go_only_between_pieces_that_are_apart() {
     let (_work, group) = game.screen(BOTTOM);
     party_slot(&mut game, group);
     assert_eq!(
-        join(&game.reader.poll(&none(), false).unwrap(), true),
+        join(&game.reader.poll(&none(), false).unwrap().texts, true),
         "Torchic, \u{e08e}, L5, 19/19"
     );
 }
@@ -614,7 +621,10 @@ fn test_the_designer_s_slash_joins_numbers_hanging_straight_from_the_root() {
     }
     game.sweep();
     assert_eq!(
-        join(&in_rows(game.reader.poll(&none(), false).unwrap()), false),
+        join(
+            &in_rows(game.reader.poll(&none(), false).unwrap().texts),
+            false
+        ),
         "HP 30/30"
     );
 }
@@ -1068,7 +1078,7 @@ fn test_a_label_beside_its_value_keeps_its_space() {
     }
     game.sweep();
     assert_eq!(
-        join(&game.reader.poll(&none(), false).unwrap(), false),
+        join(&game.reader.poll(&none(), false).unwrap().texts, false),
         "PP 35/35"
     );
 }
@@ -1077,12 +1087,18 @@ fn test_a_label_beside_its_value_keeps_its_space() {
 fn test_a_layout_is_settling_while_its_words_have_not_held_for_a_poll() {
     let (mut game, _work, _group, value) = options();
     game.heard();
-    assert_eq!(game.reader.settling(), IndexSet::from([BOTTOM + 0x400]));
+    assert_eq!(
+        game.polled.settling.clone(),
+        IndexSet::from([BOTTOM + 0x400])
+    );
     game.heard();
-    assert_eq!(game.reader.settling(), IndexSet::new());
+    assert_eq!(game.polled.settling.clone(), IndexSet::new());
     game.write(value, "FAST");
     game.heard();
-    assert_eq!(game.reader.settling(), IndexSet::from([BOTTOM + 0x400]));
+    assert_eq!(
+        game.polled.settling.clone(),
+        IndexSet::from([BOTTOM + 0x400])
+    );
 }
 
 /// AreaNav's TextBoxes are in the linear heap, swept a slice at a time; its layout work is in
@@ -1172,6 +1188,7 @@ fn test_words_on_screen_for_the_first_time_are_not_returning() {
         .reader
         .poll(&none(), false)
         .unwrap()
+        .texts
         .into_iter()
         .map(|p| p.returned)
         .collect();
@@ -1186,7 +1203,13 @@ fn test_words_coming_back_as_they_left_are_marked_as_returning() {
     game.heard();
     game.fake.visible(value, true);
     game.heard();
-    let [back]: [ScreenText; 1] = game.reader.poll(&none(), true).unwrap().try_into().unwrap();
+    let [back]: [ScreenText; 1] = game
+        .reader
+        .poll(&none(), true)
+        .unwrap()
+        .texts
+        .try_into()
+        .unwrap();
     assert_eq!((back.text.as_str(), back.returned), ("SLOW", true));
 }
 
@@ -1199,7 +1222,13 @@ fn test_words_changed_while_off_screen_are_not_returning() {
     game.write(value, "FAST");
     game.fake.visible(value, true);
     game.heard();
-    let [back]: [ScreenText; 1] = game.reader.poll(&none(), true).unwrap().try_into().unwrap();
+    let [back]: [ScreenText; 1] = game
+        .reader
+        .poll(&none(), true)
+        .unwrap()
+        .texts
+        .try_into()
+        .unwrap();
     assert_eq!((back.text.as_str(), back.returned), ("FAST", false));
 }
 
@@ -1222,19 +1251,20 @@ fn test_words_placed_outside_their_screen_are_silent_until_they_come_onto_it() {
 #[test]
 fn test_words_that_leave_the_screen_are_reported_as_they_last_read() {
     let (mut game, _work, _group, value) = settled();
-    assert_eq!(game.reader.left(), vec![]);
+    assert_eq!(game.polled.left.clone(), vec![]);
     game.fake.visible(value, false);
     game.heard();
     game.heard();
     let left: Vec<(String, i64)> = game
-        .reader
-        .left()
+        .polled
+        .left
+        .clone()
         .into_iter()
         .map(|piece| (piece.text, piece.r#box))
         .collect();
     assert_eq!(left, vec![("SLOW".to_string(), value)]);
     game.heard();
-    assert_eq!(game.reader.left(), vec![]);
+    assert_eq!(game.polled.left.clone(), vec![]);
 }
 
 /// The language screen's list moves its rows rather than rewriting them: moving the cursor to
@@ -1253,6 +1283,7 @@ fn test_words_moving_onto_their_screen_unchanged_have_scrolled_in() {
         .reader
         .poll(&none(), false)
         .unwrap()
+        .texts
         .try_into()
         .unwrap();
     assert_eq!((piece.text.as_str(), piece.scrolled), ("Japanese", true));
@@ -1269,6 +1300,7 @@ fn test_words_shown_where_they_are_have_not_scrolled_in() {
         .reader
         .poll(&none(), false)
         .unwrap()
+        .texts
         .try_into()
         .unwrap();
     assert_eq!((back.text.as_str(), back.scrolled), ("SLOW", false));
@@ -1288,6 +1320,7 @@ fn test_words_changed_while_below_their_screen_have_not_scrolled_in() {
         .reader
         .poll(&none(), false)
         .unwrap()
+        .texts
         .try_into()
         .unwrap();
     assert_eq!((piece.text.as_str(), piece.scrolled), ("Korean", false));
@@ -1433,6 +1466,7 @@ fn test_words_hanging_from_the_root_are_framed_by_the_window_drawn_round_them() 
         .reader
         .poll(&none(), true)
         .unwrap()
+        .texts
         .into_iter()
         .map(|piece| (piece.text, piece.frame))
         .collect();
@@ -1462,6 +1496,7 @@ fn test_words_hung_under_other_words_are_of_their_group() {
         .reader
         .poll(&none(), true)
         .unwrap()
+        .texts
         .into_iter()
         .map(|piece| (piece.text.clone(), piece.group()))
         .collect();
@@ -1630,7 +1665,7 @@ fn test_the_dexnav_s_mark_is_read_after_the_move_it_marks() {
         HashSet::new(),
     );
     game.sweep();
-    let said = in_rows(game.reader.poll(&none(), false).unwrap());
+    let said = in_rows(game.reader.poll(&none(), false).unwrap().texts);
     assert_eq!(join(&said, false), "First Move Helping Hand egg move");
     assert_eq!(join(&said, true), "First Move: Helping Hand, egg move");
 }

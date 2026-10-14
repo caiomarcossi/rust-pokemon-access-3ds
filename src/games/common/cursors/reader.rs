@@ -17,7 +17,7 @@ use crate::games::common::cursors::pane::CursorPanes;
 use crate::games::common::cursors::picture::PictureCursors;
 use crate::games::common::cursors::plate::plates;
 use crate::games::common::cursors::pointer::Pointers;
-use crate::games::common::cursors::shared::{CursorItem, Panes, Said};
+use crate::games::common::cursors::shared::{CursorItem, CursorPoll, Panes, Said};
 use crate::games::common::layout::Layouts;
 use crate::games::common::layout_file::LayoutFiles;
 use crate::games::common::screen::{Pictures, ScreenText};
@@ -89,11 +89,6 @@ impl CursorReader {
         self.menus.track(windows)
     }
 
-    /// The pieces under each cursor on screen, as of the last poll.
-    pub fn under(&self) -> Vec<Vec<ScreenText>> {
-        self.said.under.borrow().values().cloned().collect()
-    }
-
     /// Is there a named cursor on screen whose place each tick should sample?
     pub fn sampling(&self) -> bool {
         self.lists.sampling()
@@ -104,28 +99,13 @@ impl CursorReader {
         self.lists.sample(memory)
     }
 
-    /// The cursors on their way to an item they have not said yet (`ListCursors.moving`).
-    pub fn moving(&self) -> HashSet<i64> {
-        self.lists.moving()
-    }
-
-    /// Layout root -> the TextBoxes of the list a cursor walks (`ListCursors.lists`).
-    pub fn lists(&self) -> IndexMap<i64, HashSet<i64>> {
-        self.lists.lists()
-    }
-
-    /// The TextBoxes of the rows drawn like those an app menu's cursor is over
-    /// (`MenuCursors.rows`): its list's, which are its to say.
-    pub fn rows(&self) -> HashSet<i64> {
-        self.menus.rows.clone()
-    }
-
-    /// What each cursor on screen is over, whenever that changed.
+    /// What each cursor on screen is over, whenever that changed, and the rest of what this
+    /// poll found (`CursorPoll`).
     ///
     /// `on_screen` is every piece of screen text on screen, from a screen text poll in the same
     /// pass: this reads panes through the same `Layouts`, so the two agree on the frame. Each
     /// kind is read in turn, and a picture or a layout one kind claims is not another's.
-    pub fn poll(&mut self, on_screen: &[ScreenText]) -> Result<Vec<CursorItem>> {
+    pub fn poll(&mut self, on_screen: &[ScreenText]) -> Result<CursorPoll> {
         let mut items: Vec<CursorItem> = Vec::new();
         self.menus.poll(on_screen, &mut items)?;
         let markers = self.pictures.poll(on_screen, &mut items)?;
@@ -149,6 +129,12 @@ impl CursorReader {
             &self.menus,
         )?;
         self.pointers.poll(on_screen, &mut items)?;
-        Ok(items)
+        Ok(CursorPoll {
+            items,
+            under: self.said.under.borrow().values().cloned().collect(),
+            lists: self.lists.lists(),
+            moving: self.lists.moving(),
+            rows: self.menus.rows.clone(),
+        })
     }
 }

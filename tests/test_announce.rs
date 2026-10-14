@@ -10,9 +10,9 @@ use super::fake_speech::Recorder;
 use crate::core::speech::{Category, Speech};
 use crate::games::common::announce::{Announcements, FOCUS_HEARD_POLLS, Focus, SPEAKER_POLLS};
 use crate::games::common::battle::Battler;
-use crate::games::common::cursors::shared::CursorItem;
+use crate::games::common::cursors::shared::{CursorItem, CursorPoll};
 use crate::games::common::dialogue::{PageShown, Shown};
-use crate::games::common::screen::ScreenText;
+use crate::games::common::screen::{ScreenPoll, ScreenText};
 use crate::games::common::screen_announce::{
     ARRIVAL_MAX_POLLS, CURSOR_HEARD_POLLS, DETAIL_MAX_POLLS, DETAIL_POLLS, PLACE_POLLS,
     REPEAT_POLLS, ScreenAnnouncer,
@@ -136,17 +136,22 @@ impl Screen {
             given.items.iter().map(|item| item.pieces.clone()).collect();
         self.announcer
             .say(
-                &given.texts,
-                &given.items,
-                &under,
-                &given.on_screen,
+                &ScreenPoll {
+                    texts: given.texts.clone(),
+                    on_screen: given.on_screen.clone(),
+                    left: given.left.clone(),
+                    settling: given.settling.clone(),
+                    message_lines: IndexSet::new(),
+                },
+                &CursorPoll {
+                    items: given.items.clone(),
+                    under,
+                    lists: IndexMap::new(),
+                    moving: given.moving.clone(),
+                    rows: given.rows.clone(),
+                },
                 &given.labels,
                 given.roots.as_ref(),
-                &given.settling,
-                &given.left,
-                None,
-                &given.moving,
-                &given.rows,
                 given.subject.as_deref(),
             )
             .unwrap();
@@ -1523,17 +1528,17 @@ fn test_words_under_a_cursor_that_settle_after_it_spoke_are_not_said_again() {
     screen
         .announcer
         .say(
-            &one(&potion),
-            &[],
-            &under,
-            &one(&potion),
+            &ScreenPoll {
+                texts: one(&potion),
+                on_screen: one(&potion),
+                ..ScreenPoll::default()
+            },
+            &CursorPoll {
+                under,
+                ..CursorPoll::default()
+            },
             &HashSet::new(),
             None,
-            &IndexSet::new(),
-            &[],
-            None,
-            &HashSet::new(),
-            &HashSet::new(),
             None,
         )
         .unwrap();
@@ -1872,17 +1877,19 @@ fn listed(
     screen
         .announcer
         .say(
-            texts,
-            items,
-            &under,
-            on_screen,
+            &ScreenPoll {
+                texts: texts.to_vec(),
+                on_screen: on_screen.to_vec(),
+                ..ScreenPoll::default()
+            },
+            &CursorPoll {
+                items: items.to_vec(),
+                under,
+                lists,
+                ..CursorPoll::default()
+            },
             &HashSet::new(),
             None,
-            &IndexSet::new(),
-            &[],
-            Some(&lists),
-            &HashSet::new(),
-            &HashSet::new(),
             None,
         )
         .unwrap();

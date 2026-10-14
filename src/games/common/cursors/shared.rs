@@ -52,6 +52,23 @@ impl CursorItem {
     }
 }
 
+/// What one cursor poll found (`CursorReader.poll`).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct CursorPoll {
+    /// What each cursor on screen is over, whenever that changed.
+    pub items: Vec<CursorItem>,
+    /// The pieces under each cursor on screen.
+    pub under: Vec<Vec<ScreenText>>,
+    /// Layout root -> the TextBoxes of the list a cursor walks, for the cursors that know theirs
+    /// (`ListCursors.lists`).
+    pub lists: IndexMap<i64, HashSet<i64>>,
+    /// The cursors on their way to an item they have not said yet (`ListCursors.moving`).
+    pub moving: HashSet<i64>,
+    /// The TextBoxes of the rows drawn like those an app menu's cursor is over
+    /// (`MenuCursors.rows`): its list's, which are its to say.
+    pub rows: HashSet<i64>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rect {
     pub top: bool,
