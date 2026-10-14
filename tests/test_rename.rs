@@ -285,6 +285,20 @@ fn test_a_person_is_named_by_the_character_they_are() {
     );
 }
 
+/// A gen 6 model's source is `zone << 16 | index` over its address, so the index's low four
+/// bits sit where a place's kind does, and 0xb is the sky's: such a person was "person" in the
+/// list and could not be renamed (movie42, Mauville's Street Thug).
+#[test]
+fn test_a_person_whose_record_index_ends_in_b_is_still_named() {
+    let thug = Interactable {
+        code: NORMAN,
+        source: (0xF << 16 | 0x2B) << 32 | 0x08D1E9A8,
+        move_model: true,
+        ..Interactable::new("people", "person", (0, 0))
+    };
+    assert_eq!(thug.naming(MART), Some((SPRITE, NORMAN, 0)));
+}
+
 /// It is a different Pokémon each time and gone in a minute, its source is the record's
 /// address rather than a slot in any table, and the DexNav names the species itself once it is
 /// registered. A name here would be a key that never matched again.

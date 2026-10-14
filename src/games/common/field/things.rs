@@ -239,13 +239,19 @@ impl Interactable {
     /// game names the species itself once the DexNav has registered it — so a name here would be
     /// a key that never matches again and would replace something the game says.
     pub fn naming(&self, zone: i64) -> Option<Naming> {
-        // What a game's own app lists, the sky's places, the game names itself, and a name of
-        // ours never replaces the game's (ADR-0023).
-        if self.category == POKEMON || source_kind(self.source) == APP_SOURCE {
+        if self.category == POKEMON {
             return None;
         }
+        // A move model's source has its record's index where a place's has its kind, so it is
+        // asked first: one whose index ended in 0xb read as the sky's and went nameless, a
+        // Street Thug in Mauville among them (movie42).
         if self.move_model {
             return Some((SPRITE, self.code, 0));
+        }
+        // What a game's own app lists, the sky's places, the game names itself, and a name of
+        // ours never replaces the game's (ADR-0023).
+        if source_kind(self.source) == APP_SOURCE {
+            return None;
         }
         Some((PLACE, self.home.unwrap_or(zone), self.source))
     }
