@@ -56,7 +56,8 @@ to install.
   ladder up or down, the name of the building behind it, or in a hideout a teleporter and where
   it comes out ("teleporter, 3 east, out at 17 east 8 south"). Something the game builds out of
   several pieces is one thing at its nearest cell: Seafloor Cavern's submarine is one sign, and
-  an elevator's two-cell door one. The game's invisible walls are never listed. A PC is said as
+  an elevator's two-cell door one, and a doll is one thing, not the doll and the sign in front
+  of it. The game's invisible walls are never listed. A PC is said as
   a PC, and in Omega Ruby and Alpha Sapphire so is everything else you read by facing it that is
   the same wherever it stands, in the words of what it shows you: a TV, a trash can, Pokémon
   magazines, Pokémon picture books, a vase, a vending machine, a wardrobe, an elevator, the

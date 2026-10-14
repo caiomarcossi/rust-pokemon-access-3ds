@@ -2734,6 +2734,71 @@ fn test_a_use_tile_is_listed_by_its_kind_and_a_run_of_one_kind_is_one_thing() ->
     Ok(())
 }
 
+pub(crate) const CABINET_TILE: i64 = 0xDA0E0001;
+/// The Azurill Doll's sprite, a thing drawn on the map and listed among the signs (spike 211).
+pub(crate) const DOLL: i64 = 0x204A;
+
+/// The Azurill Doll is a doll drawn, a furniture record in front of it saying "It's an
+/// Azurill Doll!", and the cabinet under it: three signs in one cell (Orion, 2026-10-14). A
+/// record over a cell is the record; a shelf longer than what stands on it stays.
+#[test]
+fn test_one_spot_is_one_sign_the_thing_drawn_first_then_its_record_then_the_cell() -> Result<()> {
+    let mut town = Town::new();
+    let data = zone_file(&ZoneSpec {
+        furniture: &[(1, 100, 165), (2, 104, 165)],
+        info: &town_info(),
+        ..ZoneSpec::default()
+    });
+    town.memory.write(FILE, &data);
+    town.memory
+        .u32(HOLDER, &[FILE, OTHER, 0x11 | (data.len() as i64) << 8]);
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given::default(),
+        Game {
+            hidden: Some(dex_nav),
+            ..game()
+        },
+    );
+    town.block_tiles(
+        TOWN_BLOCK,
+        TOWN_CHUNK,
+        (80, 160),
+        &border(160),
+        &[
+            ((100, 165), CABINET_TILE),
+            ((104, 165), SHELF_TILE),
+            ((105, 165), SHELF_TILE),
+            ((108, 165), CABINET_TILE),
+        ],
+    );
+    town.model(1, TOWN, 0, DOLL, (100, 165));
+    let signs = town.r#where()?.of("signs");
+    let mut seen: Vec<((i64, i64), (i64, i64), i64)> = signs
+        .iter()
+        .filter(|item| item.cell.1 == 165)
+        .map(|item| {
+            let kind = if item.move_model {
+                -1
+            } else {
+                source_kind(item.source)
+            };
+            (item.cell, item.size, kind)
+        })
+        .collect();
+    seen.sort();
+    assert_eq!(
+        seen,
+        [
+            ((100, 165), (1, 1), -1),
+            ((104, 165), (1, 1), FURNITURE_SOURCE),
+            ((104, 165), (2, 1), TILE_SOURCE),
+            ((108, 165), (1, 1), TILE_SOURCE)
+        ]
+    );
+    Ok(())
+}
+
 /// Every cell of one kind runs one script, so the kind says what it is: `0xd9` a bookshelf
 /// wherever it stands (spike B). The PC's word is the ROM's, ahead of the shipped table's.
 #[test]

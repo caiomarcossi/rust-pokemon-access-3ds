@@ -41,7 +41,7 @@ use crate::games::common::field::ground::{
 use crate::games::common::field::things::{
     BIKE, BIKE_SOURCE, CURRENT_SOURCE, CURRENTS_CATEGORY, DECORATION_SOURCE, DIVE_SOURCE,
     EDGE_SOURCE, FURNITURE_SOURCE, Field, Interactable, OBSTACLES, STAIRS_SOURCE, TILE_SOURCE,
-    TRIGGER_SOURCE, WARP_SOURCE, place_source,
+    TRIGGER_SOURCE, WARP_SOURCE, place_source, source_kind,
 };
 use crate::games::gen6::field::features::{
     DoorReader, Feature, HiddenReader, Hiding, IceReader, SecretBaseReader, Tracked,
@@ -989,7 +989,7 @@ impl FieldReader {
             }
         }
         Ok(Field {
-            interactables: items,
+            interactables: one_a_spot(items),
             ..r#where.clone()
         })
     }
@@ -2407,6 +2407,41 @@ fn gathered(cells: &HashSet<Cell>, reach: i64) -> Vec<Vec<Cell>> {
         out.push(group);
     }
     out
+}
+
+/// How high a sign stands among the signs of one spot (`_one_a_spot`): a thing drawn there,
+/// then a furniture record, then the cell's own kind.
+fn over(item: &Interactable) -> i64 {
+    if item.move_model {
+        0
+    } else if source_kind(item.source) == FURNITURE_SOURCE {
+        1
+    } else {
+        2
+    }
+}
+
+/// `items` less every sign whose cells a sign above it covers (`_over`): the Azurill Doll in
+/// Littleroot is a doll drawn, a furniture record in front of it saying "It's an Azurill Doll!",
+/// and the cabinet under it, and was listed three times in one cell (Orion, 2026-10-14; spike
+/// 211). A sign that reaches past what covers it, a shelf longer than what stands on it, stays.
+fn one_a_spot(items: Vec<Interactable>) -> Vec<Interactable> {
+    let covered: Vec<(i64, HashSet<Cell>)> = items
+        .iter()
+        .filter(|item| item.category == "signs")
+        .map(|item| (over(item), item.cells().into_iter().collect()))
+        .collect();
+    let under = |item: &Interactable| -> bool {
+        let level = over(item);
+        let cells: HashSet<Cell> = item.cells().into_iter().collect();
+        covered
+            .iter()
+            .any(|(above, over)| *above < level && cells.is_subset(over))
+    };
+    items
+        .into_iter()
+        .filter(|item| item.category != "signs" || !under(item))
+        .collect()
 }
 
 /// `items` with those of one `key` that touch side to side as one thing over the box round
