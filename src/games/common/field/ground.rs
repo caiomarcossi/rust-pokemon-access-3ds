@@ -13,7 +13,7 @@ use crate::games::common::field::chunk::{
     ANY_FLOOR, BLOCKED, BOARD, CHUNK, CLIMB, COUNTER, Chunk, SHORE,
 };
 use crate::games::common::field::things::{
-    Field, Interactable, POKEMON, TRIGGER_SOURCE, WARP_SOURCE, source_kind,
+    Field, Interactable, POKEMON, TRIGGER_SOURCE, WARP_SOURCE,
 };
 use crate::py::{self, Error, Result};
 
@@ -559,9 +559,10 @@ impl Ground {
         }
         let mut stepped: IndexSet<Cell> = IndexSet::new();
         for item in &r#where.interactables {
-            let source = source_kind(item.source);
+            let place = item.place_kind();
             if item.category == POKEMON
-                || (!item.move_model && (source == WARP_SOURCE || source == TRIGGER_SOURCE))
+                || place == Some(WARP_SOURCE)
+                || place == Some(TRIGGER_SOURCE)
             {
                 stepped.extend(item.cells());
             }

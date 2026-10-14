@@ -41,7 +41,7 @@ use crate::games::common::field::ground::{
 use crate::games::common::field::things::{
     BIKE, BIKE_SOURCE, CURRENT_SOURCE, CURRENTS_CATEGORY, DECORATION_SOURCE, DIVE_SOURCE,
     EDGE_SOURCE, FURNITURE_SOURCE, Field, Interactable, OBSTACLES, STAIRS_SOURCE, TILE_SOURCE,
-    TRIGGER_SOURCE, WARP_SOURCE, place_source, source_kind,
+    TRIGGER_SOURCE, WARP_SOURCE, place_source,
 };
 use crate::games::gen6::field::features::{
     DoorReader, Feature, HiddenReader, Hiding, IceReader, SecretBaseReader, Tracked,
@@ -2427,7 +2427,7 @@ fn gathered(cells: &HashSet<Cell>, reach: i64) -> Vec<Vec<Cell>> {
 fn over(item: &Interactable) -> i64 {
     if item.move_model {
         0
-    } else if source_kind(item.source) == FURNITURE_SOURCE {
+    } else if item.place_kind() == Some(FURNITURE_SOURCE) {
         1
     } else {
         2

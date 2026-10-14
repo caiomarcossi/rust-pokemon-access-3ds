@@ -2465,7 +2465,7 @@ fn test_furniture_of_one_script_that_touches_is_one_thing() -> Result<()> {
         .r#where()?
         .interactables
         .iter()
-        .filter(|item| !item.move_model && source_kind(item.source) == FURNITURE_SOURCE)
+        .filter(|item| item.place_kind() == Some(FURNITURE_SOURCE))
         .map(|item| (item.cell, item.size, source_number(item.source)))
         .collect();
     signs.sort();
@@ -2511,7 +2511,7 @@ fn test_furniture_is_what_the_shipped_table_says_the_shared_script_it_runs_is() 
         .r#where()?
         .interactables
         .iter()
-        .filter(|item| !item.move_model && source_kind(item.source) == FURNITURE_SOURCE)
+        .filter(|item| item.place_kind() == Some(FURNITURE_SOURCE))
         .map(|item| (item.cell, item.kind.clone()))
         .collect();
     seen.sort();
@@ -3505,17 +3505,17 @@ fn test_every_kind_of_place_on_one_map_is_numbered_apart() -> Result<()> {
         .flat_map(|category| r#where.of(category))
         .filter(|item| !item.move_model)
         .collect();
-    let kinds: HashMap<&str, i64> = places
+    let kinds: HashMap<&str, Option<i64>> = places
         .iter()
-        .map(|item| (item.kind.as_str(), source_kind(item.source)))
+        .map(|item| (item.kind.as_str(), item.place_kind()))
         .collect();
     assert_eq!(
         kinds,
         HashMap::from([
-            ("door", WARP_SOURCE),
-            ("edge", EDGE_SOURCE),
-            ("object", TILE_SOURCE),
-            ("sign", FURNITURE_SOURCE),
+            ("door", Some(WARP_SOURCE)),
+            ("edge", Some(EDGE_SOURCE)),
+            ("object", Some(TILE_SOURCE)),
+            ("sign", Some(FURNITURE_SOURCE)),
         ])
     );
     let sources: HashSet<i64> = places.iter().map(|item| item.source).collect();
@@ -4184,7 +4184,7 @@ fn test_secret_base_spots_are_exits_and_the_players_own_leads_inside() -> Result
         .r#where()?
         .of("exits")
         .into_iter()
-        .filter(|item| source_kind(item.source) == SECRET_BASE_SOURCE)
+        .filter(|item| item.place_kind() == Some(SECRET_BASE_SOURCE))
         .collect();
     assert_eq!(
         exits
@@ -4248,7 +4248,7 @@ fn test_a_secret_bases_pc_flag_and_way_out_are_listed_as_what_they_are() -> Resu
     let mut signs: Vec<(String, (i64, i64))> = r#where
         .of("signs")
         .iter()
-        .filter(|item| source_kind(item.source) == FURNITURE_SOURCE)
+        .filter(|item| item.place_kind() == Some(FURNITURE_SOURCE))
         .map(|item| (item.kind.clone(), item.cell))
         .collect();
     signs.sort();
@@ -4602,7 +4602,7 @@ fn test_a_bases_decorations_are_signs_by_the_games_names_one_over_its_cells() ->
         .r#where()?
         .of("signs")
         .into_iter()
-        .filter(|item| source_kind(item.source) == DECORATION_SOURCE)
+        .filter(|item| item.place_kind() == Some(DECORATION_SOURCE))
         .map(|item| (item.kind, item.cell, item.size))
         .collect();
     found.sort();

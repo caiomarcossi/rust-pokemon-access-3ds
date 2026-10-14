@@ -251,6 +251,16 @@ impl Interactable {
         )
     }
 
+    /// Which kind of place this is, one of the `*_SOURCE` tags; None for a move model, whose
+    /// source has its record's index where a place's has its kind.
+    pub fn place_kind(&self) -> Option<i64> {
+        if self.move_model {
+            None
+        } else {
+            Some(source_kind(self.source))
+        }
+    }
+
     /// Which name belongs to this, as (what, map, slot), or None for a thing with no name of
     /// its own.
     ///
@@ -280,7 +290,7 @@ impl Interactable {
         }
         // What a game's own app lists, the sky's places, the game names itself, and a name of
         // ours never replaces the game's (ADR-0023).
-        if source_kind(self.source) == APP_SOURCE {
+        if self.place_kind() == Some(APP_SOURCE) {
             return None;
         }
         Some((PLACE, self.home.unwrap_or(zone), self.source))
