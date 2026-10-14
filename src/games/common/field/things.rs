@@ -72,7 +72,7 @@ pub const DECORATION_SOURCE: i64 = 12 << 32;
 
 /// One move model's own name, apart from its sprite's: `MODEL_SOURCE | index`, the record it was
 /// built from, under that record's zone (`Interactable.record`). A big boulder keeps its record
-/// however far it is pushed, and across a save (spike A).
+/// however far it is pushed, and across a save (spike 202).
 pub const MODEL_SOURCE: i64 = 13 << 32;
 
 /// A current's source: `CURRENT_SOURCE | x << 12 | z`, the first cell of the currents that let the
@@ -203,11 +203,11 @@ pub struct Interactable {
     /// current, where it lets the player go from `cell`.
     pub arrival: Option<(i64, i64)>,
     /// For a move model built from a record of a zone's table, that zone and the record's index:
-    /// which one it is, wherever it walks or is pushed (spike A). None where it is not read: Sun's
+    /// which one it is, wherever it walks or is pushed (spike 202). None where it is not read: Sun's
     /// models.
     pub record: Option<(i64, i64)>,
     /// For a big boulder, where its record starts it, as `cell` says where it is: where the room
-    /// had it before anybody pushed it (spike A). None for anything else.
+    /// had it before anybody pushed it (spike 202). None for anything else.
     pub start: Option<(i64, i64)>,
     /// For a big boulder, the ways it moves when pushed, each with whether that push drops it
     /// into a hole (`ground.pushes`); none for one that cannot be moved. None for anything else.

@@ -225,7 +225,7 @@ pub fn rail_way(head: &[u8]) -> Result<f64> {
 
 /// Where it is in the world, in cells, a cell's centre whole: (20.31, 24.0). The circle pad
 /// moves the player a seventh of a cell a frame and stops them anywhere; the D-pad keeps them to
-/// the centres (movie38 and movie39, spike A).
+/// the centres (movie38 and movie39, spike 202).
 pub fn place(head: &[u8]) -> Result<(f64, f64)> {
     let cell = CELL as f64;
     Ok((

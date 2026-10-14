@@ -1681,7 +1681,7 @@ fn test_a_big_boulder_stands_in_four_cells_and_strength_clears_them_all() -> Res
     Ok(())
 }
 
-/// movie37 (spike A): every boulder of room 0x69 kept its record however far it was pushed,
+/// movie37 (spike 202): every boulder of room 0x69 kept its record however far it was pushed,
 /// and the record kept the room's own cell, so the list can tell one boulder from the next and
 /// say how far each has been pushed.
 #[test]
@@ -1736,7 +1736,7 @@ fn test_a_big_boulder_keeps_its_record_and_where_the_record_starts_it() -> Resul
     Ok(())
 }
 
-/// Seafloor Cavern's eight-boulder room from x 8 and z 17, as the ROM's chunks have it (spike A):
+/// Seafloor Cavern's eight-boulder room from x 8 and z 17, as the ROM's chunks have it (spike 202):
 /// # a wall, H a hole.
 const ROOM_0X69: [&str; 14] = [
     "###########...##########",
@@ -1755,7 +1755,7 @@ const ROOM_0X69: [&str; 14] = [
     "########..#...#..#######",
 ];
 
-/// Pushes movie37 made, the stick lined up with the replay (spike A): record 0 went half onto
+/// Pushes movie37 made, the stick lined up with the replay (spike 202): record 0 went half onto
 /// the north-west hole at 246 s and dropped in at the next push, and against the wall west of it
 /// it stayed; record 6 stayed against record 7, south of it, three times.
 #[test]
@@ -1793,7 +1793,7 @@ fn test_a_big_boulder_moves_where_every_cell_ahead_is_floor_or_a_hole() {
     assert_eq!(ways((22, 23), &[]), [("south", false)]);
 }
 
-/// Seafloor Cavern (movie36, spike A): a hole is four cells of kind 0x30, blocked; a boulder
+/// Seafloor Cavern (movie36, spike 202): a hole is four cells of kind 0x30, blocked; a boulder
 /// pushed into one stays a model on its four cells, which stay blocked in the chunk, and the
 /// player walked over it while the list said "big boulder, here". Guiding asks for the ground
 /// with nothing listed, and is told the same. A hole in a corner, walls north and west of it as

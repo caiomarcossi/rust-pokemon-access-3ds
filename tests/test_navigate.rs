@@ -540,7 +540,7 @@ fn boulder(
     }
 }
 
-/// Room 0x69 of Seafloor Cavern partway through movie37 (spike A): record 5 pushed five east,
+/// Room 0x69 of Seafloor Cavern partway through movie37 (spike 202): record 5 pushed five east,
 /// record 0 half onto the north-west hole, and record 1 against the east wall.
 fn boulders() -> Field {
     Field {
@@ -1714,7 +1714,7 @@ fn gap(place: (f64, f64)) -> Field {
     }
 }
 
-/// movie38 (spike A): told "2 north" a third of a cell east of the gap's line, the player was
+/// movie38 (spike 202): told "2 north" a third of a cell east of the gap's line, the player was
 /// refused it for a hundred seconds. Lined up, or off the line with no corner to catch, nothing
 /// more is said.
 #[test]

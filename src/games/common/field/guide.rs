@@ -69,11 +69,11 @@ pub const MOVED: f64 = 3.0;
 
 /// How far off a cell's centre the player may stand and be lined up with a leg, in cells: half
 /// the seventh of a cell the circle pad moves them a frame. Off by 0.18 a step past a wall's corner
-/// was refused, and off by 0.01 it went (movie38, spike A); between the two is not known.
+/// was refused, and off by 0.01 it went (movie38, spike 202); between the two is not known.
 pub const LINED_UP: f64 = 0.07;
 
 /// Seconds the player must stand still off a leg's line before being told which way to line up:
-/// a tap of the circle pad moves them for about a fifth of a second (movie38, spike A).
+/// a tap of the circle pad moves them for about a fifth of a second (movie38, spike 202).
 pub const STOPPED: f64 = 0.25;
 
 /// What an item is kept by: `Interactable::key`.
@@ -410,7 +410,7 @@ type Past = (
 ///
 /// In Seafloor Cavern the way north was a gap a cell wide between two pillars, and the player,
 /// told "2 north" there, stood 0.18 to 0.46 of a cell east or west of its line and was refused it
-/// for a hundred seconds (movie38, spike A).
+/// for a hundred seconds (movie38, spike 202).
 fn nudge(
     ground: &Ground,
     place: Option<(f64, f64)>,

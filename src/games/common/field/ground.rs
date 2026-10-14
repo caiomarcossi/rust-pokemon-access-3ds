@@ -48,7 +48,7 @@ pub const SHOVE: i64 = 1000;
 /// drops it into a hole, in `pathfind.STEPS`' order: where every cell it moves into is `floor` or
 /// a hole, and a cell on the side it is pushed from is `floor` to push it from. It drops once all
 /// four of its cells are a hole's. So 32 of the 37 pushes into a boulder in movie37 went, and the
-/// other five were taps too short to push (spike A). `floor` is where the player could stand:
+/// other five were taps too short to push (spike 202). `floor` is where the player could stand:
 /// open, and nobody in it.
 ///
 /// ponytail: water, ledges and a floor's height are not looked at; Seafloor Cavern's rooms have

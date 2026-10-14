@@ -1006,7 +1006,7 @@ impl FieldReader {
 
     /// `people` with each big boulder told the ways it moves (`Interactable.pushes`), and
     /// where its record starts it where the record is `home`'s (`Interactable.start`): the
-    /// record keeps the room's own cell as the boulder is pushed about (spike A). A boulder in
+    /// record keeps the room's own cell as the boulder is pushed about (spike 202). A boulder in
     /// its hole is floor, and nobody in the way.
     fn boulders(
         &self,
@@ -1054,7 +1054,7 @@ impl FieldReader {
                 && !item.cells().iter().all(|cell| holes.contains(cell))
             {
                 // Going through a passage out of the room, a poll found its chunks gone and
-                // every boulder immoveable (movie37, spike A): with no walls, nothing is said.
+                // every boulder immoveable (movie37, spike 202): with no walls, nothing is said.
                 if !chunks.is_empty() {
                     item.pushes = Some(pushes(item.cells(), &floor, &holes)?);
                 }
