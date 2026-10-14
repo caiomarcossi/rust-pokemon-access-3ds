@@ -205,6 +205,30 @@ pub const BASE_ASKS: i64 = 5;
 /// look after a look that lists it, too late for the sweep that look comes with.
 pub const BASE_EVERY: f64 = 2.0;
 
+/// What a move model is to the field, which says whether it is listed and whether it stands in
+/// the way (`FieldReader._role`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Role {
+    /// The player drawn as another model, as the Magma Suit is put on in the Cave of Origin,
+    /// listed there as "person, here" (spike 203): neither listed nor in the way.
+    Look,
+    /// A beam a switch swings, in its zone (`Game.barriers`, spike 146): listed under obstacles,
+    /// and in the way as anything listed is.
+    Barrier,
+    /// The game's invisible blocker (`Game.blockers`): never listed, and in the way. Sootopolis
+    /// Gym's nine, rows of three across the corridors up from its rooms, were listed as nameless
+    /// people (spike 167). Round a zone's rotating doors they stand in for the doors' arms, which
+    /// the doors are walked through by, and are not in the way: five were listed as "person 1
+    /// west" round Fortree Gym's third door, and P said "person in the way" (spike 161).
+    Blocker,
+    /// A model drawn as nothing (`mmodel.NONDRAW`): in the way, as on each of Sootopolis City's
+    /// locked doors, and in its own zone listed as what it stands in for (`_stand_ins`, spike
+    /// 203).
+    Nothing,
+    /// Anything else: listed as what it is drawn as (`_model_item`).
+    Drawn,
+}
+
 /// The two-word holder of the zone data buffers, current first.
 struct Holder {
     address: i64,
@@ -1436,12 +1460,8 @@ impl FieldReader {
                 }
             }
         }
-        let models = self.models.borrow().clone();
-        for model in models {
-            let head = self.memory.read(model, mmodel::HEAD)?;
-            if !mmodel::in_use(&head)? || mmodel::index_of(&head)? == mmodel::PLAYER_INDEX {
-                continue;
-            }
+        for other in self.others() {
+            let (model, head) = other?;
             if !mmodel::on_rail(&head)? {
                 continue;
             }
@@ -1585,23 +1605,51 @@ impl FieldReader {
         Ok(data)
     }
 
-    /// Every model in use but the player's: an item ball or a thing by its model code, a person
-    /// otherwise. The moving truck has a person's kind of code and no script, and trainers have no
-    /// script either, so it passes for a person until model codes have names. Where a zone's
-    /// rotating doors are known, the invisible models the game sets round them for their arms are
-    /// not anybody: five were listed as "person 1 west" round Fortree Gym's third door, and P said
-    /// "person in the way" (spike 161). Nor is the game's invisible blocker anywhere: Sootopolis
-    /// Gym's nine, rows of three across the corridors up from its rooms, were listed as nameless
-    /// people (spike 167). They stand in the way all the same (`unseen`). A big boulder in a hole is
-    /// no parked model, however walled in: Seafloor Cavern's room 0x69 has walls north and west of
-    /// its north-west hole, and the boulder pushed into it was left out, its hole still listed and
-    /// a wall (movie37).
+    /// Every model in use but the player's, with its head, in the pool's order.
+    ///
+    /// Python's generator reads each head as its loop comes to it; so does this iterator, so the
+    /// reads a loop makes of each model come between the heads, as there.
+    fn others(&self) -> impl Iterator<Item = Result<(i64, Vec<u8>)>> + '_ {
+        let models = self.models.borrow().clone();
+        models.into_iter().filter_map(move |model| {
+            let other = || -> Result<Option<(i64, Vec<u8>)>> {
+                let head = self.memory.read(model, mmodel::HEAD)?;
+                Ok(
+                    (mmodel::in_use(&head)? && mmodel::index_of(&head)? != mmodel::PLAYER_INDEX)
+                        .then_some((model, head)),
+                )
+            };
+            other().transpose()
+        })
+    }
+
+    /// What a model drawn as `code` is to the field (`Role`), by the game's tables of looks,
+    /// barriers and blockers.
+    fn role(&self, head: &[u8], code: i64) -> Result<Role> {
+        Ok(if self.player_looks.contains(&code) {
+            Role::Look
+        } else if self.barriers.contains(&(mmodel::zone_of(head)?, code)) {
+            Role::Barrier
+        } else if self.blockers.contains(&code) {
+            Role::Blocker
+        } else if code == mmodel::NONDRAW {
+            Role::Nothing
+        } else {
+            Role::Drawn
+        })
+    }
+
+    /// Every model listed (`_role`): an item ball or a thing by its model code, a person
+    /// otherwise. The moving truck has a person's kind of code and no script, and trainers have
+    /// no script either, so it passes for a person until model codes have names. A big boulder
+    /// in a hole is no parked model, however walled in: Seafloor Cavern's room 0x69 has walls
+    /// north and west of its north-west hole, and the boulder pushed into it was left out, its
+    /// hole still listed and a wall (movie37).
     ///
     /// A model drawn as nothing is called what it stands in for (`stand_ins`), those side by
     /// side as one (`_joined`): the three in front of Groudon are one "Groudon", the first by its
     /// record, and none once Groudon itself is listed. It is left out on a door, which is listed
-    /// already; and one drawn as the player is the player, as the Magma Suit is put on in the
-    /// Cave of Origin: listed there as "person, here" (spike 203).
+    /// already (spike 203).
     fn people(&self, zone: i64) -> Result<Vec<Interactable>> {
         let mut out: Vec<Interactable> = Vec::new();
         // The stand-ins called what another record draws.
@@ -1612,12 +1660,8 @@ impl FieldReader {
         }
         let holes = self.holes(zone)?;
         let mut stand_ins: Option<(IndexMap<i64, i64>, HashSet<Cell>)> = None;
-        let models = self.models.borrow().clone();
-        for model in models {
-            let head = self.memory.read(model, mmodel::HEAD)?;
-            if !mmodel::in_use(&head)? || mmodel::index_of(&head)? == mmodel::PLAYER_INDEX {
-                continue;
-            }
+        for other in self.others() {
+            let (model, head) = other?;
             let Some(cell) = mmodel::cell(&head)? else {
                 continue;
             };
@@ -1625,14 +1669,12 @@ impl FieldReader {
                 continue;
             }
             let code = mmodel::drawn_as(&*self.memory, model, &head, self.drawn)?;
-            if self.player_looks.contains(&code)
-                || (self.blockers.contains(&code)
-                    && !self.barriers.contains(&(mmodel::zone_of(&head)?, code)))
-            {
+            let role = self.role(&head, code)?;
+            if role == Role::Look || role == Role::Blocker {
                 continue;
             }
             let mut stood_in = None;
-            if code == mmodel::NONDRAW && mmodel::zone_of(&head)? == zone {
+            if role == Role::Nothing && mmodel::zone_of(&head)? == zone {
                 if stand_ins.is_none() {
                     stand_ins = Some(self.stand_ins()?);
                 }
@@ -1705,32 +1747,25 @@ impl FieldReader {
         Ok((stand_ins, doors))
     }
 
-    /// The cells the game's invisible blockers stand in, with how high: listed as nobody, and in
-    /// the way all the same, as Sootopolis Gym's are, across the corridors up from its rooms
-    /// (spike 167). Round a zone's rotating doors they stand in for the doors' arms, which the
-    /// doors are walked through by (spike 161). So is a model drawn as nothing, as on each of
-    /// Sootopolis City's locked doors (spike 203).
+    /// The cells of the models in the way but never listed as themselves, with how high: the
+    /// invisible blockers, but round a zone's rotating doors, and the models drawn as nothing
+    /// (`_role`).
     fn unseen(&self, zone: i64) -> Result<IndexMap<Cell, Option<f64>>> {
-        let mut unseen: HashSet<i64> = HashSet::from([mmodel::NONDRAW]);
+        let mut unseen: Vec<Role> = vec![Role::Nothing];
         let rotating = match &self.doors {
             Some(doors) => !doors.doors(zone)?.is_empty(),
             None => false,
         };
         if !rotating {
-            unseen.extend(self.blockers.iter().copied());
+            unseen.push(Role::Blocker);
         }
         let mut out: IndexMap<Cell, Option<f64>> = IndexMap::new();
-        let models = self.models.borrow().clone();
-        for model in models {
-            let head = self.memory.read(model, mmodel::HEAD)?;
-            if !mmodel::in_use(&head)? || mmodel::index_of(&head)? == mmodel::PLAYER_INDEX {
-                continue;
-            }
+        for other in self.others() {
+            let (model, head) = other?;
             let code = mmodel::drawn_as(&*self.memory, model, &head, self.drawn)?;
-            if !unseen.contains(&code) || self.barriers.contains(&(mmodel::zone_of(&head)?, code)) {
-                continue;
-            }
-            if let Some(cell) = mmodel::cell(&head)? {
+            if unseen.contains(&self.role(&head, code)?)
+                && let Some(cell) = mmodel::cell(&head)?
+            {
                 out.insert(cell, mmodel::height(&head)?);
             }
         }
