@@ -104,8 +104,8 @@ pub fn outdoors(zones: &IndexMap<i64, Zone>, table: &[u8]) -> Result<HashSet<i64
             out.insert(zone);
         }
         for record in warps {
-            let to = u16(record, 0)?;
-            if u16(record, 4)? == crate::games::gen6::field::zonedata::WARP_OUT
+            let to = u16(record, zonedata::WARP_TO)?;
+            if u16(record, zonedata::WARP_KIND)? == zonedata::WARP_OUT
                 && zones.contains_key(&to)
                 && of_the_town(to)?
             {
@@ -146,7 +146,7 @@ pub fn plate_names(
         };
         let mut doors: Vec<(i64, &Vec<u8>)> = Vec::new();
         for (slot, record) in warps.iter().enumerate() {
-            let to = u16(record, 0)?;
+            let to = u16(record, zonedata::WARP_TO)?;
             if zones.contains_key(&to) && !outside.contains(&to) {
                 doors.push((slot as i64, record));
             }
@@ -188,7 +188,7 @@ pub fn plate_names(
             if !rest.is_empty() && (rest[0].0 as f64) < APART * d as f64 {
                 continue;
             }
-            let to = u16(item(warps, slot)?, 0)?;
+            let to = u16(item(warps, slot)?, zonedata::WARP_TO)?;
             if place(table, to)? != place(table, zone)? {
                 continue;
             }
@@ -244,8 +244,8 @@ pub fn entrance_names(
             continue;
         };
         for (slot, record) in found.2.iter().enumerate() {
-            let to = u16(record, 0)?;
-            if entrances.contains(&u16(record, 4)?)
+            let to = u16(record, zonedata::WARP_TO)?;
+            if entrances.contains(&u16(record, zonedata::WARP_KIND)?)
                 && zones.contains_key(&to)
                 && !outside.contains(&to)
                 && place(table, to)? == place(table, zone)?
@@ -336,7 +336,7 @@ pub fn street_names(
     let mut out: IndexMap<(i64, i64), String> = IndexMap::new();
     for (&zone, (_data, _furniture, warps)) in zones {
         for (slot, record) in warps.iter().enumerate() {
-            let to = u16(record, 0)?;
+            let to = u16(record, zonedata::WARP_TO)?;
             if !by_zone.contains_key(&to)
                 || !zones.contains_key(&to)
                 || place(table, to)? != place(table, zone)?
@@ -485,20 +485,10 @@ fn apart(sign: &[u8], door: &[u8]) -> Result<Option<i64>> {
 }
 
 fn grid_cells(record: &[u8], furniture: bool) -> Result<Vec<Cell>> {
-    let (x, z, wide, deep) = if furniture {
-        (
-            u16(record, 8)?,
-            u16(record, 10)?,
-            u16(record, 12)?,
-            u16(record, 14)?,
-        )
+    let ((x, z), (wide, deep)) = if furniture {
+        zonedata::furniture_box(record)?
     } else {
-        (
-            crate::games::gen6::field::zonedata::from_world(s16(record, 8)?),
-            crate::games::gen6::field::zonedata::from_world(s16(record, 12)?),
-            u16(record, 14)?,
-            u16(record, 16)?,
-        )
+        zonedata::warp_box(record)?
     };
     let mut cells = Vec::new();
     for i in 0..wide.max(1) {
@@ -672,7 +662,7 @@ pub fn shared_furniture(zones: &IndexMap<i64, Zone>) -> Result<IndexMap<(i64, i6
             continue;
         };
         for record in furniture {
-            let number = u16(record, 0)?;
+            let number = u16(record, zonedata::FURNITURE_SCRIPT)?;
             if number < script::SHARED
                 && let Some(runs) = code.runs(number)?
             {
@@ -693,7 +683,7 @@ fn plates_of<'a>(
     let mut out = Vec::new();
     for (index, record) in furniture.iter().enumerate() {
         let mut shown: IndexSet<i64> = IndexSet::new();
-        for (line, style) in script::sign_lines(code, u16(record, 0)?)? {
+        for (line, style) in script::sign_lines(code, u16(record, zonedata::FURNITURE_SCRIPT)?)? {
             if style == script::PLATE {
                 shown.insert(line);
             }

@@ -49,10 +49,10 @@ use crate::games::gen6::field::features::{
 use crate::games::gen6::field::rail::{self, Rails, keep};
 use crate::games::gen6::field::terrain::{FarCells, FarFloors, FarHeights, FarMatrices, Terrain};
 use crate::games::gen6::field::zonedata::{
-    FURNITURE, LZ11, NPC, NPC_INDEX, NPC_SCRIPT, NPC_SPRITE, NPC_X, NPC_Z, TRIGGER_HEIGHT,
-    TRIGGER_SCRIPT, TRIGGER_WIDTH, TRIGGER_X, TRIGGER_Y, TRIGGER_Z, WARP, WARP_DOOR, WARP_OUT,
-    WARP_STAIRS, WARP_STREET, WARP_Y, ZoneData, arrival, from_world, on_rail, read_furniture,
-    read_records, read_triggers, read_zone, zone_files,
+    FURNITURE, FURNITURE_SCRIPT, LZ11, NPC, NPC_INDEX, NPC_SCRIPT, NPC_SPRITE, NPC_X, NPC_Z,
+    TRIGGER_HEIGHT, TRIGGER_SCRIPT, TRIGGER_WIDTH, TRIGGER_X, TRIGGER_Y, TRIGGER_Z, WARP,
+    WARP_DOOR, WARP_KIND, WARP_OUT, WARP_STAIRS, WARP_STREET, WARP_TO, WARP_Y, ZoneData, arrival,
+    on_rail, read_furniture, read_records, read_triggers, read_zone, warp_box, zone_files,
 };
 use crate::games::gen6::field::zonetable::{
     INFO_KIND, INFO_MATRIX, INFO_NAME, INFO_PARENT, INFO_SIZE, NAME_MASK, UNDERWATER, ZONE_LIMIT,
@@ -1419,7 +1419,7 @@ impl FieldReader {
                 if let Some(at) = rail::spot(corridor, record)? {
                     out.push(Interactable {
                         size: at.1,
-                        code: u16(record, 0)?,
+                        code: u16(record, FURNITURE_SCRIPT)?,
                         source: place_source(FURNITURE_SOURCE, i as i64)?,
                         home: owner,
                         ..Interactable::new("signs", "sign", at.0)
@@ -1464,12 +1464,9 @@ impl FieldReader {
         record: &[u8],
         at: Option<(Cell, (i64, i64))>,
     ) -> Result<Interactable> {
-        let (to, kind) = (u16(record, 0)?, u16(record, 4)?);
+        let (to, kind) = (u16(record, WARP_TO)?, u16(record, WARP_KIND)?);
         let (cell, size) = match at {
-            None => (
-                (from_world(s16(record, 8)?), from_world(s16(record, 12)?)),
-                (u16(record, 14)?, u16(record, 16)?),
-            ),
+            None => warp_box(record)?,
             Some(at) => at,
         };
         let what: String =
@@ -1516,7 +1513,7 @@ impl FieldReader {
     /// into, so the cell the player stands in is the one on the side opposite. "stairs" where the
     /// ROM's heights are not read, and for a way of walking the kind does not number.
     fn stairs_word(&self, record: &[u8], cell: Cell, size: (i64, i64)) -> Result<&'static str> {
-        let way = u16(record, 4)? & 0xFF;
+        let way = u16(record, WARP_KIND)? & 0xFF;
         let (x, z) = cell;
         let (wide, deep) = size;
         let behind = [(x, z - 1), (x, z + deep), (x - 1, z), (x + wide, z)];
@@ -1698,9 +1695,9 @@ impl FieldReader {
             if on_rail(&record)? {
                 continue;
             }
-            let (x0, z0) = (from_world(s16(&record, 8)?), from_world(s16(&record, 12)?));
-            for x in x0..x0 + 1.max(u16(&record, 14)?) {
-                for z in z0..z0 + 1.max(u16(&record, 16)?) {
+            let ((x0, z0), (wide, deep)) = warp_box(&record)?;
+            for x in x0..x0 + 1.max(wide) {
+                for z in z0..z0 + 1.max(deep) {
                     doors.insert((x, z));
                 }
             }

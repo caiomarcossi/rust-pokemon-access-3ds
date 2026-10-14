@@ -103,6 +103,25 @@ pub const TRIGGER_Y: i64 = 0x14;
 /// World units per cell.
 pub const CELL: i64 = 18;
 
+pub const FURNITURE_SCRIPT: i64 = 0x00;
+
+/// A furniture record's first cell and how many cells it covers, off the rails.
+pub const FURNITURE_X: i64 = 0x08;
+pub const FURNITURE_Z: i64 = 0x0A;
+pub const FURNITURE_WIDTH: i64 = 0x0C;
+pub const FURNITURE_HEIGHT: i64 = 0x0E;
+
+/// A warp record's zone it goes to, and its kind (`WARP_DOOR` and the rest).
+pub const WARP_TO: i64 = 0x00;
+pub const WARP_KIND: i64 = 0x04;
+
+/// A warp record's place in world units, s16 (`from_world`), and how many cells it covers, off
+/// the rails.
+pub const WARP_X: i64 = 0x08;
+pub const WARP_Z: i64 = 0x0C;
+pub const WARP_WIDTH: i64 = 0x0E;
+pub const WARP_HEIGHT: i64 = 0x10;
+
 /// How high in the world a warp off the rails stands: 198 for Sootopolis Gym's way out, the
 /// height of the floor of its entrance's corridor over the lower floor's -18 (spike 167).
 pub const WARP_Y: i64 = 0x0A;
@@ -184,7 +203,7 @@ pub fn warps(data: &[u8]) -> Result<Vec<(i64, i64, i64)>> {
     };
     let mut out: Vec<(i64, i64, i64)> = Vec::new();
     for (slot, record) in read_records(&memory, &zone, WARP)?.iter().enumerate() {
-        out.push((slot as i64, u16(record, 0)?, u16(record, 4)?));
+        out.push((slot as i64, u16(record, WARP_TO)?, u16(record, WARP_KIND)?));
     }
     Ok(out)
 }
@@ -314,14 +333,32 @@ pub fn read_triggers(memory: &dyn Memory, data: &ZoneData) -> Result<Vec<Vec<u8>
 /// table is not at hand.
 pub fn arrival(record: &[u8], zone: Option<i64>, warps: &[Vec<u8>]) -> Result<Option<Cell>> {
     let slot = u16(record, WARP_TO_SLOT)?;
-    if Some(u16(record, 0)?) != zone || slot >= warps.len() as i64 {
+    if Some(u16(record, WARP_TO)?) != zone || slot >= warps.len() as i64 {
         return Ok(None);
     }
-    let there = &warps[slot as usize];
-    Ok(Some((
-        from_world(s16(there, 8)?),
-        from_world(s16(there, 12)?),
-    )))
+    Ok(Some(warp_box(&warps[slot as usize])?.0))
+}
+
+/// A warp record's first cell and how many cells it covers, off the rails.
+pub fn warp_box(record: &[u8]) -> Result<(Cell, (i64, i64))> {
+    Ok((
+        (
+            from_world(s16(record, WARP_X)?),
+            from_world(s16(record, WARP_Z)?),
+        ),
+        (u16(record, WARP_WIDTH)?, u16(record, WARP_HEIGHT)?),
+    ))
+}
+
+/// A furniture record's first cell and how many cells it covers, off the rails.
+pub fn furniture_box(record: &[u8]) -> Result<(Cell, (i64, i64))> {
+    Ok((
+        (u16(record, FURNITURE_X)?, u16(record, FURNITURE_Z)?),
+        (
+            u16(record, FURNITURE_WIDTH)?,
+            u16(record, FURNITURE_HEIGHT)?,
+        ),
+    ))
 }
 
 /// What is read by facing it: signs outdoors, the notebook and the clock indoors. NPCs come from
@@ -331,11 +368,12 @@ pub fn read_furniture(memory: &dyn Memory, data: &ZoneData) -> Result<Vec<Intera
     let mut out: Vec<Interactable> = Vec::new();
     for (i, record) in read_records(memory, data, FURNITURE)?.iter().enumerate() {
         if !on_rail(record)? {
+            let (cell, size) = furniture_box(record)?;
             out.push(Interactable {
-                size: (u16(record, 12)?, u16(record, 14)?),
-                code: u16(record, 0)?,
+                size,
+                code: u16(record, FURNITURE_SCRIPT)?,
                 source: place_source(FURNITURE_SOURCE, i as i64)?,
-                ..Interactable::new("signs", "sign", (u16(record, 8)?, u16(record, 10)?))
+                ..Interactable::new("signs", "sign", cell)
             });
         }
     }
