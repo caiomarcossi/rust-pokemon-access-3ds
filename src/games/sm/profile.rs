@@ -29,7 +29,6 @@ use crate::core::rtti::{ClassNames, demangle};
 use crate::core::speech::{Category, Speech};
 use crate::games::common::announce::Announcements;
 use crate::games::common::cursors::reader::CursorReader;
-use crate::games::common::cursors::shared::CursorPoll;
 use crate::games::common::dialogue::DialogueReader;
 use crate::games::common::field::ground::Ground;
 use crate::games::common::field::guide::FieldSource;
@@ -359,10 +358,6 @@ impl SunProfile {
                 .cloned()
                 .collect();
             let texts = self._without_plates(texts)?;
-            let cursors = CursorPoll {
-                moving: HashSet::new(),
-                ..cursors
-            };
             // A layout built again where it was is the one that was there, and a menu stays a
             // menu, as in ORAS.
             let mut roots = self.layouts.roots();
