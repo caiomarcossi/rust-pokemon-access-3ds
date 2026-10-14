@@ -334,8 +334,8 @@ pub type Far = Rc<dyn Fn(i64, i64) -> Result<Option<Rc<Chunk>>>>;
 /// A cell cannot be walked where its chunk's blocked bit is set — a tree, a wall, a door, a sign,
 /// a ledge — where the matrix has no zone, or where a move model stands. A ledge is jumped the
 /// way it drops, from the cell before it to the cell after, and a slope, which is open, walked
-/// only the way it goes down, as a conveyor belt is the way it runs (`ledge`). Only the four
-/// chunks around the player are loaded; the rest of the matrix is the ROM's (`far`). A cell
+/// only the way it goes down, as a conveyor belt is the way it runs (`ledge`); a current in the
+/// sea carries a player on it its own way (`carry`). Only the four chunks around the player are loaded; the rest of the matrix is the ROM's (`far`). A cell
 /// neither holds is taken to be open, and a path that turns out to cross a wall is found again
 /// once the chunk with the wall in it loads.
 /// Water is a wall too, unless the ground is one to `surf`, and a bush or a rock a move clears
@@ -901,6 +901,44 @@ impl Ground {
             Some(chunk) => chunk.slope(cell),
             None => Ok(None),
         }
+    }
+
+    /// Which way the cell carries a player surfing on it where it is a current, or None:
+    /// the search's `carry` (`CURRENTS`).
+    pub fn carry(&self, cell: Cell) -> Result<Option<&'static str>> {
+        let chunk = if self.corridor.is_some() {
+            None
+        } else {
+            self.chunk(cell)?
+        };
+        match chunk {
+            Some(chunk) => chunk.current(cell),
+            None => Ok(None),
+        }
+    }
+
+    /// Where a current carries a player on `cell`, a cell at a time, to the first cell it
+    /// does not carry them on from, `cell` first: `cell` alone off a current, and where the
+    /// way it carries is shut. Stops if the currents go round in a ring.
+    pub fn drift(&self, cell: Cell) -> Result<Vec<Cell>> {
+        let mut out = vec![cell];
+        loop {
+            let last = *out.last().expect("cell is first");
+            let Some(way) = self.carry(last)? else {
+                break;
+            };
+            let step = pathfind::STEPS
+                .iter()
+                .find(|(known, _)| *known == way)
+                .map(|&(_, step)| step)
+                .ok_or_else(|| py::Error::key(py::repr(way)))?;
+            let ahead = (last.0 + step.0, last.1 + step.1);
+            if !self.passable(ahead)? || out.contains(&ahead) {
+                break;
+            }
+            out.push(ahead);
+        }
+        Ok(out)
     }
 
     /// Whether the move from `cell` to `step` is onto, off or over a bumpy slope, hopped up

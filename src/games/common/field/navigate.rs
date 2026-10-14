@@ -714,6 +714,11 @@ impl Navigator {
         self.guide.follow(r#where)
     }
 
+    /// Say where a current takes the player as it catches them (`Guide.swept`).
+    pub fn swept(&mut self, r#where: &Field) -> Result<()> {
+        self.guide.swept(r#where)
+    }
+
     /// What to call this: the name it has been given, or what it is when it has none.
     pub fn name_of(&self, item: &Interactable, zone: i64) -> Result<String> {
         self.naming.name_of(item, zone)

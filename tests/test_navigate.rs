@@ -59,6 +59,8 @@ const SHORE: i64 = 0x40180023;
 const FALLS: i64 = 0x3F180003;
 /// Jagged Pass's sandy slopes, ridden up north on the Mach Bike (omega_ruby_bike.ctm, spike 158).
 const SOUTH_SLOPE: i64 = 0x6C000020;
+/// Route 132's current, which carried the player west (movie43, spike A).
+const WEST_CURRENT: i64 = 0x951A0002;
 
 /// What `FakeField.ground` is run through before it is handed over: Python's tests replace the
 /// method itself, which Rust cannot do to a value behind a trait.
@@ -78,6 +80,8 @@ struct FakeField {
     shore: RefCell<HashSet<Cell>>,
     /// Cells of a waterfall, each climbed north.
     falls: RefCell<HashSet<Cell>>,
+    /// Cells of a current carrying the player west.
+    currents: RefCell<HashSet<Cell>>,
     /// A floor's height -> the blocked cells its deck opens, walked at that height alone. A
     /// list, since a float is no key in Rust.
     decks: RefCell<Vec<(f64, HashSet<Cell>)>>,
@@ -113,6 +117,7 @@ impl FakeField {
             bumpy: RefCell::new(HashSet::new()),
             shore: RefCell::new(HashSet::new()),
             falls: RefCell::new(HashSet::new()),
+            currents: RefCell::new(HashSet::new()),
             decks: RefCell::new(Vec::new()),
             surfaces: RefCell::new(IndexMap::new()),
             floors: RefCell::new(IndexMap::new()),
@@ -169,11 +174,14 @@ impl FieldSource for FakeField {
         let bumpy = self.bumpy.borrow();
         let shore = self.shore.borrow();
         let falls = self.falls.borrow();
+        let currents = self.currents.borrow();
         let words: Vec<i64> = cells
             .iter()
             .map(|cell| {
                 if self.ledges.contains(cell) {
                     SOUTH_LEDGE
+                } else if currents.contains(cell) {
+                    WEST_CURRENT
                 } else if self.sea.contains(cell) {
                     SEA
                 } else if self.slopes.contains(cell) {
@@ -1494,6 +1502,129 @@ fn test_shift_p_climbs_a_waterfall_and_goes_down_it_and_p_keeps_off_it() {
     let spoken = said(&rig.backend).len();
     step(&mut rig, &[(100, 178)]);
     assert_eq!(said(&rig.backend).len(), spoken);
+}
+
+fn current_sea() -> HashSet<Cell> {
+    (80..120)
+        .flat_map(|x| (174..186).map(move |z| (x, z)))
+        .collect()
+}
+
+/// A row of current carrying the player west, rock at either end, the one way south across it.
+fn current() -> HashSet<Cell> {
+    (90..106).map(|x| (x, 178)).collect()
+}
+
+fn rocks() -> HashSet<Cell> {
+    let current = current();
+    (80..120)
+        .map(|x| (x, 178))
+        .filter(|cell| !current.contains(cell))
+        .collect()
+}
+
+/// Route 132: the player surfing north of the current, a Swimmer south of it (movie43).
+fn swimmer() -> Field {
+    Field {
+        interactables: vec![Interactable {
+            source: 0x08D1E9A8,
+            move_model: true,
+            ..Interactable::new("people", "person", (95, 181))
+        }],
+        surfing: true,
+        ..Field::new(0x3D, (100, 176))
+    }
+}
+
+/// A navigator on `where` over the current's sea, the current laid.
+fn on_the_current(r#where: Field) -> Rig {
+    let rocks = rocks();
+    let rig = navigator(Want {
+        blocked: rocks.iter().copied().collect(),
+        sea: current_sea().difference(&rocks).copied().collect(),
+        ..on(r#where)
+    });
+    *rig.field.currents.borrow_mut() = current();
+    rig
+}
+
+/// Carry the player through `cells`, the runtime following each and its field poll looking
+/// at each, as on a current.
+fn drift(rig: &mut Rig, cells: &[Cell]) {
+    for &cell in cells {
+        {
+            let mut slot = rig.field.r#where.borrow_mut();
+            let was = slot.take().unwrap();
+            *slot = Some(Field { cell, ..was });
+        }
+        let r#where = rig.field.poll().unwrap().unwrap();
+        rig.nav.follow(&r#where).unwrap();
+        rig.nav.swept(&r#where).unwrap();
+    }
+}
+
+/// Route 132: a current carries a player surfing on it its own way, a cell at a time, and
+/// they cannot turn (movie43, spike A). P's way says the current as one leg, by where it leaves
+/// the player, as they reach it, and nothing while it carries them.
+#[test]
+fn test_p_rides_a_current_saying_where_it_leaves_the_player_and_nothing_on_it() {
+    let mut rig = on_the_current(swimmer());
+    rig.press(PATHFIND);
+    assert_eq!(
+        last(&rig.backend),
+        "2 south, current 10 west, 3 south, 4 east"
+    );
+    drift(&mut rig, &[(100, 177), (100, 178)]);
+    let all = said(&rig.backend);
+    assert_eq!(
+        all[all.len() - 2..],
+        [
+            "2 south, current 10 west, 3 south, 4 east",
+            "current 10 west"
+        ]
+    );
+    let spoken = all.len();
+    let carried: Vec<Cell> = (91..100).rev().map(|x| (x, 178)).collect();
+    drift(&mut rig, &carried);
+    assert_eq!(said(&rig.backend).len(), spoken);
+    drift(&mut rig, &[(90, 178)]);
+    assert_eq!(last(&rig.backend), "3 south");
+    *rig.field.r#where.borrow_mut() = Some(Field {
+        cell: (103, 178),
+        ..swimmer()
+    });
+    rig.press(PATHFIND);
+    assert_eq!(last(&rig.backend), "current 13 west, 3 south, 4 east");
+}
+
+/// Route 133: P was found again and said at every one of 63 cells a current carried the
+/// player (movie43). Off the way, the current is said as it catches the player, by where it
+/// leaves them, and the way is found again there.
+#[test]
+fn test_a_current_off_the_way_is_said_as_it_catches_the_player_and_the_way_found_after() {
+    let upstream = Field {
+        interactables: vec![Interactable {
+            source: 0x08D1E9A8,
+            move_model: true,
+            ..Interactable::new("people", "person", (100, 173))
+        }],
+        ..swimmer()
+    };
+    let mut rig = on_the_current(upstream);
+    rig.press(PATHFIND);
+    assert_eq!(last(&rig.backend), "2 north");
+    drift(&mut rig, &[(100, 177)]);
+    let spoken = said(&rig.backend).len();
+    drift(&mut rig, &[(100, 178)]);
+    assert_eq!(said(&rig.backend)[spoken..], ["current 10 west"]);
+    let carried: Vec<Cell> = (91..100).rev().map(|x| (x, 178)).collect();
+    drift(&mut rig, &carried);
+    assert_eq!(said(&rig.backend)[spoken..], ["current 10 west"]);
+    drift(&mut rig, &[(90, 178)]);
+    assert_eq!(
+        said(&rig.backend)[spoken..],
+        ["current 10 west", "5 north, 9 east"]
+    );
 }
 
 /// A sandy slope going down south, the one way up through a cliff across the chunk at z 170.

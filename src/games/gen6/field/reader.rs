@@ -525,6 +525,7 @@ impl FieldReader {
             return Ok(Some(Field {
                 on_bike: bike,
                 place: Some(mmodel::place(&head)?),
+                surfing: mmodel::surfing(&head)?,
                 ..Field::new(zone, cell)
             }));
         }

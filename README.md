@@ -226,6 +226,13 @@ off the line before such a step gets "a little west" on its own. Sneak that way,
 tilted gently, or your walking modifier held and the key tapped, and pa3ds says "lined up" the
 moment you are. Off the line in open ground nothing is said, since nothing stops you there.
 
+**Currents.** Some of the sea, as on Routes 132 to 134, has currents that carry you while you
+surf, a square at a time, and you cannot turn until one lets you go, sometimes onto a sandbar.
+When one catches you, pa3ds says where it will leave you: "current 28 west". `P` and `Shift+P`
+know the currents: a way that rides one says it as one step, "Surf 3 south, current 28 west 4
+north, 5 east", and says nothing more until it lets you go. If a current carries you off the way,
+the way is found again where it leaves you.
+
 On a fresh Azahar, `I`, `J`, `K` and `L` are the C-stick and `O` and `P` are the debug and GPIO
 buttons, none of which the Pokémon games use. When one of pa3ds's keys is on an Azahar button,
 pa3ds says so as it starts.

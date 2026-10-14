@@ -25,6 +25,11 @@ pub const ICE_REACH: i64 = 3;
 /// the player walks on: "push 1 west" (spike 161). The game names no such thing.
 pub const PUSH: &str = "push";
 
+/// What a leg a current in the sea carries the player along is said with, a run of them as one
+/// by where it leaves the player: "Surf 3 south, current 28 west 4 north" (spike A). The game names
+/// no such thing.
+pub const CURRENT: &str = "current";
+
 /// What a leg is said with where the ROM's move names cannot be read: pa3ds's own word for where
 /// the leg goes.
 pub const OWN_MOVE_WORDS: [(i64, &str); 5] = [
@@ -568,6 +573,7 @@ fn search_by(
     let walk = walk(ground, start, item)?;
     let through = |turns: &[i64], cell: Cell, step: Cell| walk.through(turns, cell, step);
     let arrives = |cell: Cell, turns: &[i64]| walk.arrives(cell, turns);
+    let carry = |cell: Cell| ground.carry(cell);
     pathfind::find(
         start,
         goals,
@@ -583,7 +589,7 @@ fn search_by(
             through: if walk.active { Some(&through) } else { None },
             over: Some(&over),
             arrives: if ground.stacked { Some(&arrives) } else { None },
-            carry: None,
+            carry: Some(&carry),
         },
     )
 }
@@ -602,13 +608,14 @@ fn near(path: &[Cell], cell: Cell, slack: i64) -> Option<i64> {
     }
 }
 
-/// What a search from `start` is given to walk through the ground's rotating doors, where they
-/// stand now and what each step does to them; and on a stacked ground the floor each step is on,
-/// the player's first and last, and the floor `item` is reached on. Nothing where there is
-/// neither (`active` is False and `turns` empty).
+/// What a search from `start` is given to walk the sea's currents, which carry the player their
+/// own way; through the ground's rotating doors, where they stand now and what each step does to
+/// them; and on a stacked ground the floor each step is on, the player's first and last, and the
+/// floor `item` is reached on.
 ///
-/// Python returns the keyword arguments for `find` as a dict, `{}` for nothing: `search_by` reads
-/// them from this.
+/// Python returns the keyword arguments for `find` as a dict, `{"carry": ground.carry}` alone
+/// where there are no doors and no floors (`active` is False and `turns` empty): `search_by`
+/// reads them from this, and hands `find` the ground's `carry` every time.
 struct Walk<'a> {
     ground: &'a Ground,
     active: bool,
@@ -716,7 +723,8 @@ fn left(guidance: &Guidance, at: i64, r#where: &Field) -> Result<String> {
 }
 
 /// Legs as the player's keys walk them: by the compass on the grid, and on a rail, where the
-/// keys work from the camera behind the player, from the way it looks (spike 105).
+/// keys work from the camera behind the player, from the way it looks (spike 105). A run of legs
+/// a current carries the player along is said as one, by where it leaves them (`CURRENT`).
 fn spoken(legs: &[Leg], r#where: &Field) -> Result<String> {
     if let Some(heading) = r#where.heading {
         let angled = match r#where.bearing {
@@ -725,7 +733,29 @@ fn spoken(legs: &[Leg], r#where: &Field) -> Result<String> {
         };
         return pathfind::turned(legs, heading, angled);
     }
-    Ok(pathfind::spoken(legs))
+    let mut parts: Vec<String> = Vec::new();
+    let mut drift = (0, 0);
+    for leg in legs.iter().map(Some).chain([None]) {
+        if let Some(leg) = leg
+            && leg.how == CURRENT
+        {
+            let (dx, dz) = pathfind::STEPS
+                .iter()
+                .find(|(known, _)| *known == leg.direction)
+                .map(|&(_, step)| step)
+                .ok_or_else(|| Error::key(py::repr(leg.direction)))?;
+            drift = (drift.0 + dx * leg.steps, drift.1 + dz * leg.steps);
+            continue;
+        }
+        if drift != (0, 0) {
+            parts.push(format!("{CURRENT} {}", field::bearing((0, 0), drift)));
+            drift = (0, 0);
+        }
+        if let Some(leg) = leg {
+            parts.push(leg.to_string());
+        }
+    }
+    Ok(parts.join(", "))
 }
 
 /// Degrees between two bearings, the short way round.
@@ -773,6 +803,9 @@ pub struct Guide {
     /// The way being walked, or None. Shared with the call that is holding it (`to`'s `held`),
     /// as one object in Python, so it is an `Rc<RefCell<Guidance>>`.
     pub guidance: Option<Rc<RefCell<Guidance>>>,
+    /// Where the player was last looked at on the water and every cell a current carries them
+    /// through from there, so it is said once (`swept`).
+    drift: Vec<Cell>,
     /// What `reachable` was last asked and found.
     reached: RefCell<Option<(Asked, HashSet<Key>)>>,
 }
@@ -824,6 +857,7 @@ impl Guide {
             routes,
             slack,
             guidance: None,
+            drift: Vec::new(),
             reached: RefCell::new(None),
         }
     }
@@ -891,6 +925,7 @@ impl Guide {
             let joined = |cell: Cell, step: Cell| Ok(walked.joined(cell, step));
             let over = |cell: Cell| walked.over(cell);
             let open = |cell: Cell| walked.open(cell);
+            let carry = |cell: Cell| walked.carry(cell);
             let reached = pathfind::reached(
                 r#where.cell,
                 &|cell: Cell| walked.passable(cell),
@@ -900,7 +935,7 @@ impl Guide {
                     joined: Some(&joined),
                     over: Some(&over),
                     ends: Some(&open),
-                    carry: None,
+                    carry: Some(&carry),
                 },
             )?;
             for (key, cells) in goals {
@@ -1094,6 +1129,9 @@ impl Guide {
             if pushed.contains(&(cell, step)) {
                 return Ok(PUSH.to_string());
             }
+            if ground.carry(cell)? == Some(pathfind::towards(cell, step)) {
+                return Ok(CURRENT.to_string());
+            }
             if ground.hopping(cell, step) {
                 return Ok(self.acro.clone());
             }
@@ -1276,19 +1314,62 @@ impl Guide {
             .position(|leg| leg.end > at)
             .expect("a leg ends past the cell") as i64;
         if leg != guidance.borrow().leg {
-            let now = {
+            // A current's run of legs was said whole as it began, where it leaves the player.
+            let riding = {
+                let guidance = guidance.borrow();
+                py::slice(&guidance.legs, guidance.leg, leg + 1)
+                    .iter()
+                    .all(|one| one.how == CURRENT)
+            };
+            let (now, rest) = {
                 let mut guidance = guidance.borrow_mut();
                 guidance.leg = leg;
                 guidance.camera = r#where.bearing;
-                guidance.legs[leg as usize].clone()
+                let now = guidance.legs[leg as usize].clone();
+                let rest: Vec<Leg> = if now.how == CURRENT {
+                    py::slice_from(&guidance.legs, leg + 1).to_vec()
+                } else {
+                    Vec::new()
+                };
+                (now, rest)
             };
-            let text = spoken(
-                &[Leg {
-                    steps: now.end - at,
-                    ..now
-                }],
-                r#where,
-            )?;
+            let mut run = vec![Leg {
+                steps: now.end - at,
+                ..now
+            }];
+            run.extend(rest.into_iter().take_while(|one| one.how == CURRENT));
+            if !riding {
+                let text = spoken(&run, r#where)?;
+                (self.tell)(&text);
+            }
+        }
+        Ok(())
+    }
+
+    /// Say where a current takes the player as it catches them, "current 28 west", unless the
+    /// way being guided says it: it says each current on it as it begins. On Route 132 the
+    /// player cannot turn on one, and is carried a cell at a time to calm water or onto a
+    /// sandbar, wherever they had meant to go (movie43, spike A). Only a player surfing is
+    /// looked at, once a cell.
+    pub fn swept(&mut self, r#where: &Field) -> Result<()> {
+        if !r#where.surfing {
+            self.drift = Vec::new();
+        }
+        if !r#where.surfing || self.drift.contains(&r#where.cell) {
+            return Ok(());
+        }
+        let drift = self.ground(r#where, false, None)?.drift(r#where.cell)?;
+        self.drift = drift.clone();
+        let guidance = self.guidance.clone();
+        let off_the_way = match &guidance {
+            None => true,
+            Some(guidance) => guidance.borrow().at(r#where.cell)?.is_none(),
+        };
+        if drift.len() > 1 && off_the_way {
+            let text = format!(
+                "{CURRENT} {}",
+                field::bearing(r#where.cell, drift[drift.len() - 1])
+            );
             (self.tell)(&text);
         }
         Ok(())
@@ -1471,14 +1552,18 @@ impl Guide {
             // game walks the player into a door's own cell before the warp (poke_center_pc.ctm).
             return Ok(());
         }
-        if self
-            .field
-            .ground(r#where, None)?
-            .falls
-            .contains_key(&r#where.cell)
-        {
+        let ground = {
+            let guidance = guidance.borrow();
+            self.ground(r#where, guidance.hm, guidance.height)?
+        };
+        if ground.falls.contains_key(&r#where.cell) {
             // Halfway up or down a waterfall, the player lands a cell on: going down Ever Grande
             // City's, the way found there was "Waterfall 1 north", back up (spike 170).
+            return Ok(());
+        }
+        if ground.drift(r#where.cell)?.len() > 1 {
+            // A current is carrying the player where they cannot turn, and the way is found
+            // where it leaves them: on Route 133 a new way was said at every cell of 63 (movie43).
             return Ok(());
         }
         let Some(item) = self.find(&listed, &guidance.borrow()) else {

@@ -316,6 +316,8 @@ pub struct Field {
     pub bearing: Option<f64>,
     /// Whether the player is riding the Mach Bike, which rides up a sandy slope (spike 158).
     pub on_bike: bool,
+    /// Whether the player is surfing, where a current can carry them (spike A).
+    pub surfing: bool,
     /// How far direction mode looks, in this map's steps each way, where not the field's ten
     /// cells: the sky's places are far apart (`oras.sky.REACH`).
     pub reach: Option<i64>,
@@ -343,6 +345,7 @@ impl Default for Field {
             heading: None,
             bearing: None,
             on_bike: false,
+            surfing: false,
             reach: None,
             steer: None,
             place: None,

@@ -14,9 +14,8 @@ pub const BLOCKED: i64 = 0x1;
 /// surfing goes. Route 109's sea is `0x3d1a0006`, and the player could not walk onto it
 /// (omega_ruby_surf.ctm, spike 136). Across every chunk in both ROMs the bit is set on every word
 /// of nine kinds and no other: the sea `0x3d`, the deep water Dive goes down through (`DIVE`),
-/// `0x42` between the sea and walls, the four `0x94` to `0x97` (currents, one a way, as ledges
-/// are), and `0x3f` and `0x40`, which are blocked as well (`FALLS`, `SHORE`). X has `0x3d`,
-/// `0x3f` and `0x40`.
+/// `0x42` between the sea and walls, the four `0x94` to `0x97` (`CURRENTS`), and `0x3f` and
+/// `0x40`, which are blocked as well (`FALLS`, `SHORE`). X has `0x3d`, `0x3f` and `0x40`.
 pub const WATER: i64 = 0x2;
 
 /// The kind of the strip of shore between land and the sea, one cell wide: water and blocked.
@@ -95,6 +94,13 @@ pub const COUNTER: i64 = 0xD4;
 /// or top. No chunk has 0x6b, so north rests on the numbering. On foot a slope is walked down only,
 /// and on the bike either way (`Ground.bike`).
 pub const SLOPES: [(i64, &str); 4] = [(0x69, EAST), (0x6A, WEST), (0x6B, NORTH), (0x6C, SOUTH)];
+
+/// A current's kind -> the way it carries a player surfing on it, in the order the ledges' kinds
+/// go. On Route 132 the player surfed west onto `0x95` at (415, 105) and was carried a cell at a
+/// time to (387, 105), where the calm sea `0x3d` begins (movie43, spike A). The matrix Routes 132
+/// to 134 are on has 10,184 cells of `0x95`, 541 of `0x96` in diagonal bands, 363 of `0x97`, and
+/// no `0x94`, so east rests on the numbering.
+pub const CURRENTS: [(i64, &str); 4] = [(0x94, EAST), (0x95, WEST), (0x96, NORTH), (0x97, SOUTH)];
 
 /// A bumpy slope's kind, the rocky step only the Acro Bike's bunny hop gets up: walled to the
 /// player, and in Jagged Pass each one stands in a row of ledges dropping south, where a ledge
@@ -205,6 +211,11 @@ impl Chunk {
     /// Which way the cell goes down where it is a slope, or None.
     pub fn slope(&self, cell: (i64, i64)) -> Result<Option<&'static str>> {
         Ok(way_of(&SLOPES, self.kind(cell)?))
+    }
+
+    /// Which way the cell carries a player surfing on it where it is a current, or None.
+    pub fn current(&self, cell: (i64, i64)) -> Result<Option<&'static str>> {
+        Ok(way_of(&CURRENTS, self.kind(cell)?))
     }
 
     pub fn kind(&self, cell: (i64, i64)) -> Result<i64> {

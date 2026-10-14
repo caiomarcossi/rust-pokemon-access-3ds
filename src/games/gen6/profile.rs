@@ -1200,6 +1200,7 @@ impl Gen6Profile {
                     if at.on_bike { "on" } else { "off" }
                 ));
             }
+            self.navigator.borrow_mut().swept(&at)?;
             self.arrive(at.zone)?;
             // After the place's name, which a scene across Hoenn's towns follows town by town.
             if arrived && let Some(scenes) = &self.scenes {
