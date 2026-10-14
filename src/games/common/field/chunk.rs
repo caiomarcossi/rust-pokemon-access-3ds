@@ -97,7 +97,7 @@ pub const SLOPES: [(i64, &str); 4] = [(0x69, EAST), (0x6A, WEST), (0x6B, NORTH),
 
 /// A current's kind -> the way it carries a player surfing on it, in the order the ledges' kinds
 /// go. On Route 132 the player surfed west onto `0x95` at (415, 105) and was carried a cell at a
-/// time to (387, 105), where the calm sea `0x3d` begins (movie43, spike A). The matrix Routes 132
+/// time to (387, 105), where the calm sea `0x3d` begins (movie43, spike 208). The matrix Routes 132
 /// to 134 are on has 10,184 cells of `0x95`, 541 of `0x96` in diagonal bands, 363 of `0x97`, and
 /// no `0x94`, so east rests on the numbering.
 pub const CURRENTS: [(i64, &str); 4] = [(0x94, EAST), (0x95, WEST), (0x96, NORTH), (0x97, SOUTH)];

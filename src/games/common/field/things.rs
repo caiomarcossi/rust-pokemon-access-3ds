@@ -76,7 +76,7 @@ pub const DECORATION_SOURCE: i64 = 12 << 32;
 pub const MODEL_SOURCE: i64 = 13 << 32;
 
 /// A current's source: `CURRENT_SOURCE | x << 12 | z`, the first cell of the currents that let the
-/// player go round one place (spike A).
+/// player go round one place (spike 208).
 pub const CURRENT_SOURCE: i64 = 14 << 32;
 
 /// A place's `source` from its kind's tag and its own number. The number must leave the tag's
@@ -340,7 +340,7 @@ pub struct Field {
     pub bearing: Option<f64>,
     /// Whether the player is riding the Mach Bike, which rides up a sandy slope (spike 158).
     pub on_bike: bool,
-    /// Whether the player is surfing, where a current can carry them (spike A).
+    /// Whether the player is surfing, where a current can carry them (spike 208).
     pub surfing: bool,
     /// How far direction mode looks, in this map's steps each way, where not the field's ten
     /// cells: the sky's places are far apart (`oras.sky.REACH`).

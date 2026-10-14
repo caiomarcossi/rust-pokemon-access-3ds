@@ -167,7 +167,7 @@ pub fn on_bike(head: &[u8]) -> Result<bool> {
 
 /// Whether the player is surfing: +0x07 has 0x10 on the water (`on_bike`). On Routes 132 and
 /// 133 +0x06 read 0x21 surfing and 0x01 once a current had carried the player onto a sandbar
-/// (movie43, spike A).
+/// (movie43, spike 208).
 pub fn surfing(head: &[u8]) -> Result<bool> {
     Ok(byte(head, RIDING)? & BIKE != 0 && byte(head, MOUNT)? & SURFING != 0)
 }

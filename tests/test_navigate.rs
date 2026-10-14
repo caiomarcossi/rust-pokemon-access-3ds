@@ -59,7 +59,7 @@ const SHORE: i64 = 0x40180023;
 const FALLS: i64 = 0x3F180003;
 /// Jagged Pass's sandy slopes, ridden up north on the Mach Bike (omega_ruby_bike.ctm, spike 158).
 const SOUTH_SLOPE: i64 = 0x6C000020;
-/// Route 132's current, which carried the player west (movie43, spike A).
+/// Route 132's current, which carried the player west (movie43, spike 208).
 const WEST_CURRENT: i64 = 0x951A0002;
 
 /// What `FakeField.ground` is run through before it is handed over: Python's tests replace the
@@ -1564,7 +1564,7 @@ fn drift(rig: &mut Rig, cells: &[Cell]) {
 }
 
 /// Route 132: a current carries a player surfing on it its own way, a cell at a time, and
-/// they cannot turn (movie43, spike A). P's way says the current as one leg, by where it leaves
+/// they cannot turn (movie43, spike 208). P's way says the current as one leg, by where it leaves
 /// the player, as they reach it, and nothing while it carries them.
 #[test]
 fn test_p_rides_a_current_saying_where_it_leaves_the_player_and_nothing_on_it() {

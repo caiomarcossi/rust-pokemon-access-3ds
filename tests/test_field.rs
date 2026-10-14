@@ -2674,7 +2674,7 @@ fn test_a_dive_spot_is_an_exit_at_its_patchs_cell_nearest_the_player() -> Result
     Ok(())
 }
 
-/// Spike A: the sea's currents carry a player surfing to where they let go, and Orion asked
+/// Spike 208: the sea's currents carry a player surfing to where they let go, and Orion asked
 /// for them in the list, as a teleporter is with where it comes out (2026-10-13). Those that let
 /// the player go within `LANDING_REACH` of each other are one current, at its cell nearest the
 /// player, with where that cell lets them go.

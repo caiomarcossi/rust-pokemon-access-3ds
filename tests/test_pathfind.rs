@@ -328,7 +328,7 @@ fn test_a_slope_is_walked_down_and_never_up() {
 }
 
 /// Route 132: the player surfed south onto a current running west and was carried west, a
-/// cell at a time, wherever they meant to go (movie43, spike A). A current is entered any way
+/// cell at a time, wherever they meant to go (movie43, spike 208). A current is entered any way
 /// and left only its own, and lets go where its way is shut.
 #[test]
 fn test_a_current_carries_the_player_its_way_until_that_way_is_shut() {

@@ -130,7 +130,7 @@ pub const CURRENT: &str = "current";
 /// Cells apart the places two currents let the player go may be and the two still be listed as
 /// one current. Route 133's currents let the player go at 152 cells, 71 groups of them side by side,
 /// 28 within 5 cells of each other; Routes 132 and 134 have 20 and 16, Seafloor Cavern's two rooms 4
-/// each (spike A).
+/// each (spike 208).
 pub const LANDING_REACH: i64 = 5;
 
 /// What a stair between two floors of one chunk is called, a warp between floors being stairs
@@ -1878,7 +1878,7 @@ impl FieldReader {
 
     /// The zone's slopes, each patch of one kind a thing, each end of its rails, where the
     /// player gets on one (spike 159), each patch of deep water a dive spot (spike 164), and
-    /// its currents, those that let the player go round one place a thing (spike A). Cells of
+    /// its currents, those that let the player go round one place a thing (spike 208). Cells of
     /// the map with no record behind them, as use tiles are, but read off the whole matrix where
     /// the ROM's chunks are: the game loads the quarter round the player, and Route 119's rails
     /// are 67 cells north of where it starts. Off the chunks loaded without the ROM.
