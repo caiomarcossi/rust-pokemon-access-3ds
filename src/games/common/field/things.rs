@@ -212,6 +212,11 @@ pub struct Interactable {
     /// For a big boulder, the ways it moves when pushed, each with whether that push drops it
     /// into a hole (`ground.pushes`); none for one that cannot be moved. None for anything else.
     pub pushes: Option<Vec<(&'static str, bool)>>,
+    /// For a warp walked into one way, that way: it is reached from its cells on the side it is
+    /// walked in from, and from no other. Ever Grande City's way into Victory Road's lower floor
+    /// is a cave mouth over the water, walked into north, and P took the player to the ground over
+    /// it, 45 higher, "passage, 1 south" (movie45, spike 213). None for anything else.
+    pub way_in: Option<&'static str>,
 }
 
 impl Interactable {
@@ -233,6 +238,7 @@ impl Interactable {
             record: None,
             start: None,
             pushes: None,
+            way_in: None,
         }
     }
 

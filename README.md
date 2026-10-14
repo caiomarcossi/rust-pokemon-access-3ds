@@ -190,7 +190,7 @@ when the map comes back. Touch mode and the battle's keys work throughout.
 |---|---|
 | `'` (apostrophe) | Next mode: list mode, direction mode, touch mode. |
 | `[` and `]` | Previous and next category of the map's list. |
-| `P` | Find the way on foot to the chosen thing, and guide you along it turn by turn. |
+| `P` | Find the way on foot to the chosen thing, and guide you along it turn by turn. The way to a passage or stairs ends on the side you walk into it from. |
 | `Shift+P` | The same, but also using Surf, Cut, Rock Smash, Strength, Waterfall and the bikes. It goes round a big boulder wherever there is a way round, however long, and pushes one only where there is none, since a boulder pushed the wrong way can block the way. |
 | `Alt+P` | Stop guiding: the way is dropped and nothing more of it is said. "path off", or "no path" when there was none. |
 | `Ctrl+P` | Leave out of the list everything `Shift+P` finds no way to from where you stand ("unreachable hidden"), or put it back ("unreachable shown"). Off each time pa3ds starts. Ctrl+P is Azahar's key to save a screenshot, which pa3ds takes while the game is in front. |

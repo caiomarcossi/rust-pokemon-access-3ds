@@ -925,12 +925,15 @@ fn test_a_warp_walked_through_is_stairs_by_its_height_over_the_ground_it_is_walk
     town.memory.write(FILE, &data);
     town.memory
         .u32(HOLDER + 8, &[0x11 | (data.len() as i64) << 8]);
-    let kinds: HashMap<(i64, i64), String> = town
+    let exits: Vec<Interactable> = town
         .r#where()?
         .of("exits")
         .into_iter()
         .filter(|item| item.zone == Some(BEDROOM))
-        .map(|item| (item.cell, item.kind))
+        .collect();
+    let kinds: HashMap<(i64, i64), String> = exits
+        .iter()
+        .map(|item| (item.cell, item.kind.clone()))
         .collect();
     assert_eq!(
         kinds,
@@ -938,6 +941,16 @@ fn test_a_warp_walked_through_is_stairs_by_its_height_over_the_ground_it_is_walk
             ((94, 171), "stairs up".to_string()),
             ((100, 171), "stairs down".to_string()),
             ((110, 171), "passage".to_string()),
+        ])
+    );
+    let ways: HashMap<(i64, i64), Option<&str>> =
+        exits.iter().map(|item| (item.cell, item.way_in)).collect();
+    assert_eq!(
+        ways,
+        HashMap::from([
+            ((94, 171), Some("north")),
+            ((100, 171), Some("west")),
+            ((110, 171), Some("north")),
         ])
     );
     Ok(())

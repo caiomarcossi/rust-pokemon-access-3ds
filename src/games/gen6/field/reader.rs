@@ -74,6 +74,16 @@ pub const MOVE_MODEL_CLASS: &str = mmodel::CLASS;
 /// Corporation, Littleroot's houses, the hideouts), -18 for two and 135 for three (old Mauville's
 /// zone 0xf); none is 2 or 3 (2026-10-06).
 pub const WARP_RISE: f64 = 2.0;
+/// A warp walked through's low byte -> the way it is walked into (`WARP_STAIRS`). Every one of
+/// ORAS's 362 off the rails is a wall; 361 have open floor beside them on the side this says they
+/// are walked in from, and on no other side but Ever Grande City's way into Victory Road's lower
+/// floor, whose ground behind stands 45 over it (spike 213).
+pub const WALKED_INTO: [&str; 4] = [
+    pathfind::SOUTH,
+    pathfind::NORTH,
+    pathfind::EAST,
+    pathfind::WEST,
+];
 
 /// The PC's cell kind, seen booted in poke_center_pc.ctm (spike 83).
 pub const PC_TILE: i64 = 0xD5;
@@ -1481,6 +1491,11 @@ impl FieldReader {
                     .cloned()
                     .unwrap_or_else(|| "warp".to_string())
             };
+        let way_in = if at.is_none() && kind >> 8 == WARP_STAIRS {
+            WALKED_INTO.get((kind & 0xFF) as usize).copied()
+        } else {
+            None
+        };
         Ok(Interactable {
             size,
             zone: Some(to),
@@ -1490,6 +1505,7 @@ impl FieldReader {
                 None => Some(s16(record, WARP_Y)? as f64),
                 Some(_) => None,
             },
+            way_in,
             ..Interactable::new("exits", &what, cell)
         })
     }

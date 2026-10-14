@@ -2004,6 +2004,59 @@ fn test_shift_p_goes_round_a_big_boulder_wherever_a_way_round_lies() {
     );
 }
 
+/// Ever Grande City's way into Victory Road's lower floor, walked into north off the water below
+/// it, with the ground running on over it (movie45).
+fn cave_mouth() -> Interactable {
+    Interactable {
+        size: (3, 1),
+        zone: Some(0x7D),
+        source: place_source(WARP_SOURCE, 3).unwrap(),
+        way_in: Some(pathfind::NORTH),
+        ..Interactable::new("exits", "passage", (95, 177))
+    }
+}
+
+fn cave_cliff() -> Vec<Cell> {
+    cells(80..120, 177)
+}
+
+fn under_cliff() -> Vec<Cell> {
+    (80..120).flat_map(|x| [(x, 178), (x, 179)]).collect()
+}
+
+/// movie45: P took the player onto the ground over the cave mouth, "passage, 1 south", where no
+/// step south is taken. The way to it ends on the water below, facing north.
+#[test]
+fn test_a_passage_is_walked_up_to_on_the_side_it_is_walked_into_from() {
+    let walls = [house_front(), cave_cliff()].concat();
+    let above = Field {
+        interactables: vec![cave_mouth()],
+        ..Field::new(street().zone, street().cell)
+    };
+    let mut rig = navigator(Want {
+        blocked: walls.clone(),
+        sea: under_cliff(),
+        ..on(above)
+    });
+    rig.press(PATHFIND);
+    let way = guidance(&rig);
+    assert!(way.is_none() || path_of(&way).last().unwrap().1 != 176);
+    let heard = last(&rig.backend);
+    assert!(heard.contains("can't continue") || heard.starts_with("no path"));
+    let below = Field {
+        interactables: vec![cave_mouth()],
+        ..Field::new(street().zone, (100, 178))
+    };
+    let mut rig = navigator(Want {
+        blocked: walls,
+        sea: under_cliff(),
+        ..on(below)
+    });
+    rig.press(PATHFIND);
+    let way = guidance(&rig);
+    assert!(way.is_some() && path_of(&way).last() == Some(&(97, 178)));
+}
+
 /// Three of Rusturf Tunnel's rocks have a sign in their cell and a script of their own, and
 /// stand across the tunnel between its halves: they are the rocks Rock Smash breaks to join
 /// them, and Shift and P found no way to Verdanturf Town while they were walls (2026-09-29).

@@ -1080,7 +1080,8 @@ impl Ground {
     /// of a building. A thing that is solid all over — a door, a sign, a person, a PC — is
     /// walked up to, to an open cell beside it, facing it, since that is where the player
     /// presses A or walks in from (the user, 2026-09-24); or across a counter from it, as the
-    /// Nurse and a Poké Mart's clerk are talked to (`COUNTER`). On a stacked ground each is on
+    /// Nurse and a Poké Mart's clerk are talked to (`COUNTER`). A warp walked into one way is
+    /// walked up to on that side alone (`Interactable.way_in`). On a stacked ground each is on
     /// the thing's own floor, which a search must reach it on (`floor`).
     pub fn goals(&self, item: &Interactable) -> Result<IndexMap<Cell, Option<&'static str>>> {
         let cells = item.cells();
@@ -1098,6 +1099,9 @@ impl Ground {
         for out in 1..=self.reach {
             for &cell in &cells {
                 for (direction, (dx, dz)) in pathfind::STEPS {
+                    if item.way_in.is_some_and(|way| way != direction) {
+                        continue;
+                    }
                     let near = (cell.0 - dx * out, cell.1 - dz * out);
                     if !cells.contains(&near) && self.passable_at(near, item.height)? {
                         beside.insert(near, Some(direction));
