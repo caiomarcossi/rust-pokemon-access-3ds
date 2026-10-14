@@ -170,6 +170,7 @@ pub struct Options<'a> {
     pub through: Option<&'a dyn Fn(&[i64], Cell, Cell) -> Result<Option<Turns>>>,
     pub over: Option<&'a dyn Fn(Cell) -> Result<bool>>,
     pub arrives: Option<&'a dyn Fn(Cell, &[i64]) -> Result<bool>>,
+    pub carry: Option<&'a dyn Fn(Cell) -> Result<Option<&'static str>>>,
 }
 
 /// What `functools.cache` makes of a callable: asked once for each argument. A call that raises
@@ -232,7 +233,10 @@ impl Ord for Entry<'_> {
 /// and never stood on; it is in the path all the same, so each cell is a step from the last. A
 /// cell that can is a slope, stepped onto, along and off only the way it goes down. `over` says
 /// which cells that cannot be walked are crossed as a ledge is, but either way: the strip of
-/// shore Surf jumps the player over, getting on the water and off it.
+/// shore Surf jumps the player over, getting on the water and off it. `carry` says which way a
+/// cell carries the player, a current: entered any way, and left only that way, a cell at a time,
+/// unless the cell that way cannot be walked. The player does not turn there, so the turns it
+/// makes cost nothing.
 ///
 /// `toll` is what a move from one cell to the next costs on top of its steps and turns, and
 /// `joined` whether a step between two cells side by side can be taken at all: one off a
@@ -266,6 +270,7 @@ pub fn find(
         through,
         over,
         arrives,
+        carry,
     } = options;
     if goals.is_empty() {
         return Ok(None);
@@ -279,6 +284,7 @@ pub fn find(
     let over_cache: Cached<Cell, bool> = Cached::new();
     let toll_cache: Cached<(Cell, Cell), i64> = Cached::new();
     let joined_cache: Cached<(Cell, Cell), bool> = Cached::new();
+    let carry_cache: Cached<Cell, Option<&'static str>> = Cached::new();
     let down = |cell: Cell| {
         down_cache.get(cell, || match ledge {
             Some(ledge) => ledge(cell),
@@ -301,6 +307,12 @@ pub fn find(
         joined_cache.get((cell, step), || match joined {
             Some(joined) => joined(cell, step),
             None => Ok(true),
+        })
+    };
+    let carry = |cell: Cell| {
+        carry_cache.get(cell, || match carry {
+            Some(carry) => carry(cell),
+            None => Ok(None),
         })
     };
 
@@ -375,6 +387,7 @@ pub fn find(
                 order += 1;
             }
         }
+        let carried = carry(cell)?;
         moves(
             cell,
             &can_walk,
@@ -382,6 +395,7 @@ pub fn find(
             &down,
             &over,
             &joined,
+            &carry,
             &mut |direction, step, steps| {
                 let after = match through {
                     Some(through) if steps != 2 => through(turned, cell, step)?,
@@ -391,14 +405,14 @@ pub fn find(
                     return Ok(());
                 };
                 let onward: State = (step, direction, after);
-                let price = cost
-                    + STEP * steps
-                    + if !going.is_empty() && going != direction {
-                        TURN
-                    } else {
-                        0
-                    }
-                    + toll(cell, step)?;
+                // Python's `going != direction != carried`: both inequalities, chained.
+                let turn = if !going.is_empty() && going != direction && carried != Some(direction)
+                {
+                    TURN
+                } else {
+                    0
+                };
+                let price = cost + STEP * steps + turn + toll(cell, step)?;
                 if price < spent.get(&onward).copied().unwrap_or(price + 1) {
                     spent.insert(onward.clone(), price);
                     came.insert(onward.clone(), state.clone());
@@ -421,8 +435,10 @@ pub fn find(
 }
 
 /// Each move from `cell` as `find` takes them: its way, where it lands, and how many cells
-/// on, two for a jump over a ledge or the shore. Handed to `each` one at a time, as Python's
-/// generator yields them, so a move is taken before the next is tried.
+/// on, two for a jump over a ledge or the shore. On a current, the one cell it carries the
+/// player to, where that can be walked. Handed to `each` one at a time, as Python's generator
+/// yields them, so a move is taken before the next is tried.
+#[allow(clippy::too_many_arguments)]
 fn moves(
     cell: Cell,
     can_walk: &dyn Fn(Cell) -> Result<bool>,
@@ -430,8 +446,16 @@ fn moves(
     down: &dyn Fn(Cell) -> Result<Option<&'static str>>,
     over: &dyn Fn(Cell) -> Result<bool>,
     joined: &dyn Fn(Cell, Cell) -> Result<bool>,
+    carry: &dyn Fn(Cell) -> Result<Option<&'static str>>,
     each: &mut dyn FnMut(&'static str, Cell, i64) -> Result<()>,
 ) -> Result<()> {
+    if let Some(carried) = carry(cell)? {
+        let (dx, dz) = step_of(carried)?;
+        let ahead = (cell.0 + dx, cell.1 + dz);
+        if can_walk(ahead)? {
+            return each(carried, ahead, 1);
+        }
+    }
     for (direction, (dx, dz)) in STEPS {
         let mut step = (cell.0 + dx, cell.1 + dz);
         let mut steps = 1;
@@ -460,6 +484,7 @@ pub struct Reach<'a> {
     pub joined: Option<&'a dyn Fn(Cell, Cell) -> Result<bool>>,
     pub over: Option<&'a dyn Fn(Cell) -> Result<bool>>,
     pub ends: Option<&'a dyn Fn(Cell) -> Result<bool>>,
+    pub carry: Option<&'a dyn Fn(Cell) -> Result<Option<&'static str>>>,
 }
 
 /// Every cell inside `box` a way from `start` can end on, by `find`'s moves: a cell that can
@@ -475,9 +500,16 @@ pub fn reached(
     let down_cache: Cached<Cell, Option<&'static str>> = Cached::new();
     let walk_cache: Cached<Cell, bool> = Cached::new();
     let walked_cache: Cached<Cell, bool> = Cached::new();
+    let carry_cache: Cached<Cell, Option<&'static str>> = Cached::new();
     let down = |cell: Cell| {
         down_cache.get(cell, || match options.ledge {
             Some(ledge) => ledge(cell),
+            None => Ok(None),
+        })
+    };
+    let carry = |cell: Cell| {
+        carry_cache.get(cell, || match options.carry {
+            Some(carry) => carry(cell),
             None => Ok(None),
         })
     };
@@ -516,6 +548,7 @@ pub fn reached(
             &down,
             &over,
             &joined,
+            &carry,
             &mut |_, step, _| {
                 if out.insert(step) {
                     todo.push(step);

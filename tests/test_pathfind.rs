@@ -8,7 +8,7 @@ use indexmap::IndexMap;
 
 use crate::core::pathfind::{
     Box, Cell, EAST, Leg, NORTH, Options, Reach, SOUTH, WEST, cover, facing, find, legs, nearest,
-    off, reached, spoken, turned,
+    off, reached, spoken, towards, turned,
 };
 use crate::py::Result;
 
@@ -325,6 +325,72 @@ fn test_a_slope_is_walked_down_and_never_up() {
     let (walkable, box_) = drawn(&rows);
     let path = find((5, 0), &goals(&[((0, 0), None)]), &*walkable, box_, &sloped).unwrap();
     assert_eq!(said(path).as_deref(), Some("1 south, 5 west, 1 north"));
+}
+
+/// Route 132: the player surfed south onto a current running west and was carried west, a
+/// cell at a time, wherever they meant to go (movie43, spike A). A current is entered any way
+/// and left only its own, and lets go where its way is shut.
+#[test]
+fn test_a_current_carries_the_player_its_way_until_that_way_is_shut() {
+    let rows = ["#.....", "<<<<<<", "......"];
+    let (walkable, box_) = drawn(&rows);
+    let cells = grid(&rows);
+    let carry = move |cell: Cell| -> Result<Option<&'static str>> {
+        Ok((cells[cell.1 as usize][cell.0 as usize] == b'<').then_some(WEST))
+    };
+    let runs = |path: Option<Vec<Cell>>| -> Option<String> {
+        let how = |cell: Cell, step: Cell| -> Result<String> {
+            Ok(if carry(cell)? == Some(towards(cell, step)) {
+                "current".to_string()
+            } else {
+                String::new()
+            })
+        };
+        path.map(|path| spoken(&legs(&path, Some(&how)).unwrap()))
+    };
+    let carried = Options {
+        carry: Some(&carry),
+        ..plain()
+    };
+    assert_eq!(
+        runs(
+            find(
+                (4, 0),
+                &goals(&[((4, 2), None)]),
+                &*walkable,
+                box_,
+                &carried
+            )
+            .unwrap()
+        )
+        .as_deref(),
+        Some("1 south, current 4 west, 1 south, 4 east")
+    );
+    assert_eq!(
+        find(
+            (4, 2),
+            &goals(&[((4, 0), None)]),
+            &*walkable,
+            box_,
+            &carried
+        )
+        .unwrap(),
+        None
+    );
+    let expected: HashSet<Cell> = (0..6).flat_map(|x| [(x, 1), (x, 2)]).collect();
+    assert_eq!(
+        reached(
+            (4, 2),
+            &*walkable,
+            box_,
+            &Reach {
+                carry: Some(&carry),
+                ..Reach::default()
+            }
+        )
+        .unwrap(),
+        expected
+    );
 }
 
 /// Going onto water to surf costs more than a step: the way on foot is taken unless the

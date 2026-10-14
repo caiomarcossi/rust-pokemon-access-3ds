@@ -583,6 +583,7 @@ fn search_by(
             through: if walk.active { Some(&through) } else { None },
             over: Some(&over),
             arrives: if ground.stacked { Some(&arrives) } else { None },
+            carry: None,
         },
     )
 }
@@ -899,6 +900,7 @@ impl Guide {
                     joined: Some(&joined),
                     over: Some(&over),
                     ends: Some(&open),
+                    carry: None,
                 },
             )?;
             for (key, cells) in goals {
