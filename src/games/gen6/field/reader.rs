@@ -81,7 +81,7 @@ pub const PC_TILE: i64 = 0xD5;
 /// The cell kinds the game runs a script for when the player faces one and presses A: every kind
 /// in the field's table of (kind test, script) pairs (spike 83). The PC is called what the game
 /// calls it where the ROM can be read (`FieldReader`'s `words`). The rest, and the PC without the
-/// ROM, are called what the game's shipped table says each kind is, `0xdd` a trash can (spike B),
+/// ROM, are called what the game's shipped table says each kind is, `0xdd` a trash can (spike 210),
 /// and what a prop is where it says nothing: the game's text has only what each of them says,
 /// never a word for one.
 ///
@@ -1240,7 +1240,7 @@ impl FieldReader {
 
     /// What a furniture record is: a sign, unless the game's table of them says otherwise, or
     /// the shipped table says what the shared script it runs is: the one its zone's case runs,
-    /// or its own number, which is a shared script's from 2000 up (spike B). Every vending
+    /// or its own number, which is a shared script's from 2000 up (spike 210). Every vending
     /// machine is one of five, 0x28f0 to 0x28f4. The PC in a Secret Base is called what the
     /// game calls a PC, as the Pokémon Center's is: the table gives it the PC's kind of use
     /// tile.
@@ -2448,7 +2448,7 @@ fn one_a_spot(items: Vec<Interactable>) -> Vec<Interactable> {
 /// them, as the first of them listed (`_touching`, `_spread`); a key of None is kept apart. One
 /// thing the game builds of several records: Seafloor Cavern's submarine is four furniture
 /// records with one script, an elevator's door two side by side, and three stand-ins in a row
-/// in front of Groudon (spike A).
+/// in front of Groudon (spike 209).
 fn joined(
     items: Vec<Interactable>,
     key: &dyn Fn(&Interactable) -> Option<String>,

@@ -2469,7 +2469,7 @@ fn test_furniture_of_one_script_that_touches_is_one_thing() -> Result<()> {
 }
 
 /// A vending machine's record runs a script of its zone's, whose case runs one of five shared
-/// ones; an elevator's door is a shared script's own number (spike B). The shipped table says
+/// ones; an elevator's door is a shared script's own number (spike 210). The shipped table says
 /// what each is; a record of the zone's own script stays a sign.
 #[test]
 fn test_furniture_is_what_the_shipped_table_says_the_shared_script_it_runs_is() -> Result<()> {
@@ -2800,7 +2800,7 @@ fn test_one_spot_is_one_sign_the_thing_drawn_first_then_its_record_then_the_cell
 }
 
 /// Every cell of one kind runs one script, so the kind says what it is: `0xd9` a bookshelf
-/// wherever it stands (spike B). The PC's word is the ROM's, ahead of the shipped table's.
+/// wherever it stands (spike 210). The PC's word is the ROM's, ahead of the shipped table's.
 #[test]
 fn test_a_use_tile_is_what_the_shipped_table_says_its_kind_is_and_the_pc_what_the_rom_says()
 -> Result<()> {

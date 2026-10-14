@@ -248,7 +248,7 @@ impl Script {
 
     /// The shared script the case `number` runs, or None: its first call is to a function
     /// that pushes one constant from `SHARED` up and hands it to a native, as every vending
-    /// machine's case does, 0x28f0 to 0x28f4 by where it stands (spike B).
+    /// machine's case does, 0x28f0 to 0x28f4 by where it stands (spike 210).
     pub fn runs(&self, number: i64) -> Result<Option<i64>> {
         let case = self.cases()?.get(&number).copied();
         let function = match case {

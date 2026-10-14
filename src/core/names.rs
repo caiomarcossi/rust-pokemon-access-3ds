@@ -140,7 +140,7 @@ pub struct Names {
     shipped: IndexMap<String, String>,
     words: IndexMap<String, IndexMap<String, String>>,
     /// The shipped table's slots: furniture the game shows alike in many zones, each its own
-    /// zone's message, as the 16 Pokémon Journals are (spike C).
+    /// zone's message, as the 16 Pokémon Journals are (spike 211).
     shipped_places: IndexMap<String, String>,
     path: Option<PathBuf>,
     /// What to write at the top of the player's file: the game and the language, which the
@@ -261,7 +261,7 @@ impl Names {
 
     /// What the shipped table says each of a kind of thing is, by its number: in `TILES` a
     /// kind of use tile, `0xdd` a trash can wherever it stands; in `FURNITURE` the shared script
-    /// a record runs, every vending machine one of five (Orion, 2026-10-14; spike B). So each is
+    /// a record runs, every vending machine one of five (Orion, 2026-10-14; spike 210). So each is
     /// said as what it is before anyone has named it. A word for what a thing is rather than a
     /// name, so a name the player gives one slot still comes first, and the game's own word for
     /// a kind, the PC's, ahead of it (`FieldReader`). A key that is not a number is a typo, and
