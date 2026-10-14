@@ -1459,6 +1459,8 @@ impl Guide {
                 .filter(|cell| own.contains(cell) || !listed.contains(cell))
                 .copied()
                 .collect();
+            // A boulder a push will not move that way is in the way too (movie46, spike 213).
+            clear.shoves = IndexMap::new();
             let goals = aimed(clear.goals(item)?, sides);
             let way = search(&clear, r#where.cell, &goals, heading, false, Some(item))?;
             let Some(way) = way else {
@@ -1467,7 +1469,7 @@ impl Guide {
             let floors = clear.walked(&way)?;
             let mut found: Option<usize> = None;
             for (i, &cell) in way.iter().enumerate() {
-                if ground.stands(cell, floors[i])? {
+                if ground.stands(cell, floors[i])? || (i > 0 && !ground.joined(way[i - 1], cell)) {
                     found = Some(i);
                     break;
                 }

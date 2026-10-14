@@ -2004,6 +2004,45 @@ fn test_shift_p_goes_round_a_big_boulder_wherever_a_way_round_lies() {
     );
 }
 
+/// Victory Road (movie46): a boulder pushed into the foot of a corridor stuck there, and Shift and
+/// P went on saying "Strength 2 south" through it. It goes into a boulder only a way a push moves
+/// it, and the pen's one way in is south through it.
+#[test]
+fn test_shift_p_pushes_a_big_boulder_only_a_way_it_moves() {
+    let cases: [Vec<(&'static str, bool)>; 3] = [
+        vec![],
+        vec![("north", false), ("east", false)],
+        vec![("south", false)],
+    ];
+    for pushes in cases {
+        let south = pushes.contains(&("south", false));
+        let mut stuck = pen_field();
+        let boulder = stuck.interactables.len() - 2;
+        stuck.interactables[boulder].pushes = Some(pushes);
+        let mut rig = navigator(Want {
+            blocked: walled(pen(None)),
+            ..on(stuck)
+        });
+        rig.press(CATEGORY_PREVIOUS);
+        rig.press(PATHFIND);
+        rig.press_key("alt+p");
+        rig.press_key("shift+p");
+        let stopped = "5 east, 1 south, then can't continue, object in the way";
+        assert_eq!(
+            tail(&rig.backend, 3),
+            [
+                stopped,
+                "path off",
+                if south {
+                    "5 east, 1 south, Strength 2 south, 4 south"
+                } else {
+                    stopped
+                }
+            ]
+        );
+    }
+}
+
 /// Ever Grande City's way into Victory Road's lower floor, walked into north off the water below
 /// it, with the ground running on over it (movie45).
 fn cave_mouth() -> Interactable {

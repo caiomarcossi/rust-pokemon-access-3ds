@@ -373,6 +373,13 @@ pub struct Ground {
     /// Smash does, a boulder Strength pushes. Stood in like any other thing, and walked through
     /// where the ground is one to `hm`.
     pub cleared: IndexMap<Cell, i64>,
+    /// The cells of each big boulder whose pushes are known, with the ways a push moves it: a
+    /// step into one goes only those ways (`joined`), and into a boulder no push moves not at
+    /// all. In Victory Road the player pushed one into the foot of a corridor, where it stuck,
+    /// and Shift and P went on saying "Strength 2 south" through it (movie46, spike 213).
+    ///
+    /// A `frozenset` is a `HashSet`: it is only tested.
+    pub shoves: IndexMap<Cell, HashSet<&'static str>>,
     /// Whether the way goes through what a move clears, and up a slope: Shift and P's ground.
     pub hm: bool,
     /// The cells of each hole a big boulder has dropped into: floor, though the chunk still has
@@ -448,6 +455,7 @@ impl Default for Ground {
             surf: false,
             far: None,
             cleared: IndexMap::new(),
+            shoves: IndexMap::new(),
             hm: false,
             filled: HashSet::new(),
             bike: false,
@@ -480,6 +488,7 @@ impl fmt::Debug for Ground {
             .field("surf", &self.surf)
             .field("far", &self.far.is_some())
             .field("cleared", &self.cleared)
+            .field("shoves", &self.shoves)
             .field("hm", &self.hm)
             .field("bike", &self.bike)
             .field("cliffs", &self.cliffs)
@@ -567,6 +576,14 @@ impl Ground {
                 }
             }
         }
+        let mut shoves: IndexMap<Cell, HashSet<&'static str>> = IndexMap::new();
+        for item in &r#where.interactables {
+            if let Some(pushes) = &item.pushes {
+                for cell in item.cells() {
+                    shoves.insert(cell, pushes.iter().map(|(way, _)| *way).collect());
+                }
+            }
+        }
         Ground {
             chunks,
             grid,
@@ -576,6 +593,7 @@ impl Ground {
             belts,
             far,
             cleared,
+            shoves,
             heights,
             ..Ground::default()
         }
@@ -985,9 +1003,12 @@ impl Ground {
         }
     }
 
-    /// Whether a step from `cell` to the cell beside it can be taken: not off a drop.
+    /// Whether a step from `cell` to the cell beside it can be taken: not off a drop, and into a
+    /// big boulder only a way it moves (`shoves`).
     pub fn joined(&self, cell: Cell, step: Cell) -> bool {
+        let ways = self.shoves.get(&step);
         !self.cliffs.contains(&(cell, step))
+            && ways.is_none_or(|ways| ways.contains(pathfind::towards(cell, step)))
     }
 
     /// How far each door stands turned now, in `doors`' order: where a search starts.
