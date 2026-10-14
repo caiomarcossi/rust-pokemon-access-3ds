@@ -26,9 +26,10 @@ pub const ICE_REACH: i64 = 3;
 pub const PUSH: &str = "push";
 
 /// What a leg a current in the sea carries the player along is said with, a run of them as one
-/// by where it leaves the player: "Surf 3 south, current 28 west 4 north" (spike A). The game names
-/// no such thing.
-pub const CURRENT: &str = "current";
+/// by where it leaves the player: "Surf 3 south, ride the current 28 west 4 north" (spike A); Orion
+/// asked for "ride the current" over "current", which sounded wrong (2026-10-13). The game names no
+/// such thing.
+pub const CURRENT: &str = "ride the current";
 
 /// What a leg is said with where the ROM's move names cannot be read: pa3ds's own word for where
 /// the leg goes.
@@ -1346,10 +1347,10 @@ impl Guide {
         Ok(())
     }
 
-    /// Say where a current takes the player as it catches them, "current 28 west", unless the
-    /// way being guided says it: it says each current on it as it begins. On Route 132 the
-    /// player cannot turn on one, and is carried a cell at a time to calm water or onto a
-    /// sandbar, wherever they had meant to go (movie43, spike A). Only a player surfing is
+    /// Say where a current takes the player as it catches them, "ride the current 28 west",
+    /// unless the way being guided says it: it says each current on it as it begins. On Route
+    /// 132 the player cannot turn on one, and is carried a cell at a time to calm water or onto
+    /// a sandbar, wherever they had meant to go (movie43, spike A). Only a player surfing is
     /// looked at, once a cell.
     pub fn swept(&mut self, r#where: &Field) -> Result<()> {
         if !r#where.surfing {

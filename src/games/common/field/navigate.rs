@@ -63,8 +63,8 @@ use crate::games::common::touch::TouchTargets;
 use crate::py::{self, Error, Log, Result};
 
 /// `(ALL, *things.CATEGORIES)`.
-pub const CATEGORIES: [&str; 9] = {
-    let mut out = [ALL; 9];
+pub const CATEGORIES: [&str; 10] = {
+    let mut out = [ALL; 10];
     let mut at = 0;
     while at < things::CATEGORIES.len() {
         out[at + 1] = things::CATEGORIES[at];

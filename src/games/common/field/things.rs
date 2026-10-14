@@ -75,6 +75,10 @@ pub const DECORATION_SOURCE: i64 = 12 << 32;
 /// however far it is pushed, and across a save (spike A).
 pub const MODEL_SOURCE: i64 = 13 << 32;
 
+/// A current's source: `CURRENT_SOURCE | x << 12 | z`, the first cell of the currents that let the
+/// player go round one place (spike A).
+pub const CURRENT_SOURCE: i64 = 14 << 32;
+
 /// A place's `source` from its kind's tag and its own number. The number must leave the tag's
 /// bits clear, and no u16 the game holds can reach them, so one that does is a new encoding
 /// written wider than the tag allows for: a programmer's error, refused here rather than keyed as
@@ -130,22 +134,34 @@ pub const ASH: &str = "ash";
 /// them to record them (the user, 2026-10-03).
 pub const BIKE: &str = "bike";
 
+/// The sea's currents, a category of their own, each by where it lets the player go, as a
+/// teleporter is by where it comes out (Orion, 2026-10-13).
+pub const CURRENTS_CATEGORY: &str = "currents";
+
 /// In the order they are walked and logged.
-pub const CATEGORIES: [&str; 8] = [
-    "exits", "signs", "people", "items", BERRIES, ASH, BIKE, POKEMON,
+pub const CATEGORIES: [&str; 9] = [
+    "exits",
+    "signs",
+    "people",
+    "items",
+    BERRIES,
+    ASH,
+    BIKE,
+    CURRENTS_CATEGORY,
+    POKEMON,
 ];
 
 /// One thing worth walking to, in the player's cells.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Interactable {
-    /// One of `CATEGORIES`: `exits`, `signs`, `people`, `items`, `berries`, `ash`, `bike` or
-    /// `pokémon`, or in the sky `towns`, `routes`, `landmarks` or `mirage spots`.
+    /// One of `CATEGORIES`: `exits`, `signs`, `people`, `items`, `berries`, `ash`, `bike`,
+    /// `currents` or `pokémon`, or in the sky `towns`, `routes`, `landmarks` or `mirage spots`.
     pub category: String,
     /// What it is, in pa3ds's own words: `door`, `sign`, `PC`, `person`, `item ball`, `edge`,
     /// `berry spot`, `ash pile`, `hidden Pokémon`, `barrier`, `switch`, `passage`, `trapdoor`,
     /// `geyser`, `lift`, `teleporter`, `dive spot`, `stairs`, `stairs up`, `stairs down`, `ladder
-    /// up`, `ladder down`, `entrance`, `slope`, `bumpy slope`, `rail`, a `flock` in the sky; or in
-    /// the sky, the game's own name for a place.
+    /// up`, `ladder down`, `entrance`, `slope`, `bumpy slope`, `rail`, `current`, a `flock` in the
+    /// sky; or in the sky, the game's own name for a place.
     pub kind: String,
     pub cell: (i64, i64),
     pub size: (i64, i64),
@@ -176,7 +192,8 @@ pub struct Interactable {
     /// there by the room over her head (spike 167).
     pub height: Option<f64>,
     /// For an exit that comes out in the zone it is in, the cell it comes out at: a hideout's
-    /// teleporter pads, most of which lead to another pad of their own room (2026-10-06).
+    /// teleporter pads, most of which lead to another pad of their own room (2026-10-06). For a
+    /// current, where it lets the player go from `cell`.
     pub arrival: Option<(i64, i64)>,
     /// For a move model built from a record of a zone's table, that zone and the record's index:
     /// which one it is, wherever it walks or is pushed (spike A). None where it is not read: Sun's

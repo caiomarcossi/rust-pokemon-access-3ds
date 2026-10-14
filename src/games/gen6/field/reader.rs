@@ -33,14 +33,15 @@ use crate::core::memory::Memory;
 use crate::core::pathfind::{self, Cell};
 use crate::games::common::field::chunk::HOLE as BOULDER_HOLE;
 use crate::games::common::field::chunk::{
-    BIKE_RAILS, BLOCKED, BUMPY_SLOPES, CHUNK, Chunk, DIVE, FALLS, SLOPES,
+    BIKE_RAILS, BLOCKED, BUMPY_SLOPES, CHUNK, CURRENTS, Chunk, DIVE, FALLS, SLOPES,
 };
 use crate::games::common::field::ground::{
     self as common, BLOCK, CRACKED, Far, Grid, Ground, NO_ZONE, Of, STRENGTH, pushes, walkable,
 };
 use crate::games::common::field::things::{
-    BIKE, BIKE_SOURCE, DECORATION_SOURCE, DIVE_SOURCE, EDGE_SOURCE, FURNITURE_SOURCE, Field,
-    Interactable, STAIRS_SOURCE, TILE_SOURCE, TRIGGER_SOURCE, WARP_SOURCE, place_source,
+    BIKE, BIKE_SOURCE, CURRENT_SOURCE, CURRENTS_CATEGORY, DECORATION_SOURCE, DIVE_SOURCE,
+    EDGE_SOURCE, FURNITURE_SOURCE, Field, Interactable, STAIRS_SOURCE, TILE_SOURCE, TRIGGER_SOURCE,
+    WARP_SOURCE, place_source,
 };
 use crate::games::gen6::field::features::{
     DoorReader, Feature, HiddenReader, Hiding, IceReader, SecretBaseReader, Tracked,
@@ -122,6 +123,16 @@ pub const BIKE_RAIL: &str = "rail";
 /// the sea and asks about diving there, but never names it (spike 164).
 pub const DIVE_SPOT: &str = "dive spot";
 
+/// What the sea's currents that let the player go round one place are called, listed at the cell
+/// of them nearest the player and said with where it lets them go: the game never names one.
+pub const CURRENT: &str = "current";
+
+/// Cells apart the places two currents let the player go may be and the two still be listed as
+/// one current. Route 133's currents let the player go at 152 cells, 71 groups of them side by side,
+/// 28 within 5 cells of each other; Routes 132 and 134 have 20 and 16, Seafloor Cavern's two rooms 4
+/// each (spike A).
+pub const LANDING_REACH: i64 = 5;
+
 /// What a stair between two floors of one chunk is called, a warp between floors being stairs
 /// too: the game names neither (spike 167).
 pub const STAIRS: &str = "stairs";
@@ -193,6 +204,14 @@ struct Holder {
 
 /// What `_ways` was found for: the zone, the matrix's chunk files, and the chunks loaded.
 type BikeKey = (i64, Rc<Vec<i64>>, Vec<(i64, i64)>);
+/// `_ways_of`: what they were found for, the bike's things, the dive spots' patches and the
+/// currents.
+type Ways = (
+    Option<BikeKey>,
+    Vec<Interactable>,
+    Vec<Vec<Cell>>,
+    Vec<IndexMap<Cell, Cell>>,
+);
 
 /// Tracks the player's model and the current zone's data, and lists what is on the map.
 ///
@@ -238,9 +257,10 @@ pub struct FieldReader {
     /// The player's height in the world at the last poll, which says which floor of a chunk with a
     /// deck they are on (`mapblock.flat`).
     height: Slot<Option<f64>>,
-    /// What the slopes, rail ends and dive spots were found for, and what they are: the bike's
-    /// things, and each dive spot's patch (`_ways`).
-    ways_of: RefCell<(Option<BikeKey>, Vec<Interactable>, Vec<Vec<Cell>>)>,
+    /// What the slopes, rail ends, dive spots and currents were found for, and what they are:
+    /// the bike's things, each dive spot's patch, and each current's cells with where each lets
+    /// the player go (`_ways`).
+    ways_of: RefCell<Ways>,
     clock: Rc<dyn Fn() -> f64>,
     /// Lumiose's streets, which X places things on rather than on cells.
     pub rails: Rails,
@@ -368,7 +388,7 @@ impl FieldReader {
             terrain,
             surfaces_of: RefCell::new(HashMap::new()),
             height: Slot::new(None),
-            ways_of: RefCell::new((None, Vec::new(), Vec::new())),
+            ways_of: RefCell::new((None, Vec::new(), Vec::new(), Vec::new())),
             clock,
             rails: Rails::new(
                 memory.clone(),
@@ -1854,34 +1874,50 @@ impl FieldReader {
         Ok(out)
     }
 
-    /// The zone's slopes, each patch of one kind a thing, each end of its rails, where the player
-    /// gets on one (spike 159), and each patch of deep water a dive spot (spike 164). Cells of the
-    /// map with no record behind them, as use tiles are, but read off the whole matrix where the
-    /// ROM's chunks are: the game loads the quarter round the player, and Route 119's rails are 67
-    /// cells north of where it starts. Off the chunks loaded without the ROM.
+    /// The zone's slopes, each patch of one kind a thing, each end of its rails, where the
+    /// player gets on one (spike 159), each patch of deep water a dive spot (spike 164), and
+    /// its currents, those that let the player go round one place a thing (spike A). Cells of
+    /// the map with no record behind them, as use tiles are, but read off the whole matrix where
+    /// the ROM's chunks are: the game loads the quarter round the player, and Route 119's rails
+    /// are 67 cells north of where it starts. Off the chunks loaded without the ROM.
     fn ways(&self, zone: i64, player: Cell) -> Result<Vec<Interactable>> {
-        let (mut out, dives) = self.found_ways(zone)?;
+        let (mut out, dives, currents) = self.found_ways(zone)?;
+        let nearest = |cells: &mut dyn Iterator<Item = Cell>| -> Cell {
+            cells
+                .min_by_key(|cell| ((cell.0 - player.0).abs() + (cell.1 - player.1).abs(), *cell))
+                .expect("a patch has a cell")
+        };
         // Route 128's biggest patch is a band running diagonally through a box of 37 by 36, mostly
         // plain sea: a spot is placed at its cell nearest the player, so the way there ends on
-        // deep water.
+        // deep water. A current is too, said with where it lets the player go from there.
         for patch in &dives {
-            let nearest = patch
-                .iter()
-                .copied()
-                .min_by_key(|cell| ((cell.0 - player.0).abs() + (cell.1 - player.1).abs(), *cell))
-                .expect("a patch has a cell");
             out.push(Interactable {
                 code: DIVE,
                 source: place_source(DIVE_SOURCE, cell_number(patch[0]))?,
                 home: Some(zone),
-                ..Interactable::new("exits", DIVE_SPOT, nearest)
+                ..Interactable::new("exits", DIVE_SPOT, nearest(&mut patch.iter().copied()))
+            });
+        }
+        for current in &currents {
+            let at = nearest(&mut current.keys().copied());
+            let first = *current.keys().min().expect("a current has a cell");
+            out.push(Interactable {
+                source: place_source(CURRENT_SOURCE, cell_number(first))?,
+                home: Some(zone),
+                arrival: Some(current[&at]),
+                ..Interactable::new(CURRENTS_CATEGORY, CURRENT, at)
             });
         }
         Ok(out)
     }
 
-    /// The bike's things in the zone and each patch of deep water, found once a map.
-    fn found_ways(&self, zone: i64) -> Result<(Vec<Interactable>, Vec<Vec<Cell>>)> {
+    /// The bike's things in the zone, its holes, each patch of deep water and its currents,
+    /// found once a map.
+    #[allow(clippy::type_complexity)]
+    fn found_ways(
+        &self,
+        zone: i64,
+    ) -> Result<(Vec<Interactable>, Vec<Vec<Cell>>, Vec<IndexMap<Cell, Cell>>)> {
         let mut loaded: IndexMap<(i64, i64), Rc<Chunk>> = IndexMap::new();
         for chunk in self.chunks_loaded()? {
             loaded.insert(chunk.key(), chunk);
@@ -1899,19 +1935,21 @@ impl FieldReader {
             },
         );
         if self.ways_of.borrow().0.as_ref() != Some(&key) {
-            let (out, dives) = self.find_ways(zone, &loaded)?;
-            *self.ways_of.borrow_mut() = (Some(key), out, dives);
+            let (out, dives, currents) = self.find_ways(zone, &loaded)?;
+            *self.ways_of.borrow_mut() = (Some(key), out, dives, currents);
         }
         let held = self.ways_of.borrow();
-        Ok((held.1.clone(), held.2.clone()))
+        Ok((held.1.clone(), held.2.clone(), held.3.clone()))
     }
 
-    /// The bike's things in the zone and its holes, and each patch of deep water (`_ways`).
+    /// The bike's things in the zone and its holes, each patch of deep water, and each of its
+    /// currents, its cells with where each lets the player go (`_ways`).
+    #[allow(clippy::type_complexity)]
     fn find_ways(
         &self,
         zone: i64,
         loaded: &IndexMap<(i64, i64), Rc<Chunk>>,
-    ) -> Result<(Vec<Interactable>, Vec<Vec<Cell>>)> {
+    ) -> Result<(Vec<Interactable>, Vec<Vec<Cell>>, Vec<IndexMap<Cell, Cell>>)> {
         let (wide, files) = {
             let held = self.terrain.files.borrow();
             (held.0, held.1.clone())
@@ -1926,6 +1964,42 @@ impl FieldReader {
                     chunks.insert(spot, far);
                 }
             }
+        }
+        let mut flows: IndexMap<Cell, &'static str> = IndexMap::new();
+        for chunk in chunks.values() {
+            for (cell, kind) in chunk.kinds() {
+                if let Some(&(_, way)) = CURRENTS.iter().find(|(known, _)| *known == kind) {
+                    flows.insert(cell, way);
+                }
+            }
+        }
+        let shut = |cell: Cell| -> Result<bool> {
+            match chunks.get(&(py::floordiv(cell.0, CHUNK), py::floordiv(cell.1, CHUNK))) {
+                None => Ok(true),
+                Some(chunk) => Ok(!chunk.walkable(cell)?),
+            }
+        };
+        let landings = landings(&flows, &shut)?;
+        let mut mine: Vec<Cell> = Vec::new();
+        for &cell in flows.keys() {
+            let at = self.zone_at(cell)?;
+            if at == Some(zone) || at.is_none() {
+                mine.push(cell);
+            }
+        }
+        let gathered = gathered(
+            &mine.iter().map(|cell| landings[cell]).collect(),
+            LANDING_REACH,
+        );
+        let mut which: HashMap<Cell, usize> = HashMap::new();
+        for (i, group) in gathered.iter().enumerate() {
+            for &landing in group {
+                which.insert(landing, i);
+            }
+        }
+        let mut currents: Vec<IndexMap<Cell, Cell>> = vec![IndexMap::new(); gathered.len()];
+        for &cell in &mine {
+            currents[which[&landings[&cell]]].insert(cell, landings[&cell]);
         }
         let mut found: IndexMap<Cell, i64> = IndexMap::new();
         for chunk in chunks.values() {
@@ -2008,7 +2082,7 @@ impl FieldReader {
                 }
             }
         }
-        Ok((out, dives))
+        Ok((out, dives, currents))
     }
 
     /// The cell tables of the chunks loaded now.
@@ -2224,6 +2298,66 @@ fn opened(chunk: Rc<Chunk>, cells: &HashSet<Cell>) -> Rc<Chunk> {
         words,
         ..(*chunk).clone()
     })
+}
+
+/// Where a current lets the player go from each of its cells, as `Ground.drift` carries them
+/// with nobody in the way: the first cell it carries them to that is no current, or the last
+/// before the way is shut. Each cell's is the next's, so each is followed once.
+fn landings(
+    flows: &IndexMap<Cell, &'static str>,
+    shut: &dyn Fn(Cell) -> Result<bool>,
+) -> Result<IndexMap<Cell, Cell>> {
+    let mut out: IndexMap<Cell, Cell> = IndexMap::new();
+    for &start in flows.keys() {
+        let mut cell = start;
+        let mut carried: Vec<Cell> = Vec::new();
+        while let Some(&way) = flows.get(&cell)
+            && !out.contains_key(&cell)
+        {
+            carried.push(cell);
+            let (dx, dz) = pathfind::STEPS
+                .iter()
+                .find(|(known, _)| *known == way)
+                .map(|&(_, step)| step)
+                .ok_or_else(|| Error::key(py::repr(way)))?;
+            let ahead = (cell.0 + dx, cell.1 + dz);
+            if shut(ahead)? || carried.contains(&ahead) {
+                break;
+            }
+            cell = ahead;
+        }
+        let landing = out.get(&cell).copied().unwrap_or(cell);
+        for one in carried {
+            out.insert(one, landing);
+        }
+    }
+    Ok(out)
+}
+
+/// `cells` in groups, each cell within `reach` cells either way of another of its group.
+fn gathered(cells: &HashSet<Cell>, reach: i64) -> Vec<Vec<Cell>> {
+    let mut left: std::collections::BTreeSet<Cell> = cells.iter().copied().collect();
+    let mut out: Vec<Vec<Cell>> = Vec::new();
+    while let Some(&first) = left.iter().next() {
+        left.remove(&first);
+        let mut group = vec![first];
+        let mut at = 0;
+        while at < group.len() {
+            let (x, z) = group[at];
+            at += 1;
+            let near: Vec<Cell> = left
+                .iter()
+                .copied()
+                .filter(|cell| (cell.0 - x).abs() <= reach && (cell.1 - z).abs() <= reach)
+                .collect();
+            for cell in near {
+                left.remove(&cell);
+                group.push(cell);
+            }
+        }
+        out.push(group);
+    }
+    out
 }
 
 /// `cells` in groups of those that touch side to side, the group with the first cell first.

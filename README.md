@@ -214,8 +214,9 @@ when the map comes back. Touch mode and the battle's keys work throughout.
 | `K` | The chosen button again. |
 | `Enter` | Tap the chosen button. |
 
-The categories are all, exits, signs, people, items, berries, ash, bike and pokémon; while
-soaring, towns, routes, landmarks and mirage spots. A category with nothing in it is skipped.
+The categories are all, exits, signs, people, items, berries, ash, bike, currents and pokémon;
+while soaring, towns, routes, landmarks and mirage spots. A category with nothing in it is
+skipped.
 
 **Lining up.** The D-pad walks you from the centre of one cell to the centre of the next. The
 circle pad lets you stop anywhere, partway between cells, and the game refuses a step past a
@@ -228,10 +229,12 @@ moment you are. Off the line in open ground nothing is said, since nothing stops
 
 **Currents.** Some of the sea, as on Routes 132 to 134, has currents that carry you while you
 surf, a square at a time, and you cannot turn until one lets you go, sometimes onto a sandbar.
-When one catches you, pa3ds says where it will leave you: "current 28 west". `P` and `Shift+P`
-know the currents: a way that rides one says it as one step, "Surf 3 south, current 28 west 4
-north, 5 east", and says nothing more until it lets you go. If a current carries you off the way,
-the way is found again where it leaves you.
+When one catches you, pa3ds says where it will leave you: "ride the current 28 west". `P` and
+`Shift+P` know the currents: a way that rides one says it as one step, "Surf 3 south, ride the
+current 28 west 4 north, 5 east", and says nothing more until it lets you go. If a current
+carries you off the way, the way is found again where it leaves you. The currents category lists
+them by where they let you go, each at its square nearest you, with where that square leaves you:
+"current, 2 south, out at 30 west 1 south".
 
 On a fresh Azahar, `I`, `J`, `K` and `L` are the C-stick and `O` and `P` are the debug and GPIO
 buttons, none of which the Pokémon games use. When one of pa3ds's keys is on an Azahar button,

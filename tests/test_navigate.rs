@@ -1572,15 +1572,15 @@ fn test_p_rides_a_current_saying_where_it_leaves_the_player_and_nothing_on_it() 
     rig.press(PATHFIND);
     assert_eq!(
         last(&rig.backend),
-        "2 south, current 10 west, 3 south, 4 east"
+        "2 south, ride the current 10 west, 3 south, 4 east"
     );
     drift(&mut rig, &[(100, 177), (100, 178)]);
     let all = said(&rig.backend);
     assert_eq!(
         all[all.len() - 2..],
         [
-            "2 south, current 10 west, 3 south, 4 east",
-            "current 10 west"
+            "2 south, ride the current 10 west, 3 south, 4 east",
+            "ride the current 10 west"
         ]
     );
     let spoken = all.len();
@@ -1594,7 +1594,10 @@ fn test_p_rides_a_current_saying_where_it_leaves_the_player_and_nothing_on_it() 
         ..swimmer()
     });
     rig.press(PATHFIND);
-    assert_eq!(last(&rig.backend), "current 13 west, 3 south, 4 east");
+    assert_eq!(
+        last(&rig.backend),
+        "ride the current 13 west, 3 south, 4 east"
+    );
 }
 
 /// Route 133: P was found again and said at every one of 63 cells a current carried the
@@ -1616,14 +1619,14 @@ fn test_a_current_off_the_way_is_said_as_it_catches_the_player_and_the_way_found
     drift(&mut rig, &[(100, 177)]);
     let spoken = said(&rig.backend).len();
     drift(&mut rig, &[(100, 178)]);
-    assert_eq!(said(&rig.backend)[spoken..], ["current 10 west"]);
+    assert_eq!(said(&rig.backend)[spoken..], ["ride the current 10 west"]);
     let carried: Vec<Cell> = (91..100).rev().map(|x| (x, 178)).collect();
     drift(&mut rig, &carried);
-    assert_eq!(said(&rig.backend)[spoken..], ["current 10 west"]);
+    assert_eq!(said(&rig.backend)[spoken..], ["ride the current 10 west"]);
     drift(&mut rig, &[(90, 178)]);
     assert_eq!(
         said(&rig.backend)[spoken..],
-        ["current 10 west", "5 north, 9 east"]
+        ["ride the current 10 west", "5 north, 9 east"]
     );
 }
 

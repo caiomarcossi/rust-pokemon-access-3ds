@@ -378,6 +378,7 @@ fn test_every_kind_of_slot_has_a_word() {
         things::APP_SOURCE,
         things::DECORATION_SOURCE,
         things::MODEL_SOURCE,
+        things::CURRENT_SOURCE,
     ]
     .map(|value| value >> 32)
     .to_vec();

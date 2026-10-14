@@ -2674,6 +2674,40 @@ fn test_a_dive_spot_is_an_exit_at_its_patchs_cell_nearest_the_player() -> Result
     Ok(())
 }
 
+/// Spike A: the sea's currents carry a player surfing to where they let go, and Orion asked
+/// for them in the list, as a teleporter is with where it comes out (2026-10-13). Those that let
+/// the player go within `LANDING_REACH` of each other are one current, at its cell nearest the
+/// player, with where that cell lets them go.
+#[test]
+fn test_currents_that_let_the_player_go_round_one_place_are_one_listed_where_they_start()
+-> Result<()> {
+    let mut tiles: Vec<((i64, i64), i64)> = (100..106).map(|x| ((x, 165), 0x951A0002)).collect();
+    tiles.extend((100..104).map(|x| ((x, 167), 0x951A0002)));
+    tiles.extend((84..90).map(|x| ((x, 175), 0x941A0002)));
+    let mut town = Town::new();
+    town.block_tiles(TOWN_BLOCK, TOWN_CHUNK, (80, 160), &border(160), &tiles);
+    let currents = town.r#where()?.of("currents");
+    let seen: Vec<(String, (i64, i64), Option<(i64, i64)>)> = currents
+        .iter()
+        .map(|item| (item.kind.clone(), item.cell, item.arrival))
+        .collect();
+    assert_eq!(
+        seen,
+        [
+            ("current".to_string(), (89, 175), Some((90, 175))),
+            ("current".to_string(), (100, 167), Some((99, 167))),
+        ]
+    );
+    let sources: HashSet<i64> = currents.iter().map(|item| item.source).collect();
+    assert_eq!(sources.len(), 2);
+    assert!(town.listing()?.contains(
+        &"currents: current 5 west 3 south out at 4 west 3 south; current 6 east 5 north out at \
+          5 east 5 north"
+            .to_string()
+    ));
+    Ok(())
+}
+
 /// Spike 165: under Route 126 the player's light rose into a pond walled off from the sea, and
 /// only their other light reached a dive spot into the way to Sootopolis City. The sea above is
 /// the zone of the same place that is not under the water, its matrix out of the ROM, laid over
