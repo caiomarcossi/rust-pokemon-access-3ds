@@ -9,9 +9,10 @@ target\package\pa3ds-<version>-windows.zip holding:
   pa3ds.exe          the program, with Prism (which reaches the player's screen reader) built in
   README.md          the player's manual
   CHANGELOG.md       what changed for players in each release
-  LICENSE            pa3ds's licence
-  licenses\prism\    Prism's licence and those of the libraries built into it: Prism is under the
-                     MPL 2.0, which asks that its licence go wherever its code goes
+  licenses\          pa3ds's licence (pa3ds.txt), Prism's (prism.txt), Prism's notice
+                     (prism-notice.txt) and those of the libraries built into Prism, one file each
+                     named for its library: Prism is under the MPL 2.0, which asks that its licence
+                     go wherever its code goes
 
 The player's own folder (settings, keys, names, logs) is not in the zip: pa3ds makes it beside
 itself on the first run (ADR-0032).
@@ -54,13 +55,25 @@ $stage = Join-Path $package $name
 $zip = Join-Path $package "$name.zip"
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 if (Test-Path $zip) { Remove-Item -Force $zip }
-New-Item -ItemType Directory -Force (Join-Path $stage "licenses\prism") | Out-Null
+$licenses = Join-Path $stage "licenses"
+New-Item -ItemType Directory -Force $licenses | Out-Null
 
 Copy-Item (Join-Path $release "pa3ds.exe") $stage
-Copy-Item README.md, CHANGELOG.md, LICENSE $stage
+Copy-Item README.md, CHANGELOG.md $stage
+Copy-Item LICENSE (Join-Path $licenses "pa3ds.txt")
+# Prism's LICENSES\<library>\<file> becomes licenses\<library>.<ext>, one level a player can list.
+# vendor\prism\LICENSE is left out: it is LICENSES\prism's MPL text again.
 $prism = Join-Path $root "vendor\prism"
-Copy-Item (Join-Path $prism "LICENSE"), (Join-Path $prism "NOTICE") (Join-Path $stage "licenses\prism")
-Copy-Item -Recurse (Join-Path $prism "LICENSES") (Join-Path $stage "licenses\prism\LICENSES")
+Copy-Item (Join-Path $prism "NOTICE") (Join-Path $licenses "prism-notice.txt")
+foreach ($library in Get-ChildItem -Directory (Join-Path $prism "LICENSES")) {
+    foreach ($file in Get-ChildItem -File $library.FullName) {
+        $extension = if ($file.Extension) { $file.Extension } else { ".txt" }
+        $suffix = if ($file.BaseName -eq "AUTHORS") { "-authors" } else { "" }
+        $target = Join-Path $licenses "$($library.Name)$suffix$extension"
+        if (Test-Path $target) { throw "two of Prism's licence files would both be $target" }
+        Copy-Item $file.FullName $target
+    }
+}
 
 Write-Host "== zip"
 Compress-Archive -Path $stage -DestinationPath $zip -CompressionLevel Optimal
