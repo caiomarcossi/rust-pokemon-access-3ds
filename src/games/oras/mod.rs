@@ -345,6 +345,9 @@ pub const TEXTURE_ARCHIVES: [&str; 131] = [
 ];
 /// The language choice's text file (`app::lang_select`), whose lines from 6 name the languages.
 pub const LANGUAGE_NAMES: (i64, i64) = (103, 6);
+/// The forms' names, "Mega Venusaur" at 723, and the Pokémon's stats, 827 files of 0x50 bytes
+/// (spike 222).
+pub const FORM_NAMES: (i64, &str) = (5, "a/1/9/5");
 pub const TYPE_NAMES: i64 = 18;
 /// The Pokémon's names, "Egg" at 0 and Bulbasaur at 1 (spike 178).
 pub const SPECIES_NAMES: i64 = 98;
@@ -448,6 +451,7 @@ pub fn rom() -> &'static RomLayout {
         languages: Some(LANGUAGE_NAMES),
         types: Some(TYPE_NAMES),
         species: Some(SPECIES_NAMES),
+        forms: Some((FORM_NAMES.0, FORM_NAMES.1.to_string())),
         pokemon_models: Some((POKEMON_MODELS.0.to_string(), POKEMON_MODELS.1)),
         categories: Some(MOVE_CATEGORIES),
         contest_categories: Some(CONTEST_CATEGORIES),

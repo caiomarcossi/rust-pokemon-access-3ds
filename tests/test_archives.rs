@@ -1251,3 +1251,51 @@ fn test_the_maps_touch_areas_are_named_by_the_areanav_row_pointing_at_them() {
             .is(Kind::RomError)
     );
 }
+
+#[test]
+fn test_each_species_other_forms_are_named_in_turn_after_every_first_form() {
+    // Egg, Unown with three forms, Latios and Groudon with two; a line between, then the forms.
+    let names = strings(&[
+        "",
+        "One form",
+        "Latios",
+        "Groudon",
+        "",
+        "One form",
+        "One form",
+        "Mega Latios",
+        "Primal Reversion",
+    ]);
+    let counts = [1, 3, 2, 2];
+    assert_eq!(
+        archives::form_names(&names, &counts),
+        IndexMap::from([
+            ((2, 1), "Mega Latios".to_string()),
+            ((3, 1), "Primal Reversion".to_string())
+        ])
+    );
+    assert_eq!(
+        archives::form_names(&names[..names.len() - 1], &counts),
+        IndexMap::<(i64, i64), String>::new()
+    );
+}
+
+#[test]
+fn test_a_form_is_named_as_the_game_names_it_with_its_species_where_it_does_not() {
+    let text = GameText {
+        species: strings(&["Egg", "Unown", "Latios", "Groudon"]),
+        forms: IndexMap::from([
+            ((2, 1), "Mega Latios".to_string()),
+            ((3, 1), "Primal Reversion".to_string()),
+        ]),
+        ..GameText::new(strings(&["Littleroot Town"]), strings(&TRAINERS))
+    };
+    assert_eq!(text.pokemon(2, 1).as_deref(), Some("Mega Latios"));
+    assert_eq!(
+        text.pokemon(3, 1).as_deref(),
+        Some("Primal Reversion Groudon")
+    );
+    assert_eq!(text.pokemon(3, 0).as_deref(), Some("Groudon"));
+    assert_eq!(text.pokemon(1, 2).as_deref(), Some("Unown"));
+    assert_eq!(text.pokemon(0, 0), None);
+}

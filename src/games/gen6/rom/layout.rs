@@ -87,6 +87,10 @@ pub struct RomLayout {
     pub types: Option<i64>,
     /// The text file of the Pokémon's names, a line a species by its national number.
     pub species: Option<i64>,
+    /// The text file of the Pokémon's forms' names, and the archive of their stats, a file a
+    /// species by its national number saying how many forms it has (`form_names`); None where
+    /// they are not read.
+    pub forms: Option<(i64, String)>,
     /// The field's models' archive, a file a model, and the model a character of
     /// `field.POKEMON_MODEL` draws, from which the Pokémon on the map are named
     /// (`pokemon_models`); None in a game whose are not read.
@@ -193,6 +197,7 @@ impl RomLayout {
             languages: None,
             types: None,
             species: None,
+            forms: None,
             pokemon_models: None,
             battle_models: None,
             categories: None,

@@ -135,6 +135,39 @@ impl BerrySpot {
 /// Fewer records of the shape than this are not the table. ORAS's has 90, and the next longest
 /// run of the shape in its DLL is 26, the same table read out of step.
 pub const BERRY_SPOTS_LEAST: i64 = 32;
+
+/// Where a species' stats say how many forms it has, its first among them.
+pub const FORM_COUNT: i64 = 0x20;
+
+/// (species, form) -> what the game calls the form, for each form but a species' first: the
+/// forms' text names each species' first form on the line of its national number, then every
+/// other form of every species in national order, after a line between (spike 222: Omega Ruby's
+/// 723 "Mega Venusaur" to 912 "Hoopa Unbound"). A form whose name is its first form's says
+/// nothing more, as Unown's every form is "One form". None where the lines do not come out
+/// even: a list laid out otherwise is not read.
+pub fn form_names(names: &[String], counts: &[i64]) -> IndexMap<(i64, i64), String> {
+    let mut line = counts.len() as i64;
+    let mut out: IndexMap<(i64, i64), String> = IndexMap::new();
+    if names.len() as i64 <= line {
+        return out;
+    }
+    for (species, &count) in counts.iter().enumerate() {
+        for form in 1..count {
+            if line + form < names.len() as i64 {
+                let named = &names[(line + form) as usize];
+                if !named.is_empty() && *named != names[species] {
+                    out.insert((species as i64, form), named.clone());
+                }
+            }
+        }
+        line += (count - 1).max(0);
+    }
+    if line == names.len() as i64 - 1 {
+        out
+    } else {
+        IndexMap::new()
+    }
+}
 /// More cells than any map matrix is wide or tall.
 pub const MATRIX_CELLS: i64 = 0x400;
 
@@ -289,6 +322,9 @@ pub struct GameText {
     pub files: IndexMap<String, Vec<u8>>,
     /// What the game calls each Pokémon, by its national number; none where they are not read.
     pub species: Vec<String>,
+    /// (species, form) -> what the game calls the form (`form_names`); none where they are not
+    /// read.
+    pub forms: IndexMap<(i64, i64), String>,
     /// The ROM's zone table, which the game's in RAM is byte for byte (`FieldReader`); empty
     /// where it is not read. Left out of the comparison, as the dataclass leaves it.
     pub zone_table: Vec<u8>,
@@ -345,6 +381,7 @@ impl PartialEq for GameText {
             && self.bike == other.bike
             && self.acro == other.acro
             && self.species == other.species
+            && self.forms == other.forms
             && self.items == other.items
             && self.door_signs == other.door_signs
             && self.shared == other.shared
@@ -386,6 +423,7 @@ impl Default for GameText {
             acro: None,
             files: IndexMap::new(),
             species: Vec::new(),
+            forms: IndexMap::new(),
             zone_table: Vec::new(),
             items: Vec::new(),
             lines: IndexMap::new(),
@@ -563,6 +601,34 @@ impl GameText {
             Some(file) => lines_of_file(&files, file)?,
             None => Vec::new(),
         };
+        let mut forms: IndexMap<(i64, i64), String> = IndexMap::new();
+        if let Some((names, stats)) = &layout.forms {
+            // The names run on in blank lines after the last species: 812 lines, 722 named.
+            let named = species
+                .iter()
+                .enumerate()
+                .filter(|(_, name)| !name.is_empty())
+                .map(|(number, _)| number as i64)
+                .max()
+                .unwrap_or(-1)
+                + 1;
+            let read = || -> Result<IndexMap<(i64, i64), String>> {
+                let stats = garc_files(&rom.read(stats)?)?;
+                let counts: Vec<i64> = py::slice(&stats, 0, named)
+                    .iter()
+                    .map(|stat| {
+                        stat.get(FORM_COUNT as usize)
+                            .map_or(1, |&count| count as i64)
+                    })
+                    .collect();
+                Ok(form_names(&lines_of_file(&files, *names)?, &counts))
+            };
+            match read() {
+                Ok(read) => forms = read,
+                Err(error) if error.is(Kind::RomError) => {}
+                Err(error) => return Err(error),
+            }
+        }
         if let Some((archive, first)) = &layout.pokemon_models {
             let drawn = match layout
                 .battle_models
@@ -736,6 +802,7 @@ impl GameText {
                 .filter(|line| !line.is_empty()),
             files: files_of(rom, layout)?,
             species,
+            forms,
             zone_table: table.clone(),
             items: match layout.items {
                 Some(file) => lines_of_file(&files, file)?,
@@ -797,6 +864,31 @@ impl GameText {
     /// The street of Lumiose's this zone's warp comes out on, or None.
     pub fn street(&self, zone: i64, slot: i64) -> Option<String> {
         self.street_to.get(&(zone, slot)).cloned()
+    }
+
+    /// What the game calls a Pokémon in a form: the form's own name where it holds the
+    /// species' ("Mega Latios"), the form's before the species' where it does not ("Primal
+    /// Reversion Groudon", as most of the game's own put the form first; Orion, 2026-10-16),
+    /// the species' alone for a first form or one the game gives no name of its own; None for
+    /// no species.
+    pub fn pokemon(&self, species: i64, form: i64) -> Option<String> {
+        let name = if 0 < species && species < self.species.len() as i64 {
+            self.species[species as usize].as_str()
+        } else {
+            ""
+        };
+        if name.is_empty() {
+            return None;
+        }
+        let named = self.forms.get(&(species, form)).map_or("", String::as_str);
+        if named.is_empty() {
+            return Some(name.to_string());
+        }
+        Some(if named.contains(name) {
+            named.to_string()
+        } else {
+            format!("{named} {name}")
+        })
     }
 
     /// What the game calls whoever is drawn with this sprite, or None: a person the story
