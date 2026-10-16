@@ -34,7 +34,7 @@ to install.
 - **Name entry**: the key under the cursor.
 - **The Trainer Passport's photos** in Sun and Moon: each photo described in pa3ds's own words
   as the cursor moves to it ("Boy, fair skin, blond hair, blue eyes, ..."), since the game shows
-  the photos and never names them.
+  the photos and never names them. The words are English in every language for now.
 - **X and Y's opening**: the boy and the girl in their mirrors, then the three looks of the
   one you chose, each described in pa3ds's own words as the cursor moves to it ("Boy, fair
   skin, short black hair, ..."; "Brown skin, dark grey-black hair in a short bob, ..."), since
@@ -56,8 +56,12 @@ to install.
 - **Where you are**: the place name when you arrive somewhere new.
 - **Scenes** the game shows without words, described in pa3ds's own words when
   [`descriptions`](#settings) is on: in Omega Ruby, the opening wherever the professor stops
-  talking, Groudon waking, the ride down to it, the sky clearing; in Alpha Sapphire, Kyogre waking, the ride down to it, the sky clearing; in Sun, the
-  chase after Kukui's call.
+  talking, Groudon waking, the ride down to it, the sky clearing, Wally on Victory Road, the Elite
+  Four's bridges as you cross them and their rooms, Steven and the Hall of Fame, the credits with
+  the Pokémon your own save remembers from each Gym and great battle, May's night on Route 103,
+  and the Delta Episode's opening; in Alpha Sapphire,
+  Kyogre waking, the ride down to it, the sky clearing, the Hall of Fame, the credits, and the
+  Delta Episode's opening; in Sun, the chase after Kukui's call.
 - **The map**: exits, signs, people, items, berry spots and more, each with its direction and
   distance ("door, 1 of 3, 3 east 2 north"), and the way to any of them on foot. An exit says
   what it is: a door, stairs up or down, a passage between rooms with no floor between them, a
@@ -72,9 +76,12 @@ to install.
   Pokémon Journal in each Pokémon Center, the hideouts' beds and flags, the Hoenn Rangers'
   posters and figures, and the dolls in Littleroot's bedrooms, until you name it something else.
   Townsfolk are called by how they look ("Old man", "Clerk", "Nurse") in every language the game
-  carries. What stands in
-  your way until a move clears it is under obstacles: bushes for Cut, cracked boulders for Rock
-  Smash, Mauville Gym's barriers, and big boulders for Strength with the holes they can be pushed into ("hole, 2
+  carries. X and Y name what is on their maps the same way: its people ("Dexio", "Hairdresser"),
+  the Pokémon walking about ("Fletchling"), things like the bedroom's Kalos Pokédex awards, Berry
+  trees, sparkles and cones, and what you face and read, a TV, a trash can, an elevator, a photo
+  spot, a bed, a Gogoat Shuttle stop. What stands in
+  your way until a move clears it is under obstacles: bushes for Cut, cracked boulders (and in X
+  and Y cracked walls) for Rock Smash, Mauville Gym's barriers, and big boulders for Strength with the holes they can be pushed into ("hole, 2
   east 3 south"): push
   a boulder into a hole and both leave the list, and the filled hole is floor you can walk over.
   A boulder says the ways it can be pushed from where it stands now, and which push drops it
@@ -291,7 +298,7 @@ overwritten. Each setting has a comment in the file saying what it does.
 | `interrupt` | `false` | Cut off speech when a menu's cursor moves, instead of queueing. pa3ds's own keys always cut off speech. |
 | `unfocused` | `false` | Keep saying what the game shows while another window is in front. |
 | `tones` | `true` | A short tone as the map's cursor or touch mode moves: higher the further up, panned the further right. |
-| `descriptions` | `false` | Describe the scenes the game shows without words, after the line each scene follows, said as "Narration:" the way a speaker is named. So far in English, for Omega Ruby's opening, where the professor stops talking, and its scenes from Groudon waking in Seafloor Cavern to the sky clearing after it is caught, Alpha Sapphire's from Kyogre waking to the sky clearing after it is caught, and Sun's chase after Kukui's call, said as it plays. |
+| `descriptions` | `false` | Describe the scenes the game shows without words, after the line each scene follows, or as you walk onto the spot that starts it, said as "Narration:" the way a speaker is named. So far in English, for Omega Ruby's opening, where the professor stops talking, and its scenes from Groudon waking in Seafloor Cavern to the sky clearing after it is caught, and from Wally on Victory Road through the Pokémon League, the credits and the Delta Episode's opening; Alpha Sapphire's from Kyogre waking to the sky clearing after it is caught, and from the Hall of Fame through the credits and the Delta Episode's opening; and Sun's chase after Kukui's call, said as it plays. The credits' pictures of your journey are described with the Pokémon your own save remembers, by the nicknames you gave them, or else by species in the form it remembers, Mega or Primal, and with May or Brendan as your rival. |
 | **`[pa3ds.navigation]`** | | |
 | `positions` | `true` | Say where a thing is in the list: "door, 1 of 3". |
 | `position_first` | `true` | Say the place in the list before the way to it. `false` says "door, 1 north, 1 of 3". |
