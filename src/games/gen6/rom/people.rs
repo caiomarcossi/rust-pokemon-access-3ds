@@ -85,49 +85,99 @@ pub static SPECIES_TAG: LazyLock<regex::bytes::Regex> =
 /// models names them in its first 12 KB, and unpacking them whole took 0.33 s of the start, this
 /// much 0.07 s (spike 193).
 pub const MODEL_NAMES: i64 = 0x4000;
+/// How many files a battle model is (`tagged_species`).
+pub const MODEL_FILES: i64 = 8;
 
 /// Character -> national number, for each Pokémon the field can draw: the character
 /// `field.POKEMON_MODEL` + n is the archive's model `first` + n, whose file names the Pokémon
 /// it draws (spike 193). Machoke's `0x103f` is model 509, `pm0067`; Whismur's beside Zinnia
 /// `0x1039` is 503, `pm0293`; Rayquaza's in Sky Pillar `0x101f` is 477, `pm0384`. A model
 /// naming no Pokémon or more than one is left out, and so is one LZ11 cannot unpack: most are
-/// packed, Lisia's Altaria's among them.
-pub fn pokemon_models(rom: &Rom, archive: &str, first: i64) -> Result<IndexMap<i64, i64>> {
+/// packed, Lisia's Altaria's among them. Where `species` is given, a model's tag is the
+/// Pokémon it says (`tagged_species`), and one it does not have is left out.
+pub fn pokemon_models(
+    rom: &Rom,
+    archive: &str,
+    first: i64,
+    species: Option<&IndexMap<i64, i64>>,
+) -> Result<IndexMap<i64, i64>> {
     let (start, spans) = garc_spans(rom, archive)?;
     let mut out: IndexMap<i64, i64> = IndexMap::new();
-    for (n, &(at, end)) in py::slice_from(&spans, first).iter().enumerate() {
-        let data = rom.read_part(archive, start + at, end - at)?;
-        let data = if data.first() == Some(&0x11) {
-            match lz11_limit(&data, Some(MODEL_NAMES)) {
-                Ok(data) => data,
-                Err(error)
-                    if error.is(Kind::RomError)
-                        || error.is(Kind::ValueError)
-                        || error.is(Kind::IndexError) =>
-                {
-                    continue;
-                }
-                Err(error) => return Err(error),
-            }
-        } else {
-            py::slice(&data, 0, MODEL_NAMES).to_vec()
-        };
-        let named: HashSet<i64> = SPECIES_TAG
-            .captures_iter(&data)
-            .map(|found| {
-                found[1]
-                    .iter()
-                    .fold(0, |number, digit| number * 10 + (digit - b'0') as i64)
-            })
-            .collect();
+    for (n, &span) in py::slice_from(&spans, first).iter().enumerate() {
+        let named = tags(rom, archive, start, span)?;
         if named.len() == 1 {
-            out.insert(
-                mmodel::POKEMON_MODEL + n as i64,
-                *named.iter().next().expect("one species"),
-            );
+            let tag = *named.iter().next().expect("one species");
+            let number = match species {
+                None => Some(tag),
+                Some(species) => species.get(&tag).copied(),
+            };
+            if let Some(number) = number {
+                out.insert(mmodel::POKEMON_MODEL + n as i64, number);
+            }
         }
     }
     Ok(out)
+}
+
+/// Tag -> national number, out of the battle models, for a game that tags a Pokémon's models
+/// apart from its number, as X does its Kalos Pokémon's: Fletchling, 661, is `pm0753`, and Litleo
+/// `pm0704` (spike 218). File 0 gives each species from Bulbasaur four bytes, the first of its
+/// models (a u16) and how many (a byte); model m is files 1 + 8m to 8 + 8m, the last of them
+/// tagged. A tag of two species, or a file of two tags, is left out.
+pub fn tagged_species(rom: &Rom, archive: &str) -> Result<IndexMap<i64, i64>> {
+    let (start, spans) = garc_spans(rom, archive)?;
+    let (at, end) = *spans
+        .first()
+        .ok_or_else(|| Error::index("list index out of range"))?;
+    let head = rom.read_part(archive, start + at, end - at)?;
+    let mut found: IndexMap<i64, HashSet<i64>> = IndexMap::new();
+    for number in 1..(head.len() as i64 / 4 + 1) {
+        let model = u16(&head, (number - 1) * 4)?;
+        let count = head[((number - 1) * 4 + 2) as usize];
+        let file = MODEL_FILES * (model + 1);
+        if count != 0 && file < spans.len() as i64 {
+            let tags = tags(rom, archive, start, spans[file as usize])?;
+            if tags.len() == 1 {
+                let tag = *tags.iter().next().expect("one tag");
+                found.entry(tag).or_default().insert(number);
+            }
+        }
+    }
+    Ok(found
+        .into_iter()
+        .filter(|(_, numbers)| numbers.len() == 1)
+        .map(|(tag, numbers)| (tag, *numbers.iter().next().expect("one number")))
+        .collect())
+}
+
+/// The species tags in the first `MODEL_NAMES` bytes of one of an archive's files, none where
+/// LZ11 cannot unpack it.
+fn tags(rom: &Rom, archive: &str, start: i64, span: (i64, i64)) -> Result<HashSet<i64>> {
+    let (at, end) = span;
+    let data = rom.read_part(archive, start + at, end - at)?;
+    let data = if data.first() == Some(&0x11) {
+        match lz11_limit(&data, Some(MODEL_NAMES)) {
+            Ok(data) => data,
+            Err(error)
+                if error.is(Kind::RomError)
+                    || error.is(Kind::ValueError)
+                    || error.is(Kind::IndexError) =>
+            {
+                return Ok(HashSet::new());
+            }
+            Err(error) => return Err(error),
+        }
+    } else {
+        py::slice(&data, 0, MODEL_NAMES).to_vec()
+    };
+    Ok(SPECIES_TAG
+        .captures_iter(&data)
+        .map(|found| {
+            found[1]
+                .iter()
+                .fold(0, |number, digit| number * 10 + (digit - b'0') as i64)
+        })
+        .collect())
 }
 
 /// Sprite -> the kind of trainer it is, for every sprite the maps show two trainers or more

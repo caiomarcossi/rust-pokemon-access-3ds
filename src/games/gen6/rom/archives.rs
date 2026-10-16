@@ -53,7 +53,9 @@ use crate::games::gen6::field::zonedata;
 use crate::games::gen6::rom::doors::{door_facilities, town_rows};
 use crate::games::gen6::rom::layout::{RomLayout, TownFacilities, zone_table};
 use crate::games::gen6::rom::maps::{ChunkSource, MapChunks, StreetSource, Streets};
-use crate::games::gen6::rom::people::{pokemon_models, trainer_classes, trainer_sprites};
+use crate::games::gen6::rom::people::{
+    pokemon_models, tagged_species, trainer_classes, trainer_sprites,
+};
 use crate::games::gen6::rom::plates;
 use crate::py::{self, Error, Kind, Result};
 
@@ -562,7 +564,13 @@ impl GameText {
             None => Vec::new(),
         };
         if let Some((archive, first)) = &layout.pokemon_models {
-            let drawn = match pokemon_models(rom, archive, *first) {
+            let drawn = match layout
+                .battle_models
+                .as_deref()
+                .map(|models| tagged_species(rom, models))
+                .transpose()
+                .and_then(|tags| pokemon_models(rom, archive, *first, tags.as_ref()))
+            {
                 Ok(drawn) => drawn,
                 Err(error) if error.is(Kind::RomError) => IndexMap::new(),
                 Err(error) => return Err(error),

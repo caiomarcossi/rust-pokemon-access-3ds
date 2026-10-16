@@ -716,6 +716,51 @@ fn test_a_pokemon_on_the_map_is_named_by_the_pokemon_its_model_draws() {
     );
 }
 
+/// Spike 218: X tags its Kalos Pokémon's models apart from their numbers, Fletchling (661)
+/// `pm0753`; the battle models say which species each tag is, the last of a model's eight files
+/// tagged. A tag no species has names nothing.
+#[test]
+fn test_a_tag_that_is_not_a_national_number_is_named_through_the_battle_models() {
+    let tmp_path = TmpDir::new();
+    let mut species = vec![String::new(); 700];
+    species[67] = "Machoke".to_string();
+    species[661] = "Fletchling".to_string();
+    let mut head = vec![0u8; 4 * 661];
+    head[4 * 66..4 * 66 + 3].copy_from_slice(&[0, 0, 1]);
+    head[4 * 660..4 * 660 + 3].copy_from_slice(&[2, 0, 1]);
+    let mut battle: Vec<Vec<u8>> = vec![head];
+    battle.extend(vec![Vec::new(); 24]);
+    battle[8] = b"pm0067_00".to_vec();
+    battle[24] = b"pm0753_00".to_vec();
+    let (archive, first) = oras::POKEMON_MODELS;
+    let mut models: Vec<Vec<u8>> = vec![Vec::new(); first as usize];
+    models.push(b"MMpm0753_00_fi".to_vec());
+    models.push(b"MMpm0067_00_fi".to_vec());
+    models.push(b"MMpm0661_00_fi".to_vec());
+    let mut files = oras_files(Some(text_archive(Text {
+        species: Some(species),
+        ..Text::default()
+    })));
+    files.insert(archive.to_string(), garc_of(models));
+    files.insert("a/0/0/7".to_string(), garc_of(battle));
+    let rom = open_rom(tmp_path.path(), &files, OMEGA_RUBY);
+    let layout = RomLayout {
+        battle_models: Some("a/0/0/7".to_string()),
+        ..oras::rom().clone()
+    };
+    let text = GameText::load(&rom, "en", &layout).unwrap();
+    assert_eq!(
+        (0..3)
+            .map(|n| text.character(0x1000 + n))
+            .collect::<Vec<_>>(),
+        [
+            Some("Fletchling".to_string()),
+            Some("Machoke".to_string()),
+            None
+        ]
+    );
+}
+
 /// The file numbers are a fact about ORAS; a ROM they do not fit is refused, not misread.
 #[test]
 fn test_a_trainer_list_that_is_not_the_protagonists_is_turned_away() {

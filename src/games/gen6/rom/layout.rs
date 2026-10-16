@@ -91,6 +91,9 @@ pub struct RomLayout {
     /// `field.POKEMON_MODEL` draws, from which the Pokémon on the map are named
     /// (`pokemon_models`); None in a game whose are not read.
     pub pokemon_models: Option<(String, i64)>,
+    /// The battle models' archive, which says the Pokémon each model's tag is, in a game that tags
+    /// some apart from their national numbers (`tagged_species`); None where a tag is the number.
+    pub battle_models: Option<String>,
     /// The text file naming the moves' categories and the line they start at: status, physical,
     /// special, as the category icons number them (`textures`).
     pub categories: Option<(i64, i64)>,
@@ -191,6 +194,7 @@ impl RomLayout {
             types: None,
             species: None,
             pokemon_models: None,
+            battle_models: None,
             categories: None,
             contest_categories: None,
             contest_entrant: None,
