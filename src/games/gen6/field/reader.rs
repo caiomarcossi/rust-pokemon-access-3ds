@@ -959,7 +959,7 @@ impl FieldReader {
             let warps = read_records(&*self.memory, data, WARP)?;
             for (i, record) in warps.iter().enumerate() {
                 if !on_rail(record)? {
-                    let warp = self.warp(i as i64, record, None)?;
+                    let warp = self.warp(i as i64, record, None, home)?;
                     items.push(Interactable {
                         home,
                         arrival: arrival(record, home, &warps)?,
@@ -1460,7 +1460,7 @@ impl FieldReader {
             }
             for (i, record) in warps.iter().enumerate() {
                 if let Some(at) = rail::spot(corridor, record)? {
-                    let warp = self.warp(i as i64, record, Some(at))?;
+                    let warp = self.warp(i as i64, record, Some(at), owner)?;
                     out.push(Interactable {
                         home: owner,
                         ..warp
@@ -1491,31 +1491,43 @@ impl FieldReader {
         index: i64,
         record: &[u8],
         at: Option<(Cell, (i64, i64))>,
+        home: Option<i64>,
     ) -> Result<Interactable> {
         let (to, kind) = (u16(record, WARP_TO)?, u16(record, WARP_KIND)?);
         let (cell, size) = match at {
             None => warp_box(record)?,
             Some(at) => at,
         };
-        let what: String =
-            if kind == WARP_DOOR || (kind >> 8 == WARP_STREET && !self.outdoors.contains(&to)) {
-                "door".to_string()
-            } else if kind == WARP_OUT {
-                "way out".to_string()
-            } else if kind >> 8 == WARP_STAIRS {
-                if self.zones.outdoors(to)? == Some(true) {
-                    "path".to_string()
-                } else if at.is_none() {
-                    self.stairs_word(record, cell, size)?.to_string()
-                } else {
-                    STAIRS.to_string()
-                }
+        let streets = &self.rails.records;
+        let what: String = if kind >> 8 == WARP_DOOR >> 8
+            && home.is_some_and(|home| streets.contains_key(&home))
+            && streets.contains_key(&to)
+        {
+            // A door's kind between two of Lumiose's streets is the way onto the next (spike 220).
+            "path".to_string()
+        } else if kind == WARP_DOOR || (kind >> 8 == WARP_STREET && !self.outdoors.contains(&to)) {
+            "door".to_string()
+        } else if kind == WARP_OUT {
+            "way out".to_string()
+        } else if kind >> 8 == WARP_STAIRS {
+            if self.zones.outdoors(to)? == Some(true) {
+                "path".to_string()
+            } else if at.is_none() {
+                self.stairs_word(record, cell, size)?.to_string()
             } else {
-                self.warp_words
-                    .get(&kind)
-                    .cloned()
-                    .unwrap_or_else(|| "warp".to_string())
-            };
+                STAIRS.to_string()
+            }
+        } else if let Some(word) = self.warp_words.get(&kind) {
+            word.clone()
+        } else {
+            // The high byte is what it is, the low the way it is walked into (spike 220).
+            match kind >> 8 {
+                high if high == WARP_DOOR >> 8 => "door",
+                high if high == WARP_OUT >> 8 => "way out",
+                _ => "warp",
+            }
+            .to_string()
+        };
         let way_in = if at.is_none() && kind >> 8 == WARP_STAIRS {
             WALKED_INTO.get((kind & 0xFF) as usize).copied()
         } else {

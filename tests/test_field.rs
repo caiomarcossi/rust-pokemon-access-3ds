@@ -1010,6 +1010,106 @@ fn test_a_ladder_a_teleporter_and_an_entrance_are_what_the_games_table_of_kinds_
     Ok(())
 }
 
+/// A warp's high byte is what it is and its low byte the way it is walked into, as a stair's
+/// is: Aquacorde's houses' mats out face east and west (0x0202, 0x0203) and Lumiose's doors
+/// north, east, south and west (0x0301, 0x0302, 0x0300, 0x0303), and every one but the first
+/// two kinds was said "warp" (spike 220). The game's table still wins: X's 0x0201 is a door.
+#[test]
+fn test_a_door_or_a_mat_out_walked_into_any_way_is_a_door_or_a_way_out() -> Result<()> {
+    let mut town = Town::new();
+    let data = zone_file(&ZoneSpec {
+        warps: &[
+            (BEDROOM, 0x0300, 94, 171, None, None),
+            (BEDROOM, 0x0302, 98, 171, None, None),
+            (BEDROOM, 0x0303, 102, 171, None, None),
+            (BEDROOM, 0x0202, 106, 171, None, None),
+            (BEDROOM, 0x0203, 110, 171, None, None),
+            (BEDROOM, 0x0201, 114, 171, None, None),
+        ],
+        info: &town_info(),
+        ..ZoneSpec::default()
+    });
+    town.memory.write(FILE, &data);
+    town.memory
+        .u32(HOLDER + 8, &[0x11 | (data.len() as i64) << 8]);
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given::default(),
+        Game {
+            warps: IndexMap::from([(0x0201, "door".to_string())]),
+            ..game()
+        },
+    );
+    let kinds: HashMap<i64, String> = town
+        .r#where()?
+        .of("exits")
+        .into_iter()
+        .filter(|item| item.zone == Some(BEDROOM))
+        .map(|item| (item.cell.0, item.kind))
+        .collect();
+    assert_eq!(
+        kinds,
+        HashMap::from([
+            (94, "door".to_string()),
+            (98, "door".to_string()),
+            (102, "door".to_string()),
+            (106, "way out".to_string()),
+            (110, "way out".to_string()),
+            (114, "door".to_string()),
+        ])
+    );
+    Ok(())
+}
+
+/// Lumiose's streets are zones joined by warps of a door's kind, which every replay along
+/// them said "warp" or "door" (spike 220): all 52 that join two zones with records on streets are
+/// the way from one street onto the next, whichever way they face. A door into a building off
+/// a street is still a door.
+#[test]
+fn test_a_door_between_two_of_lumioses_streets_is_a_path() -> Result<()> {
+    let avenue = 0x44;
+    let mut town = Town::new();
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given {
+            street_records: IndexMap::from([
+                (TOWN, (Vec::new(), Vec::new())),
+                (avenue, (Vec::new(), Vec::new())),
+            ]),
+            ..Given::default()
+        },
+        game(),
+    );
+    let data = zone_file(&ZoneSpec {
+        warps: &[
+            (avenue, 0x0302, 94, 171, None, None),
+            (avenue, 0x0301, 98, 171, None, None),
+            (BEDROOM, 0x0302, 102, 171, None, None),
+        ],
+        info: &town_info(),
+        ..ZoneSpec::default()
+    });
+    town.memory.write(FILE, &data);
+    town.memory
+        .u32(HOLDER + 8, &[0x11 | (data.len() as i64) << 8]);
+    let kinds: HashMap<i64, String> = town
+        .r#where()?
+        .of("exits")
+        .into_iter()
+        .filter(|item| item.cell.1 == 171)
+        .map(|item| (item.cell.0, item.kind))
+        .collect();
+    assert_eq!(
+        kinds,
+        HashMap::from([
+            (94, "path".to_string()),
+            (98, "path".to_string()),
+            (102, "door".to_string()),
+        ])
+    );
+    Ok(())
+}
+
 /// Team Aqua's Hideout (2026-10-06): zone 0x5d's warp 1, a 0x0601 pad, comes out at its zone's
 /// warp 2, the warp its +0x02 gives; a warp into another zone says nothing of the sort.
 #[test]
