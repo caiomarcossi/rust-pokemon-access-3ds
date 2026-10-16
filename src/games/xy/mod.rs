@@ -12,9 +12,11 @@ use std::sync::OnceLock;
 
 use indexmap::IndexMap;
 
+use crate::games::common::field::ground::{CUT, ROCK_SMASH, STRENGTH};
 use crate::games::gen6::game::{Data, Game};
 use crate::games::gen6::rom::layout::{RomLayout, TownFacilities, owned};
 use crate::games::xy::intro::{IntroReader, looks};
+use crate::py::PySet;
 
 /// Words the game does not say itself, a folder a language: `sprites.toml`, X's fallback names
 /// for the people on its maps (spike 108), and `looks.toml`, its opening's choices (spike 216).
@@ -143,7 +145,8 @@ pub fn characters() -> &'static IndexMap<i64, i64> {
 /// (spike 106). Lumiose's street marks are `a/2/5/5`, a file a zone of its streets, and its street
 /// names text file 71, two lines a name (spike 107). The story's people are `CHARACTERS` (spike
 /// 108). The moves' names are text file 13, as file 14 (spike 136); the Pokémon's names file 80
-/// (spike 178).
+/// (spike 178). The Pokémon on the map are the field's models from `EV_POKE01`, `0xf2` of `a/0/2/1`,
+/// each tagged as its battle models in `a/0/0/7` are, Fletchling's `pm0753` (spike 218).
 pub fn rom() -> &'static RomLayout {
     static ROM: OnceLock<RomLayout> = OnceLock::new();
     ROM.get_or_init(|| RomLayout {
@@ -163,6 +166,8 @@ pub fn rom() -> &'static RomLayout {
         moves: Some(13),
         map_chunks: Some("a/0/4/1".to_string()),
         species: Some(80),
+        pokemon_models: Some(("a/0/2/1".to_string(), 0xF2)),
+        battle_models: Some("a/0/0/7".to_string()),
         ..RomLayout::new(
             "X and Y",
             text_archives(),
@@ -189,10 +194,82 @@ pub const DRAWN: i64 = 0x890;
 /// the only triggers of either game that do (spike 217).
 pub const HOUSE: i64 = 0x2;
 
+/// The thorny bush Cut clears, `ITREE01`, as ORAS's (`oras.BUSH`): its shared script, 0x2712 of
+/// `a/0/3/1` file 27, shows "You can't pass because of prickly thorns, but a Pokémon may be able to
+/// cut the tree." (story 130:3). 25 in 12 zones, Route 3 to Route 22 and the Pokémon Village
+/// (spike 219).
+pub const BUSH: i64 = 0x200B;
+/// The rock Rock Smash breaks, `IROCK01`: shared script 0x2710, "It's a cracked boulder. A Pokémon
+/// may be able to break it." (story 130:1). 61 in 13 zones (spike 219).
+pub const CRACKED_BOULDER: i64 = 0x200C;
+/// The boulder Strength pushes, `KROCK01`: shared script 0x2714, "It's a big boulder, but a
+/// Pokémon may be able to push it aside." (story 130:5). 25 in 12 zones (spike 219).
+pub const BIG_BOULDER: i64 = 0x2009;
+/// The wall Rock Smash breaks, `IWALL01`, which ORAS has not: shared script 0x2716, "It's a cracked
+/// wall. A Pokémon may be able to break it." (story 130:9). Three on Route 15, two in Victory Road,
+/// seven in the Lost Hotel (spike 219).
+pub const CRACKED_WALL: i64 = 0x2034;
+/// The invisible blocker, `STOPPER`, ORAS's id and model: six in Shalour City and four in the Team
+/// Flare Secret HQ, each running shared script 0x7d0, which shows nothing (spikes 218 and 219).
+pub const STOPPER: i64 = 0x8A;
+
+/// The shared scripts of the elevators' doors, a furniture record a cell, two side by side, in 24
+/// zones of Lumiose City and Lysandre Labs: file 14 of `a/0/3/1`, whose messages are story 145's,
+/// "Which floor would you like to go to?" (spike 220).
+///
+/// Python's is a frozenset of the range; a `Range` here, collected where a set is wanted.
+pub const ELEVATORS: std::ops::Range<i64> = 0x27DA..0x280A;
+
+pub const ENTRANCES: [i64; 6] = [0x1001, 0x1101, 0x1601, 0x3701, 0x3800, 0x3901];
+pub const TELEPORTER_PADS: [i64; 2] = [0x0001, 0x0601];
+pub const WAYS_OUT: [i64; 5] = [0x0400, 0x0800, 0x0901, 0x0902, 0x0903];
+pub const DOORS: [i64; 3] = [0x0201, 0x0F01, 0x3600];
+
+/// What X's warp kinds that are not a door from outdoors, the mat out or stairs are, each told by
+/// where its warps lead and the kind of the warp each arrives at (spike 220). Teleporters: `0x0601`
+/// and `0x0001`, Lysandre Labs' 26 pads, each to a pad of its own zone. Ways out: `0x0800` out of
+/// each Gym but Prism Tower's, `0x0901` to `0x0903` Prism Tower's, and `0x0400` out of a Santalune and
+/// a Lumiose building. Doors: `0x0201`, the Elite Four's and the Radiant Chamber's inner doors and two
+/// into Lysandre Labs, `0x0f01` the Tower of Mastery's, `0x3600` one in the Team Flare Secret HQ,
+/// each arriving at a mat out. Entrances: ways in from outdoors to one building's mat or Gym, the
+/// Gyms of Santalune, Laverre, Anistar, Snowbelle, Shalour, Cyllage and Coumarine, Prism Tower's
+/// four, Shabboneau Castle, Ambrette Aquarium, Kiloude Station, the Battle Maison, the Battle Chateau
+/// and the Poké Ball Factory's inner building. Left "warp": `0x0202`, `0x0203`, `0x0300`, `0x0302`
+/// and `0x0303`, which lead into houses and between outdoor zones alike.
+///
+/// Python builds it with `dict.fromkeys` over each frozenset, so its order is each set's as
+/// CPython lays it out (`PySet`).
+pub fn warps() -> &'static IndexMap<i64, String> {
+    static WARPS: OnceLock<IndexMap<i64, String>> = OnceLock::new();
+    WARPS.get_or_init(|| {
+        let mut out: IndexMap<i64, String> = IndexMap::new();
+        for (kinds, word) in [
+            (&TELEPORTER_PADS[..], "teleporter"),
+            (&WAYS_OUT[..], "way out"),
+            (&DOORS[..], "door"),
+            (&ENTRANCES[..], "entrance"),
+        ] {
+            for kind in PySet::of(kinds.iter().copied()).iter() {
+                out.insert(kind, word.to_string());
+            }
+        }
+        out
+    })
+}
+
 /// X and Y as the gen 6 readers read them.
 pub fn game() -> &'static Game {
     static GAME: OnceLock<Game> = OnceLock::new();
     GAME.get_or_init(|| Game {
+        clears: IndexMap::from([
+            (BUSH, CUT),
+            (CRACKED_BOULDER, ROCK_SMASH),
+            (BIG_BOULDER, STRENGTH),
+            (CRACKED_WALL, ROCK_SMASH),
+        ]),
+        blockers: HashSet::from([STOPPER]),
+        elevators: ELEVATORS.collect(),
+        warps: warps().clone(),
         triggers: IndexMap::from([
             (
                 (HOUSE, 0x6),

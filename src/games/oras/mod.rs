@@ -410,8 +410,7 @@ pub const TELEPORTER_PAD: i64 = 0x0601;
 /// Teleporters: `0x0601`, 84 of them, all in Team Aqua's Hideout (zones `0x5c` to `0x61`) and Team
 /// Magma's (`0xa9` to `0xae`), most leading to another pad of their own room.
 ///
-/// The entrances are `ENTRANCES`. X and Y have no table: their kinds `0x10xx`, `0x38xx` and `0x39xx`
-/// are not measured, and stay "warp".
+/// The entrances are `ENTRANCES`. X and Y's kinds are a table of their own (`xy.WARPS`, spike 220).
 pub fn warps() -> &'static IndexMap<i64, String> {
     static WARPS: OnceLock<IndexMap<i64, String>> = OnceLock::new();
     WARPS.get_or_init(|| {
