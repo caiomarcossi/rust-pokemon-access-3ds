@@ -535,7 +535,7 @@ impl Profile for SunProfile {
         if let Some(demo) = demo {
             (self.log)(&format!("app: demo {demo}"));
             if let Some(scenes) = &self.scenes {
-                scenes.borrow_mut().demo(Some(demo), &mut self.narrate());
+                scenes.borrow_mut().demo(Some(demo), &mut self.narrate())?;
             }
         }
         let Some((pointer, name)) = started else {
@@ -616,7 +616,7 @@ impl Profile for SunProfile {
     /// change of zone and after each sweep, not every poll.
     fn poll_field(&self) -> Result<()> {
         if let Some(scenes) = &self.scenes {
-            scenes.borrow_mut().poll(&mut self.narrate());
+            scenes.borrow_mut().poll(&mut self.narrate())?;
         }
         let listing = self.phase("field", || {
             let Some(at) = self.field.poll()? else {
@@ -627,7 +627,7 @@ impl Profile for SunProfile {
             if self.zone.get() != Some(at.zone) {
                 self.zone.set(Some(at.zone));
                 if let Some(scenes) = &self.scenes {
-                    scenes.borrow_mut().arrived(at.zone, &mut self.narrate());
+                    scenes.borrow_mut().arrived(at.zone, &mut self.narrate())?;
                 }
             }
             let same_zone = self

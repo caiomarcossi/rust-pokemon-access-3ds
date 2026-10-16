@@ -24,10 +24,18 @@
 //!
 //! A name the game shows is never written into a description: `{pokemon:383}` is the game's own
 //! word for Groudon, out of the player's ROM, and so are `{trainer:N}`, `{item:N}` and `{place:N}`.
+//! The credits draw the player's own Pokémon, which the save records as the story goes:
+//! `{memory:N}` is the one it keeps for the Nth moment, in the form it keeps, read from the save as
+//! the beat is said (spike 222), and `{yours:N}` the same Pokémon as the player's: the nickname they
+//! gave it, where they still have it, or else the file's `yours` with its name in, "your Mega
+//! Latios" (Orion, 2026-10-16). Someone the game never names is `{sprite:N}`, called what a
+//! speaker drawn as sprite N is (`pa3ds.core.names`): the player's own name for them first, so a
+//! rename is heard in the next beat.
 //!
 //! The Python's `Scenes` keeps the callable it says each beat with, the announcements'
 //! `narrate`; here the profile owns the announcements through `&mut`, so it hands the callable to
-//! each method that may say a beat instead (`Say`).
+//! each method that may say a beat instead (`Say`). A beat's recalled names are read from the
+//! save as it is said, which can raise, so every such method returns a `Result`.
 
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -46,10 +54,24 @@ pub const FILE: &str = "scenes.toml";
 /// The one control sequence inside a page that inserts no words (`games.common.text`).
 pub const COLOUR: i64 = 0xFF00;
 
+/// A name, `{pokemon:383}`, or a whole line of the game's text, `{text:123:91}`: words the game
+/// draws as a picture, "THE END" over the credits' last shooting stars.
 fn word_pattern() -> &'static Regex {
     static WORD: OnceLock<Regex> = OnceLock::new();
-    WORD.get_or_init(|| Regex::new(r"\{(\w+):(\d+)\}").expect("a fixed pattern"))
+    WORD.get_or_init(|| Regex::new(r"\{(\w+):(\d+)(?::(\d+))?\}").expect("a fixed pattern"))
 }
+
+/// Names a description takes from the player's own save or names as it is said, not from the ROM
+/// as it is loaded: `{memory:24}` is the Pokémon the save keeps for the credits' 24th moment, the one
+/// that won Wally's battle on Victory Road (spike 222), `{yours:24}` the same Pokémon as the player's
+/// own, by the nickname they gave it ("Windsong") or as the file's `yours` says it ("your Mega
+/// Latios"), and `{sprite:179}` Professor Birch.
+pub const RECALLED: [&str; 3] = ["memory", "yours", "sprite"];
+/// A file's way of saying the player's own Pokémon they never named, `{}` its name: "your {}".
+pub const YOURS: &str = "yours";
+
+/// `recall(kind, number)`: the player's own word for a `RECALLED` name, read as a beat is said.
+pub type Recall = Rc<dyn Fn(&str, i64) -> Result<Option<String>>>;
 
 /// Where a beat is said: the announcements' `narrate`, handed in by the profile.
 pub type Say<'a> = &'a mut dyn FnMut(&str);
@@ -175,10 +197,10 @@ pub fn load(
             None => None,
             Some(raw) => last_page(&raw)?,
         };
-        let beats: Vec<Option<Beat>> = tables(table.get("beat"))
-            .iter()
-            .map(|held| beat(held, word))
-            .collect();
+        let mut beats: Vec<Option<Beat>> = Vec::new();
+        for held in tables(table.get("beat")) {
+            beats.push(beat(&held, word, line)?);
+        }
         let kept: Vec<Beat> = beats.iter().flatten().cloned().collect();
         if (!after.is_empty() && page.is_none())
             || (demo.is_none() && after.is_empty() && zone.is_none())
@@ -214,6 +236,16 @@ fn log_left_out(log: &Log, after: &str, demo: Option<i64>, trigger: Option<i64>)
     log(&format!(
         "scene after {what}: left out, the ROM does not have its line or its names"
     ));
+}
+
+/// How a file says the player's own Pokémon with no nickname (`YOURS`), or its name alone.
+///
+/// Python reads the file at a path; this takes its text, as `load` does.
+pub fn yours(text: Option<&str>) -> String {
+    match toml::read_text(text).get(YOURS) {
+        Some(Value::String(said)) if said.contains("{}") => said.clone(),
+        _ => "{}".to_string(),
+    }
 }
 
 /// `text.partition(":")`'s head and tail.
@@ -269,43 +301,89 @@ fn tables(value: Option<&Value>) -> Vec<IndexMap<String, Value>> {
     }
 }
 
-/// A beat of the file, its names put in, or None where one is missing or the beat is not.
-fn beat(table: &IndexMap<String, Value>, word: Word) -> Option<Beat> {
+/// A beat of the file, its names and lines put in, or None where one is missing or the beat
+/// is not.
+fn beat(table: &IndexMap<String, Value>, word: Word, line: Line) -> Result<Option<Beat>> {
     let Some(Value::String(text)) = table.get("text") else {
-        return None;
+        return Ok(None);
     };
     let mut missing = false;
+    let mut raised: Option<py::Error> = None;
     let text = word_pattern()
         .replace_all(text, |found: &Captures| {
-            let said = py::int_base10(&found[2])
-                .ok()
-                .and_then(|number| word(&found[1], number));
+            if RECALLED.contains(&&found[1]) {
+                return found[0].to_string();
+            }
+            let said = match (py::int_base10(&found[2]), found.get(3)) {
+                (Ok(number), None) => word(&found[1], number),
+                (Ok(file), Some(number)) => match py::int_base10(number.as_str())
+                    .and_then(|number| line(&found[1], file, number))
+                {
+                    Ok(raw) => words(raw.as_deref()),
+                    Err(error) => {
+                        raised.get_or_insert(error);
+                        None
+                    }
+                },
+                (Err(error), _) => {
+                    raised.get_or_insert(error);
+                    None
+                }
+            };
             missing |= said.is_none();
             said.unwrap_or_default()
         })
         .into_owned();
+    if let Some(error) = raised {
+        return Err(error);
+    }
     let at = match table.get("at") {
         None => 0.0,
         Some(Value::Integer(number)) => *number as f64,
         Some(Value::Float(number)) => *number,
         Some(Value::Boolean(truth)) => *truth as i64 as f64,
-        Some(_) => return None,
+        Some(_) => return Ok(None),
     };
     if missing {
-        return None;
+        return Ok(None);
     }
-    Some(Beat {
+    Ok(Some(Beat {
         text,
         demo: truth(table.get("demo")),
         zone: int_of(table.get("zone")),
         at,
-    })
+    }))
+}
+
+/// A line of the game's text as one run of words, its line breaks spaces; None for none.
+fn words(raw: Option<&[u8]>) -> Option<String> {
+    let parts = match raw {
+        None => Vec::new(),
+        Some(raw) => match tokens(raw) {
+            Ok(parts) => parts,
+            Err(_) => return None,
+        },
+    };
+    let joined: String = parts
+        .iter()
+        .filter_map(|part| match part {
+            Token::Text(text) => Some(text.as_str()),
+            Token::Control(_) => None,
+        })
+        .collect();
+    let said = py::split(&joined).join(" ");
+    if said.is_empty() { None } else { Some(said) }
 }
 
 /// Follows the scene the player is in, and says each beat of its description as it comes.
 pub struct Scenes {
     scenes: Vec<Scene>,
     clock: Rc<dyn Fn() -> f64>,
+    /// The player's own word for a `RECALLED` name, read as a beat is said: for `yours`, the
+    /// nickname alone, None where there is none.
+    recall: Recall,
+    /// How the file says the player's own Pokémon with no nickname (`yours`).
+    own: String,
     /// The scene followed now, by its place in `scenes`.
     scene: Option<usize>,
     /// The beat said next.
@@ -325,6 +403,8 @@ impl Scenes {
         Scenes {
             scenes,
             clock,
+            recall: Rc::new(|_: &str, _: i64| Ok(None)),
+            own: "{}".to_string(),
             scene: None,
             next: 0,
             since: 0.0,
@@ -336,6 +416,16 @@ impl Scenes {
     /// `Scenes(scenes, say)`: on the monotonic clock.
     pub fn with_monotonic(scenes: Vec<Scene>) -> Self {
         Scenes::new(scenes, Rc::new(py::time::monotonic))
+    }
+
+    /// `Scenes(..., recall=recall, own=own)`: names read from the player's save and names as each
+    /// beat is said, and the file's way of saying their own Pokémon.
+    pub fn recalling(self, recall: Recall, own: String) -> Self {
+        Scenes {
+            recall,
+            own,
+            ..self
+        }
     }
 
     /// The triggers of a zone that start a scene, still to be stepped onto: where nothing is
@@ -351,21 +441,22 @@ impl Scenes {
 
     /// The player has stepped onto one of the zone's triggers: the scene it starts starts, the
     /// first time since arriving.
-    pub fn stepped(&mut self, zone: i64, trigger: i64, say: Say) {
+    pub fn stepped(&mut self, zone: i64, trigger: i64, say: Say) -> Result<()> {
         if !self.stepped_on.insert(trigger) {
-            return;
+            return Ok(());
         }
         let found = self
             .scenes
             .iter()
             .position(|scene| scene.zone == Some(zone) && scene.trigger == Some(trigger));
         if let Some(found) = found {
-            self.start(found, say);
+            self.start(found, say)?;
         }
+        Ok(())
     }
 
     /// A page of dialogue just said, in the zone the player is in.
-    pub fn heard(&mut self, page: i64, text: &str, zone: Option<i64>, say: Say) {
+    pub fn heard(&mut self, page: i64, text: &str, zone: Option<i64>, say: Say) -> Result<()> {
         let found = self.scenes.iter().position(|scene| {
             scene.zone == zone
                 && scene.page == Some(page)
@@ -375,35 +466,36 @@ impl Scenes {
                     .is_some_and(|words| words.is_match(text))
         });
         if let Some(found) = found {
-            self.start(found, say);
+            self.start(found, say)?;
         }
+        Ok(())
     }
 
     /// A scene of the game's own has started, by its number where the game keeps one: a beat
     /// waiting for it comes, or else the scene said over it starts.
-    pub fn demo(&mut self, number: Option<i64>, say: Say) {
+    pub fn demo(&mut self, number: Option<i64>, say: Say) -> Result<()> {
         if self.waiting().is_some_and(|beat| beat.demo) {
-            self.came(say);
+            self.came(say)?;
         } else if let Some(number) = number
             && let Some(found) = self
                 .scenes
                 .iter()
                 .position(|scene| scene.demo == Some(number))
         {
-            self.start(found, say);
+            self.start(found, say)?;
         }
+        Ok(())
     }
 
     /// The player is in another zone: a beat waiting for it comes, a scene waiting for another is
     /// let go, and a scene said on arriving there starts.
-    pub fn arrived(&mut self, zone: i64, say: Say) {
+    pub fn arrived(&mut self, zone: i64, say: Say) -> Result<()> {
         self.stepped_on.clear();
         if let Some(beat) = self.waiting()
             && (beat.zone.is_some() || beat.demo)
         {
             if beat.zone == Some(zone) {
-                self.came(say);
-                return;
+                return self.came(say);
             }
             self.scene = None;
         }
@@ -414,20 +506,21 @@ impl Scenes {
                 && scene.zone == Some(zone)
         });
         if let Some(found) = found {
-            self.start(found, say);
+            self.start(found, say)?;
         }
+        Ok(())
     }
 
-    fn start(&mut self, scene: usize, say: Say) {
+    fn start(&mut self, scene: usize, say: Say) -> Result<()> {
         self.scene = Some(scene);
         self.next = 0;
         self.met = false;
         self.since = (self.clock)();
-        self.poll(say);
+        self.poll(say)
     }
 
     /// Say every beat whose time has come.
-    pub fn poll(&mut self, say: Say) {
+    pub fn poll(&mut self, say: Say) -> Result<()> {
         while let Some(scene) = self.scene
             && self.next < self.scenes[scene].beats.len()
         {
@@ -435,13 +528,51 @@ impl Scenes {
             if ((beat.demo || beat.zone.is_some()) && !self.met)
                 || (self.clock)() < self.since + beat.at
             {
-                return;
+                return Ok(());
             }
-            say(&beat.text);
+            let text = beat.text.clone();
+            if let Some(text) = self.recalled(&text)? {
+                say(&text);
+            }
             self.next += 1;
             self.met = false;
         }
         self.scene = None;
+        Ok(())
+    }
+
+    /// The beat's words with the save's names put in, or None where the save has none of
+    /// them: a moment the player's game never recorded is not described.
+    fn recalled(&self, text: &str) -> Result<Option<String>> {
+        let mut missing = false;
+        let mut raised: Option<py::Error> = None;
+        let said = word_pattern()
+            .replace_all(text, |found: &Captures| {
+                let kind = &found[1];
+                let recalled = py::int_base10(&found[2]).and_then(|number| {
+                    let said = (self.recall)(kind, number)?;
+                    if said.is_none() && kind == YOURS {
+                        // `own.format(species)`: `yours` keeps only a file's own that holds `{}`.
+                        return Ok((self.recall)("memory", number)?
+                            .map(|species| self.own.replacen("{}", &species, 1)));
+                    }
+                    Ok(said)
+                });
+                let said = match recalled {
+                    Ok(said) => said,
+                    Err(error) => {
+                        raised.get_or_insert(error);
+                        None
+                    }
+                };
+                missing |= said.is_none();
+                said.unwrap_or_default()
+            })
+            .into_owned();
+        if let Some(error) = raised {
+            return Err(error);
+        }
+        Ok(if missing { None } else { Some(said) })
     }
 
     /// The beat next to be said, while it waits for something still to come.
@@ -453,9 +584,9 @@ impl Scenes {
         Some(&self.scenes[scene].beats[self.next])
     }
 
-    fn came(&mut self, say: Say) {
+    fn came(&mut self, say: Say) -> Result<()> {
         self.met = true;
         self.since = (self.clock)();
-        self.poll(say);
+        self.poll(say)
     }
 }

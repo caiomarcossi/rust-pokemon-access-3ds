@@ -56,6 +56,7 @@ fn wurmple() -> Pokemon {
         species: WURMPLE,
         nickname: "Wurmple".to_string(),
         gender: FEMALE,
+        nicknamed: false,
     }
 }
 

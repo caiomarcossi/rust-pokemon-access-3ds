@@ -11,7 +11,7 @@ use super::fake_speech::Recorder;
 use crate::core::speech::Speech;
 use crate::games::common::announce::{Announcements, Speaker};
 use crate::games::common::dialogue::{PageShown, Shown};
-use crate::games::common::scenes::{Scenes, last_page, load};
+use crate::games::common::scenes::{Recall, Scenes, last_page, load, yours};
 use crate::games::sm::field;
 use crate::py::{Log, Result};
 
@@ -141,29 +141,29 @@ text = "{item:9999} is nowhere."
     let mut reader = Scenes::new(scenes, Rc::new(move || clock.get()));
     let mut say = |text: &str| said.borrow_mut().push(text.to_string());
     let last = || said.borrow().last().cloned().unwrap_or_default();
-    reader.heard(0, "Augh... You...", Some(0x6E), &mut say);
+    reader.heard(0, "Augh... You...", Some(0x6E), &mut say)?;
     assert!(said.borrow().is_empty());
-    reader.heard(0, "Augh... You...", Some(0x6F), &mut say);
+    reader.heard(0, "Augh... You...", Some(0x6F), &mut say)?;
     assert_eq!(*said.borrow(), ["Maxie walks to the lava."]);
-    reader.poll(&mut say);
+    reader.poll(&mut say)?;
     assert_eq!(*said.borrow(), ["Maxie walks to the lava."]);
     now.set(30.0);
-    reader.demo(None, &mut say);
+    reader.demo(None, &mut say)?;
     assert_eq!(last(), "The Orb glows.");
     now.set(39.0);
-    reader.poll(&mut say);
+    reader.poll(&mut say)?;
     assert_eq!(last(), "The Orb glows.");
     now.set(40.0);
-    reader.poll(&mut say);
+    reader.poll(&mut say)?;
     assert_eq!(last(), "Groudon wakes.");
-    reader.heard(0, "Child! Hurry up!", Some(0x6F), &mut say);
+    reader.heard(0, "Child! Hurry up!", Some(0x6F), &mut say)?;
     assert_eq!(last(), "Groudon wakes.");
-    reader.arrived(0x39, &mut say);
+    reader.arrived(0x39, &mut say)?;
     assert_eq!(last(), "The sky glares.");
     // Waiting for Route 128 and arriving somewhere else lets the scene go.
-    reader.heard(0, "Child! Hurry up!", Some(0x6F), &mut say);
-    reader.arrived(0x6D, &mut say);
-    reader.arrived(0x39, &mut say);
+    reader.heard(0, "Child! Hurry up!", Some(0x6F), &mut say)?;
+    reader.arrived(0x6D, &mut say)?;
+    reader.arrived(0x39, &mut say)?;
     assert_eq!(
         said.borrow()
             .iter()
@@ -215,7 +215,7 @@ text = "Steven flies off."
         let mut reader = Scenes::with_monotonic(scenes);
         reader.heard(0, "Good luck to you.", Some(0x39), &mut |text: &str| {
             said.push(text.to_string())
-        });
+        })?;
         Ok(said)
     };
     assert_eq!(
@@ -248,10 +248,10 @@ text = "Magma glows to the north."
     )?;
     let mut reader = Scenes::with_monotonic(scenes);
     let mut say = |text: &str| said.push(text.to_string());
-    reader.arrived(0x74, &mut say);
-    reader.arrived(0x76, &mut say);
-    reader.arrived(0x74, &mut say);
-    reader.arrived(0x76, &mut say);
+    reader.arrived(0x74, &mut say)?;
+    reader.arrived(0x76, &mut say)?;
+    reader.arrived(0x74, &mut say)?;
+    reader.arrived(0x76, &mut say)?;
     assert_eq!(
         said,
         ["Magma glows to the north.", "Magma glows to the north."]
@@ -294,10 +294,10 @@ text = "You stand in the truck."
     let said: RefCell<Vec<String>> = RefCell::new(Vec::new());
     let mut reader = Scenes::with_monotonic(scenes);
     let mut say = |text: &str| said.borrow_mut().push(text.to_string());
-    reader.heard(0, "Come see me in my Pokémon Lab!", Some(0x10), &mut say);
+    reader.heard(0, "Come see me in my Pokémon Lab!", Some(0x10), &mut say)?;
     assert!(said.borrow().is_empty());
-    reader.heard(0, "Come see me in my Pokémon Lab!", None, &mut say);
-    reader.arrived(0x18F, &mut say);
+    reader.heard(0, "Come see me in my Pokémon Lab!", None, &mut say)?;
+    reader.arrived(0x18F, &mut say)?;
     assert_eq!(
         *said.borrow(),
         ["The doors swing wide.", "You stand in the truck."]
@@ -331,19 +331,128 @@ text = "A square room."
     let said: RefCell<Vec<String>> = RefCell::new(Vec::new());
     let mut reader = Scenes::with_monotonic(scenes);
     let mut say = |text: &str| said.borrow_mut().push(text.to_string());
-    reader.arrived(0x16B, &mut say);
+    reader.arrived(0x16B, &mut say)?;
     assert!(said.borrow().is_empty());
     assert_eq!(reader.triggers(0x16B), HashSet::from([0]));
     assert_eq!(reader.triggers(0x162), HashSet::new());
-    reader.stepped(0x16B, 0, &mut say);
-    reader.stepped(0x16B, 0, &mut say);
+    reader.stepped(0x16B, 0, &mut say)?;
+    reader.stepped(0x16B, 0, &mut say)?;
     assert_eq!(*said.borrow(), ["The doors open."]);
     assert_eq!(reader.triggers(0x16B), HashSet::new());
-    reader.arrived(0x162, &mut say);
+    reader.arrived(0x162, &mut say)?;
     assert_eq!(*said.borrow(), ["The doors open.", "A square room."]);
-    reader.arrived(0x16B, &mut say);
-    reader.stepped(0x16B, 0, &mut say);
+    reader.arrived(0x16B, &mut say)?;
+    reader.stepped(0x16B, 0, &mut say)?;
     assert_eq!(said.borrow().last().unwrap(), "The doors open.");
+    Ok(())
+}
+
+/// `recall(kind, number)` out of a table, as the tests' lambdas over a dict are.
+fn recalling(recorded: Vec<((&'static str, i64), &'static str)>) -> Recall {
+    let recorded: IndexMap<(String, i64), String> = recorded
+        .into_iter()
+        .map(|((kind, number), said)| ((kind.to_string(), number), said.to_string()))
+        .collect();
+    Rc::new(move |kind: &str, number: i64| Ok(recorded.get(&(kind.to_string(), number)).cloned()))
+}
+
+/// The credits draw the Pokémon that won each Gym and great battle, which the save records
+/// (spike 222): `{memory:N}` is read as the beat is said, and a moment the save never recorded is
+/// not described.
+#[test]
+fn test_the_players_own_pokemon_are_named_from_the_save_as_each_beat_is_said() -> Result<()> {
+    let file = r#"
+[[scene]]
+zone = 0x166
+[[scene.beat]]
+text = "{trainer:4} watches."
+[[scene.beat]]
+text = "Your {memory:24} faces Wally's Gallade."
+[[scene.beat]]
+text = "Your {memory:4} is nowhere."
+[[scene.beat]]
+text = "{text:123:91} shines among the stars."
+[[scene.beat]]
+text = "{sprite:179} walks in."
+"#;
+    let lines: IndexMap<(String, i64, i64), Vec<u8>> = IndexMap::from([(
+        ("text".to_string(), 123, 91),
+        line(&[Part::Text("THE\nEND")]),
+    )]);
+    let (log, _) = logging();
+    let scenes = load(
+        Some(file),
+        &|archive: &str, file: i64, number: i64| {
+            Ok(lines.get(&(archive.to_string(), file, number)).cloned())
+        },
+        &|kind: &str, number: i64| (kind == "trainer" && number == 4).then(|| "May".to_string()),
+        &log,
+        None,
+    )?;
+    let said: RefCell<Vec<String>> = RefCell::new(Vec::new());
+    let mut reader = Scenes::with_monotonic(scenes).recalling(
+        recalling(vec![
+            (("memory", 24), "Latios"),
+            (("sprite", 179), "Professor Birch"),
+        ]),
+        "{}".to_string(),
+    );
+    let mut say = |text: &str| said.borrow_mut().push(text.to_string());
+    reader.arrived(0x166, &mut say)?;
+    assert_eq!(
+        *said.borrow(),
+        [
+            "May watches.",
+            "Your Latios faces Wally's Gallade.",
+            "THE END shines among the stars.",
+            "Professor Birch walks in."
+        ]
+    );
+    Ok(())
+}
+
+/// `{yours:N}` is the nickname the player gave a moment's Pokémon (Orion, 2026-10-16), or,
+/// where they gave it none, the file's `yours` around its name; the rival's stays `{memory:N}`.
+#[test]
+fn test_the_players_own_pokemon_are_called_by_their_nicknames_or_the_files_yours() -> Result<()> {
+    let file = r#"
+yours = "your {}"
+[[scene]]
+zone = 0x166
+[[scene.beat]]
+text = "May with her {memory:2}, and you with {yours:1}."
+[[scene.beat]]
+text = "You and {yours:25} face Steven."
+[[scene.beat]]
+text = "You and {yours:4} are nowhere."
+"#;
+    let (log, _) = logging();
+    let scenes = load(
+        Some(file),
+        &|_: &str, _: i64, _: i64| Ok(None),
+        &|_: &str, _: i64| None,
+        &log,
+        None,
+    )?;
+    let said: RefCell<Vec<String>> = RefCell::new(Vec::new());
+    let mut reader = Scenes::with_monotonic(scenes).recalling(
+        recalling(vec![
+            (("memory", 1), "Torchic"),
+            (("yours", 1), "Blaze"),
+            (("memory", 2), "Mudkip"),
+            (("memory", 25), "Primal Reversion Groudon"),
+        ]),
+        yours(Some(file)),
+    );
+    let mut say = |text: &str| said.borrow_mut().push(text.to_string());
+    reader.arrived(0x166, &mut say)?;
+    assert_eq!(
+        *said.borrow(),
+        [
+            "May with her Mudkip, and you with Blaze.",
+            "You and your Primal Reversion Groudon face Steven."
+        ]
+    );
     Ok(())
 }
 
@@ -366,30 +475,30 @@ fn test_a_scene_of_suns_is_said_over_the_demo_it_plays_as() -> Result<()> {
     let clock = now.clone();
     let mut reader = Scenes::new(scenes, Rc::new(move || clock.get()));
     let mut say = |text: &str| said.borrow_mut().push(text.to_string());
-    reader.demo(Some(55), &mut say);
-    reader.demo(None, &mut say);
+    reader.demo(Some(55), &mut say)?;
+    reader.demo(None, &mut say)?;
     assert!(said.borrow().is_empty());
-    reader.demo(Some(6), &mut say);
+    reader.demo(Some(6), &mut say)?;
     assert!(said.borrow().len() == 1 && said.borrow()[0].starts_with("After the call"));
     now.set(101.0);
-    reader.poll(&mut say);
+    reader.poll(&mut say)?;
     assert_eq!(said.borrow().len(), 1);
     now.set(102.0);
-    reader.poll(&mut say);
+    reader.poll(&mut say)?;
     assert!(
         said.borrow()
             .last()
             .is_some_and(|last| last.starts_with("Somewhere else, a girl"))
     );
     now.set(500.0);
-    reader.poll(&mut say);
+    reader.poll(&mut say)?;
     assert_eq!(said.borrow().len(), 10);
-    reader.arrived(0x0, &mut say);
+    reader.arrived(0x0, &mut say)?;
     now.set(501.0);
-    reader.poll(&mut say);
+    reader.poll(&mut say)?;
     assert!(said.borrow().len() == 11 && said.borrow()[10].starts_with("On the ground"));
     now.set(506.0);
-    reader.poll(&mut say);
+    reader.poll(&mut say)?;
     assert_eq!(said.borrow().len(), 12);
     Ok(())
 }

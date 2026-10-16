@@ -36,7 +36,7 @@ use crate::games::common::field::things::{
 use crate::games::common::layout::Layouts;
 use crate::games::common::layout_file::{LayoutFile, LayoutFiles};
 use crate::games::common::pictures::{CAUGHT, described};
-use crate::games::common::scenes::{Scenes, load as load_scenes};
+use crate::games::common::scenes::{Recall, Scenes, load as load_scenes, yours as scenes_yours};
 use crate::games::common::screen::{Pictures, ScreenPoll, ScreenText, ScreenTextReader};
 use crate::games::common::screen_announce::ScreenAnnouncer;
 use crate::games::common::session::Profile;
@@ -44,11 +44,12 @@ use crate::games::common::touch::{
     self, FileOf, Idle, ImageOf, Lists, OnScreen, PictureName, Tap, TextOf, TouchTargets,
 };
 use crate::games::common::{lyt, msgwin, pokemon, strbuf};
-use crate::games::gen6::apps::{BATTLE, DEMO, FIELD, MANAGER_CLASS, RunningApp};
+use crate::games::gen6::apps::{BATTLE, DEMOS, FIELD, MANAGER_CLASS, RunningApp};
 use crate::games::gen6::field::dowsing::Lights;
 use crate::games::gen6::field::reader::{FieldReader, MOVE_MODEL_CLASS};
 use crate::games::gen6::field::speaker::SpeakerReader;
 use crate::games::gen6::field::{camera, mapblock, talk};
+use crate::games::gen6::game::MemoriesReader;
 use crate::games::gen6::game::{ConditionsReader, Game, OpeningReader, OwnApp, StandingsReader};
 use crate::games::gen6::gflheap;
 use crate::games::gen6::rom::archives::GameText;
@@ -188,6 +189,8 @@ pub struct Gen6Profile {
     /// one it was made with, as it does there, and what is read through the profile is read
     /// through whichever this holds (`field`, `set_field`).
     field: Rc<RefCell<Rc<FieldReader>>>,
+    /// The Pokémon its save keeps for its credits, which their descriptions name (spike 222).
+    pub memories: Option<Rc<dyn MemoriesReader>>,
     /// What the heap is swept for in this game: `HEAP_CLASSES`, and what the game's own
     /// readers find their objects by.
     pub classes: Vec<String>,
@@ -384,11 +387,14 @@ impl Gen6Profile {
             Some(&named.words(TILES)),
             Some(&named.words(FURNITURE)),
         );
+        // The Pokémon its save keeps for its credits, which their descriptions name (spike 222).
+        let memories = game.memories.map(|make| make(memory.clone()));
         let classes: IndexSet<String> = HEAP_CLASSES
             .iter()
             .copied()
             .chain(field.classes())
             .map(String::from)
+            .chain(memories.iter().flat_map(|memories| memories.classes()))
             .collect();
         // The navigator says what it finds by the name it has been given, and renames it on a
         // key: the player standing in front of a sign is the only one who can name it.
@@ -660,7 +666,10 @@ impl Gen6Profile {
             // file or the ROM holds raises in `load` but a line number in digits no int reads.
             let loaded = load_scenes(file, &line_of(&text), &word_of(&text), &log, title)
                 .unwrap_or_else(|error| panic!("{error:?}"));
-            Some(RefCell::new(Scenes::with_monotonic(loaded)))
+            Some(RefCell::new(Scenes::with_monotonic(loaded).recalling(
+                recall(named.clone(), memories.clone(), text.clone()),
+                scenes_yours(file),
+            )))
         } else {
             None
         };
@@ -723,6 +732,7 @@ impl Gen6Profile {
             battle: RefCell::new(battle),
             speaker,
             field,
+            memories,
             classes: classes.into_iter().collect(),
             distribution,
             views: RefCell::new(views),
@@ -803,6 +813,9 @@ impl Gen6Profile {
             adding,
         )?;
         self.lists.borrow_mut().track(found.of(&[CONTROLLER_CLASS]));
+        if let Some(memories) = &self.memories {
+            memories.track(found);
+        }
         // A choice box has no class of its own; the device manager it holds does.
         for manager in found.of(&[DEVICE_MANAGER_CLASS]) {
             self.managers.borrow_mut().add(manager);
@@ -896,10 +909,10 @@ impl Gen6Profile {
         if started == BATTLE {
             self.battle.borrow_mut().begin();
         }
-        if started == DEMO
+        if DEMOS.contains(&started.as_str())
             && let Some(scenes) = &self.scenes
         {
-            scenes.borrow_mut().demo(None, &mut self.narrate());
+            scenes.borrow_mut().demo(None, &mut self.narrate())?;
         }
         for app in self.own.iter() {
             app.started();
@@ -943,7 +956,7 @@ impl Gen6Profile {
                         &page.text,
                         self.zone.get(),
                         &mut self.narrate(),
-                    );
+                    )?;
                 }
             }
         }
@@ -1170,7 +1183,7 @@ impl Gen6Profile {
     /// after each sweep, not every poll.
     pub fn poll_field(&self) -> Result<()> {
         if let Some(scenes) = &self.scenes {
-            scenes.borrow_mut().poll(&mut self.narrate());
+            scenes.borrow_mut().poll(&mut self.narrate())?;
         }
         if let Some((app, process)) = own_running(&self.apps, &self.own) {
             return phase(&*self.memory, app.name(), || app.poll(process));
@@ -1198,7 +1211,7 @@ impl Gen6Profile {
             self.arrive(at.zone)?;
             // After the place's name, which a scene across Hoenn's towns follows town by town.
             if arrived && let Some(scenes) = &self.scenes {
-                scenes.borrow_mut().arrived(at.zone, &mut self.narrate());
+                scenes.borrow_mut().arrived(at.zone, &mut self.narrate())?;
             }
             if let Some(scenes) = &self.scenes {
                 let wanted = scenes.borrow().triggers(at.zone);
@@ -1207,7 +1220,7 @@ impl Gen6Profile {
                 {
                     scenes
                         .borrow_mut()
-                        .stepped(at.zone, trigger, &mut self.narrate());
+                        .stepped(at.zone, trigger, &mut self.narrate())?;
                 }
             }
             self.poll_decorating(&at)?;
@@ -1540,6 +1553,34 @@ fn line_of(text: &GameText) -> impl Fn(&str, i64, i64) -> Result<Option<Vec<u8>>
             None
         })
     }
+}
+
+/// `Gen6Profile._recall`: the word for what a scene names as it is said: `memory`, the Pokémon
+/// the player's own save keeps for the credits' moment (spike 222), None where it keeps none;
+/// `yours`, the nickname the player gave that Pokémon, None where they gave none or no longer
+/// have it; `sprite`, what a speaker drawn as it is called.
+fn recall(
+    named: Rc<Names>,
+    memories: Option<Rc<dyn MemoriesReader>>,
+    text: Rc<GameText>,
+) -> Recall {
+    Rc::new(move |kind: &str, number: i64| {
+        if kind == "sprite" {
+            return Ok(named.sprite(number));
+        }
+        let Some(memories) = &memories else {
+            return Ok(None);
+        };
+        if kind == "yours" {
+            return memories.nickname(number);
+        }
+        let found = if kind == "memory" {
+            memories.pokemon(number)?
+        } else {
+            None
+        };
+        Ok(found.and_then(|(species, form)| text.pokemon(species, form)))
+    })
 }
 
 /// The game's own word for what a description names as `{kind:number}`, or None.

@@ -30,6 +30,7 @@ use crate::games::oras::field::ice::IceFloors;
 use crate::games::oras::field::secret_base::{SecretBases, zones as secret_bases_zones};
 use crate::games::oras::field::sky;
 use crate::games::oras::field::sky::Soaring;
+use crate::games::oras::memories::Memories;
 use crate::games::oras::screens::conditions::Conditions;
 use crate::games::oras::screens::contest::Standings;
 
@@ -806,6 +807,7 @@ pub fn game() -> &'static Game {
         warps: warps().clone(),
         standings: Some(Standings::of),
         conditions: Some(Conditions::of),
+        memories: Some(Memories::of),
         ..Game::new(
             "Omega Ruby and Alpha Sapphire",
             [OMEGA_RUBY, ALPHA_SAPPHIRE],
@@ -818,3 +820,5 @@ pub fn game() -> &'static Game {
 
 pub mod field;
 pub mod screens;
+
+pub mod memories;

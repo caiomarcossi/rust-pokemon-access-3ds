@@ -12,6 +12,9 @@
 //!   decrypted    +0x08 u16 species    +0x1d u8 gender in bits 1-2: 0 male, 1 female, 2 neither
 //!                +0x24 u8 each the contest conditions, coolness to toughness, then sheen
 //!                +0x40 the nickname, UTF-16LE: a Pokémon never nicknamed carries its species name
+//!                +0x74 u32 the IVs in bits 0-29, then whether it is an Egg (30) and whether it
+//!                      was nicknamed (31): set for every one Orion named, clear for Metagross,
+//!                      Gyarados and the five of his first box he never did (spike 222)
 //! battle stats   +0x04 u8 level    +0x08 u16 HP    +0x0a u16 maximum HP
 //! ```
 //!
@@ -36,6 +39,8 @@ pub const SPECIES: i64 = 0x08;
 pub const GENDER: i64 = 0x1D;
 pub const NICKNAME: i64 = 0x40;
 pub const NICKNAME_SIZE: i64 = 0x1A;
+pub const FLAGS: i64 = 0x74;
+pub const NICKNAMED: i64 = 1 << 31;
 /// ORAS's last species. Sun keeps its Pokémon in the same record (spike 124), up to 802.
 pub const SPECIES_MAX: i64 = 721;
 
@@ -63,6 +68,8 @@ pub struct Pokemon {
     pub species: i64,
     pub nickname: String,
     pub gender: i64,
+    /// Whether the nickname is the player's, not the species' name it carries otherwise.
+    pub nicknamed: bool,
 }
 
 /// XOR each halfword with the next keystream word from `seed`. Its own inverse.
@@ -123,10 +130,12 @@ pub fn parse(plain: &[u8], species_max: i64) -> Result<Option<Pokemon>> {
         Some(&byte) => i64::from(byte),
         None => return Err(Error::index("index out of range")),
     };
+    let flags = u32(plain, FLAGS)?;
     Ok(Some(Pokemon {
         species,
         nickname: nickname.to_string(),
         gender: (gender >> 1) & 3,
+        nicknamed: flags & NICKNAMED != 0,
     }))
 }
 

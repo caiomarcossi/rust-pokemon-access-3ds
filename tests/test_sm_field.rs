@@ -1212,7 +1212,10 @@ fn test_a_beat_waiting_for_a_zone_comes_as_the_field_arrives_there() {
     );
     profile.track(&bedroom.found).unwrap();
     let scenes = profile.scenes.as_ref().unwrap();
-    scenes.borrow_mut().demo(Some(6), &mut |_: &str| {});
+    scenes
+        .borrow_mut()
+        .demo(Some(6), &mut |_: &str| {})
+        .unwrap();
     assert!(bedroom.recorder.spoken().is_empty());
     profile.poll_field().unwrap();
     assert!(

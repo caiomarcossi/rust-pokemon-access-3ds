@@ -11,6 +11,7 @@ use std::rc::Rc;
 
 use indexmap::{IndexMap, IndexSet};
 
+use crate::core::discovery::Found;
 use crate::core::memory::Memory;
 use crate::core::rtti::ClassNames;
 use crate::core::speech::Speech;
@@ -91,6 +92,23 @@ pub trait ConditionsReader {
         waiting: bool,
     ) -> Result<()>;
 }
+
+/// The Pokémon one game's save keeps for its credits' moments, which scenes name as
+/// `{memory:N}`: ORAS's (`oras.memories`).
+pub trait MemoriesReader {
+    /// What the heap is swept for to find the save's object.
+    fn classes(&self) -> Vec<String>;
+    /// What a sweep found.
+    fn track(&self, found: &Found);
+    /// The species and form the save keeps for a moment, or None where it keeps none.
+    fn pokemon(&self, moment: i64) -> Result<Option<(i64, i64)>>;
+    /// The nickname the player gave the Pokémon of a moment, or None where they gave none
+    /// or no longer have it.
+    fn nickname(&self, moment: i64) -> Result<Option<String>>;
+}
+
+/// `Callable[[Memory], MemoriesReader]`.
+pub type MemoriesFactory = fn(Rc<dyn Memory>) -> Rc<dyn MemoriesReader>;
 
 /// `str | int`, what `Game.furniture` says a record is: a word, or the kind of use tile it is
 /// called as.
@@ -245,6 +263,9 @@ pub struct Game {
     /// the player's language, or None where the opening's choices are layouts, as ORAS's are: X's
     /// (`xy.intro`).
     pub opening: Option<OpeningFactory>,
+    /// The reader of the Pokémon its save keeps for its credits, or None in a game whose credits
+    /// have not been looked at: ORAS's (`oras.memories`, spike 222).
+    pub memories: Option<MemoriesFactory>,
 }
 
 impl Game {
@@ -287,6 +308,7 @@ impl Game {
             standings: None,
             conditions: None,
             opening: None,
+            memories: None,
         }
     }
 

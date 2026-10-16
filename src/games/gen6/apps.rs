@@ -31,6 +31,14 @@ pub const BATTLE: &str = "N3btl14BattleMainProcE";
 /// A scene of the game's own, played in its module: Groudon woken in Seafloor Cavern, the opening
 /// before the title. Its process is the same in every one, and says nothing of which (spike 203).
 pub const DEMO: &str = "N3app10field_demo4ProcE";
+/// Every app that plays a scene of the game's own: the field's demos, the Hall of Fame, and Omega
+/// Ruby and Alpha Sapphire's credits, which start three times over the ending, before May's battle,
+/// after it and after the save (spike 222).
+pub const DEMOS: [&str; 3] = [
+    DEMO,
+    "N3app11dendou_demo4ProcE",
+    "N3app15sango_staffroll13StaffrollProcE",
+];
 pub const MANAGER_RUNNING: i64 = 0x10;
 pub const PROCESS_MANAGER: i64 = 0x1C;
 /// How far into a process the manager's pointer may land. The Pokédex's lands deepest yet: 0x150.
