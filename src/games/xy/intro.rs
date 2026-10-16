@@ -22,8 +22,9 @@
 //! and each byte stepped once a press of the circle pad, wrapping round from the last to the first.
 //! The work's two pointers back are its check, since its class is in the intro's module.
 //!
-//! What each choice is called is pa3ds's own, in `looks.toml` beside X's names, a language a folder:
-//! the game never names them.
+//! What each choice is called is pa3ds's own, in the `[models]` of X's `pictures.toml` beside its
+//! names, a language a folder, as Omega Ruby's boy and girl and Sun's passport photos are in theirs
+//! (`pictures.described`): the game never names them.
 
 use std::rc::Rc;
 
@@ -31,9 +32,8 @@ use indexmap::IndexMap;
 
 use crate::core::binary::u32;
 use crate::core::memory::Memory;
-use crate::core::toml;
 use crate::games::common::announce::Focus;
-use crate::games::gen6::game::{Data, OpeningReader};
+use crate::games::gen6::game::OpeningReader;
 use crate::py::Result;
 
 pub const APP: &str = "N3app5intro9IntroProcE";
@@ -52,45 +52,18 @@ pub const CHOOSING_LOOK: i64 = 0x10;
 pub const GENDERS: [&str; 2] = ["boy", "girl"];
 pub const PLACES: [&str; 3] = ["left", "middle", "right"];
 
-/// pa3ds's words for each choice: `[gender]` by `GENDERS`, and `[boy]` and `[girl]` by
-/// `PLACES`.
-pub const LOOKS_FILE: &str = "looks.toml";
-/// Whose words are said where the player's language has none yet.
-pub const FALLBACK: &str = "en";
-
-/// `toml.read(data / language / LOOKS_FILE)`, `data` being the table of files the binary carries
-/// where Python's is the folder: a language it has no file for reads as nothing.
-fn read(data: Data, language: &str) -> IndexMap<String, ::toml::Value> {
-    toml::read_text(
-        data.iter()
-            .find(|(held, _)| *held == language)
-            .map(|(_, file)| *file),
-    )
-}
-
-/// The words for each choice from `data/<language>/looks.toml`, or the English where the
-/// language has no file. A table missing or malformed is no words at all.
-pub fn looks(data: Data, language: &str) -> IndexMap<String, IndexMap<String, String>> {
-    let mut found = read(data, language);
-    if found.is_empty() {
-        found = read(data, FALLBACK);
-    }
-    std::iter::once("gender")
-        .chain(GENDERS)
-        .map(|section| (section.to_string(), toml::strings(found.get(section))))
-        .collect()
-}
-
 /// Says the mirror or portrait under the cursor, as the choice opens and at each move.
 pub struct IntroReader {
     memory: Rc<dyn Memory>,
-    words: IndexMap<String, IndexMap<String, String>>,
+    /// pa3ds's words, by `boy` or `girl` for a mirror and `<boy or girl>_<place>` for a
+    /// portrait.
+    words: IndexMap<String, String>,
     /// The step, the gender and the place said last.
     shown: Option<(i64, i64, i64)>,
 }
 
 impl IntroReader {
-    pub fn new(memory: Rc<dyn Memory>, words: IndexMap<String, IndexMap<String, String>>) -> Self {
+    pub fn new(memory: Rc<dyn Memory>, words: IndexMap<String, String>) -> Self {
         IntroReader {
             memory,
             words,
@@ -139,16 +112,13 @@ impl OpeningReader for IntroReader {
         let opened = self.shown.is_none_or(|(last, ..)| last != step);
         self.shown = Some(shown);
         let (label, index, count) = if step == CHOOSING_GENDER {
-            let label = self
-                .words
-                .get("gender")
-                .and_then(|words| words.get(GENDERS[gender as usize]));
+            let label = self.words.get(GENDERS[gender as usize]);
             (label, gender, GENDERS.len() as i64)
         } else {
-            let label = self
-                .words
-                .get(GENDERS[gender as usize])
-                .and_then(|words| words.get(PLACES[place as usize]));
+            let label = self.words.get(&format!(
+                "{}_{}",
+                GENDERS[gender as usize], PLACES[place as usize]
+            ));
             (label, place, PLACES.len() as i64)
         };
         Ok(label.map(|label| Focus {

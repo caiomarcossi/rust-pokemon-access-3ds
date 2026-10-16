@@ -268,33 +268,25 @@ pub fn pane_words(name: &str) -> Option<String> {
     }
 }
 
-/// pa3ds's own words for a game's buttons of pictures alone, by pane name, from
-/// `data/<language>/pictures.toml`: the names rule's data file a game and a language
-/// (`pa3ds.core.names`). Empty where the language has none.
-///
-/// Python reads the file at a path; the binary carries it, so this takes its text, None where
-/// the game has no file in the language (`scenes::load`).
-pub fn buttons(text: Option<&str>) -> IndexMap<String, String> {
-    toml::strings(toml::read_text(text).get("buttons"))
-}
-
-/// pa3ds's own words for a choice's picture, by its texture's name less `.bclim`, from
-/// `data/<language>/pictures.toml`, or the English where the language has none yet: Omega
-/// Ruby's boy and girl, which the game draws and never names.
+/// pa3ds's own words for pictures the game draws and never names, from one section of
+/// `data/<language>/pictures.toml`, or of the English where the language has none yet: the
+/// names rule's data file a game and a language (`pa3ds.core.names`). Omega Ruby's boy and girl
+/// are `textures`, by texture name less `.bclim`; Sun's passport photos `buttons`, by pane name;
+/// X's boy, girl and looks `models`, by what its intro says is under the cursor.
 ///
 /// Python reads the files at a folder's paths; the binary carries them, so this takes the
 /// game's table of them, a file a language (`Game.pictures`).
-pub fn described(data: &[(&str, &str)], language: &str) -> IndexMap<String, String> {
+pub fn described(data: &[(&str, &str)], language: &str, section: &str) -> IndexMap<String, String> {
     let file = |language: &str| {
         data.iter()
             .find(|(held, _)| *held == language)
             .map(|(_, file)| *file)
     };
-    let found = toml::strings(toml::read_text(file(language)).get("textures"));
+    let found = toml::strings(toml::read_text(file(language)).get(section));
     if !found.is_empty() {
         return found;
     }
-    toml::strings(toml::read_text(file("en")).get("textures"))
+    toml::strings(toml::read_text(file("en")).get(section))
 }
 
 /// The sign of a Box mark's texture, or None for any other texture.

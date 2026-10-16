@@ -7,10 +7,11 @@ use indexmap::IndexMap;
 
 use super::fake_memory::FakeMemory;
 use crate::games::common::announce::Focus;
+use crate::games::common::pictures::described;
 use crate::games::gen6::game::OpeningReader;
 use crate::games::xy;
 use crate::games::xy::intro;
-use crate::games::xy::intro::{IntroReader, looks};
+use crate::games::xy::intro::IntroReader;
 
 const PROCESS: i64 = 0x08C61BE8;
 const HEAP: i64 = 0x081FB124;
@@ -23,28 +24,16 @@ fn table(pairs: &[(&str, &str)]) -> IndexMap<String, String> {
         .collect()
 }
 
-fn words() -> IndexMap<String, IndexMap<String, String>> {
-    IndexMap::from([
-        (
-            "gender".to_string(),
-            table(&[("boy", "Boy, red cap"), ("girl", "Girl, pink hat")]),
-        ),
-        (
-            "boy".to_string(),
-            table(&[
-                ("left", "Pale skin"),
-                ("middle", "Fair skin"),
-                ("right", "Brown skin"),
-            ]),
-        ),
-        (
-            "girl".to_string(),
-            table(&[
-                ("left", "Pale skin, long hair"),
-                ("middle", "Fair skin, long hair"),
-                ("right", "Brown skin, long hair"),
-            ]),
-        ),
+fn words() -> IndexMap<String, String> {
+    table(&[
+        ("boy", "Boy, red cap"),
+        ("girl", "Girl, pink hat"),
+        ("boy_left", "Pale skin"),
+        ("boy_middle", "Fair skin"),
+        ("boy_right", "Brown skin"),
+        ("girl_left", "Pale skin, long hair"),
+        ("girl_middle", "Fair skin, long hair"),
+        ("girl_right", "Brown skin, long hair"),
     ])
 }
 
@@ -122,29 +111,27 @@ fn test_a_work_that_does_not_point_back_is_not_read() {
 
 #[test]
 fn test_every_choice_has_words_and_a_language_without_a_file_has_the_english() {
-    let english = looks(xy::LOOKS, "en");
-    assert_eq!(english["gender"].len(), intro::GENDERS.len());
+    let english = described(xy::PICTURES, "en", "models");
+    let mut wanted: Vec<String> = intro::GENDERS
+        .iter()
+        .map(|gender| gender.to_string())
+        .collect();
     for gender in intro::GENDERS {
-        assert!(english["gender"].contains_key(gender));
-    }
-    for gender in intro::GENDERS {
-        assert_eq!(english[gender].len(), intro::PLACES.len());
         for place in intro::PLACES {
-            assert!(english[gender].contains_key(place));
+            wanted.push(format!("{gender}_{place}"));
         }
     }
-    assert_eq!(looks(xy::LOOKS, "fr"), english);
+    let mut keys: Vec<String> = english.keys().cloned().collect();
+    keys.sort();
+    wanted.sort();
+    assert_eq!(keys, wanted);
+    assert_eq!(described(xy::PICTURES, "fr", "models"), english);
 }
 
 #[test]
 fn test_a_missing_folder_is_no_words_at_all() {
-    let nothing = IndexMap::<String, String>::new;
     assert_eq!(
-        looks(&[], "en"),
-        IndexMap::from([
-            ("gender".to_string(), nothing()),
-            ("boy".to_string(), nothing()),
-            ("girl".to_string(), nothing()),
-        ])
+        described(&[], "en", "models"),
+        IndexMap::<String, String>::new()
     );
 }

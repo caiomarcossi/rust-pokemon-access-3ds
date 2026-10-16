@@ -328,7 +328,7 @@ fn test_a_button_of_pictures_alone_is_said_by_pa3ds_own_words_where_it_has_some(
         None,
         true,
         None,
-        pictures::buttons(field::in_language(field::PICTURES, "en")),
+        pictures::described(field::PICTURES, "en", "buttons"),
     );
     title.heard();
     let mut name = b"Hero_00".to_vec();

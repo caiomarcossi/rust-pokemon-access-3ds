@@ -364,7 +364,7 @@ impl Gen6Profile {
             false,
             named_by_image,
             IndexMap::new(),
-            described(game.pictures, &text.language),
+            described(game.pictures, &text.language, "textures"),
         );
         let battlers = Rc::new(Battlers::new(memory.clone(), names.clone()));
         let gauges = Rc::new(Gauges::new(memory.clone(), names.clone()));

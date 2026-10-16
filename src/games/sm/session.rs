@@ -148,7 +148,7 @@ pub fn start(rpc: Rc<dyn Rpc>, speech: Rc<Speech>, setup: Setup) -> Result<Sessi
         let live = live.clone();
         Rc::new(move || live.spans())
     };
-    let buttons = pictures::buttons(field::in_language(field::PICTURES, &setup.language));
+    let buttons = pictures::described(field::PICTURES, &setup.language, "buttons");
     // Sun's scenes are found by their demo's number, so none follows a line and none names a
     // thing the game does (ADR-0038).
     let described = if setup.ui.descriptions {
