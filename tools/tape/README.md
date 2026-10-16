@@ -25,6 +25,10 @@ From this repository, with the Python checkout's interpreter (it has pa3ds and t
 `spikes/regress.py run` plays it. Beside the tape go `<tape>.log` (what the runtime logged,
 without times) and `<tape>.said` (what it said, `!` before a line that interrupts).
 
+A replay plays with the default settings, where `[pa3ds.ui] descriptions` is off and no scene is
+described. Name it `<replay>_described` (`record_all.sh or_movie49_described`) to play `<replay>`
+with descriptions on: `py.py` and `tape.exe` both turn them on for a tape of that name.
+
 A tape is checked by replaying it through the Python runtime itself, which must reproduce both
 files exactly:
 

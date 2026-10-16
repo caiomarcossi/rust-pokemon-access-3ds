@@ -14,6 +14,7 @@ use std::process::ExitCode;
 use std::rc::Rc;
 
 use pa3ds::app::{self, Settings};
+use pa3ds::core::config::Ui;
 use pa3ds::core::rpc::Rpc;
 use pa3ds::core::speech::{Backend, Speech};
 use pa3ds::py::{Log, time};
@@ -33,16 +34,25 @@ impl Backend for Heard {
 }
 
 /// The settings `spikes/regress.py` gives a replay at real speed: the defaults, with the
-/// replays' own user folder, never the player's.
-fn replay_settings() -> Settings {
+/// replays' own user folder, never the player's. A tape whose name ends in `DESCRIBED` was
+/// recorded with `descriptions` on, as `tools/tape/py.py` records it.
+fn replay_settings(name: &str) -> Settings {
     let home = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .map(|local| local.join("pa3ds").join("captures").join("replay-home"));
+    let defaults = Settings::default();
     Settings {
         names_home: home,
-        ..Settings::default()
+        ui: Ui {
+            descriptions: name.ends_with(DESCRIBED),
+            ..defaults.ui.clone()
+        },
+        ..defaults
     }
 }
+
+/// What a tape's name ends in when it was recorded with `descriptions` on.
+const DESCRIBED: &str = "_described";
 
 /// A file's lines, CRLF or LF.
 fn lines(text: &str) -> Vec<String> {
@@ -121,7 +131,7 @@ fn replay(path: &Path) -> Result<bool, String> {
     let rpc: Rc<dyn Rpc> = Rc::new(TapeRpc::new(tape.clone()));
     let speech = Rc::new(Speech::plain(Rc::new(Heard(said.clone()))));
     let ran = panic::catch_unwind(AssertUnwindSafe(|| {
-        app::run(rpc, speech, replay_settings(), &|| false, log)
+        app::run(rpc, speech, replay_settings(name), &|| false, log)
     }));
     time::set_clock(previous);
     let ending = match ran {

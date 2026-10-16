@@ -11,6 +11,9 @@ Run with the Python checkout's own interpreter, which has pa3ds and the rig:
 interrupts). `replay` runs the Python runtime on the tape alone and writes what
 it logged, and what it said beside it; a sound tape's are identical to the recording's.
 
+A tape named `<replay>_described` plays `<replay>` with `[pa3ds.ui] descriptions` on, recorded
+and replayed alike, so the scenes are checked as well.
+
 The Python checkout is `PA3DS_PYTHON`, or `../pokemon-access-3ds` beside this repository.
 """
 
@@ -47,6 +50,32 @@ def strip_time(line: str) -> str:
     return line[9:] if len(line) > 9 and line[8] == " " else line
 
 
+DESCRIBED = "_described"
+"""What a tape's name ends in when it was recorded with `descriptions` on."""
+
+
+def described(tape: Path) -> bool:
+    return tape.name.removesuffix(".tape.gz").endswith(DESCRIBED)
+
+
+def with_descriptions(regress, tape: Path) -> None:  # noqa: ANN001
+    """Have `regress.settings_at` turn descriptions on for a described tape."""
+    if not described(tape):
+        return
+    import dataclasses
+
+    from pa3ds.core.config import Ui
+
+    plain = regress.settings_at
+
+    def settings_at(speed):  # noqa: ANN001, ANN202
+        settings = plain(speed)
+        return dataclasses.replace(settings,
+                                   ui=dataclasses.replace(settings.ui, descriptions=True))
+
+    regress.settings_at = settings_at
+
+
 def record(name: str, out: Path) -> int:
     writer = tape.Writer(out)
 
@@ -65,6 +94,8 @@ def record(name: str, out: Path) -> int:
     import regress
 
     regress.Rpc = tape.recording_rpc(writer)
+    with_descriptions(regress, out)
+    name = name.removesuffix(DESCRIBED)
     said: list[str] = []
     regress.Silent = lambda: Heard(said)
     replay = next((r for r in regress.replays() if r.name == name), None)
@@ -105,6 +136,7 @@ def replay(path: Path, out: Path) -> int:
     from pa3ds.app import run
     from pa3ds.core.speech import Speech
 
+    with_descriptions(regress, path)
     lines: list[str] = []
     said: list[str] = []
     ending = "end of tape"
