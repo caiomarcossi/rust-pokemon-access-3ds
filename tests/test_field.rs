@@ -1963,6 +1963,60 @@ fn test_a_trigger_into_another_place_is_an_exit_leading_there() -> Result<()> {
     Ok(())
 }
 
+/// X's house (x_house-map.ctm): the bedroom and the ground floor are one zone side by side
+/// on one chunk, no floor between them, and the stairs are triggers the game moves the player
+/// through. In the bedroom the list held Mom and the way out below, and P found no way to
+/// them. Only the player's room is listed, the stairs down among it.
+#[test]
+fn test_a_zone_of_rooms_lists_only_the_room_the_player_stands_in() -> Result<()> {
+    let mut town = Town::new();
+    let mut blocked = border(160);
+    blocked.extend((80..120).map(|x| (x, 174)));
+    town.block(TOWN_BLOCK, TOWN_CHUNK, (80, 160), &blocked);
+    town.memory.write(
+        FILE,
+        &zone_file(&ZoneSpec {
+            info: &town_info(),
+            triggers: &[(0x6, 96, 173, 1, None), (0x5, 96, 175, 1, None)],
+            ..ZoneSpec::default()
+        }),
+    );
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given::default(),
+        Game {
+            rooms: HashSet::from([TOWN]),
+            triggers: IndexMap::from([
+                (
+                    (TOWN, 0x6),
+                    ("exits".to_string(), "stairs down".to_string(), None),
+                ),
+                (
+                    (TOWN, 0x5),
+                    ("exits".to_string(), "stairs up".to_string(), None),
+                ),
+            ]),
+            ..game()
+        },
+    );
+    let mut listed: Vec<(String, (i64, i64))> = town
+        .r#where()?
+        .interactables
+        .iter()
+        .filter(|item| item.kind != "edge")
+        .map(|item| (item.kind.clone(), item.cell))
+        .collect();
+    listed.sort();
+    assert_eq!(
+        listed,
+        [
+            ("object".to_string(), (110, 170)),
+            ("stairs down".to_string(), (96, 173))
+        ]
+    );
+    Ok(())
+}
+
 #[test]
 fn test_the_ground_ends_with_the_matrix_and_is_open_where_no_chunk_is_loaded() -> Result<()> {
     let town = Town::new();

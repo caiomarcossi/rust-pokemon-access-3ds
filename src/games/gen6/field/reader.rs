@@ -269,6 +269,8 @@ pub struct FieldReader {
     player_looks: HashSet<i64>,
     /// Zones whose floors' stairs are listed (`Game.stairs`).
     stairs: HashSet<i64>,
+    /// Zones listed a room at a time (`Game.rooms`).
+    rooms: HashSet<i64>,
     /// The game's rooms of thin ice, or None in a game without them.
     ice: Option<Rc<dyn IceReader>>,
     /// What the game calls each decoration, by its number (`GameText.decorations`).
@@ -419,6 +421,7 @@ impl FieldReader {
             elevators: game.elevators.clone(),
             player_looks: game.player_looks.clone(),
             stairs: game.stairs.clone(),
+            rooms: game.rooms.clone(),
             ice: game.ice.map(|make| make(memory.clone())),
             decorations: text.decorations.clone(),
             furniture_kinds: game.furniture.clone(),
@@ -993,10 +996,44 @@ impl FieldReader {
                 items.retain(|item| !item.cells().iter().all(|cell| gone.contains(cell)));
             }
         }
+        if self.rooms.contains(&r#where.zone) {
+            items = self.in_room(items, r#where.cell)?;
+        }
         Ok(Field {
             interactables: one_a_spot(items),
             ..r#where.clone()
         })
+    }
+
+    /// `items` less the zone's other rooms' (`Game.rooms`): those on or beside the open floor
+    /// joined side to side to the player's cell, as a sign on a wall is. All of them where the
+    /// player stands on no open floor the chunks loaded hold.
+    fn in_room(&self, items: Vec<Interactable>, player: Cell) -> Result<Vec<Interactable>> {
+        let mut floor: HashSet<Cell> = HashSet::new();
+        for chunk in self.chunks_loaded()? {
+            for (cell, _) in chunk.kinds() {
+                if chunk.walkable(cell)? {
+                    floor.insert(cell);
+                }
+            }
+        }
+        let room: Option<HashSet<Cell>> = touching(&floor)
+            .into_iter()
+            .find(|group| group.contains(&player))
+            .map(|group| group.into_iter().collect());
+        let Some(room) = room else {
+            return Ok(items);
+        };
+        Ok(items
+            .into_iter()
+            .filter(|item| {
+                item.cells().iter().any(|&cell| {
+                    std::iter::once(cell)
+                        .chain(beside(cell))
+                        .any(|near| room.contains(&near))
+                })
+            })
+            .collect())
     }
 
     /// `people` with each big boulder told the ways it moves (`Interactable.pushes`), and

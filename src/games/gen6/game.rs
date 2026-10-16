@@ -221,6 +221,10 @@ pub struct Game {
     /// Zones whose chunks' floors are joined by stairs, each listed under exits where it meets
     /// the floor above: Sootopolis Gym's two, the way back up from its lower floor.
     pub stairs: HashSet<i64>,
+    /// Zones that are several rooms side by side with no floor between them, which the game
+    /// moves the player between by triggers (`triggers`): only the room the player stands in is
+    /// listed. X's house, its bedroom and its ground floor.
+    pub rooms: HashSet<i64>,
     /// Its own apps' readers, each built from the memory, the ROM's words, and where to say and
     /// log, or None where what it needs is not read: ORAS's soaring (`oras.field.sky`).
     pub apps: Vec<AppFactory>,
@@ -273,6 +277,7 @@ impl Game {
             elevators: HashSet::new(),
             player_looks: HashSet::new(),
             stairs: HashSet::new(),
+            rooms: HashSet::new(),
             apps: Vec::new(),
             warps: IndexMap::new(),
             standings: None,

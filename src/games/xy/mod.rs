@@ -7,6 +7,7 @@
 //! the Town Map's list of what each town has where ORAS keeps the AreaNav's (spike 101). Y is X's other
 //! version and is taken to be laid out as X is; no Y has been read.
 
+use std::collections::HashSet;
 use std::sync::OnceLock;
 
 use indexmap::IndexMap;
@@ -182,10 +183,27 @@ pub fn rom() -> &'static RomLayout {
 /// MONSBALL for an item ball (spike 100).
 pub const DRAWN: i64 = 0x890;
 
+/// The player's house in Vaniville Town: the bedroom and the ground floor, side by side on one
+/// chunk of one zone with no floor between them. Its stairs are triggers whose scripts move the
+/// player from one room to the other, the bedroom's at (9, 15) and the ground floor's at (31, 35),
+/// the only triggers of either game that do (spike 217).
+pub const HOUSE: i64 = 0x2;
+
 /// X and Y as the gen 6 readers read them.
 pub fn game() -> &'static Game {
     static GAME: OnceLock<Game> = OnceLock::new();
     GAME.get_or_init(|| Game {
+        triggers: IndexMap::from([
+            (
+                (HOUSE, 0x6),
+                ("exits".to_string(), "stairs down".to_string(), None),
+            ),
+            (
+                (HOUSE, 0x5),
+                ("exits".to_string(), "stairs up".to_string(), None),
+            ),
+        ]),
+        rooms: HashSet::from([HOUSE]),
         opening: Some(|memory, language| {
             Box::new(IntroReader::new(memory, looks(LOOKS, language)))
         }),
