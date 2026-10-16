@@ -291,6 +291,9 @@ pub struct FieldReader {
     pub terrain: Terrain,
     /// Underwater zone -> its `Ground.surfaces`, once found.
     surfaces_of: RefCell<HashMap<i64, IndexMap<Cell, Rc<HashSet<Cell>>>>>,
+    /// Zone -> its triggers' boxes, (x, z, width, height) in the table's order, once read
+    /// (`trigger_at`).
+    trigger_boxes: RefCell<HashMap<i64, Vec<(i64, i64, i64, i64)>>>,
     /// The player's height in the world at the last poll, which says which floor of a chunk with a
     /// deck they are on (`mapblock.flat`).
     height: Slot<Option<f64>>,
@@ -433,6 +436,7 @@ impl FieldReader {
             clears: game.clears.clone(),
             terrain,
             surfaces_of: RefCell::new(HashMap::new()),
+            trigger_boxes: RefCell::new(HashMap::new()),
             height: Slot::new(None),
             ways_of: RefCell::new((None, Vec::new(), Vec::new(), Vec::new())),
             clock,
@@ -1405,6 +1409,42 @@ impl FieldReader {
             Some(hidden) => hidden.listed(zone, &|cell| self.zone_at(cell))?,
         };
         Ok(listed.into_iter().next())
+    }
+
+    /// Which of the zone's triggers, by its place in the zone's table, the cell is inside, of
+    /// those `among`; None for none (`scenes.Scenes.stepped`). The boxes are read once a zone,
+    /// from its own zone data: not the zone before's, which can still be in use as the player
+    /// arrives.
+    pub fn trigger_at(&self, zone: i64, cell: Cell, among: &HashSet<i64>) -> Result<Option<i64>> {
+        if !self.trigger_boxes.borrow().contains_key(&zone) {
+            let Some(data) = self.current()? else {
+                return Ok(None);
+            };
+            if self.home(&data, &[zone])? != Some(zone) {
+                return Ok(None);
+            }
+            let mut boxes: Vec<(i64, i64, i64, i64)> = Vec::new();
+            for record in read_triggers(&*self.memory, &data)? {
+                boxes.push((
+                    u16(&record, TRIGGER_X)?,
+                    u16(&record, TRIGGER_Z)?,
+                    u16(&record, TRIGGER_WIDTH)?,
+                    u16(&record, TRIGGER_HEIGHT)?,
+                ));
+            }
+            self.trigger_boxes.borrow_mut().insert(zone, boxes);
+        }
+        Ok(self.trigger_boxes.borrow()[&zone]
+            .iter()
+            .enumerate()
+            .find(|(i, (x, z, width, height))| {
+                among.contains(&(*i as i64))
+                    && *x <= cell.0
+                    && cell.0 < x + width
+                    && *z <= cell.1
+                    && cell.1 < z + height
+            })
+            .map(|(i, _)| i as i64))
     }
 
     /// Which zone a zone data file is (`ZoneTable.home`): the zones `likely` and the player's

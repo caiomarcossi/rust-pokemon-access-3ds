@@ -9,7 +9,10 @@
 //! then `at` seconds on. A scene waiting for a demo or a zone is let go when the player arrives
 //! anywhere else, as after losing a battle in it. A scene with no line is said each time the player
 //! arrives in its zone: a room whose way on nothing shows but the room itself. A line with no zone
-//! is said before the player has arrived anywhere: the opening's.
+//! is said before the player has arrived anywhere: the opening's. A scene of one of a zone's
+//! triggers is said as the player first steps onto the trigger's cells after arriving: each of the
+//! Pokémon League's corridors plays its scene as the player walks across the trigger halfway along
+//! it, with no line before or after (Orion, 2026-10-16).
 //!
 //! Omega Ruby and Alpha Sapphire play their own scenes in rooms of their own, twin zones of one
 //! layout (Seafloor Cavern's 0x6f and 0x6e), but some lines are said in a zone both share, as
@@ -26,6 +29,7 @@
 //! `narrate`; here the profile owns the announcements through `&mut`, so it hands the callable to
 //! each method that may say a beat instead (`Say`).
 
+use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::OnceLock;
 
@@ -64,7 +68,8 @@ pub struct Beat {
 
 /// A description and the line it follows: the last page of the line's message, by its index and
 /// a pattern of its words, or None for a scene said on arriving or as a demo starts; the zone it
-/// is said in; or the number of the demo it is said over.
+/// is said in; the number of the demo it is said over; or the zone's trigger, by its place in the
+/// zone's table of them, that starts it.
 #[derive(Debug, Clone)]
 pub struct Scene {
     pub page: Option<i64>,
@@ -73,6 +78,7 @@ pub struct Scene {
     pub zone: Option<i64>,
     pub beats: Vec<Beat>,
     pub demo: Option<i64>,
+    pub trigger: Option<i64>,
 }
 
 /// The index of a message's last page, and a pattern its text matches as the dialogue reader
@@ -126,8 +132,9 @@ pub type Word<'a> = &'a dyn Fn(&str, i64) -> Option<String>;
 /// The scenes of a file, each with the line it follows out of the ROM and its names in the
 /// game's own words. A line is `story:402:30`, the story text's file 402 and its line 30, or
 /// `text:147:67` out of the rest of the game's text, in its zone or, with none, before the player
-/// is anywhere; a scene with no line is said on arriving in its zone, or as its demo starts,
-/// `demo = 6`, where the game numbers them. A scene whose line or names the ROM does not have is
+/// is anywhere; a scene with no line is said on arriving in its zone, as the player steps onto
+/// one of its triggers, `trigger = 0`, or as its demo starts, `demo = 6`, where the game numbers
+/// them. A scene whose line or names the ROM does not have is
 /// left out, and logged. A scene with a `title` is the running `title`'s alone: one version's,
 /// said at a line in a zone the other version shares.
 ///
@@ -153,6 +160,10 @@ pub fn load(
             Some(Value::Integer(number)) => Some(*number),
             _ => None,
         };
+        let trigger = match table.get("trigger") {
+            Some(Value::Integer(number)) => Some(*number),
+            _ => None,
+        };
         let (archive, at) = partition(&after);
         let (file, number) = partition(at);
         let raw = if py::isdigit(file) && py::isdigit(number) {
@@ -174,7 +185,7 @@ pub fn load(
             || kept.is_empty()
             || kept.len() < beats.len()
         {
-            log_left_out(log, &after, demo);
+            log_left_out(log, &after, demo, trigger);
             continue;
         }
         let (page, words) = match page {
@@ -187,14 +198,16 @@ pub fn load(
             zone,
             beats: kept,
             demo,
+            trigger,
         });
     }
     Ok(scenes)
 }
 
-fn log_left_out(log: &Log, after: &str, demo: Option<i64>) {
+fn log_left_out(log: &Log, after: &str, demo: Option<i64>, trigger: Option<i64>) {
     let what = match demo {
         _ if !after.is_empty() => after.to_string(),
+        _ if let Some(trigger) = trigger => format!("trigger {trigger}"),
         None => "arriving".to_string(),
         Some(demo) => format!("demo {demo}"),
     };
@@ -301,6 +314,10 @@ pub struct Scenes {
     since: f64,
     /// Whether what the next beat waits for has come.
     met: bool,
+    /// The triggers of the zone stepped onto since arriving in it, each said once: a
+    /// corridor's trigger is armed only until its scene has played, and walking back over it
+    /// plays nothing.
+    stepped_on: HashSet<i64>,
 }
 
 impl Scenes {
@@ -312,12 +329,39 @@ impl Scenes {
             next: 0,
             since: 0.0,
             met: false,
+            stepped_on: HashSet::new(),
         }
     }
 
     /// `Scenes(scenes, say)`: on the monotonic clock.
     pub fn with_monotonic(scenes: Vec<Scene>) -> Self {
         Scenes::new(scenes, Rc::new(py::time::monotonic))
+    }
+
+    /// The triggers of a zone that start a scene, still to be stepped onto: where nothing is
+    /// wanted, the field's triggers are not read.
+    pub fn triggers(&self, zone: i64) -> HashSet<i64> {
+        self.scenes
+            .iter()
+            .filter(|scene| scene.zone == Some(zone))
+            .filter_map(|scene| scene.trigger)
+            .filter(|trigger| !self.stepped_on.contains(trigger))
+            .collect()
+    }
+
+    /// The player has stepped onto one of the zone's triggers: the scene it starts starts, the
+    /// first time since arriving.
+    pub fn stepped(&mut self, zone: i64, trigger: i64, say: Say) {
+        if !self.stepped_on.insert(trigger) {
+            return;
+        }
+        let found = self
+            .scenes
+            .iter()
+            .position(|scene| scene.zone == Some(zone) && scene.trigger == Some(trigger));
+        if let Some(found) = found {
+            self.start(found, say);
+        }
     }
 
     /// A page of dialogue just said, in the zone the player is in.
@@ -353,6 +397,7 @@ impl Scenes {
     /// The player is in another zone: a beat waiting for it comes, a scene waiting for another is
     /// let go, and a scene said on arriving there starts.
     pub fn arrived(&mut self, zone: i64, say: Say) {
+        self.stepped_on.clear();
         if let Some(beat) = self.waiting()
             && (beat.zone.is_some() || beat.demo)
         {
@@ -363,7 +408,10 @@ impl Scenes {
             self.scene = None;
         }
         let found = self.scenes.iter().position(|scene| {
-            scene.words.is_none() && scene.demo.is_none() && scene.zone == Some(zone)
+            scene.words.is_none()
+                && scene.demo.is_none()
+                && scene.trigger.is_none()
+                && scene.zone == Some(zone)
         });
         if let Some(found) = found {
             self.start(found, say);

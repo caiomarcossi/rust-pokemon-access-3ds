@@ -1,6 +1,7 @@
 //! Descriptions of scenes: found by the line they follow, said a beat at a time (spike 203).
 
 use std::cell::{Cell, RefCell};
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use indexmap::IndexMap;
@@ -301,6 +302,48 @@ text = "You stand in the truck."
         *said.borrow(),
         ["The doors swing wide.", "You stand in the truck."]
     );
+    Ok(())
+}
+
+/// The Pokémon League's corridors play their scenes as the player walks across the trigger
+/// halfway along each, with no line before or after (movie49, Orion 2026-10-16): said once since
+/// arriving, and the room beyond after it, as the player arrives there.
+#[test]
+fn test_a_scene_of_a_trigger_is_said_as_the_player_first_steps_onto_it() -> Result<()> {
+    let file = r#"
+[[scene]]
+zone = 0x16b
+trigger = 0
+[[scene.beat]]
+text = "The doors open."
+[[scene.beat]]
+zone = 0x162
+text = "A square room."
+"#;
+    let (log, _) = logging();
+    let scenes = load(
+        Some(file),
+        &|_: &str, _: i64, _: i64| Ok(None),
+        &|_: &str, _: i64| None,
+        &log,
+        None,
+    )?;
+    let said: RefCell<Vec<String>> = RefCell::new(Vec::new());
+    let mut reader = Scenes::with_monotonic(scenes);
+    let mut say = |text: &str| said.borrow_mut().push(text.to_string());
+    reader.arrived(0x16B, &mut say);
+    assert!(said.borrow().is_empty());
+    assert_eq!(reader.triggers(0x16B), HashSet::from([0]));
+    assert_eq!(reader.triggers(0x162), HashSet::new());
+    reader.stepped(0x16B, 0, &mut say);
+    reader.stepped(0x16B, 0, &mut say);
+    assert_eq!(*said.borrow(), ["The doors open."]);
+    assert_eq!(reader.triggers(0x16B), HashSet::new());
+    reader.arrived(0x162, &mut say);
+    assert_eq!(*said.borrow(), ["The doors open.", "A square room."]);
+    reader.arrived(0x16B, &mut say);
+    reader.stepped(0x16B, 0, &mut say);
+    assert_eq!(said.borrow().last().unwrap(), "The doors open.");
     Ok(())
 }
 

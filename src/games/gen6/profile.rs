@@ -1200,6 +1200,16 @@ impl Gen6Profile {
             if arrived && let Some(scenes) = &self.scenes {
                 scenes.borrow_mut().arrived(at.zone, &mut self.narrate());
             }
+            if let Some(scenes) = &self.scenes {
+                let wanted = scenes.borrow().triggers(at.zone);
+                if !wanted.is_empty()
+                    && let Some(trigger) = field.trigger_at(at.zone, at.cell, &wanted)?
+                {
+                    scenes
+                        .borrow_mut()
+                        .stepped(at.zone, trigger, &mut self.narrate());
+                }
+            }
             self.poll_decorating(&at)?;
             // A hidden Pokémon shows and goes between sweeps, so its record is read every poll.
             let hiding = field.hidden(at.zone)?;
