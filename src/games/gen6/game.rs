@@ -225,6 +225,9 @@ pub struct Game {
     /// moves the player between by triggers (`triggers`): only the room the player stands in is
     /// listed. X's house, its bedroom and its ground floor.
     pub rooms: HashSet<i64>,
+    /// Where its things' and its Pokémon's models start, where `drawn` holds a model rather than
+    /// a sprite (`mmodel.sprite_of`): X's; None where it holds the sprite.
+    pub models: Option<(i64, i64)>,
     /// Its own apps' readers, each built from the memory, the ROM's words, and where to say and
     /// log, or None where what it needs is not read: ORAS's soaring (`oras.field.sky`).
     pub apps: Vec<AppFactory>,
@@ -278,6 +281,7 @@ impl Game {
             player_looks: HashSet::new(),
             stairs: HashSet::new(),
             rooms: HashSet::new(),
+            models: None,
             apps: Vec::new(),
             warps: IndexMap::new(),
             standings: None,

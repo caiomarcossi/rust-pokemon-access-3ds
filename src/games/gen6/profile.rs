@@ -370,6 +370,7 @@ impl Gen6Profile {
             memory.clone(),
             named.clone(),
             game.drawn,
+            game.models,
         ));
         // Each game's own readers come with it: ORAS's DexNav, its Secret Bases, whose every spot
         // is listed in the executable (spike 154), Route 113's ash piles, and Fortree and

@@ -308,6 +308,8 @@ pub struct FieldReader {
     outdoors: HashSet<i64>,
     /// Where the game keeps the sprite a move model is drawn with (`mmodel.drawn_as`).
     drawn: i64,
+    /// Where the game's things' and Pokémon's models start (`Game.models`).
+    model_starts: Option<(i64, i64)>,
     /// What each kind of use tile is: the game's own word where it has one, the PC's out of
     /// the ROM (`archives.PC_LINES`), ahead of the shipped table's.
     words: IndexMap<i64, String>,
@@ -438,6 +440,7 @@ impl FieldReader {
             belts: game.belts.clone(),
             outdoors: text.outdoors.clone(),
             drawn: game.drawn,
+            model_starts: game.models,
             words,
             furniture_words: furniture.cloned().unwrap_or_default(),
             shared: text.shared.clone(),
@@ -1688,7 +1691,8 @@ impl FieldReader {
             if !holes.contains(&cell) && walled_in(&chunks, cell)? {
                 continue;
             }
-            let code = mmodel::drawn_as(&*self.memory, model, &head, self.drawn)?;
+            let code =
+                mmodel::drawn_as(&*self.memory, model, &head, self.drawn, self.model_starts)?;
             let role = self.role(&head, code)?;
             if role == Role::Look || role == Role::Blocker {
                 continue;
@@ -1782,7 +1786,8 @@ impl FieldReader {
         let mut out: IndexMap<Cell, Option<f64>> = IndexMap::new();
         for other in self.others() {
             let (model, head) = other?;
-            let code = mmodel::drawn_as(&*self.memory, model, &head, self.drawn)?;
+            let code =
+                mmodel::drawn_as(&*self.memory, model, &head, self.drawn, self.model_starts)?;
             if unseen.contains(&self.role(&head, code)?)
                 && let Some(cell) = mmodel::cell(&head)?
             {
@@ -1809,7 +1814,7 @@ impl FieldReader {
     ) -> Result<Interactable> {
         let code = match code {
             Some(code) => code,
-            None => mmodel::drawn_as(&*self.memory, model, head, self.drawn)?,
+            None => mmodel::drawn_as(&*self.memory, model, head, self.drawn, self.model_starts)?,
         };
         let source = u32(head, mmodel::ZONE)? << 32 | model;
         let (category, kind) = if code == mmodel::ITEM_BALL {

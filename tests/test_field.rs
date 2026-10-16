@@ -3529,6 +3529,38 @@ fn test_a_work_object_is_read_where_the_game_keeps_its_sprite() -> Result<()> {
     Ok(())
 }
 
+/// Spike 221: Mom's Rhyhorn outside the house in Vaniville is work object 0x7b, whose +0x890
+/// held 0x106, the model `RIDE_POKE01_EX`, and the list said "person". A person's model is its
+/// sprite, a thing's is MONSBALL's 0xab on from 0x2000, a Pokémon's `EV_POKE01`'s 0xf2 on from
+/// 0x1000 (spikes 100 and 218).
+#[test]
+fn test_an_x_work_object_holds_the_model_it_was_filled_with_not_its_sprite() -> Result<()> {
+    let mut town = Town::new();
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given::default(),
+        Game {
+            drawn: xy::DRAWN,
+            models: Some(xy::MODELS),
+            ..game()
+        },
+    );
+    let rhyhorn = town.model(1, TOWN, 3, 0x7B, (104, 179));
+    let mut codes: Vec<i64> = Vec::new();
+    for model in [0x106, 0x13, 0xAC] {
+        town.memory.u32(rhyhorn + xy::DRAWN, &[model]);
+        codes.extend(
+            town.r#where()?
+                .interactables
+                .iter()
+                .filter(|item| item.cell == (104, 179))
+                .map(|item| item.code),
+        );
+    }
+    assert_eq!(codes, [0x1014, 0x13, 0x2001]);
+    Ok(())
+}
+
 /// Spike 100: X's zone file has one section fewer, and its info and entity table lead as
 /// ORAS's do. Refused, it left X with no map at all.
 #[test]

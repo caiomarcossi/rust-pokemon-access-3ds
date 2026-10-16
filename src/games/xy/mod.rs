@@ -136,6 +136,11 @@ pub fn characters() -> &'static IndexMap<i64, i64> {
     })
 }
 
+/// Where X's things' and Pokémon's models start, `MONSBALL` and `EV_POKE01` (spikes 100 and 218): a
+/// work object's `DRAWN` holds the model it was filled with, which is a person's sprite but not a
+/// thing's or a Pokémon's. Mom's Rhyhorn by the house is `0x106`, sprite `0x1014` (spike 221).
+pub const MODELS: (i64, i64) = (0xAB, 0xF2);
+
 /// Place names in file 72 ("Route 4" at the index Route 4's row holds), trainer classes 20 and
 /// names 21, the PC's lines 74 in the order ORAS has them; zone N's file is `a/0/1/2` file N and the
 /// zone table file 360; a trainer's class is a byte at +0x01 and its battle at +0x02 (spike 100).
@@ -166,7 +171,7 @@ pub fn rom() -> &'static RomLayout {
         moves: Some(13),
         map_chunks: Some("a/0/4/1".to_string()),
         species: Some(80),
-        pokemon_models: Some(("a/0/2/1".to_string(), 0xF2)),
+        pokemon_models: Some(("a/0/2/1".to_string(), MODELS.1)),
         battle_models: Some("a/0/0/7".to_string()),
         ..RomLayout::new(
             "X and Y",
@@ -281,6 +286,7 @@ pub fn game() -> &'static Game {
             ),
         ]),
         rooms: HashSet::from([HOUSE]),
+        models: Some(MODELS),
         opening: Some(|memory, language| {
             Box::new(IntroReader::new(memory, looks(LOOKS, language)))
         }),

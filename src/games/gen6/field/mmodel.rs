@@ -118,18 +118,44 @@ pub fn character(head: &[u8]) -> Result<i64> {
 /// Only a work object reads further than the head: every other model's +0x10 is the sprite it
 /// is drawn with, and reading `drawn` for all 32 would be a page a model for nothing. A work
 /// object whose `drawn` does not hold a sprite yet, as while its looks load, is its own id.
-/// X keeps a pointer where ORAS keeps the sprite, so `drawn` is the game's own.
-pub fn drawn_as(memory: &dyn Memory, model: i64, head: &[u8], drawn: i64) -> Result<i64> {
+/// X keeps a pointer where ORAS keeps the sprite, so `drawn` is the game's own. Where `drawn`
+/// holds a model rather than a sprite, as X's does, `models` says where its things' and its
+/// Pokémon's models start (`sprite_of`).
+pub fn drawn_as(
+    memory: &dyn Memory,
+    model: i64,
+    head: &[u8],
+    drawn: i64,
+    models: Option<(i64, i64)>,
+) -> Result<i64> {
     let code = character(head)?;
     if !WORK_OBJECTS.contains(&code) {
         return Ok(code);
     }
     let filled = u32(&memory.read(model + drawn, 4)?, 0)? & INDEX_MASK;
-    Ok(if filled != 0 && !WORK_OBJECTS.contains(&filled) {
-        filled
-    } else {
-        code
+    if filled == 0 || WORK_OBJECTS.contains(&filled) {
+        return Ok(code);
+    }
+    Ok(match models {
+        None => filled,
+        Some(models) => sprite_of(filled, models),
     })
+}
+
+/// The sprite a model draws, given where the things' and the Pokémon's models start: a
+/// person's model is its sprite, a thing's counts on from `PROP_MODEL`, a Pokémon's from
+/// `POKEMON_MODEL` (spikes 218 and 221). X's Rhyhorn by the house is model `0x106`, sprite
+/// `0x1014`.
+pub fn sprite_of(model: i64, models: (i64, i64)) -> i64 {
+    let (things, pokemon) = models;
+    if model >= pokemon {
+        return POKEMON_MODEL + model - pokemon;
+    }
+    if model >= things {
+        PROP_MODEL + model - things
+    } else {
+        model
+    }
 }
 
 /// The cells it stands in, as the north-west one and (width, height), laid round `cell`.

@@ -39,6 +39,8 @@ pub struct SpeakerReader {
     names: Rc<Names>,
     /// Where the game keeps the sprite a move model is drawn with (`mmodel.drawn_as`).
     drawn: i64,
+    /// Where the game's things' and Pokémon's models start (`mmodel.drawn_as`).
+    models: Option<(i64, i64)>,
     /// Who last spoke, for a rename: a player names somebody having just heard them, which
     /// is a moment later than the page that named them.
     last: Cell<Option<Speaker>>,
@@ -48,12 +50,18 @@ pub struct SpeakerReader {
 }
 
 impl SpeakerReader {
-    /// `SpeakerReader(memory, names, drawn)`.
-    pub fn new(memory: Rc<dyn Memory>, names: Rc<Names>, drawn: i64) -> Self {
+    /// `SpeakerReader(memory, names, drawn, models)`.
+    pub fn new(
+        memory: Rc<dyn Memory>,
+        names: Rc<Names>,
+        drawn: i64,
+        models: Option<(i64, i64)>,
+    ) -> Self {
         SpeakerReader {
             memory,
             names,
             drawn,
+            models,
             last: Cell::new(None),
             talking: RefCell::new(Vec::new()),
         }
@@ -61,7 +69,7 @@ impl SpeakerReader {
 
     /// `SpeakerReader(memory, names)`: `drawn` left to its default, `mmodel.DRAWN`.
     pub fn with_default_drawn(memory: Rc<dyn Memory>, names: Rc<Names>) -> Self {
-        SpeakerReader::new(memory, names, mmodel::DRAWN)
+        SpeakerReader::new(memory, names, mmodel::DRAWN, None)
     }
 
     /// Keep these talk objects, as well as every one kept before.
@@ -102,7 +110,7 @@ impl SpeakerReader {
                 continue;
             }
             let head = self.memory.read(actor, mmodel::HEAD)?;
-            let character = mmodel::drawn_as(&*self.memory, actor, &head, self.drawn)?;
+            let character = mmodel::drawn_as(&*self.memory, actor, &head, self.drawn, self.models)?;
             if character != 0 {
                 return Ok(Some((
                     character,
