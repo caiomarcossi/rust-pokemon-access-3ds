@@ -12,7 +12,7 @@ button it has just named, and only when you press its tap key.
 Inspired by [pokemon-access](https://github.com/nuive/pokemon-access), which does the same job for
 the Game Boy games. Nothing here is taken from its code.
 
-**Status: pre-alpha. There is no release yet.** pa3ds is one program, `pa3ds.exe`, with nothing
+**Status: pre-alpha.** pa3ds is one program, `pa3ds.exe`, with nothing
 to install.
 
 ## Games
