@@ -289,6 +289,51 @@ fn test_a_ledge_is_jumped_down_and_never_climbed() {
     );
 }
 
+/// Spike 223: Santalune Gym's floor is a web whose strands run corner to corner.
+#[test]
+fn test_a_diagonal_step_is_taken_only_where_slants_allows_it_and_said_by_its_corner() {
+    let rows = ["###.", "##.#", "#.##", ".###"];
+    let (walkable, box_) = drawn(&rows);
+    let to = goals(&[((3, 0), None)]);
+    assert_eq!(find((0, 3), &to, &*walkable, box_, &plain()).unwrap(), None);
+    let any = |_: Cell, _: Cell| Ok(true);
+    let slanted = Options {
+        slants: Some(&any),
+        ..plain()
+    };
+    let way = find((0, 3), &to, &*walkable, box_, &slanted).unwrap();
+    assert_eq!(way, Some(vec![(0, 3), (1, 2), (2, 1), (3, 0)]));
+    assert_eq!(said(way).as_deref(), Some("3 north-east"));
+    let back = find(
+        (3, 0),
+        &goals(&[((0, 3), None)]),
+        &*walkable,
+        box_,
+        &slanted,
+    )
+    .unwrap();
+    assert_eq!(said(back).as_deref(), Some("3 south-west"));
+    let alone = reached((0, 3), &*walkable, box_, &Reach::default()).unwrap();
+    assert_eq!(
+        alone.keys().copied().collect::<HashSet<Cell>>(),
+        HashSet::from([(0, 3)])
+    );
+    let all = reached(
+        (0, 3),
+        &*walkable,
+        box_,
+        &Reach {
+            slants: Some(&any),
+            ..Reach::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        all.keys().copied().collect::<HashSet<Cell>>(),
+        HashSet::from([(0, 3), (1, 2), (2, 1), (3, 0)])
+    );
+}
+
 #[test]
 fn test_a_ledge_is_not_jumped_onto_a_wall() {
     let rows = ["...", "vvv", "###", "..."];

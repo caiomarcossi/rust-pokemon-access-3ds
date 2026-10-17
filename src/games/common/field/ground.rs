@@ -440,6 +440,9 @@ pub struct Ground {
     /// the floor nearest one height, and from the foot of Route 119 that kept the way under its
     /// bridge and cut the bridge, the only way north (spike 159).
     pub decks: Vec<f64>,
+    /// The bit of a cell's word that marks a strand the player walks diagonally between
+    /// (`slants`); 0 in a game without one. X's Santalune Gym has a floor of them (spike 223).
+    pub strands: i64,
 }
 
 impl Default for Ground {
@@ -470,6 +473,7 @@ impl Default for Ground {
             level: None,
             heights: IndexMap::new(),
             decks: Vec::new(),
+            strands: 0,
         }
     }
 }
@@ -502,6 +506,7 @@ impl fmt::Debug for Ground {
             .field("level", &self.level)
             .field("heights", &self.heights)
             .field("decks", &self.decks)
+            .field("strands", &self.strands)
             .finish()
     }
 }
@@ -979,6 +984,32 @@ impl Ground {
         Ok(down.is_some_and(|down| down != pathfind::towards(cell, step)))
     }
 
+    /// Whether the player can step from `cell` to `step`, which touches it at a corner: on a
+    /// strand, where both cells carry the `strands` bit and both cells between them are walls in
+    /// the chunks' own tables, not merely somebody's. The Gym's floor is a spider web of open
+    /// cells whose diagonal strands the player walked in one move each, (17, 65) to (18, 66)
+    /// and (17, 63) to (18, 62) to (17, 61); across X's ROM 111 corner joins carry the bit on
+    /// both cells, and the 177 without it are the corners of ordinary walls (spike 223).
+    pub fn slants(&self, cell: Cell, step: Cell) -> Result<bool> {
+        if self.strands == 0 || self.corridor.is_some() {
+            return Ok(false);
+        }
+        let corners = [(step.0, cell.1), (cell.0, step.1)];
+        for one in [cell, step] {
+            match self.chunk(one)? {
+                Some(chunk) if chunk.word(one)? & self.strands != 0 => {}
+                _ => return Ok(false),
+            }
+        }
+        for wall in corners {
+            match self.chunk(wall)? {
+                Some(chunk) if !chunk.walkable(wall)? => {}
+                _ => return Ok(false),
+            }
+        }
+        Ok(true)
+    }
+
     /// The loaded chunk holding the cell, or else the ROM's.
     fn chunk(&self, cell: Cell) -> Result<Option<Rc<Chunk>>> {
         let loaded = self.chunks.iter().find(|chunk| chunk.holds(cell)).cloned();
@@ -1208,6 +1239,7 @@ impl Ground {
             None => Ok(true),
         };
         let carry = |cell: Cell| self.carry(cell);
+        let slants = |cell: Cell, step: Cell| self.slants(cell, step);
         pathfind::find(
             start,
             goals,
@@ -1224,6 +1256,7 @@ impl Ground {
                 over: Some(&over),
                 arrives: if at.is_some() { Some(&arrives) } else { None },
                 carry: Some(&carry),
+                slants: Some(&slants),
             },
         )
     }
@@ -1258,6 +1291,7 @@ impl Ground {
         let walk = ground.walk(start)?;
         let through = |turns: &[i64], cell: Cell, step: Cell| walk.through(turns, cell, step);
         let carry = |cell: Cell| ground.carry(cell);
+        let slants = |cell: Cell, step: Cell| self.slants(cell, step);
         let states = pathfind::reached(
             start,
             &|cell: Cell| self.passable(cell),
@@ -1270,6 +1304,7 @@ impl Ground {
                 carry: Some(&carry),
                 turns: walk.turns.clone(),
                 through: if walk.active { Some(&through) } else { None },
+                slants: Some(&slants),
             },
         )?;
         Ok(states

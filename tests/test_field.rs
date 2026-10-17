@@ -2063,6 +2063,50 @@ fn test_a_trigger_into_another_place_is_an_exit_leading_there() -> Result<()> {
     Ok(())
 }
 
+/// Spike 224: the pole in Santalune Gym's lobby is a furniture record whose script warps the
+/// player to the web room below: listed as an exit leading there, while the statue stays a
+/// sign.
+#[test]
+fn test_furniture_that_leads_to_another_zone_is_an_exit_while_the_rest_stays_a_sign() -> Result<()>
+{
+    let mut town = Town::new();
+    let data = zone_file(&ZoneSpec {
+        furniture: &[(0x1, 90, 160), (0x5, 92, 165)],
+        info: &town_info(),
+        ..ZoneSpec::default()
+    });
+    town.memory.write(FILE, &data);
+    town.memory
+        .u32(HOLDER, &[FILE, OTHER, 0x11 | (data.len() as i64) << 8]);
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given::default(),
+        Game {
+            furniture: IndexMap::from([(
+                (TOWN, 0x1),
+                FurnitureKind::Exit("exits".to_string(), "warp".to_string(), 0x38),
+            )]),
+            ..game()
+        },
+    );
+    let r#where = town.r#where()?;
+    let exits: Vec<(String, (i64, i64), Option<i64>)> = r#where
+        .of("exits")
+        .into_iter()
+        .filter(|item| item.place_kind() == Some(FURNITURE_SOURCE))
+        .map(|item| (item.kind.clone(), item.cell, item.zone))
+        .collect();
+    assert_eq!(exits, [("warp".to_string(), (90, 160), Some(0x38))]);
+    let signs: Vec<(String, (i64, i64))> = r#where
+        .of("signs")
+        .into_iter()
+        .filter(|item| item.place_kind() == Some(FURNITURE_SOURCE))
+        .map(|item| (item.kind.clone(), item.cell))
+        .collect();
+    assert_eq!(signs, [("sign".to_string(), (92, 165))]);
+    Ok(())
+}
+
 /// X's house (x_house-map.ctm): the bedroom and the ground floor are one zone side by side
 /// on one chunk, no floor between them, and the stairs are triggers the game moves the player
 /// through. In the bedroom the list held Mom and the way out below, and P found no way to
@@ -2167,6 +2211,39 @@ fn test_a_person_behind_a_counter_is_talked_to_across_it() -> Result<()> {
     assert_eq!(
         ground.goals(&nurse)?,
         goals_of(&[((19, 17), Some(pathfind::NORTH))])
+    );
+    Ok(())
+}
+
+/// Spike 223: Santalune Gym's floor is a web whose open cells touch at corners, both
+/// neighbours walls, and the player walked them; they carry bit 3 of the cell word. A corner
+/// without the bit is a wall's corner.
+#[test]
+fn test_two_open_cells_touching_at_a_corner_are_joined_only_by_a_strand() -> Result<()> {
+    let (strand, wall) = (0x6828, 0x01006821);
+    let ground = |bit: i64, strands: i64| -> Ground {
+        let open: HashMap<(i64, i64), i64> = HashMap::from([((5, 5), bit), ((6, 6), bit)]);
+        let words: Vec<i64> = (0..CHUNK * CHUNK)
+            .map(|i| open.get(&(i % CHUNK, i / CHUNK)).copied().unwrap_or(wall))
+            .collect();
+        Ground {
+            chunks: vec![Rc::new(Chunk::new((0, 0), words))],
+            strands,
+            ..Ground::default()
+        }
+    };
+    let goals = goals_of(&[((6, 6), None)]);
+    assert_eq!(
+        ground(strand, 0x8).find((5, 5), &goals, "", None, false, None)?,
+        Some(vec![(5, 5), (6, 6)])
+    );
+    assert_eq!(
+        ground(strand & !0x8, 0x8).find((5, 5), &goals, "", None, false, None)?,
+        None
+    );
+    assert_eq!(
+        ground(strand, 0).find((5, 5), &goals, "", None, false, None)?,
+        None
     );
     Ok(())
 }
@@ -2580,6 +2657,59 @@ fn test_a_model_drawn_as_nothing_is_what_it_stands_in_for() -> Result<()> {
     town.model(5, TOWN, 0, groudon, (100, 165));
     let r#where = town.r#where()?;
     assert_eq!(people(&r#where), IndexMap::from([((100, 165), groudon)]));
+    Ok(())
+}
+
+/// Spike 223: X's Santalune Gym has five models drawn as nothing in its corridor behind Viola,
+/// all running script 0x269, which no drawn record has; they were five nameless people. In a
+/// game with `gates` they are listed as nobody and stand in the way, while a model drawn as
+/// nothing with a script of its own is still listed.
+#[test]
+fn test_a_row_of_models_drawn_as_nothing_with_a_script_no_drawn_record_has_is_a_gate() -> Result<()>
+{
+    let (nothing, script) = (mmodel::NONDRAW, 0x269);
+    let gate: Vec<(i64, i64)> = (0..5).map(|i| (98 + i, 170)).collect();
+    let mut npcs = vec![(0xB1, 94, 174, 0x100, None)];
+    npcs.extend(gate.iter().map(|&(x, z)| (nothing, x, z, script, None)));
+    npcs.push((nothing, 104, 170, 0x270, None));
+    let data = zone_file(&ZoneSpec {
+        npcs: &npcs,
+        info: &town_info(),
+        ..ZoneSpec::default()
+    });
+    let people = |game: Game| -> Result<HashSet<(i64, i64)>> {
+        let mut town = Town::new();
+        town.memory.write(FILE, &data);
+        town.memory
+            .u32(HOLDER, &[FILE, OTHER, 0x11 | (data.len() as i64) << 8]);
+        town.reader = field_reader(town.memory.clone(), Given::default(), game);
+        town.model(1, TOWN, 0, 0xB1, (94, 174));
+        for (slot, &cell) in (2..).zip(&gate) {
+            town.model(slot, TOWN, slot - 1, nothing, cell);
+        }
+        town.model(7, TOWN, 6, nothing, (104, 170));
+        let r#where = town.r#where()?;
+        let ground = town.reader.ground(&r#where, None)?;
+        for &cell in &gate {
+            assert!(!ground.open(cell)?);
+        }
+        Ok(r#where
+            .interactables
+            .iter()
+            .filter(|item| item.category == "people")
+            .map(|item| item.cell)
+            .collect())
+    };
+    let mut everyone: HashSet<(i64, i64)> = HashSet::from([(94, 174), (104, 170)]);
+    everyone.extend(gate.iter().copied());
+    assert_eq!(people(game())?, everyone);
+    assert_eq!(
+        people(Game {
+            gates: true,
+            ..game()
+        })?,
+        HashSet::from([(94, 174), (104, 170)])
+    );
     Ok(())
 }
 

@@ -180,7 +180,7 @@ impl Chunk {
     /// as Python's tuples do, and raises past either end. Raised for the caller, as the Python
     /// raised it in each of the readers below.
     #[track_caller]
-    fn word(&self, cell: (i64, i64)) -> Result<i64> {
+    pub fn word(&self, cell: (i64, i64)) -> Result<i64> {
         let (x, z) = (cell.0 - self.origin.0, cell.1 - self.origin.1);
         let len = self.words.len() as i64;
         let at = z * CHUNK + x;

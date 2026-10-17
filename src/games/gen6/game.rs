@@ -110,12 +110,14 @@ pub trait MemoriesReader {
 /// `Callable[[Memory], MemoriesReader]`.
 pub type MemoriesFactory = fn(Rc<dyn Memory>) -> Rc<dyn MemoriesReader>;
 
-/// `str | int`, what `Game.furniture` says a record is: a word, or the kind of use tile it is
-/// called as.
+/// `str | int | tuple[str, str, int]`, what `Game.furniture` says a record is: a word, the kind
+/// of use tile it is called as, or, for a record the player leaves by, the category it is listed
+/// under, its kind and the zone it leads to.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FurnitureKind {
     Word(String),
     Tile(i64),
+    Exit(String, String, i64),
 }
 
 /// A game's `data` folder as the binary carries it: each language's `sprites.toml`, by the
@@ -212,7 +214,10 @@ pub struct Game {
     /// where the tuple has two.
     pub triggers: IndexMap<(i64, i64), (String, String, Option<i64>)>,
     /// (zone, a furniture record's script) -> what it is, where it is not a sign: a Secret Base's
-    /// flag, Mossdeep Gym's switches; or the kind of use tile it is called as, a Secret Base's PC.
+    /// flag, Mossdeep Gym's switches; or the kind of use tile it is called as, a Secret Base's PC; or,
+    /// as `triggers` has it, a category, a kind and the zone it leads to, for a record the player
+    /// leaves by: the pole in Santalune Gym's lobby, which the game slides the player down to the
+    /// web room (spike 224).
     pub furniture: IndexMap<(i64, i64), FurnitureKind>,
     /// The reader of its Secret Bases, given the executable's image to find every spot in, or None
     /// in a game with none: ORAS's (`games.oras.field.secret_base`).
@@ -266,6 +271,14 @@ pub struct Game {
     /// The reader of the Pokémon its save keeps for its credits, or None in a game whose credits
     /// have not been looked at: ORAS's (`oras.memories`, spike 222).
     pub memories: Option<MemoriesFactory>,
+    /// The bit of a cell's word that marks a strand the player walks diagonally between, or 0 in a
+    /// game with none: X's Santalune Gym is a web of them, and ORAS's chunks use the same bit for
+    /// other things (`Ground.strands`, spike 223).
+    pub strands: i64,
+    /// Whether a row of models drawn as nothing, two or more with one script that no drawn record
+    /// of their zone has, is an invisible gate: not listed, and in the way. X's Santalune Gym has
+    /// five behind Viola, and AZ's room five (spike 223).
+    pub gates: bool,
 }
 
 impl Game {
@@ -309,6 +322,8 @@ impl Game {
             conditions: None,
             opening: None,
             memories: None,
+            strands: 0,
+            gates: false,
         }
     }
 

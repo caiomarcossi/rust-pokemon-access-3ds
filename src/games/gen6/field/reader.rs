@@ -245,6 +245,9 @@ type Ways = (
     Vec<Vec<Cell>>,
     Vec<IndexMap<Cell, Cell>>,
 );
+/// `_stand_ins`: what each model drawn as nothing stands in for by its record's index, the
+/// cells of the zone's warps, and the records' indices of its gates.
+type StandIns = (IndexMap<i64, i64>, HashSet<Cell>, HashSet<i64>);
 
 /// Tracks the player's model and the current zone's data, and lists what is on the map.
 ///
@@ -278,6 +281,11 @@ pub struct FieldReader {
     /// (zone, a furniture record's script) -> what it is, where it is no sign (`Game.furniture`):
     /// a Secret Base's PC and flag.
     furniture_kinds: IndexMap<(i64, i64), FurnitureKind>,
+    /// The bit of a cell's word that marks a strand walked diagonally (`Game.strands`).
+    strands: i64,
+    /// Whether a row of models drawn as nothing with a script of its own is a gate
+    /// (`Game.gates`).
+    gates: bool,
     /// The game's Secret Bases, or None in a game without them.
     secret_bases: Option<Rc<dyn SecretBaseReader>>,
     /// (zone, sprite) of the move models that are a barrier's beam (`Game.barriers`).
@@ -430,6 +438,8 @@ impl FieldReader {
             ice: game.ice.map(|make| make(memory.clone())),
             decorations: text.decorations.clone(),
             furniture_kinds: game.furniture.clone(),
+            strands: game.strands,
+            gates: game.gates,
             secret_bases,
             barriers: game.barriers.clone(),
             triggers: game.triggers.clone(),
@@ -751,6 +761,7 @@ impl FieldReader {
             level,
             ice,
             filled,
+            strands: self.strands,
             ..Ground::of(
                 r#where,
                 Of {
@@ -959,8 +970,7 @@ impl FieldReader {
             home = self.home(data, &[r#where.zone])?;
             let mut furniture: Vec<Interactable> = Vec::new();
             for item in read_furniture(&*self.memory, data)? {
-                let kind = self.furniture_kind(home, &item);
-                furniture.push(Interactable { kind, home, ..item });
+                furniture.push(self.furniture_listed(home, item));
             }
             items.extend(joined(furniture, &|item| Some(self.furniture_key(item))));
             let warps = read_records(&*self.memory, data, WARP)?;
@@ -1292,7 +1302,8 @@ impl FieldReader {
     /// or its own number, which is a shared script's from 2000 up (spike 210). Every vending
     /// machine is one of five, 0x28f0 to 0x28f4. The PC in a Secret Base is called what the
     /// game calls a PC, as the Pokémon Center's is: the table gives it the PC's kind of use
-    /// tile.
+    /// tile. A record the player leaves by is a category, a kind and a zone, and its kind is the
+    /// second.
     fn furniture_kind(&self, home: Option<i64>, item: &Interactable) -> String {
         let kind = match home {
             Some(home) => self.furniture_kinds.get(&(home, item.code)),
@@ -1320,7 +1331,28 @@ impl FieldReader {
                 .cloned()
                 .unwrap_or_else(|| PROP.to_string()),
             FurnitureKind::Word(word) => word.clone(),
+            FurnitureKind::Exit(_, kind, _) => kind.clone(),
         }
+    }
+
+    /// A furniture record as the list has it: its kind (`_furniture_kind`), and where the
+    /// table sends the player through it, the category it is listed under and the zone it leads
+    /// to (`Game.furniture`).
+    fn furniture_listed(&self, home: Option<i64>, item: Interactable) -> Interactable {
+        let listed = Interactable {
+            kind: self.furniture_kind(home, &item),
+            home,
+            ..item
+        };
+        let known = home.and_then(|home| self.furniture_kinds.get(&(home, listed.code)));
+        if let Some(FurnitureKind::Exit(category, _, zone)) = known {
+            return Interactable {
+                category: category.clone(),
+                zone: Some(*zone),
+                ..listed
+            };
+        }
+        listed
     }
 
     /// Why to sweep now rather than on schedule, or None.
@@ -1712,7 +1744,8 @@ impl FieldReader {
     /// A model drawn as nothing is called what it stands in for (`stand_ins`), those side by
     /// side as one (`_joined`): the three in front of Groudon are one "Groudon", the first by its
     /// record, and none once Groudon itself is listed. It is left out on a door, which is listed
-    /// already (spike 203).
+    /// already (spike 203), and where it is one of a gate's (`Game.gates`), which is nobody
+    /// (spike 223).
     fn people(&self, zone: i64) -> Result<Vec<Interactable>> {
         let mut out: Vec<Interactable> = Vec::new();
         // The stand-ins called what another record draws.
@@ -1722,7 +1755,7 @@ impl FieldReader {
             chunks.push(self.terrain.flattened(&chunk, None, false)?);
         }
         let holes = self.holes(zone)?;
-        let mut stand_ins: Option<(IndexMap<i64, i64>, HashSet<Cell>)> = None;
+        let mut stand_ins: Option<StandIns> = None;
         for other in self.others() {
             let (model, head) = other?;
             let Some(cell) = mmodel::cell(&head)? else {
@@ -1742,9 +1775,11 @@ impl FieldReader {
                 if stand_ins.is_none() {
                     stand_ins = Some(self.stand_ins()?);
                 }
-                let (by_index, doors) = stand_ins.as_ref().expect("just read");
+                let (by_index, doors, gates) = stand_ins.as_ref().expect("just read");
                 stood_in = by_index.get(&mmodel::index_of(&head)?).copied();
-                if stood_in.is_none() && doors.contains(&cell) {
+                if stood_in.is_none()
+                    && (doors.contains(&cell) || gates.contains(&mmodel::index_of(&head)?))
+                {
                     continue;
                 }
             }
@@ -1772,12 +1807,14 @@ impl FieldReader {
 
     /// What the zone's models drawn as nothing stand in for, by their records' indices: the
     /// sprite of another record with the same script, as the three in a row in front of Groudon
-    /// deep in the Cave of Origin have its script, where Groudon itself stands in the magma; and
-    /// the cells of the zone's warps, where Sootopolis City's ten stand, one on each locked door
-    /// (spike 203).
-    fn stand_ins(&self) -> Result<(IndexMap<i64, i64>, HashSet<Cell>)> {
+    /// deep in the Cave of Origin have its script, where Groudon itself stands in the magma; the
+    /// cells of the zone's warps, where Sootopolis City's ten stand, one on each locked door
+    /// (spike 203); and, in a game with `gates`, the records' indices of the gates, models drawn
+    /// as nothing that share a script with one another and with no drawn record: the five behind
+    /// Viola in Santalune Gym, shut until the game opens the tent after her battle (spike 223).
+    fn stand_ins(&self) -> Result<StandIns> {
         let Some(data) = self.current()? else {
-            return Ok((IndexMap::new(), HashSet::new()));
+            return Ok((IndexMap::new(), HashSet::new(), HashSet::new()));
         };
         let records = read_records(&*self.memory, &data, NPC)?;
         let mut unseen: HashSet<i64> = self.blockers.clone();
@@ -1796,6 +1833,22 @@ impl FieldReader {
                 stand_ins.insert(u16(record, NPC_INDEX)?, *sprite);
             }
         }
+        let mut shared: HashMap<i64, i64> = HashMap::new();
+        for record in &records {
+            if u16(record, NPC_SPRITE)? == mmodel::NONDRAW {
+                *shared.entry(u16(record, NPC_SCRIPT)?).or_default() += 1;
+            }
+        }
+        let mut gates: HashSet<i64> = HashSet::new();
+        for record in &records {
+            if !self.gates || u16(record, NPC_SPRITE)? != mmodel::NONDRAW {
+                continue;
+            }
+            let script = u16(record, NPC_SCRIPT)?;
+            if script != 0 && !drawn.contains_key(&script) && shared[&script] > 1 {
+                gates.insert(u16(record, NPC_INDEX)?);
+            }
+        }
         let mut doors: HashSet<Cell> = HashSet::new();
         for record in read_records(&*self.memory, &data, WARP)? {
             if on_rail(&record)? {
@@ -1808,7 +1861,7 @@ impl FieldReader {
                 }
             }
         }
-        Ok((stand_ins, doors))
+        Ok((stand_ins, doors, gates))
     }
 
     /// The cells of the models in the way but never listed as themselves, with how high: the

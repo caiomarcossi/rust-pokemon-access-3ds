@@ -477,3 +477,12 @@
 "0x2:furniture:2" = "TV"              # TV: story 55:38 shows a film; the word is story 390:19's
 "0x2:furniture:3" = "TV"              # TV: story 55:39 shows a film, on the ground floor; story 390:19
 "0x2:furniture:4" = "console Wii U"   # Wii U: story 55:0
+"0x37:furniture:0" = "scultura"       # statue: story 420:3, Santalune Gym, zone 0x37
+"0x37:furniture:1" = "scultura"
+"0x37:furniture:2" = "palo"           # pole: story 420:1, Santalune Gym, zones 0x37 and 0x38
+"0x38:furniture:0" = "palo"
+"0x37:furniture:3" = "foto"           # photographs: story 420:9, Santalune Gym, zone 0x37
+"0x37:furniture:4" = "foto"
+"0x37:furniture:5" = "foto"
+"0x37:furniture:6" = "foto"           # photograph: story 420:7 and 420:8, Santalune Gym, zone 0x37
+"0x37:furniture:7" = "foto"

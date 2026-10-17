@@ -38,6 +38,13 @@ pub const STEPS: [(&str, Cell); 4] = [
     (SOUTH, (0, 1)),
     (WEST, (-1, 0)),
 ];
+/// A step to a cell touching at a corner, taken only where `find`'s `slants` allows it.
+pub const DIAGONALS: [(&str, Cell); 4] = [
+    ("north-east", (1, -1)),
+    ("south-east", (1, 1)),
+    ("south-west", (-1, 1)),
+    ("north-west", (-1, -1)),
+];
 /// Clockwise, a quarter turn apart.
 pub const COMPASS: [&str; 4] = [NORTH, EAST, SOUTH, WEST];
 pub const FORWARD: &str = "forward";
@@ -148,6 +155,15 @@ impl fmt::Display for Leg {
     }
 }
 
+/// `_SLANTS.get(step)`: a one-cell diagonal step -> its name, which `legs` says it by: `towards`
+/// has no word for it.
+fn slant(step: Cell) -> Option<&'static str> {
+    DIAGONALS
+        .iter()
+        .find(|(_, known)| *known == step)
+        .map(|&(name, _)| name)
+}
+
 /// What a step can change on the way besides where the player is: how far each of Fortree Gym's
 /// rotating doors has turned (`find`'s `through`).
 pub type Turns = Vec<i64>;
@@ -171,6 +187,7 @@ pub struct Options<'a> {
     pub over: Option<&'a dyn Fn(Cell) -> Result<bool>>,
     pub arrives: Option<&'a dyn Fn(Cell, &[i64]) -> Result<bool>>,
     pub carry: Option<&'a dyn Fn(Cell) -> Result<Option<&'static str>>>,
+    pub slants: Option<&'a dyn Fn(Cell, Cell) -> Result<bool>>,
 }
 
 /// What `functools.cache` makes of a callable: asked once for each argument. A call that raises
@@ -236,7 +253,10 @@ impl Ord for Entry<'_> {
 /// shore Surf jumps the player over, getting on the water and off it. `carry` says which way a
 /// cell carries the player, a current: entered any way, and left only that way, a cell at a time,
 /// unless the cell that way cannot be walked. The player does not turn there, so the turns it
-/// makes cost nothing.
+/// makes cost nothing. `slants` says whether a step between two cells that touch only at a
+/// corner can be taken, where both can be walked: Santalune Gym's floor is a web whose strands
+/// run so, the cells beside them walls (`DIAGONALS`). A diagonal step costs a step, is a turn
+/// like any change of way, and is never taken off a current.
 ///
 /// `toll` is what a move from one cell to the next costs on top of its steps and turns, and
 /// `joined` whether a step between two cells side by side can be taken at all: one off a
@@ -271,6 +291,7 @@ pub fn find(
         over,
         arrives,
         carry,
+        slants,
     } = options;
     if goals.is_empty() {
         return Ok(None);
@@ -285,6 +306,7 @@ pub fn find(
     let toll_cache: Cached<(Cell, Cell), i64> = Cached::new();
     let joined_cache: Cached<(Cell, Cell), bool> = Cached::new();
     let carry_cache: Cached<Cell, Option<&'static str>> = Cached::new();
+    let slants_cache: Cached<(Cell, Cell), bool> = Cached::new();
     let down = |cell: Cell| {
         down_cache.get(cell, || match ledge {
             Some(ledge) => ledge(cell),
@@ -313,6 +335,12 @@ pub fn find(
         carry_cache.get(cell, || match carry {
             Some(carry) => carry(cell),
             None => Ok(None),
+        })
+    };
+    let slants = |cell: Cell, step: Cell| {
+        slants_cache.get((cell, step), || match slants {
+            Some(slants) => slants(cell, step),
+            None => Ok(false),
         })
     };
 
@@ -398,6 +426,7 @@ pub fn find(
             &joined,
             &carry,
             *through,
+            &slants,
             &mut |direction, step, steps, after| {
                 let onward: State = (step, direction, after);
                 // Python's `going != direction != carried`: both inequalities, chained.
@@ -431,8 +460,9 @@ pub fn find(
 
 /// Each move from `cell` as `find` takes them: its way, where it lands, and how many cells
 /// on, two for a jump over a ledge or the shore. On a current, the one cell it carries the
-/// player to, where that can be walked. Handed to `each` one at a time, as Python's generator
-/// yields them, so a move is taken before the next is tried.
+/// player to, where that can be walked. After the four straight moves, each diagonal one
+/// `slants` allows. Handed to `each` one at a time, as Python's generator yields them, so a move
+/// is taken before the next is tried.
 #[allow(clippy::too_many_arguments)]
 fn moves(
     cell: Cell,
@@ -442,6 +472,7 @@ fn moves(
     over: &dyn Fn(Cell) -> Result<bool>,
     joined: &dyn Fn(Cell, Cell) -> Result<bool>,
     carry: &dyn Fn(Cell) -> Result<Option<&'static str>>,
+    slants: &dyn Fn(Cell, Cell) -> Result<bool>,
     each: &mut dyn FnMut(&'static str, Cell, i64) -> Result<()>,
 ) -> Result<()> {
     if let Some(carried) = carry(cell)? {
@@ -469,6 +500,12 @@ fn moves(
         }
         each(direction, step, steps)?;
     }
+    for (direction, (dx, dz)) in DIAGONALS {
+        let step = (cell.0 + dx, cell.1 + dz);
+        if can_walk(step)? && slants(cell, step)? {
+            each(direction, step, 1)?;
+        }
+    }
     Ok(())
 }
 
@@ -486,6 +523,7 @@ fn onward(
     joined: &dyn Fn(Cell, Cell) -> Result<bool>,
     carry: &dyn Fn(Cell) -> Result<Option<&'static str>>,
     through: Option<&dyn Fn(&[i64], Cell, Cell) -> Result<Option<Turns>>>,
+    slants: &dyn Fn(Cell, Cell) -> Result<bool>,
     each: &mut dyn FnMut(&'static str, Cell, i64, Turns) -> Result<()>,
 ) -> Result<()> {
     moves(
@@ -496,6 +534,7 @@ fn onward(
         over,
         joined,
         carry,
+        slants,
         &mut |direction, step, steps| {
             let after = match through {
                 Some(through) if steps != 2 => through(turned, cell, step)?,
@@ -519,6 +558,7 @@ pub struct Reach<'a> {
     pub carry: Option<&'a dyn Fn(Cell) -> Result<Option<&'static str>>>,
     pub turns: Turns,
     pub through: Option<&'a dyn Fn(&[i64], Cell, Cell) -> Result<Option<Turns>>>,
+    pub slants: Option<&'a dyn Fn(Cell, Cell) -> Result<bool>>,
 }
 
 /// Every cell inside `box` a way from `start` can end on, by `find`'s moves, with each state
@@ -536,6 +576,7 @@ pub fn reached(
     let walk_cache: Cached<Cell, bool> = Cached::new();
     let walked_cache: Cached<Cell, bool> = Cached::new();
     let carry_cache: Cached<Cell, Option<&'static str>> = Cached::new();
+    let slants_cache: Cached<(Cell, Cell), bool> = Cached::new();
     let down = |cell: Cell| {
         down_cache.get(cell, || match options.ledge {
             Some(ledge) => ledge(cell),
@@ -546,6 +587,12 @@ pub fn reached(
         carry_cache.get(cell, || match options.carry {
             Some(carry) => carry(cell),
             None => Ok(None),
+        })
+    };
+    let slants = |cell: Cell, step: Cell| {
+        slants_cache.get((cell, step), || match options.slants {
+            Some(slants) => slants(cell, step),
+            None => Ok(false),
         })
     };
     let walk = |cell: Cell| walk_cache.get(cell, || walkable(cell));
@@ -587,6 +634,7 @@ pub fn reached(
             &joined,
             &carry,
             options.through,
+            &slants,
             &mut |_, step, _, after| {
                 if out.entry(step).or_default().insert(after.clone()) {
                     todo.push((step, after));
@@ -797,9 +845,10 @@ fn back(came: &HashMap<State, State>, state: &State) -> Vec<Cell> {
     let mut state = state;
     let mut cells = vec![state.0];
     while let Some(was) = came.get(state) {
-        // A jump comes two cells from the last: the ledge between goes in too.
+        // A jump comes two cells from the last, in a line: the ledge between goes in too. A
+        // diagonal step is two cells off by the same count and jumps nothing.
         let ((x, z), (x0, z0)) = (state.0, was.0);
-        if (x - x0).abs() + (z - z0).abs() == 2 {
+        if (x - x0).abs() + (z - z0).abs() == 2 && (x == x0 || z == z0) {
             cells.push((py::floordiv(x + x0, 2), py::floordiv(z + z0, 2)));
         }
         state = was;
@@ -814,7 +863,10 @@ fn back(came: &HashMap<State, State>, state: &State) -> Vec<Cell> {
 pub fn legs(path: &[Cell], how: Option<&dyn Fn(Cell, Cell) -> Result<String>>) -> Result<Vec<Leg>> {
     let mut out: Vec<Leg> = Vec::new();
     for i in 1..path.len() {
-        let direction = towards(path[i - 1], path[i]);
+        let mut direction = towards(path[i - 1], path[i]);
+        if direction.is_empty() {
+            direction = slant((path[i].0 - path[i - 1].0, path[i].1 - path[i - 1].1)).unwrap_or("");
+        }
         let walked = match how {
             Some(how) => how(path[i - 1], path[i])?,
             None => String::new(),

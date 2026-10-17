@@ -14,7 +14,7 @@ use indexmap::IndexMap;
 
 use crate::games::common::field::ground::{CUT, ROCK_SMASH, STRENGTH};
 use crate::games::common::pictures::described;
-use crate::games::gen6::game::{Data, Game};
+use crate::games::gen6::game::{Data, FurnitureKind, Game};
 use crate::games::gen6::rom::layout::{RomLayout, TownFacilities, owned};
 use crate::games::xy::intro::IntroReader;
 use crate::py::PySet;
@@ -220,6 +220,34 @@ pub const CRACKED_WALL: i64 = 0x2034;
 /// Flare Secret HQ, each running shared script 0x7d0, which shows nothing (spikes 218 and 219).
 pub const STOPPER: i64 = 0x8A;
 
+/// The bit of a cell's word on a strand of Santalune Gym's web (zone 0x38, chunk file 344 of
+/// `a/0/4/1`): the floor is open cells along strands, many running diagonally, two cells touching
+/// only at a corner with both cells between them walls. Strand cells are `0x00006828` where a
+/// diagonal joins and `0x00006820` along a straight run, walls `0x01006821`. The player walked
+/// (17, 65) to (18, 66), and (17, 63) to (18, 62) to (17, 61), in one move each, in a replay of
+/// the player's movie. Across X's chunks, two open cells touching only at a corner, both between them
+/// walls, with the bit on both cells occur 111 times (90 in the Gym's chunk, five each in files 327,
+/// 328, 330 and 331, one in 733), and in Omega Ruby never; without the bit they are the corners of
+/// ordinary walls, 177 in X and 307 in ORAS, and stay shut. ORAS uses the bit for other things, so
+/// it is X's alone (spike 223).
+pub const STRAND: i64 = 0x8;
+
+pub const SANTALUNE_LOBBY: i64 = 0x37;
+pub const SANTALUNE_WEB: i64 = 0x38;
+/// Santalune Gym's two poles, a furniture record each way: the lobby's at (20, 24) and the web
+/// room's at (20, 62), both running script 1. The lobby script's case 1 moves the player to the web
+/// room at (20, 64), as a trigger with script 1 at (20, 25) does walking north onto it; the web
+/// room's case 1 moves the player to the lobby at (20, 25). The guide's line (story 420:1) says "Jump
+/// on that pole there", and the Italian and German say you slide down it. Both zones listed the poles
+/// as signs (spike 224).
+pub const POLE: i64 = 0x1;
+/// The stairs beyond Viola's tent in the web room, the zone's only trigger: script 4, 3 wide and 1
+/// deep at (19, 22), walked onto going north, whose case moves the player to the lobby at (23, 21).
+/// Viola says "Take the stairs that you find beyond it, and you'll be back up to the entrance" (story
+/// 419:5), and the player's movie walked north from (20, 44) onto it and arrived there. The room had
+/// no exit listed (spike 224).
+pub const WEB_STAIRS: i64 = 0x4;
+
 /// The shared scripts of the elevators' doors, a furniture record a cell, two side by side, in 24
 /// zones of Lumiose City and Lysandre Labs: file 14 of `a/0/3/1`, whose messages are story 145's,
 /// "Which floor would you like to go to?" (spike 220).
@@ -286,9 +314,29 @@ pub fn game() -> &'static Game {
                 (HOUSE, 0x5),
                 ("exits".to_string(), "stairs up".to_string(), None),
             ),
+            (
+                (SANTALUNE_WEB, WEB_STAIRS),
+                (
+                    "exits".to_string(),
+                    "stairs up".to_string(),
+                    Some(SANTALUNE_LOBBY),
+                ),
+            ),
+        ]),
+        furniture: IndexMap::from([
+            (
+                (SANTALUNE_LOBBY, POLE),
+                FurnitureKind::Exit("exits".to_string(), "warp".to_string(), SANTALUNE_WEB),
+            ),
+            (
+                (SANTALUNE_WEB, POLE),
+                FurnitureKind::Exit("exits".to_string(), "warp".to_string(), SANTALUNE_LOBBY),
+            ),
         ]),
         rooms: HashSet::from([HOUSE]),
         models: Some(MODELS),
+        strands: STRAND,
+        gates: true,
         opening: Some(|memory, language| {
             Box::new(IntroReader::new(
                 memory,
