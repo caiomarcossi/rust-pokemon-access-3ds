@@ -56,6 +56,7 @@ use regex::Regex;
 use crate::core::binary::{f32, u32};
 use crate::core::memory::Memory;
 use crate::core::rtti::ClassNames;
+use crate::core::speech::symbol;
 use crate::core::words::own;
 use crate::games::common::battle::{Battler, GAUGE_RECORD, MAX_ASKS, REASK, RECORD_PARAM, SIGNS};
 use crate::games::common::layout::Layouts;
@@ -311,8 +312,15 @@ impl Battlers {
             return Ok(None);
         }
         let text = py::decode_utf16le(&raw);
+        // The Chinese fan Omega Ruby writes a plate's sign as the font's private-use glyph, where
+        // the official games write the real one, and no plate of its was found (Orion, 2026-10-18).
         Ok(Some(
-            text.split('\0').next().unwrap_or_default().to_string(),
+            text.split('\0')
+                .next()
+                .unwrap_or_default()
+                .chars()
+                .map(symbol)
+                .collect(),
         ))
     }
 }

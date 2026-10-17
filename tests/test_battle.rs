@@ -344,6 +344,21 @@ fn test_the_enemy_is_named_by_its_gauge_whatever_the_party_holds() {
     );
 }
 
+/// The Chinese fan Omega Ruby writes a plate's ♂ as the font's U+E08E, and its battles said
+/// nothing, either side, nor on a key (movie2_route103 on it, Orion, 2026-10-18).
+#[test]
+fn test_a_plate_signed_with_the_fonts_own_glyph_is_said_with_the_sign() {
+    let mut battle = Battle::with(
+        &["Blaze\u{e08e}", "刺尾虫\u{e08f}"],
+        [("Blaze", pokemon::MALE), ("刺尾虫", pokemon::FEMALE)],
+    );
+    let pieces = screen(&battle);
+    assert_eq!(
+        settle(&mut battle, &pieces),
+        strings(&["Blaze♂ L5 20/20", "刺尾虫♀ L2 100%"])
+    );
+}
+
 /// After switching to Blaze, battles2.ctm kept saying Emrys's name with Blaze's HP.
 #[test]
 fn test_a_switch_is_heard_under_the_name_of_the_pokemon_sent_out() {

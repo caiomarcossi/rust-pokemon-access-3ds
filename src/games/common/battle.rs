@@ -7,8 +7,9 @@
 
 pub const MALE: &str = "♂";
 pub const FEMALE: &str = "♀";
-/// The battle writes the real signs, which a screen reader says, not the font's private-use
-/// glyphs that `speech.SYMBOLS` maps for the party screen.
+/// The official games' battles write the real signs, which a screen reader says. The Chinese fan
+/// Omega Ruby's writes the font's private-use glyphs, U+E08E for ♂, which `speech::symbol` maps
+/// (movie2_route103 on it, 2026-10-18).
 pub const SIGNS: [&str; 2] = [MALE, FEMALE];
 
 /// Asks, one a screen poll, between sweeps asked for while a gauge is still missing: a second.
