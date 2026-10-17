@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.0] - 2026-10-17
+
+### Added
+
+- While Azahar is open, pa3ds hides its own window, so it is not in Alt+Tab between you and the
+  game. When you close Azahar, pa3ds closes too.
+- To restart pa3ds, start it again: the new one closes the one running, says "pa3ds restarted",
+  and carries on the same log.
+- With a portable Azahar, pa3ds asks for the folder `azahar.exe` is in the first time it finds no
+  Azahar settings, records it as `azahar_folder` in `user\config.toml`, and changes that Azahar's
+  settings in the same start.
+- `keys.toml` and `config.toml` gain the keys and settings each new version of pa3ds adds, and
+  never lose a line you have. A new key whose default you already use for something else is added
+  with a `#` in front of it, and pa3ds says so as it starts.
+- If `config.toml` or `keys.toml` has a mistake pa3ds cannot read past, pa3ds says so as it
+  starts, with the line the mistake is on, and uses its defaults until you fix it.
+
 ## [0.2.1] - 2026-10-17
 
 ### Fixed

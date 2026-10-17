@@ -162,7 +162,7 @@ dependencies = [
 
 [[package]]
 name = "pa3ds"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "flate2",
  "indexmap",
