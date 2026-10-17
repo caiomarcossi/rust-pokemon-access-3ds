@@ -34,8 +34,9 @@ MIRRORED = ("LICENSE", "tests/fake_qt_config.ini", "data/")
 ship beside the Python's checkout (ADR-0040): `mirror` makes the port's folder upstream's, file
 for file."""
 DATA: Final = "data/"
-ADAPTED = ("README.md", "AGENTS.md", "CLAUDE.md")
-"""Written again for the Rust repository: they name commands and tools."""
+ADAPTED = ("README.md", "manual/", "AGENTS.md", "CLAUDE.md")
+"""Written again for the Rust repository: they name commands and tools. `manual/` is the rest of
+the README, the player's manual."""
 NOT_PORTED = ("spikes/", "docs/", "GLOSSARY.md", "pyproject.toml", "uv.lock", ".gitignore",
               ".claude/", ".github/")
 """Stay upstream. A spike records how a finding was reached, run against the Python package;
@@ -49,7 +50,7 @@ def rust_path(python: str) -> str | None:
     not ported (`NOT_PORTED`)."""
     if python.startswith(NOT_PORTED):
         return None
-    if python.startswith(MIRRORED) or python in ADAPTED:
+    if python.startswith(MIRRORED + ADAPTED):
         return python
     if python.startswith("src/pa3ds/"):
         rel = python.removeprefix("src/pa3ds/")
@@ -104,7 +105,7 @@ def status() -> int:
             skipped.append(line)
         elif paths[-1].startswith(MIRRORED) or "/data/" in paths[-1]:
             mirror.append(line)
-        elif paths[-1] in ADAPTED:
+        elif paths[-1].startswith(ADAPTED):
             adapt.append(line + f"   (rewrite by hand: {target})")
         else:
             port.append(line + f"   -> {target}")

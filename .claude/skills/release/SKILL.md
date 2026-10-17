@@ -35,8 +35,8 @@ No tag means the first release. If the range is empty, stop: there is nothing to
 ## 3. Keep what a player notices
 
 A change is user-facing when it changes what a player hears, presses, sets, installs or reads in
-`README.md`. Most `feat(port)` and `fix(port)` commits are: each brings upstream's behaviour to
-players. So are changes to `README.md`, to packaging and to updating.
+the manual (`README.md` and `manual/`). Most `feat(port)` and `fix(port)` commits are: each brings
+upstream's behaviour to players. So are changes to the manual, to packaging and to updating.
 
 Leave out `chore(port): level with upstream`, tests, refactors, tapes, CI, `AGENTS.md`,
 `docs/porting.md` and this skill. When a subject does not say what a player would notice, read the
@@ -61,7 +61,7 @@ Add it to `CHANGELOG.md` above the newest section, below the `# Changelog` headi
 - `Added`, `Changed`, `Fixed`, in that order, each only when it has an entry.
 - One bullet per change a player would tell apart. Commits that make one change together are one
   bullet.
-- In the README's words and voice: plain, present tense, keys and settings named as the README
+- In the manual's words and voice: plain, present tense, keys and settings named as the manual
   names them. No ADR, spike, finding, file path, commit or upstream hash, and no "port".
 - First release: instead of a list, one short paragraph saying what pa3ds does and which games it
   reads, from the README's opening and its Games section.

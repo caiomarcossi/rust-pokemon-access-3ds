@@ -105,7 +105,7 @@ The Python checkout is `PA3DS_PYTHON`, or `../pokemon-access-3ds` beside this on
    A rename upstream (`R` in `status`) is a `git mv` here. A file split into several shows only as
    new files, so read the commit that split it; after the split, the new Rust files' lines add up
    to the old file's, and `cargo check` passes before the next split begins.
-2. `mirror` for the data files; rewrite this file, `README.md` or `CLAUDE.md` by hand where
+2. `mirror` for the data files; rewrite this file, `README.md`, `manual/` or `CLAUDE.md` by hand where
    upstream's changed in a way that applies here.
 3. `cargo test --lib`, `cargo clippy --all-targets`, `sync.py tests`.
 4. With the upstream commit checked out there, record a tape of a movie that reaches the change
@@ -140,12 +140,15 @@ counterpart. It runs only in a build `tools/package.ps1` made (`PA3DS_RELEASE`),
 
 ## The README is the player's manual
 
-[README.md](README.md) is what a player reads, and it ships in the release zip: the games, what is
-said, setup, the default keys, every setting, the Azahar settings pa3ds writes. Upstream's README
-is the same manual for the Python pa3ds (Orion, 2026-10-06); a sync that changes it changes this
-one to match, in the same commit, but for running `pa3ds.exe` where upstream runs uv, and for
-its Updating section, which only the port has. It names no ADR, finding or spike, except in its
-section for developers.
+[README.md](README.md) and the pages it links to in [`manual/`](manual/) are what a player reads,
+and they ship in the release zip: the README the games, what is said, setup and updating;
+`keys.md` the default keys; `settings.md` every setting, the Azahar settings pa3ds writes and the
+player's files; `languages.md` languages and translating. Upstream's are the same manual for the
+Python pa3ds (Orion, 2026-10-06); a sync that changes them changes these to match, in the same
+commit, but for running `pa3ds.exe` where upstream runs uv, and for the Updating section, which
+only the port has. Keep them short, as upstream's AGENTS.md says (Orion, 2026-10-18). They name
+no ADR, finding or spike. Building and releasing are in [BUILDING.md](BUILDING.md), which does
+not ship.
 
 ## Runbooks
 

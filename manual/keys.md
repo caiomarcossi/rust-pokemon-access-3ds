@@ -1,0 +1,110 @@
+# Keys
+
+pa3ds's keys work only while Azahar's game window is in front, and they never reach the game.
+They do nothing while your screen reader's key (Insert or Caps Lock) or a Windows key is held.
+When one of them is also bound to an Azahar button, pa3ds says so as it starts.
+
+## The map's list
+
+pa3ds lists what is on the map in categories: all, exits, signs, obstacles, people, items,
+berries, ash, bike, currents and pokémon, and while soaring, towns, routes, landmarks and mirage
+spots. A category with nothing in it is skipped. Each thing is said with where it is from you:
+"door, 1 of 3, 3 east 2 north".
+
+The list has three **modes**, and the apostrophe steps through them. During a battle or a scene
+the map's keys say "no map", and the thing you had chosen is kept for when the map comes back.
+Touch mode and the battle's keys work throughout.
+
+**In every mode**
+
+| Key | What it does |
+|---|---|
+| `'` (apostrophe) | Next mode: list mode, direction mode, touch mode. |
+| `[` and `]` | Previous and next category. |
+| `P` | Find the way on foot to the chosen thing, and guide you along it turn by turn. |
+| `Shift+P` | The same, but also using Surf, Cut, Rock Smash, Strength, Waterfall and the bikes. It pushes a big boulder only where there is no way round it. |
+| `Alt+P` | Stop guiding. |
+| `Ctrl+P` | Leave out of the list everything `Shift+P` finds no way to from where you stand, or put it back. Everything is listed each time pa3ds starts. |
+| `,` and `.` (comma and period) | Previous and next way to the chosen thing, where there is more than one, such as which way to push a big boulder. |
+| `R` | Say your side of the battle again. In a contest, your place. |
+| `Shift+R` | Say the enemy's side of the battle again. In a contest, everyone else's place. |
+| `Shift+K` | Give the chosen thing a name of your own. |
+| `Shift+J` | Give whoever spoke last a name of your own. |
+| `C` | Say the square you are standing on, as x and z: x grows going east, z going south. |
+| `Shift+C` | Say the chosen thing's squares the same way. |
+
+**List mode** walks the whole list, nearest first.
+
+| Key | What it does |
+|---|---|
+| `I` and `O` | Previous and next category. |
+| `J` and `L` | Previous and next thing in the category. |
+| `K` | The chosen thing again, from where you stand now. |
+
+**Direction mode** looks one way at a time, up to 10 squares away.
+
+| Key | What it does |
+|---|---|
+| `O` | The next thing to the north. |
+| `;` (semicolon) | The next thing to the east. |
+| `L` | The next thing to the south. |
+| `K` | The next thing to the west. |
+
+**Touch mode** walks the buttons on the bottom screen, in reading order.
+
+| Key | What it does |
+|---|---|
+| `J` and `L` | Previous and next button. |
+| `I` and `O` | Previous and next row. |
+| `K` | The chosen button again. |
+| `U` | Tap the chosen button. |
+
+In Pokémon-Amie, touch mode offers to stroke your Pokémon, and the tap key strokes it. This is an
+experiment. In a Super Training regimen, touch mode offers each goal the Balloon Bot puts up:
+the tap key's first press says the goal, and each press after that shoots at it, wherever it has
+moved. pa3ds says "shot coming" about a second before the bot's ball arrives: move with the
+Circle Pad, or raise a shield with L.
+
+## Finding the way
+
+**Lining up.** The circle pad can leave you between two squares, and the game then refuses some
+steps past the corner of a wall. Where that would stop you, `P` first says which way to step,
+"a little west, then 2 north". Tilt the circle pad gently that way, and pa3ds says "lined up".
+
+**Currents.** When a current catches you while you surf, pa3ds says where it will leave you.
+`P` and `Shift+P` ride a current as one step of the way, and find the way again if one carries
+you off it.
+
+**Big boulders** say which ways they can be pushed from where they stand, or "immoveable". Hold
+the way for a moment to push one a square. Push one into a hole and both leave the list.
+
+**Diagonal steps.** In Santalune Gym, in X and Y, `P` says a step along a diagonal thread of the
+web as "1 north-east": tilt the circle pad that way, or hold both keys.
+
+## Naming things
+
+The game never names most people on the map, signs and doors, and pa3ds gives some of them a name
+of its own. `Shift+K` names the chosen thing, and `Shift+J` whoever spoke last: type the name and
+press Enter.
+
+People and things drawn alike, such as every Youngster or every big boulder, share a name
+unless you tick **Only this one**, a Tab away from the name and ticked as the box opens. A name
+given to one alone stays with them wherever they walk or are pushed. Your names always win over
+pa3ds's. They are saved in `user\names\<language>\`, a file for each game: to share them, send
+the file.
+
+## Changing keys
+
+Keys are in `user\keys.toml`, written with the defaults on the first start. pa3ds adds the keys
+later versions bring and never changes a line you have. To unbind a key, put a `#` in front of
+its line: a line you delete is put back the next time pa3ds starts.
+
+- `[pa3ds.navigation]` holds the keys of every mode. `[pa3ds.navigation.list]`,
+  `[pa3ds.navigation.direction]` and `[pa3ds.navigation.touch]` hold one mode's, and win over it.
+  A key can have modifiers: `"shift+k"`.
+- `[azahar]` rebinds Azahar's own buttons, and `[azahar.circle_pad]` and `[azahar.c_stick]` its
+  two sticks. Changes apply the next time pa3ds starts with Azahar closed.
+
+A new key whose default you already use for something else is added with a `#` in front of it,
+so your key keeps doing what it did, and pa3ds says so as it starts. Give one of the two another
+key, then take the `#` off the new line.

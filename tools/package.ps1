@@ -9,7 +9,8 @@ target\package\pa3ds-<version>-windows.zip holding:
   pa3ds.exe          the program, with Prism (which reaches the player's screen reader) built in
   data\              what pa3ds says of its own, the names it ships and the scenes it describes,
                      a folder a game and a language a folder inside it, read beside pa3ds.exe
-  README.md          the player's manual
+  README.md          the player's manual, its first page
+  manual\            the rest of the manual: keys, settings, languages
   CHANGELOG.md       what changed for players in each release
   licenses\          pa3ds's licence (pa3ds.txt), Prism's (prism.txt), Prism's notice
                      (prism-notice.txt) and those of the libraries built into Prism, one file each
@@ -62,6 +63,7 @@ New-Item -ItemType Directory -Force $licenses | Out-Null
 
 Copy-Item (Join-Path $release "pa3ds.exe") $stage
 Copy-Item -Recurse data (Join-Path $stage "data")
+Copy-Item -Recurse manual (Join-Path $stage "manual")
 Copy-Item README.md, CHANGELOG.md $stage
 Copy-Item LICENSE (Join-Path $licenses "pa3ds.txt")
 # Prism's LICENSES\<library>\<file> becomes licenses\<library>.<ext>, one level a player can list.
