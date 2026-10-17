@@ -141,22 +141,39 @@ fn text(window: i64) -> String {
 /// Every visible top-level window of the emulator, by its title.
 #[cfg(windows)]
 pub fn titles(emulator: &str) -> Vec<String> {
+    visible(emulator).into_iter().map(text).collect()
+}
+
+/// The process behind the emulator's visible windows, or 0 while it has none up.
+#[cfg(windows)]
+pub fn emulator_pid(emulator: &str) -> i64 {
+    let Some(&window) = visible(emulator).first() else {
+        return 0;
+    };
+    let mut pid: u32 = 0;
+    // SAFETY: `pid` is a live u32 for the call to write the process id into.
+    unsafe { GetWindowThreadProcessId(window as usize as HWND, &mut pid) };
+    pid as i64
+}
+
+#[cfg(windows)]
+fn visible(emulator: &str) -> Vec<i64> {
     struct Each<'a> {
         emulator: &'a str,
-        found: Vec<String>,
+        found: Vec<i64>,
     }
 
     unsafe extern "system" fn each(window: HWND, lparam: LPARAM) -> BOOL {
-        // SAFETY: `lparam` is the `Each` that `titles` passed to EnumWindows, which stays alive
+        // SAFETY: `lparam` is the `Each` that `visible` passed to EnumWindows, which stays alive
         // and is used by nothing else until EnumWindows returns.
         let this = unsafe { &mut *(lparam as *mut Each) };
         let window = window as usize as i64;
         // SAFETY: IsWindowVisible only reads the window handle.
-        if unsafe { IsWindowVisible(window as usize as HWND) } != 0 {
-            let shown = text(window);
-            if !shown.is_empty() && process_of(window) == this.emulator {
-                this.found.push(shown);
-            }
+        if unsafe { IsWindowVisible(window as usize as HWND) } != 0
+            && !text(window).is_empty()
+            && process_of(window) == this.emulator
+        {
+            this.found.push(window);
         }
         1
     }
@@ -190,6 +207,11 @@ pub fn in_front(_emulator: &str) -> bool {
 #[cfg(not(windows))]
 pub fn titles(_emulator: &str) -> Vec<String> {
     Vec::new()
+}
+
+#[cfg(not(windows))]
+pub fn emulator_pid(_emulator: &str) -> i64 {
+    0
 }
 
 /// Whether a window of the emulator's, by its title, is one the game is played in.

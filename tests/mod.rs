@@ -26,6 +26,7 @@ mod test_dowsing;
 mod test_field;
 mod test_gdb;
 mod test_heaps;
+mod test_instance;
 mod test_keyfile;
 mod test_layout;
 mod test_layout_file;

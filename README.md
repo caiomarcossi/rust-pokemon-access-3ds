@@ -162,6 +162,15 @@ ROMs are not distributed here and never will be.
 
 After that, start pa3ds and Azahar in either order.
 
+While Azahar is open, pa3ds hides its own window, so it is not in Alt+Tab between you and the
+game. It does this only when the window is its own: started by double-clicking or from a shortcut,
+not typed into a terminal you opened first. Started before Azahar, pa3ds stays in sight until
+Azahar opens. When you close Azahar, pa3ds closes too; unloading a game, switching games or loading
+a state does not close it.
+
+To restart pa3ds, start it again: the new one closes the one running, says "pa3ds restarted", and
+carries on the same log.
+
 pa3ds changes Azahar's settings only while Azahar is closed, because Azahar writes its own
 settings back over the file when it closes. If pa3ds says "close Azahar and start pa3ds again to
 apply its settings", do exactly that. If it says "Azahar's settings were not found", start Azahar
@@ -381,7 +390,9 @@ all when you move pa3ds. Updating keeps it where it is.
 - `keys.toml`: keys.
 - `names\`: your names.
 - `logs\`: what pa3ds did and said in each of the last ten runs. `pa3ds.log` is the latest run,
-  `pa3ds.1.log` the one before, up to `pa3ds.9.log`.
+  `pa3ds.1.log` the one before, up to `pa3ds.9.log`. A pa3ds started while another was running
+  carries on that one's log.
+- `pa3ds.lock`: there while pa3ds runs, so a pa3ds started again can find it and take its place.
 - `cache\`: what pa3ds worked out from your ROM. Safe to delete; it is built again.
 
 ## Updating
@@ -400,6 +411,8 @@ What changed in each version is in `CHANGELOG.md` beside `pa3ds.exe`, and on the
 - **pa3ds says "Waiting for the game" and nothing more while the game runs**: Azahar's RPC server
   is off. Close Azahar, start pa3ds, then start Azahar.
 - **pa3ds says "Reader error"**: part of pa3ds failed on that screen. The log has the details.
+- **pa3ds has gone quiet or stopped answering its keys**: start pa3ds again. It closes the one
+  running and says "pa3ds restarted".
 
 To report a problem, send `user\logs\pa3ds.log` from the run where it happened, and say what you
 were doing.

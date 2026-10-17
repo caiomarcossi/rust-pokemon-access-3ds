@@ -287,7 +287,7 @@ fn test_work_that_can_wait_is_put_off_while_the_emulator_answers_slowly_but_not_
 fn test_each_run_logs_afresh_and_keeps_the_runs_before() {
     let home = Home::new();
     for number in 0..KEPT_LOGS + 2 {
-        std::fs::write(log_path(None).unwrap(), format!("run {number}")).unwrap();
+        std::fs::write(log_path(None, true).unwrap(), format!("run {number}")).unwrap();
     }
     let logs = home.home.join("logs");
     let read = |name: &str| std::fs::read_to_string(logs.join(name)).unwrap();
@@ -327,7 +327,11 @@ fn test_a_log_path_given_keeps_its_own_runs_beside_it() {
     let tmp = TmpDir::new();
     let target = tmp.path().join("logs").join("test.log");
     for number in 0..3 {
-        std::fs::write(log_path(Some(&target)).unwrap(), format!("run {number}")).unwrap();
+        std::fs::write(
+            log_path(Some(&target), true).unwrap(),
+            format!("run {number}"),
+        )
+        .unwrap();
     }
     let read = |path: PathBuf| std::fs::read_to_string(path).unwrap();
     assert_eq!(read(target.clone()), "run 2");
@@ -339,7 +343,7 @@ fn test_a_log_path_given_keeps_its_own_runs_beside_it() {
 fn test_a_folder_given_as_the_log_path_gets_the_usual_name() {
     let tmp = TmpDir::new();
     assert_eq!(
-        log_path(Some(tmp.path())).unwrap(),
+        log_path(Some(tmp.path()), true).unwrap(),
         tmp.path().join("pa3ds.log")
     );
 }
@@ -919,6 +923,40 @@ fn test_the_same_emulator_answering_again_is_read_on() {
         !logged
             .iter()
             .any(|line| line.contains("waiting for a game again"))
+    );
+}
+
+/// Orion, 2026-10-17: a player who started pa3ds again over one that hung may be in another
+/// window, so the restart is said where "pa3ds ready" goes, cutting off whatever was being said.
+/// A game that goes and comes back afterwards is ready, not restarted.
+#[test]
+fn test_a_restarted_run_says_so_interrupting_and_only_the_first_time() {
+    let backend = Recorder::new();
+    let emu = Rc::new(FakeEmulator::with(emulator_running_a_game(), game(), 0, 0));
+    run_with(
+        connect(&emu),
+        Rc::new(Speech::plain(backend.clone())),
+        Settings {
+            tick: 0.0,
+            wait: 0.0,
+            restarted: true,
+            ..Settings::default()
+        },
+        &ticks_up_to(40),
+        Rc::new(|_: &str| {}),
+        &lose_the_emulator(emu.clone(), true),
+    )
+    .unwrap();
+    let said: Vec<String> = backend
+        .spoken()
+        .into_iter()
+        .filter(|said| said.starts_with("pa3ds"))
+        .collect();
+    assert_eq!(said, ["pa3ds restarted", "pa3ds ready"]);
+    assert!(
+        backend
+            .interrupting()
+            .contains(&"pa3ds restarted".to_string())
     );
 }
 

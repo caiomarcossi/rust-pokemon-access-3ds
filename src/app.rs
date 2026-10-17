@@ -93,6 +93,10 @@ pub struct Settings {
     /// C:, where raw captures live, because the pages a reader was reading can hold save data
     /// (ADR-0029).
     pub captures: Option<PathBuf>,
+    /// Whether this run replaced a pa3ds that was running (`instance.replace`): its first "pa3ds
+    /// ready" is "pa3ds restarted", interrupting, so a player who restarted a pa3ds that had hung
+    /// hears that it took, in whatever window they are in (Orion, 2026-10-17).
+    pub restarted: bool,
 }
 
 impl Default for Settings {
@@ -114,6 +118,7 @@ impl Default for Settings {
             keys: None,
             rom: None,
             captures: None,
+            restarted: false,
         }
     }
 }
@@ -420,6 +425,7 @@ pub fn run_with(
     start: Start<'_>,
 ) -> Result<()> {
     hook_panics();
+    let mut restarted = settings.restarted;
     loop {
         let Some(process) = wait_for_game(&*rpc, &speech, until, &log, &settings)? else {
             return Ok(());
@@ -432,9 +438,11 @@ pub fn run_with(
             &log,
             process,
             start,
+            restarted,
         )? {
             return Ok(());
         }
+        restarted = false;
         log("the game the emulator was running has gone; waiting for a game again");
     }
 }
@@ -473,7 +481,8 @@ fn raise(result: Result<()>) {
 }
 
 /// Read one game until `until()` is true. Returns whether the game went away, for `run` to
-/// wait for the next one.
+/// wait for the next one. `restarted` says "pa3ds restarted" where "pa3ds ready" goes.
+#[allow(clippy::too_many_arguments)]
 fn session(
     rpc: Rc<dyn Rpc>,
     speech: Rc<Speech>,
@@ -482,6 +491,7 @@ fn session(
     log: &Log,
     process: Process,
     start: Start<'_>,
+    restarted: bool,
 ) -> Result<bool> {
     let began = time::monotonic();
     let code_spans = snapshot::regions(
@@ -656,7 +666,11 @@ fn session(
         code.1,
         time::monotonic() - began
     ));
-    speech.say("pa3ds ready", Category::System);
+    if restarted {
+        speech.say("pa3ds restarted", Category::Warning);
+    } else {
+        speech.say("pa3ds ready", Category::System);
+    }
 
     // The pages the readers had been reading, saved where raw captures live (ADR-0029).
     let capture_failure: Box<dyn Fn() -> Result<Option<PathBuf>>> = {

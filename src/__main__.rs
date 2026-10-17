@@ -12,7 +12,7 @@ use indexmap::IndexMap;
 use crate::app::{self, Settings};
 use crate::core::rpc::{DEFAULT_PORT, Rpc, UdpRpc};
 use crate::core::speech::{self, Backend, Category, Speech};
-use crate::core::{config, keyfile, window};
+use crate::core::{config, instance, keyfile, window};
 use crate::games::common::field::keys::{DEFAULT_BINDINGS, EXPLAINED};
 use crate::py::{self, Log, time};
 
@@ -181,7 +181,26 @@ pa3ds: error: {message}",
     }
 }
 
+/// `atexit.register(instance.release, home)`: the file naming this pa3ds goes when `run` ends, by
+/// returning, raising or panicking, and not when another pa3ds ends this process.
+struct Release(PathBuf);
+
+impl Drop for Release {
+    fn drop(&mut self) {
+        instance::release(&self.0);
+    }
+}
+
 fn run(args: Args, hooks: &Hooks) -> py::Result<()> {
+    // One pa3ds at a time (ADR-0039). Not a silent run, which is an agent's or a developer's: it
+    // would end the player's own pa3ds mid-game. The file naming this one goes when it closes,
+    // and not when another ends it.
+    let mut replaced = false;
+    let mut _release = None;
+    if !args.silent {
+        replaced = instance::replace(&keyfile::home_path()?)?;
+        _release = Some(Release(keyfile::home_path()?));
+    }
     // A patch of Azahar's config is lost when an open Azahar closes, so none is written while
     // it is open.
     let running = !window::titles(window::EMULATOR).is_empty();
@@ -200,9 +219,15 @@ fn run(args: Args, hooks: &Hooks) -> py::Result<()> {
         println!("not logging to a file");
         None
     } else {
-        let path = log_path(args.log_path.as_deref())?;
+        // A pa3ds replaced is the same session to the player, so its log carries on.
+        let path = log_path(args.log_path.as_deref(), !replaced)?;
         println!("logging to {}", path.display());
-        Some(Rc::new(RefCell::new(File::create(&path)?)))
+        let file = if replaced {
+            File::options().append(true).create(true).open(&path)?
+        } else {
+            File::create(&path)?
+        };
+        Some(Rc::new(RefCell::new(file)))
     };
     let started = time::monotonic();
     let deadline = args.seconds.map(|seconds| started + seconds);
@@ -220,6 +245,11 @@ fn run(args: Args, hooks: &Hooks) -> py::Result<()> {
             }
         })
     };
+
+    if replaced {
+        log("replaced the pa3ds that was running, whose log this carries on");
+    }
+    let beside = instance::Beside::new(log.clone(), instance::LOOK);
 
     // A key's answer always interrupts (ADR-0010): `interrupt` adds menus to it. Until
     // 2026-09-24 this passed menus or nothing, and so no key ever cut speech off.
@@ -281,7 +311,9 @@ fn run(args: Args, hooks: &Hooks) -> py::Result<()> {
         );
     }
 
-    let until = move || deadline.is_some_and(|deadline| time::monotonic() >= deadline);
+    // Out of sight while Azahar is open, and closed with it (ADR-0039).
+    let until =
+        move || deadline.is_some_and(|deadline| time::monotonic() >= deadline) || beside.closed();
     (hooks.run)(
         rpc,
         speech,
@@ -293,6 +325,7 @@ fn run(args: Args, hooks: &Hooks) -> py::Result<()> {
             keys: bindings,
             names_home: Some(keyfile::home_path()?),
             rom: args.rom,
+            restarted: replaced,
             ..Settings::default()
         },
         &until,
@@ -312,8 +345,8 @@ pub fn default_log_path() -> py::Result<PathBuf> {
 /// before are kept beside it with a number before the extension, `pa3ds.1.log` the last to
 /// `pa3ds.9.log`. A live session's log is what shows why something was said, or not said, when no
 /// replay reproduces it, and a player testing from the start of the game restarts pa3ds more than
-/// once.
-pub fn log_path(place: Option<&Path>) -> py::Result<PathBuf> {
+/// once. `rotate` off moves nothing, for a run carrying on the log of the pa3ds it replaced.
+pub fn log_path(place: Option<&Path>, rotate: bool) -> py::Result<PathBuf> {
     let mut path = match place {
         None => default_log_path()?,
         Some(place) => place.to_path_buf(),
@@ -324,7 +357,9 @@ pub fn log_path(place: Option<&Path>) -> py::Result<PathBuf> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    rotate(&path)?;
+    if rotate {
+        self::rotate(&path)?;
+    }
     Ok(path)
 }
 

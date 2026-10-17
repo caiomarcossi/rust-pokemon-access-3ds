@@ -33,3 +33,5 @@ pub mod window;
 
 pub mod tones;
 pub mod touch;
+
+pub mod instance;

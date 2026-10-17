@@ -68,7 +68,8 @@ powershell -ExecutionPolicy Bypass -File tools\package.ps1   # the release zip, 
 ```
 
 `--silent` is mandatory from an agent session: without it pa3ds speaks through the screen reader
-of whoever is at the machine, over whatever they are doing. `--no-log` keeps a run from rotating
+of whoever is at the machine, over whatever they are doing, and ends the pa3ds they are playing
+with (ADR-0039). `--no-log` keeps a run from rotating
 the live logs in `user\logs\` beside pa3ds.
 
 `pa3ds.exe` needs nothing installed: Prism, which reaches the screen reader, is built into it by

@@ -266,5 +266,9 @@ Kept here so the next porter, and anyone reading a tape that differs, knows what
   is wrong, not `tomllib`'s: "Invalid string (at line 2, column 10)" where the Python says
   "Invalid value (at line 2, column 10)". The line and the column are the same (`core::toml`'s
   `parse`). No tape starts with a broken file.
+- **One pa3ds at a time** (`core::instance`): `Beside` is handed how it finds Azahar and how it
+  hides, which the Python's test monkeypatched, and the lock is let go by a guard dropped at the
+  end of `__main__`'s `run`, where the Python registers `atexit`. The tests' stand-in for the pa3ds
+  replaced is `ping`, where the Python's is its own interpreter asleep.
 - **What the tapes cannot check.** A movie presses no pa3ds keys, so the navigation keys are
   checked by their tests alone; and no tape so far holds a reader's failure.
