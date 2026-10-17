@@ -79,7 +79,9 @@ to install.
   carries. X and Y name what is on their maps the same way: its people ("Dexio", "Hairdresser"),
   the Pokémon walking about ("Fletchling"), things like the bedroom's Kalos Pokédex awards, Berry
   trees, sparkles and cones, and what you face and read, a TV, a trash can, an elevator, a photo
-  spot, a bed, a Gogoat Shuttle stop. What stands in
+  spot, a bed, a Gogoat Shuttle stop. In Santalune Gym the pole down to the web and the one back
+  up are exits, as are the stairs past Viola's tent once you have beaten her, and the lobby's
+  statues and photographs are said as statues and photographs. What stands in
   your way until a move clears it is under obstacles: bushes for Cut, cracked boulders (and in X
   and Y cracked walls) for Rock Smash, Mauville Gym's barriers, and big boulders for Strength with the holes they can be pushed into ("hole, 2
   east 3 south"): push
@@ -263,6 +265,11 @@ current 28 west 4 north, 5 east", and says nothing more until it lets you go. If
 carries you off the way, the way is found again where it leaves you. The currents category lists
 them by where they let you go, each at its square nearest you, with where that square leaves you:
 "current, 2 south, out at 30 west 1 south".
+
+**Diagonal steps.** In X and Y, Santalune Gym's floor is a spider web you walk along its threads,
+and some threads run diagonally. `P` says a step along one as "1 north-east", or "2 south-west"
+for two in a row: tilt the circle pad that way, or hold both keys together. Holding only one of
+the two moves you along the thread too, wherever the thread can go only one way.
 
 On a fresh Azahar, `I`, `J`, `K` and `L` are the C-stick and `O` and `P` are the debug and GPIO
 buttons, none of which the Pokémon games use. When one of pa3ds's keys is on an Azahar button,
