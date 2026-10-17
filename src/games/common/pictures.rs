@@ -1,27 +1,23 @@
 //! Words for what the game draws without any: buttons, icons and signs that are pictures alone.
 //!
-//! A picture's words are in its texture's name, `fight_button.bclim`, or in its pane's name when
-//! the layout file is not read, Sun's `Btn_Fight` (spike 124); a sign the game never names, a Box
-//! mark, is said as the Unicode sign it draws, which the screen reader names. Every such name is
-//! here, so a screen's picture is said the same way wherever a reader meets it.
+//! What a picture is called is pa3ds's own, in the player's language: `texture-fight_button` in a
+//! `pictures.ftl` under `<pa3ds>/data`, the game's own file before every game's (ADR-0040). Sun's
+//! buttons of pictures are named by their pane, `button-Btn_Fight`, since Sun's layout files are not
+//! read (spike 124). A picture no file names, in the player's language or in English, is said in
+//! words made from its texture's name, `fight_button.bclim` "fight", or its pane's, as every picture
+//! was until 2026-10-17; the log names each one so said, which is how the English table grows. A
+//! sign the game never names, a Box mark, is said as the Unicode sign it draws, which the screen
+//! reader names in the player's own language.
 //!
-//! **English only, for now** (Orion, 2026-09-29; on 2026-10-06 he was "increasingly convinced we
-//! need to start making per-language tables"). A texture's name is an English word whatever the
-//! ROM's language, and "empty", "on" and "off" are pa3ds's own, so a player in French hears "fight"
-//! and "female" as written here. A table per language, in code or in a data file beside the names
-//! (`pa3ds.core.names`), is where they would go when someone asks; the signs need none. Sun's
-//! passport photos are the first there, words for what no name says (`buttons`).
+//! What pa3ds says of a picture rather than what it is, "empty", "on", "third place", "2 stars", is a
+//! message too, by the id here (`EMPTY`, `ON`, `PLACES`): a reader says `own(EMPTY)`.
 
 use std::sync::OnceLock;
 
 use indexmap::IndexMap;
 
-use crate::core::toml;
+use crate::core::words::{current, own};
 use crate::py;
-
-/// A game's words for its buttons of pictures alone in one language, beside its names
-/// (`data/<language>/`): Sun's passport photos, which are a pane name each and no words.
-pub const PICTURES_FILE: &str = "pictures.toml";
 
 /// The word a texture name ends in to say its picture is a button, or `btn` short for it, as the
 /// PlayNav's `return_btn` and the Pokédex's `up_btn` (movie24). Left unsaid.
@@ -39,69 +35,33 @@ pub const SIZES: [&str; 1] = ["mini"];
 /// what the button is, not what it says.
 pub const BUTTON_PREFIX: &str = "btn";
 
-/// Pictures whose texture's name says what they look like, not what they do, or says it in
-/// Japanese, and that the game never names, by pa3ds's words for what they do (Orion, 2026-10-01):
-/// the AreaNav's map draws `map_big` on the button that makes the map bigger, and `map_small` on
-/// the one that takes it back (movie17); the Bag's `rireki_icon` ("rireki", history) lists the last
-/// items used (Orion, 2026-10-02, movie21); the PC Box's three modes, `mode01` to `mode03`, are its
-/// red tab (a Poké Ball), its blue (two balls and an arrow both ways) and its green (a grid and an
-/// arrow), which as Gen 6's PC is known pick a Pokémon up as usual, move one with a press, and
-/// select a group (Orion, 2026-10-02, movie22). The DexNav's crown for an area's Pokémon caught,
-/// `complete0` to `complete3`, is each by its colour, decoded from the ROM: brown, grey, yellow and
-/// a paler grey, bronze to platinum; tapped, it says "Good job! You've caught them all!" (Orion,
-/// movie28: the gold for Route 101, all of whose Pokémon are in the grass). The round ▶ under each
-/// app's logo on the PlayNav, `menu_bg_button`, starts that app (its tutorial the first time):
-/// Pokémon- Amie, the PSS and Super Training all draw it, and the game names it nowhere; it is said
-/// by what it does, as Orion names buttons (spike 198). Behind the menu its Pokémon opens, the page
-/// draws `msg_win_c`, a message window's backing, 320 by 180, as a touch area, and a tap on it
-/// closes the menu (omega_ruby_bottom-screen2). Super Training's `list_button`, 48 by 48 in the
-/// lower right of its PlayNav page, opens the list of training bags; the game names it only in a
-/// sentence ("Tap that button in the lower-right corner!"), so the word is pa3ds's (Khai,
-/// 2026-10-09, omega_ruby_bottom-screen5).
-pub fn own_words() -> &'static IndexMap<&'static str, &'static str> {
-    static OWN_WORDS: OnceLock<IndexMap<&'static str, &'static str>> = OnceLock::new();
-    OWN_WORDS.get_or_init(|| {
-        IndexMap::from([
-            ("map_big", "zoom in"),
-            ("map_small", "zoom out"),
-            ("rireki_icon", "history"),
-            ("mode01", "normal mode"),
-            ("mode02", "swap mode"),
-            ("mode03", "multi-select mode"),
-            ("complete0", "bronze crown"),
-            ("complete1", "silver crown"),
-            ("complete2", "gold crown"),
-            ("complete3", "platinum crown"),
-            ("menu_bg_button", "start"),
-            ("msg_win_c", "close"),
-            ("list_button", "training bags"),
-        ])
-    })
-}
-
-/// Pictures whose texture's name starts with these, by pa3ds's words for what they do. The
-/// regimen menu of Super Training draws the Balloon Bot of each regimen, `stage_poke01` and on, as
-/// the button that starts it, and the game titles each (`TRAINING_REGIMENS`); once a regimen is
-/// cleared the same button draws `stage_icon00_rock.bclim` instead, which the game does not title
-/// (Khai's session of 2026-10-09 23:31).
-pub const OWN_PREFIXES: [(&str, &str); 1] = [("stage_icon", "start")];
-
-pub const PREVIOUS: &str = "previous";
+/// A picture's message, by its texture's name less `.bclim`: `texture-map_big`, "zoom in".
+pub const TEXTURE: &str = "texture-";
+/// A Sun button's message, by its pane's name, `button-Hero_00`, or that name less the number of
+/// one of a row, `button-Btn_Pokemon`.
+pub const PANE: &str = "button-";
+/// A picture with no layout, by what the reader that finds it calls it: X's mirrors and looks,
+/// `model-boy` (`games.xy.intro`).
+pub const MODEL: &str = "model-";
+/// Textures named by how their name starts: Super Training's cleared regimens draw
+/// `stage_icon00_rock` and every `stage_icon` after it, each `texture-stage_icon` (Khai's session of
+/// 2026-10-09).
+pub const PREFIXED: [&str; 1] = ["stage_icon"];
+pub const PREVIOUS: &str = "top-bar-previous";
 /// What the ◀ and ▶ in the top bar's corners do: the PlayNav's pages and the sub-screen
 /// tutorial's. Both draw `button.bclim`, a ◀, and the right one is mirrored by its material, not
 /// by any pane float (spike 198, omega_ruby_bottom-screen1), so the picture's words are `BUTTON` for
 /// both and only its side of the screen tells them apart (`common.touch`). The ROM's other
 /// `button.bclim` are plates, a battle's 250 by 40 and a rounded corner in Super Training's
 /// archive, and a `button` anywhere but that bar stays one.
-pub const NEXT: &str = "next";
+pub const NEXT: &str = "top-bar-next";
 
-/// Words a texture name spells otherwise. A file name is ASCII, so `pokemon_button.bclim` loses the
-/// accent the game itself writes everywhere else ("Choose a Pokémon."), and a screen reader says
-/// the two differently (the user, 2026-09-16); `intro_famale.bclim`, which names the girl on the
-/// opening's choice of boy or girl, is Game Freak's own misspelling, and a screen reader reads it
-/// aloud as written (the user, 2026-09-21); Super Training's `gameover_c.bclim` runs two words
-/// together and is said "game over". Each is the word the picture is of, spelt as it is spelt
-/// elsewhere; none is a name pa3ds invented.
+/// Words a texture name spells otherwise, for a picture no file names. A file name is ASCII, so
+/// `pokemon_button.bclim` loses the accent the game itself writes everywhere else ("Choose a
+/// Pokémon."), and a screen reader says the two differently (the user, 2026-09-16);
+/// `intro_famale.bclim`, which names the girl on the opening's choice of boy or girl, is Game Freak's
+/// own misspelling, and a screen reader reads it aloud as written (the user, 2026-09-21); Super
+/// Training's `gameover_c.bclim` runs two words together and is said "game over".
 pub fn spellings() -> &'static IndexMap<&'static str, &'static str> {
     static SPELLINGS: OnceLock<IndexMap<&'static str, &'static str>> = OnceLock::new();
     SPELLINGS.get_or_init(|| {
@@ -115,7 +75,7 @@ pub fn spellings() -> &'static IndexMap<&'static str, &'static str> {
 
 /// Said of a button that is only the plate other buttons' words are written on, and of a slot of
 /// the PC Box holding no Pokémon.
-pub const EMPTY: &str = "empty";
+pub const EMPTY: &str = "picture-empty";
 
 /// The sign each mark's picture shows, which a screen reader names in the player's own words, as
 /// it does the gender signs. The game draws the marks and never names them.
@@ -132,9 +92,9 @@ pub fn marks() -> &'static IndexMap<&'static str, &'static str> {
         ])
     })
 }
-pub const ON: &str = "on";
+pub const ON: &str = "mark-on";
 /// A mark set or not: the game says so only by drawing it solid.
-pub const OFF: &str = "off";
+pub const OFF: &str = "mark-off";
 
 pub const STAR: &str = "★";
 pub const NO_STAR: &str = "☆";
@@ -156,22 +116,21 @@ pub const DRAWN: [(&str, &str); 6] = [
     ("heart01", HEART),
 ];
 /// A contest's places, which its results draw as pictures beside each entrant, `one` to `four`
-/// (spike 196), in words of pa3ds's own, said after the entrant: "Raiden & Metagross third
-/// place" (Orion, 2026-10-09).
+/// (spike 196), said after the entrant: "Raiden & Metagross third place" (Orion, 2026-10-09).
 pub const PLACES: [(&str, &str); 4] = [
-    ("one", "first place"),
-    ("two", "second place"),
-    ("three", "third place"),
-    ("four", "fourth place"),
+    ("one", "contest-place-one"),
+    ("two", "contest-place-two"),
+    ("three", "contest-place-three"),
+    ("four", "contest-place-four"),
 ];
-pub const HIGHER_LEVEL: &str = "higher level";
-pub const EGG_MOVE: &str = "egg move";
+pub const HIGHER_LEVEL: &str = "dexnav-higher-level";
+pub const EGG_MOVE: &str = "dexnav-egg-move";
 /// What the DexNav's mark says beside a level above the area's, a first move that is an egg move,
 /// and the hidden ability, as the guides read it (docs/plans/dexnav.md); the game says none of it.
-pub const HIDDEN_ABILITY: &str = "hidden ability";
+pub const HIDDEN_ABILITY: &str = "dexnav-hidden-ability";
 /// Said after a Pokémon the DexNav shows in colour, caught, where the rest are its silhouettes:
 /// only the caught are said so (Orion, 2026-10-06).
-pub const CAUGHT: &str = "caught";
+pub const CAUGHT: &str = "dexnav-caught";
 
 /// `DRAWN.get(texture)`.
 pub fn drawn(texture: &str) -> Option<&'static str> {
@@ -191,42 +150,49 @@ pub fn place(texture: &str) -> Option<&'static str> {
 
 /// Potential's stars as words: "2 stars", "1 star", "0 stars".
 pub fn stars(filled: i64) -> String {
-    if filled == 1 {
-        format!("{filled} star")
-    } else {
-        format!("{filled} stars")
-    }
+    own("dexnav-stars", &[("count", &filled)])
 }
 
 /// A contest move's hearts as words: "4 hearts", "1 heart".
 pub fn hearts(count: i64) -> String {
-    if count == 1 {
-        format!("{count} heart")
-    } else {
-        format!("{count} hearts")
+    own("contest-hearts", &[("count", &count)])
+}
+
+/// What the data calls a texture's picture, `map_big.bclim` "zoom in", or None where no file
+/// of the player's language or English's names it.
+pub fn named(texture: &str) -> Option<String> {
+    let stem = stem(texture);
+    let words = current();
+    let mut said = words.get(&format!("{TEXTURE}{stem}"), &[]);
+    if said.is_none()
+        && let Some(prefix) = PREFIXED.iter().find(|prefix| stem.starts_with(**prefix))
+    {
+        said = words.get(&format!("{TEXTURE}{prefix}"), &[]);
+    }
+    said
+}
+
+/// A texture's picture in words: what the data calls it (`named`), or else words made from its
+/// name, `fight_button.bclim` "fight" (`made`), which the log notes.
+pub fn words(texture: &str) -> String {
+    match named(texture) {
+        Some(said) => said,
+        None => {
+            let said = made(stem(texture));
+            current().made(&format!("texture {}", stem(texture)), &said);
+            said
+        }
     }
 }
 
-/// A texture's name as words: `fight_button.bclim` is "fight".
+/// A texture's name as words: `fight_button` is "fight".
 ///
 /// A trailing "button", or a leading or trailing "icon" (`KINDS`), is the designer saying what
 /// the picture is, not part of the item's name. The battle's command menu reads "fight bag
 /// pokémon run" as any menu would (the user, 2026-09-16), the name entry's confirm key
 /// `icon_return.bclim` reads "return", and so does the AreaNav's `return_icon.bclim` (movie17).
 /// A texture called only `button` or `icon` keeps the word: dropping it leaves nothing.
-pub fn words(texture: &str) -> String {
-    let stem = match texture.rsplit_once('.') {
-        Some((stem, _)) => stem,
-        None => texture,
-    };
-    if let Some(own) = own_words().get(stem) {
-        return own.to_string();
-    }
-    for (prefix, own) in OWN_PREFIXES {
-        if stem.starts_with(prefix) {
-            return own.to_string();
-        }
-    }
+pub fn made(stem: &str) -> String {
     let replaced = stem.replace('_', " ");
     let mut said = py::split(&replaced);
     if said.len() > 1 && SIZES.contains(&said[said.len() - 1]) {
@@ -244,9 +210,22 @@ pub fn words(texture: &str) -> String {
         .join(" ")
 }
 
-/// A button's pane name as words: `Btn_Fight` is "fight", `Btn_Pokemon_00` "pokémon". None
-/// for a name with no words left.
+/// A button's pane in words: what the data calls it, by its whole name and then by its name
+/// less the number of one of a row, or else words made from its name, `Btn_Fight` "fight",
+/// `Btn_Pokemon_00` "pokémon", which the log notes. None for a name with no words left.
 pub fn pane_words(name: &str) -> Option<String> {
+    let row = name
+        .trim_end_matches(|c: char| c.is_ascii_digit())
+        .trim_end_matches('_');
+    let mut keys = vec![name];
+    if row != name {
+        keys.push(row);
+    }
+    for key in keys {
+        if let Some(said) = current().get(&format!("{PANE}{key}"), &[]) {
+            return Some(said);
+        }
+    }
     let mut parts: Vec<String> = name
         .split('_')
         .filter(|part| !part.is_empty())
@@ -255,45 +234,26 @@ pub fn pane_words(name: &str) -> Option<String> {
     if !parts.is_empty() && parts[0] == BUTTON_PREFIX {
         parts.remove(0);
     }
-    while parts
-        .last()
-        .is_some_and(|last| last.chars().all(py::is_digit))
-    {
+    while parts.last().is_some_and(|last| py::isdigit(last)) {
         parts.pop();
     }
     if parts.is_empty() {
-        None
-    } else {
-        Some(words(&parts.join(" ")))
+        return None;
     }
-}
-
-/// pa3ds's own words for pictures the game draws and never names, from one section of
-/// `data/<language>/pictures.toml`, or of the English where the language has none yet: the
-/// names rule's data file a game and a language (`pa3ds.core.names`). Omega Ruby's boy and girl
-/// are `textures`, by texture name less `.bclim`; Sun's passport photos `buttons`, by pane name;
-/// X's boy, girl and looks `models`, by what its intro says is under the cursor.
-///
-/// Python reads the files at a folder's paths; the binary carries them, so this takes the
-/// game's table of them, a file a language (`Game.pictures`).
-pub fn described(data: &[(&str, &str)], language: &str, section: &str) -> IndexMap<String, String> {
-    let file = |language: &str| {
-        data.iter()
-            .find(|(held, _)| *held == language)
-            .map(|(_, file)| *file)
-    };
-    let found = toml::strings(toml::read_text(file(language)).get(section));
-    if !found.is_empty() {
-        return found;
-    }
-    toml::strings(toml::read_text(file("en")).get(section))
+    let said = made(&parts.join("_"));
+    current().made(&format!("button {name}"), &said);
+    Some(said)
 }
 
 /// The sign of a Box mark's texture, or None for any other texture.
 pub fn mark(texture: &str) -> Option<&'static str> {
-    let stem = match texture.rsplit_once('.') {
+    marks().get(stem(texture)).copied()
+}
+
+/// A texture's name less its `.bclim`.
+fn stem(texture: &str) -> &str {
+    match texture.rsplit_once('.') {
         Some((stem, _)) => stem,
         None => texture,
-    };
-    marks().get(stem).copied()
+    }
 }

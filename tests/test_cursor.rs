@@ -11,10 +11,13 @@ use indexmap::IndexMap;
 
 use super::fake_layouts::FakeLayouts;
 use super::fake_memory::{CODE, FakeClasses, FakeMemory};
+use super::fake_rom::TmpDir;
+use super::fake_words::pictures_in;
 use super::test_layout_file as clyt;
 use crate::core::binary;
 use crate::core::memory::Memory;
 use crate::core::rtti::ClassNames;
+use crate::core::words::{self, ENGLISH, Words};
 use crate::games::common::cursors::reader::CursorReader;
 use crate::games::common::cursors::shared::{CursorItem, CursorPoll};
 use crate::games::common::layout_file::LayoutFiles;
@@ -1376,10 +1379,10 @@ struct Chooser {
 
 impl Chooser {
     fn new() -> Chooser {
-        Chooser::with(false, IndexMap::new())
+        Chooser::with(false)
     }
 
-    fn with(words_in_girl: bool, textures: IndexMap<String, String>) -> Chooser {
+    fn with(words_in_girl: bool) -> Chooser {
         let memory = FakeMemory::new();
         let classes = FakeClasses::new(memory.clone());
         let picture = classes.add(lyt::PICTURE_CLASS);
@@ -1481,14 +1484,12 @@ impl Chooser {
             .write(CHOOSER_FILE, &layout_archive(sections));
         let files = Rc::new(LayoutFiles::new(chooser.memory.clone()));
         files.add_archive(CHOOSER_FILE).unwrap();
-        chooser.reader = CursorReader::with_textures(
+        chooser.reader = CursorReader::with(
             chooser.fake.layouts.clone(),
             names_of(&chooser.memory),
             Some(files),
             false,
             None,
-            IndexMap::new(),
-            textures,
         )
         .into();
         chooser
@@ -1514,16 +1515,26 @@ impl Chooser {
     }
 }
 
+/// `use(Words())`: pa3ds's words of every game, and no game's.
+fn no_games_words() {
+    words::r#use(Some(Rc::new(
+        Words::new(ENGLISH, None, IndexMap::new(), Rc::new(|_line: &str| {})).unwrap(),
+    )));
+}
+
 /// The choice of boy or girl said nothing (opening.ctm, the user, 2026-09-19). Each choice is
-/// a portrait on a white backing; the backing is the same on both, the portrait is not.
+/// a portrait on a white backing; the backing is the same on both, the portrait is not. Said
+/// by words made from its texture where no file describes it, as Omega Ruby's does.
 #[test]
 fn test_a_frame_on_a_choice_says_the_texture_only_that_choice_has() {
+    no_games_words();
     assert_eq!(Chooser::new().heard(), said(&[(&["male"], true)]));
 }
 
 /// `intro_famale.bclim` is the game's own misspelling, and the spelling table says "female".
 #[test]
 fn test_a_frame_sliding_onto_the_other_choice_says_it_once_it_is_there() {
+    no_games_words();
     let mut chooser = Chooser::new();
     chooser.heard();
     chooser.place(chooser.cursor, (-16.0, 0.0));
@@ -1538,19 +1549,13 @@ fn test_a_frame_sliding_onto_the_other_choice_says_it_once_it_is_there() {
 /// are, not as "male" and "female".
 #[test]
 fn test_a_choice_whose_portrait_pa3ds_describes_says_the_description_whole() {
-    let mut chooser = Chooser::with(
-        false,
-        IndexMap::from([
-            (
-                "intro_male".to_string(),
-                "Boy, brown hair, black hat".to_string(),
-            ),
-            (
-                "intro_famale".to_string(),
-                "Girl, brown hair, red bandana".to_string(),
-            ),
-        ]),
+    let tmp_path = TmpDir::new();
+    pictures_in(
+        tmp_path.path(),
+        "texture-intro_male = Boy, brown hair, black hat\n\
+         texture-intro_famale = Girl, brown hair, red bandana\n",
     );
+    let mut chooser = Chooser::new();
     assert_eq!(
         chooser.heard(),
         said(&[(&["Boy, brown hair, black hat"], true)])
@@ -1572,7 +1577,7 @@ fn test_a_frame_round_its_own_choice_is_not_a_cursor() {
 
 #[test]
 fn test_a_choice_with_words_says_its_words() {
-    let mut chooser = Chooser::with(true, IndexMap::new());
+    let mut chooser = Chooser::with(true);
     chooser.heard();
     chooser.place(chooser.cursor, GIRL);
     assert_eq!(chooser.heard(), said(&[(&["May"], false)]));
@@ -3347,7 +3352,6 @@ fn test_a_cursor_over_pictures_alone_says_what_the_game_calls_them() {
         None,
         false,
         Some(pictures),
-        IndexMap::new(),
     )
     .into();
     menu.reader.track([menu.window]).unwrap();

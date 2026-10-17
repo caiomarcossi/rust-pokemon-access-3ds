@@ -1,0 +1,1531 @@
+# The scenes Omega Ruby and Alpha Sapphire show without words, and when each beat of a scene's
+# description is said, under [pa3ds.ui] descriptions. What each beat says is in each language's
+# `scenes.ftl`, by the beat's `id` (ADR-0040): this file is every language's.
+#
+# A scene follows a line of the game's text in a zone, or in none before the player has arrived
+# anywhere, as in the opening: `story:402:30` is the story text's file 402, line 30, the same line
+# in every language, and `text:147:67` the rest of the game's text (`games.common.scenes`). A scene
+# with no line is said as the player arrives in its zone, or with `trigger` as they first step
+# onto that trigger of the zone's. Its beats are said one after another: a beat with `demo` waits
+# for a scene of the game's own to start (a demo, the Hall of Fame, the credits), one with `zone`
+# for the player to arrive there, then `at` seconds. A beat's `id` is a label, not a place: one put
+# between two others takes a new label, `or-groudon-wakes-2b`, and no other beat's words move.
+#
+# Each version plays its own scenes in rooms of its own, twin zones of one layout (Seafloor
+# Cavern's 0x6f in Omega Ruby, 0x6e in Alpha Sapphire), but a line said in a zone both share, as on
+# Route 128, is one version's only with its `title`: 0x000400000011C400 Omega Ruby,
+# 0x000400000011C500 Alpha Sapphire.
+#
+# Each scene was described from screenshots of a replay (spike 203, Omega Ruby's
+# movie40_groudon_awakens and movie41_cave_of_origin, and Alpha Sapphire's movie2_cave_of_origin;
+# spike 222, Omega Ruby's movies 48 to 53, Victory Road to the Delta Episode's opening, and Alpha
+# Sapphire's movie4_hall_of_fame and movie5_delta_episode_intro); the seconds are from the moment
+# its demo, line, arrival or trigger came there.
+
+# The opening, before the player is anywhere, so in no zone: the professor's lines are the rest of
+# the game's text, file 118, and the stretches between them where he says nothing are described
+# (OR_character-desc.ctm, 2026-10-15).
+#
+# "And this...is what we call a POKéMON.", then 12 s without a word.
+[[scene]]
+after = "text:118:42"
+
+[[scene.beat]]
+at = 1
+id = "opening-pokemon-1"
+
+[[scene.beat]]
+at = 5
+id = "opening-pokemon-2"
+
+[[scene.beat]]
+at = 10
+id = "opening-pokemon-3"
+
+# "...But that's enough about me!", then 21 s without a word.
+[[scene]]
+after = "text:118:48"
+
+[[scene.beat]]
+at = 1
+id = "opening-forest-1"
+
+[[scene.beat]]
+at = 9
+id = "opening-forest-2"
+
+[[scene.beat]]
+at = 15
+id = "opening-forest-3"
+
+[[scene.beat]]
+at = 18
+id = "opening-forest-4"
+
+# "...You're the one who's moving to Littleroot Town, where I live!", then 8 s without a word. The
+# same words are line 56 too, and either matches.
+[[scene]]
+after = "text:118:55"
+
+[[scene.beat]]
+id = "opening-handheld-1"
+
+[[scene.beat]]
+at = 4
+id = "opening-handheld-2"
+
+[[scene.beat]]
+at = 7
+id = "opening-handheld-3"
+
+# "...Come see me in my Pokémon Lab!", then 11 s without a word until the player stands in the
+# truck, zone 0x18f.
+[[scene]]
+after = "text:118:60"
+
+[[scene.beat]]
+at = 2
+id = "opening-truck-1"
+
+[[scene.beat]]
+zone = 0x18f
+id = "opening-truck-2"
+
+# Seafloor Cavern, zone 0x6f: Archie's "Augh... You...", after Maxie's battle and before Groudon
+# wakes, a demo of 65 s.
+[[scene]]
+after = "story:402:30"
+zone = 0x6f
+
+[[scene.beat]]
+id = "or-groudon-wakes-1"
+
+[[scene.beat]]
+demo = true
+at = 6
+id = "or-groudon-wakes-2"
+
+[[scene.beat]]
+at = 15
+id = "or-groudon-wakes-3"
+
+[[scene.beat]]
+at = 30
+id = "or-groudon-wakes-4"
+
+[[scene.beat]]
+at = 40
+id = "or-groudon-wakes-5"
+
+[[scene.beat]]
+at = 50
+id = "or-groudon-wakes-6"
+
+# Tabitha's "Child! You're coming, too! Hurry up!": the lava pool is empty, and everyone runs out
+# of the cavern onto Route 128, zone 0x39.
+[[scene]]
+after = "story:402:42"
+zone = 0x6f
+
+[[scene.beat]]
+id = "or-cavern-empties-1"
+
+[[scene.beat]]
+zone = 0x39
+id = "or-cavern-empties-2"
+
+# Route 128: Tabitha's "Let's go. Boss Maxie...".
+[[scene]]
+after = "story:148:30"
+zone = 0x39
+title = 0x000400000011C400
+
+[[scene.beat]]
+id = "or-route128-tabitha-1"
+
+# Archie's "So...I'll be waitin' for you in Sootopolis.", before Steven comes.
+[[scene]]
+after = "story:148:58"
+zone = 0x39
+title = 0x000400000011C400
+
+[[scene.beat]]
+id = "or-route128-archie-1"
+
+[[scene.beat]]
+at = 9
+id = "or-route128-archie-2"
+
+# Steven's "Good luck to you."
+[[scene]]
+after = "story:148:46"
+zone = 0x39
+title = 0x000400000011C400
+
+[[scene.beat]]
+id = "or-route128-steven-1"
+
+# The Cave of Origin's deepest floor, zone 0x76, each time the player comes down into it: the
+# only way on is north, where the floor narrows onto a ledge at the magma, and the scene where the
+# Magma Suit goes on starts as the player walks into that narrowing (an invisible trigger seven
+# cells wide at (17, 24), which fills it). Nothing stands there; a sighted player sees the floor
+# narrow toward the glow.
+[[scene]]
+zone = 0x76
+
+[[scene.beat]]
+id = "or-cave-depths-1"
+
+# The Magma Suit goes on as the scene starts, and its line comes after.
+[[scene]]
+after = "story:395:5"
+zone = 0x76
+
+[[scene.beat]]
+id = "or-magma-suit-1"
+
+# "fitted the suit with the Blue Orb!"
+[[scene]]
+after = "story:395:6"
+zone = 0x76
+
+[[scene.beat]]
+id = "or-blue-orb-1"
+
+[[scene.beat]]
+at = 4
+id = "or-blue-orb-2"
+
+# Groudon's roar there.
+[[scene]]
+after = "story:395:4"
+zone = 0x76
+
+[[scene.beat]]
+id = "or-groudon-roars-1"
+
+# "The sound cut out...", then a demo of 24 s, to zone 0x7a.
+[[scene]]
+after = "story:395:13"
+zone = 0x76
+
+[[scene.beat]]
+demo = true
+at = 2
+id = "or-sound-cut-out-1"
+
+[[scene.beat]]
+at = 8
+id = "or-sound-cut-out-2"
+
+[[scene.beat]]
+at = 16
+id = "or-sound-cut-out-3"
+
+# Zone 0x7a, Groudon's "Gurrrooouuuhhh!!!" as the player faces it, then a demo of 56 s to the
+# battle.
+[[scene]]
+after = "story:391:0"
+zone = 0x7a
+
+[[scene.beat]]
+demo = true
+id = "or-groudon-faced-1"
+
+[[scene.beat]]
+at = 14
+id = "or-groudon-faced-2"
+
+[[scene.beat]]
+at = 30
+id = "or-groudon-faced-3"
+
+[[scene.beat]]
+at = 40
+id = "or-groudon-faced-4"
+
+# "Gotcha! Groudon was caught!", then a demo of 40 s and the field across Hoenn's towns, to
+# Sootopolis.
+[[scene]]
+after = "text:147:67"
+zone = 0x7a
+
+[[scene.beat]]
+demo = true
+id = "or-groudon-caught-1"
+
+[[scene.beat]]
+at = 13
+id = "or-groudon-caught-2"
+
+[[scene.beat]]
+at = 25
+id = "or-groudon-caught-3"
+
+[[scene.beat]]
+zone = 0x6
+id = "or-groudon-caught-4"
+
+[[scene.beat]]
+zone = 0x15
+id = "or-groudon-caught-5"
+
+[[scene.beat]]
+zone = 0x12
+id = "or-groudon-caught-6"
+
+[[scene.beat]]
+zone = 0x13
+id = "or-groudon-caught-7"
+
+[[scene.beat]]
+zone = 0x1c7
+id = "or-groudon-caught-8"
+
+# Alpha Sapphire, from movie1_kyogre_awakens. Seafloor Cavern, zone 0x6e: Maxie's "No... That...",
+# after Archie's battle and before Kyogre wakes, a demo of 65 s.
+[[scene]]
+after = "story:403:30"
+zone = 0x6e
+
+[[scene.beat]]
+id = "as-kyogre-wakes-1"
+
+[[scene.beat]]
+demo = true
+at = 6
+id = "as-kyogre-wakes-2"
+
+[[scene.beat]]
+at = 15
+id = "as-kyogre-wakes-3"
+
+[[scene.beat]]
+at = 30
+id = "as-kyogre-wakes-4"
+
+[[scene.beat]]
+at = 40
+id = "as-kyogre-wakes-5"
+
+[[scene.beat]]
+at = 50
+id = "as-kyogre-wakes-6"
+
+# Shelly's "You, too! Well, hurry up!": the pool is still, and everyone runs out of the cavern onto
+# Route 128, zone 0x39.
+[[scene]]
+after = "story:403:42"
+zone = 0x6e
+
+[[scene.beat]]
+id = "as-cavern-empties-1"
+
+[[scene.beat]]
+zone = 0x39
+id = "as-cavern-empties-2"
+
+# Route 128: Shelly's "Let's go, Archie!".
+[[scene]]
+after = "story:148:14"
+zone = 0x39
+title = 0x000400000011C500
+
+[[scene.beat]]
+id = "as-route128-shelly-1"
+
+# Maxie's "I will expect your arrival in Sootopolis.", before Steven comes.
+[[scene]]
+after = "story:148:56"
+zone = 0x39
+title = 0x000400000011C500
+
+[[scene.beat]]
+id = "as-route128-maxie-1"
+
+[[scene.beat]]
+at = 10
+id = "as-route128-maxie-2"
+
+# Steven's "Good luck to you."
+[[scene]]
+after = "story:148:46"
+zone = 0x39
+title = 0x000400000011C500
+
+[[scene.beat]]
+id = "as-route128-steven-1"
+
+# Alpha Sapphire, from movie2_cave_of_origin. The Cave of Origin's deepest floor is zone 0x75, Omega Ruby's 0x76 laid out the
+# same: its warp and its trigger stand on the same cells, but the hall opens onto deep water.
+[[scene]]
+zone = 0x75
+
+[[scene.beat]]
+id = "as-cave-depths-1"
+
+# The suit goes on as the scene starts, and its line comes after.
+[[scene]]
+after = "story:396:5"
+zone = 0x75
+
+[[scene.beat]]
+id = "as-aqua-suit-1"
+
+# "fitted the suit with the Red Orb!"
+[[scene]]
+after = "story:396:6"
+zone = 0x75
+
+[[scene.beat]]
+id = "as-red-orb-1"
+
+[[scene.beat]]
+at = 4
+id = "as-red-orb-2"
+
+# Kyogre's roar there.
+[[scene]]
+after = "story:396:4"
+zone = 0x75
+
+[[scene.beat]]
+id = "as-kyogre-roars-1"
+
+# "The sound cut out...", then a demo of 24 s, to zone 0x79.
+[[scene]]
+after = "story:396:13"
+zone = 0x75
+
+[[scene.beat]]
+demo = true
+at = 2
+id = "as-sound-cut-out-1"
+
+[[scene.beat]]
+at = 8
+id = "as-sound-cut-out-2"
+
+[[scene.beat]]
+at = 16
+id = "as-sound-cut-out-3"
+
+# Zone 0x79, Kyogre's "Krrraaawwwrrr!!!" as the player faces it, then a demo of 57 s to the
+# battle.
+[[scene]]
+after = "story:392:0"
+zone = 0x79
+
+[[scene.beat]]
+demo = true
+id = "as-kyogre-faced-1"
+
+[[scene.beat]]
+at = 14
+id = "as-kyogre-faced-2"
+
+[[scene.beat]]
+at = 30
+id = "as-kyogre-faced-3"
+
+[[scene.beat]]
+at = 40
+id = "as-kyogre-faced-4"
+
+# "Gotcha! Kyogre was caught!", then a demo of 40 s and the field across Hoenn's towns, to
+# Sootopolis.
+[[scene]]
+after = "text:147:67"
+zone = 0x79
+
+[[scene.beat]]
+demo = true
+id = "as-kyogre-caught-1"
+
+[[scene.beat]]
+at = 13
+id = "as-kyogre-caught-2"
+
+[[scene.beat]]
+at = 25
+id = "as-kyogre-caught-3"
+
+[[scene.beat]]
+zone = 0x6
+id = "as-kyogre-caught-4"
+
+[[scene.beat]]
+zone = 0x15
+id = "as-kyogre-caught-5"
+
+[[scene.beat]]
+zone = 0x12
+id = "as-kyogre-caught-6"
+
+[[scene.beat]]
+zone = 0x13
+id = "as-kyogre-caught-7"
+
+[[scene.beat]]
+zone = 0x1c6
+id = "as-kyogre-caught-8"
+
+# Victory Road's way out, zone 0x7f, from movie48_battle_with_wally: Wally's "Ah! [name]!" as the
+# player walks onto the trigger across the path at (21, 50).
+[[scene]]
+after = "story:385:0"
+zone = 0x7f
+
+[[scene.beat]]
+id = "wally-waits-1"
+
+# "Standing here facing you again gives me chills..."
+[[scene]]
+after = "story:385:7"
+zone = 0x7f
+
+[[scene.beat]]
+id = "wally-chills-1"
+
+# "Arghhh!!!", after his battle.
+[[scene]]
+after = "story:385:13"
+zone = 0x7f
+
+[[scene.beat]]
+id = "wally-loses-1"
+
+# "When I do, promise we'll battle again! That's a promise I intend to live up to!"
+[[scene]]
+after = "story:385:18"
+zone = 0x7f
+
+[[scene.beat]]
+id = "wally-promises-1"
+
+# The Pokémon League, from movies 49 to 52. Each of the Elite Four's corridors is a bridge north to
+# a hall, the same in shape and dressed for the member beyond it, and plays its scene as the
+# player walks across the trigger halfway along it (row 34, five cells wide) with no line before
+# or after: Sidney's 0x16b, Phoebe's 0x167, Glacia's 0x168 and Drake's 0x169, about 17 s before
+# the player walks on into the room. The first is entered after "You heard doors closing!".
+[[scene]]
+after = "story:465:0"
+zone = 0x16b
+
+[[scene.beat]]
+id = "corridor-one-1"
+
+[[scene]]
+zone = 0x16b
+trigger = 0
+
+[[scene.beat]]
+at = 3
+id = "corridor-one-bridge-1"
+
+[[scene.beat]]
+at = 10
+id = "corridor-one-bridge-2"
+
+[[scene]]
+zone = 0x167
+
+[[scene.beat]]
+id = "corridor-two-1"
+
+[[scene]]
+zone = 0x167
+trigger = 0
+
+[[scene.beat]]
+at = 3
+id = "corridor-two-bridge-1"
+
+[[scene.beat]]
+at = 7
+id = "corridor-two-bridge-2"
+
+[[scene.beat]]
+at = 12
+id = "corridor-two-bridge-3"
+
+[[scene]]
+zone = 0x168
+
+[[scene.beat]]
+id = "corridor-three-1"
+
+[[scene]]
+zone = 0x168
+trigger = 0
+
+[[scene.beat]]
+at = 2
+id = "corridor-three-bridge-1"
+
+[[scene.beat]]
+at = 9
+id = "corridor-three-bridge-2"
+
+[[scene]]
+zone = 0x169
+
+[[scene.beat]]
+id = "corridor-four-1"
+
+[[scene]]
+zone = 0x169
+trigger = 0
+
+[[scene.beat]]
+at = 2
+id = "corridor-four-bridge-1"
+
+[[scene.beat]]
+at = 9
+id = "corridor-four-bridge-2"
+
+# Sidney's room, zone 0x162: as the player comes in he sits on a black chair, eyes closed, then
+# opens them and gets up, before his first line.
+[[scene]]
+after = "story:474:0"
+zone = 0x162
+
+[[scene.beat]]
+id = "sidney-rises-1"
+
+# "Go on to the next room and challenge your next battle!"
+[[scene]]
+after = "story:474:5"
+zone = 0x162
+
+[[scene.beat]]
+id = "sidney-beaten-1"
+
+# Phoebe's room, zone 0x163: her scene plays as the player walks up to her.
+[[scene]]
+after = "story:473:0"
+zone = 0x163
+
+[[scene.beat]]
+id = "phoebe-waits-1"
+
+[[scene]]
+after = "story:473:1"
+zone = 0x163
+
+[[scene.beat]]
+id = "phoebe-rises-1"
+
+# "Come on! Just try and see if you can even inflict damage on my Pokémon!"
+[[scene]]
+after = "story:473:4"
+zone = 0x163
+
+[[scene.beat]]
+id = "phoebe-challenges-1"
+
+# "Go ahead. Move on to the next room."
+[[scene]]
+after = "story:473:8"
+zone = 0x163
+
+[[scene.beat]]
+id = "phoebe-beaten-1"
+
+# Glacia's room, zone 0x164.
+[[scene]]
+after = "story:472:0"
+zone = 0x164
+
+[[scene.beat]]
+id = "glacia-waits-1"
+
+# "Advance to the next room. There you will learn how fearsome the Pokémon League can truly be!"
+[[scene]]
+after = "story:472:6"
+zone = 0x164
+
+[[scene.beat]]
+id = "glacia-beaten-1"
+
+# Drake's room, zone 0x165.
+[[scene]]
+after = "story:471:0"
+zone = 0x165
+
+[[scene.beat]]
+id = "drake-waits-1"
+
+# "Go! Go onward! The Champion is waiting!"
+[[scene]]
+after = "story:471:7"
+zone = 0x165
+
+[[scene.beat]]
+id = "drake-beaten-1"
+
+# The Champion's corridor, zone 0x16a, from movie53_battle_with_steven: no trigger; the player
+# walks up it to the light. Then the Champion's room, zone 0x166, whose own script starts as the
+# player arrives: it walks them 12 rows up a staircase, whatever they hold, and keeps them there
+# while the view goes to Steven, his first line 22.2 s after arriving in both of Orion's movies.
+# So the room is described as the player arrives, a beat as each shot comes (Orion, 2026-10-16).
+[[scene]]
+zone = 0x16a
+
+[[scene.beat]]
+id = "champion-corridor-1"
+
+[[scene.beat]]
+zone = 0x166
+at = 1
+id = "champion-corridor-2"
+
+[[scene.beat]]
+at = 9
+id = "champion-corridor-3"
+
+[[scene.beat]]
+at = 19
+id = "champion-corridor-4"
+
+# "You are rightfully the Hoenn region's new...", after his battle; the friend who runs in is the
+# rival, named as the speaker after it.
+[[scene]]
+after = "story:470:12"
+zone = 0x166
+
+[[scene.beat]]
+id = "steven-beaten-1"
+
+# May's "Huh? Wait—what? What? ... It's already over?"; Birch is drawn as HAKASE_RS, sprite 0xb3.
+[[scene]]
+after = "story:470:14"
+zone = 0x166
+
+[[scene.beat]]
+id = "may-runs-in-1"
+
+# Brendan's "You didn't... No, you couldn't have... Did you already beat the Champion?!", where
+# the player is a girl (movie53_battle_with_steven_as_a_girl); each of May's scenes here has a
+# twin of his, on his line, for him alone.
+[[scene]]
+after = "story:470:16"
+zone = 0x166
+
+[[scene.beat]]
+id = "brendan-runs-in-1"
+
+# "No, I should call you the Hoenn region's new Pokémon League Champion... Come with me, Champion."
+[[scene]]
+after = "story:470:23"
+zone = 0x166
+
+[[scene.beat]]
+id = "steven-leads-on-1"
+
+# May's "Raiden! Honestly, congratulations!"
+[[scene]]
+after = "story:470:30"
+zone = 0x166
+
+[[scene.beat]]
+id = "may-congratulates-1"
+
+# Brendan's "That's awesome, [name]. Congratulations...really!"
+[[scene]]
+after = "story:470:34"
+zone = 0x166
+
+[[scene.beat]]
+id = "brendan-congratulates-1"
+
+# The Hall of Fame, zone 0x16d: "This room... This is where we maintain the records of Pokémon..."
+[[scene]]
+after = "story:463:0"
+zone = 0x16d
+
+[[scene.beat]]
+id = "hall-of-fame-room-1"
+
+# "Come. We will use this machine to record your name...", then the Hall of Fame's demo of 37 s,
+# and back in the Champion's room, zone 0x166, where the script holds the player at the top of
+# the steps for 21.6 s before the friend's "Welcome back, [name]": the high windows, the player
+# stepping out of the archway, a close-up of the friend with eyes shut.
+[[scene]]
+after = "story:463:1"
+zone = 0x16d
+
+[[scene.beat]]
+id = "hall-of-fame-1"
+
+[[scene.beat]]
+demo = true
+at = 2
+id = "hall-of-fame-2"
+
+[[scene.beat]]
+at = 30
+id = "hall-of-fame-3"
+
+[[scene.beat]]
+zone = 0x166
+at = 3
+id = "hall-of-fame-4"
+
+[[scene.beat]]
+at = 14
+id = "hall-of-fame-5"
+
+# May's "Hee hee..."
+[[scene]]
+after = "story:470:41"
+zone = 0x166
+
+[[scene.beat]]
+id = "may-giggles-1"
+
+# Brendan's "D-don't go trying to read anything into it, though!"
+[[scene]]
+after = "story:470:42"
+zone = 0x166
+
+[[scene.beat]]
+id = "brendan-blushes-1"
+
+# May's "So...come on! Let's go home! Back to Littleroot Town!", then the credits: they start
+# three times, before May's battle, after it and after the game saves, and their pictures run at
+# their own pace, so each beat is timed from the start of its part. The Pokémon in each of the
+# journey's pictures are the player's own, `{yours:N}` by their nicknames, but for the rival's
+# starter, `{memory:2}`; the rest are the story's, Wally's and
+# Steven's in their Mega forms, named from the game's list of forms (text 5). Seen in Omega
+# Ruby with May as the rival, and with a line of hers, so with her alone; Brendan's twin follows.
+[[scene]]
+after = "story:470:43"
+zone = 0x166
+title = 0x000400000011C400
+
+[[scene.beat]]
+id = "or-credits-may-1"
+
+[[scene.beat]]
+demo = true
+at = 7
+id = "or-credits-may-2"
+
+[[scene.beat]]
+at = 44
+id = "or-credits-may-3"
+
+[[scene.beat]]
+at = 70
+id = "or-credits-may-4"
+
+[[scene.beat]]
+at = 89
+id = "or-credits-may-5"
+
+[[scene.beat]]
+at = 97
+id = "or-credits-may-6"
+
+[[scene.beat]]
+at = 109
+id = "or-credits-may-7"
+
+[[scene.beat]]
+at = 122
+id = "or-credits-may-8"
+
+[[scene.beat]]
+at = 135
+id = "or-credits-may-9"
+
+[[scene.beat]]
+at = 148
+id = "or-credits-may-10"
+
+[[scene.beat]]
+at = 160
+id = "or-credits-may-11"
+
+[[scene.beat]]
+at = 173
+id = "or-credits-may-12"
+
+[[scene.beat]]
+at = 186
+id = "or-credits-may-13"
+
+[[scene.beat]]
+at = 199
+id = "or-credits-may-14"
+
+[[scene.beat]]
+at = 211
+id = "or-credits-may-15"
+
+[[scene.beat]]
+at = 223
+id = "or-credits-may-16"
+
+[[scene.beat]]
+at = 235
+id = "or-credits-may-17"
+
+[[scene.beat]]
+at = 248
+id = "or-credits-may-18"
+
+[[scene.beat]]
+at = 273
+id = "or-credits-may-19"
+
+[[scene.beat]]
+at = 286
+id = "or-credits-may-20"
+
+[[scene.beat]]
+at = 299
+id = "or-credits-may-21"
+
+[[scene.beat]]
+at = 325
+id = "or-credits-may-22"
+
+[[scene.beat]]
+at = 338
+id = "or-credits-may-23"
+
+[[scene.beat]]
+at = 351
+id = "or-credits-may-24"
+
+[[scene.beat]]
+at = 364
+id = "or-credits-may-25"
+
+[[scene.beat]]
+at = 377
+id = "or-credits-may-26"
+
+[[scene.beat]]
+at = 401
+id = "or-credits-may-27"
+
+[[scene.beat]]
+at = 426
+id = "or-credits-may-28"
+
+[[scene.beat]]
+at = 434
+id = "or-credits-may-29"
+
+[[scene.beat]]
+at = 449
+id = "or-credits-may-30"
+
+[[scene.beat]]
+at = 469
+id = "or-credits-may-31"
+
+[[scene.beat]]
+demo = true
+at = 2
+id = "or-credits-may-32"
+
+[[scene.beat]]
+at = 17
+id = "or-credits-may-33"
+
+[[scene.beat]]
+at = 41
+id = "or-credits-may-34"
+
+[[scene.beat]]
+at = 45
+id = "or-credits-may-35"
+
+[[scene.beat]]
+at = 81
+id = "or-credits-may-36"
+
+[[scene.beat]]
+demo = true
+at = 1
+id = "or-credits-may-37"
+
+[[scene.beat]]
+at = 11
+id = "or-credits-may-38"
+
+[[scene.beat]]
+at = 112
+id = "or-credits-may-39"
+
+# The same credits in Alpha Sapphire (movie4_hall_of_fame), picture for picture and second for
+# second, but five: Archie by the hall of exhibits and Maxie where Archie stood, Archie's Sharpedo
+# where Maxie's Camerupt was, and Kyogre where Groudon was.
+[[scene]]
+after = "story:470:43"
+zone = 0x166
+title = 0x000400000011C500
+
+[[scene.beat]]
+id = "as-credits-may-1"
+
+[[scene.beat]]
+demo = true
+at = 7
+id = "as-credits-may-2"
+
+[[scene.beat]]
+at = 44
+id = "as-credits-may-3"
+
+[[scene.beat]]
+at = 70
+id = "as-credits-may-4"
+
+[[scene.beat]]
+at = 89
+id = "as-credits-may-5"
+
+[[scene.beat]]
+at = 97
+id = "as-credits-may-6"
+
+[[scene.beat]]
+at = 109
+id = "as-credits-may-7"
+
+[[scene.beat]]
+at = 122
+id = "as-credits-may-8"
+
+[[scene.beat]]
+at = 135
+id = "as-credits-may-9"
+
+[[scene.beat]]
+at = 148
+id = "as-credits-may-10"
+
+[[scene.beat]]
+at = 160
+id = "as-credits-may-11"
+
+[[scene.beat]]
+at = 173
+id = "as-credits-may-12"
+
+[[scene.beat]]
+at = 186
+id = "as-credits-may-13"
+
+[[scene.beat]]
+at = 199
+id = "as-credits-may-14"
+
+[[scene.beat]]
+at = 211
+id = "as-credits-may-15"
+
+[[scene.beat]]
+at = 223
+id = "as-credits-may-16"
+
+[[scene.beat]]
+at = 235
+id = "as-credits-may-17"
+
+[[scene.beat]]
+at = 248
+id = "as-credits-may-18"
+
+[[scene.beat]]
+at = 273
+id = "as-credits-may-19"
+
+[[scene.beat]]
+at = 286
+id = "as-credits-may-20"
+
+[[scene.beat]]
+at = 299
+id = "as-credits-may-21"
+
+[[scene.beat]]
+at = 325
+id = "as-credits-may-22"
+
+[[scene.beat]]
+at = 338
+id = "as-credits-may-23"
+
+[[scene.beat]]
+at = 351
+id = "as-credits-may-24"
+
+[[scene.beat]]
+at = 364
+id = "as-credits-may-25"
+
+[[scene.beat]]
+at = 377
+id = "as-credits-may-26"
+
+[[scene.beat]]
+at = 401
+id = "as-credits-may-27"
+
+[[scene.beat]]
+at = 426
+id = "as-credits-may-28"
+
+[[scene.beat]]
+at = 434
+id = "as-credits-may-29"
+
+[[scene.beat]]
+at = 449
+id = "as-credits-may-30"
+
+[[scene.beat]]
+at = 469
+id = "as-credits-may-31"
+
+[[scene.beat]]
+demo = true
+at = 2
+id = "as-credits-may-32"
+
+[[scene.beat]]
+at = 17
+id = "as-credits-may-33"
+
+[[scene.beat]]
+at = 41
+id = "as-credits-may-34"
+
+[[scene.beat]]
+at = 45
+id = "as-credits-may-35"
+
+[[scene.beat]]
+at = 81
+id = "as-credits-may-36"
+
+[[scene.beat]]
+demo = true
+at = 1
+id = "as-credits-may-37"
+
+[[scene.beat]]
+at = 11
+id = "as-credits-may-38"
+
+[[scene.beat]]
+at = 112
+id = "as-credits-may-39"
+
+# Brendan's "Now, come on! We're going home! Back to Littleroot Town!", then the credits where the
+# player is a girl (movie53_battle_with_steven_as_a_girl): May's credits, picture for picture and
+# second for second, with Brendan where she was.
+[[scene]]
+after = "story:470:44"
+zone = 0x166
+title = 0x000400000011C400
+
+[[scene.beat]]
+id = "or-credits-brendan-1"
+
+[[scene.beat]]
+demo = true
+at = 7
+id = "or-credits-brendan-2"
+
+[[scene.beat]]
+at = 44
+id = "or-credits-brendan-3"
+
+[[scene.beat]]
+at = 70
+id = "or-credits-brendan-4"
+
+[[scene.beat]]
+at = 89
+id = "or-credits-brendan-5"
+
+[[scene.beat]]
+at = 97
+id = "or-credits-brendan-6"
+
+[[scene.beat]]
+at = 109
+id = "or-credits-brendan-7"
+
+[[scene.beat]]
+at = 122
+id = "or-credits-brendan-8"
+
+[[scene.beat]]
+at = 135
+id = "or-credits-brendan-9"
+
+[[scene.beat]]
+at = 148
+id = "or-credits-brendan-10"
+
+[[scene.beat]]
+at = 160
+id = "or-credits-brendan-11"
+
+[[scene.beat]]
+at = 173
+id = "or-credits-brendan-12"
+
+[[scene.beat]]
+at = 186
+id = "or-credits-brendan-13"
+
+[[scene.beat]]
+at = 199
+id = "or-credits-brendan-14"
+
+[[scene.beat]]
+at = 211
+id = "or-credits-brendan-15"
+
+[[scene.beat]]
+at = 223
+id = "or-credits-brendan-16"
+
+[[scene.beat]]
+at = 235
+id = "or-credits-brendan-17"
+
+[[scene.beat]]
+at = 248
+id = "or-credits-brendan-18"
+
+[[scene.beat]]
+at = 273
+id = "or-credits-brendan-19"
+
+[[scene.beat]]
+at = 286
+id = "or-credits-brendan-20"
+
+[[scene.beat]]
+at = 299
+id = "or-credits-brendan-21"
+
+[[scene.beat]]
+at = 325
+id = "or-credits-brendan-22"
+
+[[scene.beat]]
+at = 338
+id = "or-credits-brendan-23"
+
+[[scene.beat]]
+at = 351
+id = "or-credits-brendan-24"
+
+[[scene.beat]]
+at = 364
+id = "or-credits-brendan-25"
+
+[[scene.beat]]
+at = 377
+id = "or-credits-brendan-26"
+
+[[scene.beat]]
+at = 401
+id = "or-credits-brendan-27"
+
+[[scene.beat]]
+at = 426
+id = "or-credits-brendan-28"
+
+[[scene.beat]]
+at = 434
+id = "or-credits-brendan-29"
+
+[[scene.beat]]
+at = 449
+id = "or-credits-brendan-30"
+
+[[scene.beat]]
+at = 469
+id = "or-credits-brendan-31"
+
+[[scene.beat]]
+demo = true
+at = 2
+id = "or-credits-brendan-32"
+
+[[scene.beat]]
+at = 17
+id = "or-credits-brendan-33"
+
+[[scene.beat]]
+at = 41
+id = "or-credits-brendan-34"
+
+[[scene.beat]]
+at = 45
+id = "or-credits-brendan-35"
+
+[[scene.beat]]
+at = 81
+id = "or-credits-brendan-36"
+
+[[scene.beat]]
+demo = true
+at = 1
+id = "or-credits-brendan-37"
+
+[[scene.beat]]
+at = 11
+id = "or-credits-brendan-38"
+
+[[scene.beat]]
+at = 112
+id = "or-credits-brendan-39"
+
+# Brendan's credits in Alpha Sapphire: his Omega Ruby credits above with Alpha Sapphire's five
+# pictures, composed before any replay showed them (ADR-0038, Orion, 2026-10-16), then seen so in
+# movie4_hall_of_fame_as_a_girl.
+[[scene]]
+after = "story:470:44"
+zone = 0x166
+title = 0x000400000011C500
+
+[[scene.beat]]
+id = "as-credits-brendan-1"
+
+[[scene.beat]]
+demo = true
+at = 7
+id = "as-credits-brendan-2"
+
+[[scene.beat]]
+at = 44
+id = "as-credits-brendan-3"
+
+[[scene.beat]]
+at = 70
+id = "as-credits-brendan-4"
+
+[[scene.beat]]
+at = 89
+id = "as-credits-brendan-5"
+
+[[scene.beat]]
+at = 97
+id = "as-credits-brendan-6"
+
+[[scene.beat]]
+at = 109
+id = "as-credits-brendan-7"
+
+[[scene.beat]]
+at = 122
+id = "as-credits-brendan-8"
+
+[[scene.beat]]
+at = 135
+id = "as-credits-brendan-9"
+
+[[scene.beat]]
+at = 148
+id = "as-credits-brendan-10"
+
+[[scene.beat]]
+at = 160
+id = "as-credits-brendan-11"
+
+[[scene.beat]]
+at = 173
+id = "as-credits-brendan-12"
+
+[[scene.beat]]
+at = 186
+id = "as-credits-brendan-13"
+
+[[scene.beat]]
+at = 199
+id = "as-credits-brendan-14"
+
+[[scene.beat]]
+at = 211
+id = "as-credits-brendan-15"
+
+[[scene.beat]]
+at = 223
+id = "as-credits-brendan-16"
+
+[[scene.beat]]
+at = 235
+id = "as-credits-brendan-17"
+
+[[scene.beat]]
+at = 248
+id = "as-credits-brendan-18"
+
+[[scene.beat]]
+at = 273
+id = "as-credits-brendan-19"
+
+[[scene.beat]]
+at = 286
+id = "as-credits-brendan-20"
+
+[[scene.beat]]
+at = 299
+id = "as-credits-brendan-21"
+
+[[scene.beat]]
+at = 325
+id = "as-credits-brendan-22"
+
+[[scene.beat]]
+at = 338
+id = "as-credits-brendan-23"
+
+[[scene.beat]]
+at = 351
+id = "as-credits-brendan-24"
+
+[[scene.beat]]
+at = 364
+id = "as-credits-brendan-25"
+
+[[scene.beat]]
+at = 377
+id = "as-credits-brendan-26"
+
+[[scene.beat]]
+at = 401
+id = "as-credits-brendan-27"
+
+[[scene.beat]]
+at = 426
+id = "as-credits-brendan-28"
+
+[[scene.beat]]
+at = 434
+id = "as-credits-brendan-29"
+
+[[scene.beat]]
+at = 449
+id = "as-credits-brendan-30"
+
+[[scene.beat]]
+at = 469
+id = "as-credits-brendan-31"
+
+[[scene.beat]]
+demo = true
+at = 2
+id = "as-credits-brendan-32"
+
+[[scene.beat]]
+at = 17
+id = "as-credits-brendan-33"
+
+[[scene.beat]]
+at = 41
+id = "as-credits-brendan-34"
+
+[[scene.beat]]
+at = 45
+id = "as-credits-brendan-35"
+
+[[scene.beat]]
+at = 81
+id = "as-credits-brendan-36"
+
+[[scene.beat]]
+demo = true
+at = 1
+id = "as-credits-brendan-37"
+
+[[scene.beat]]
+at = 11
+id = "as-credits-brendan-38"
+
+[[scene.beat]]
+at = 112
+id = "as-credits-brendan-39"
+
+# After the game restarts, Mossdeep City, zone 0x13: "XX:XX, the XXth day of the XXth month".
+[[scene]]
+after = "story:509:45"
+zone = 0x13
+
+[[scene.beat]]
+id = "mossdeep-date-1"
+
+[[scene.beat]]
+at = 5
+id = "mossdeep-date-2"
+
+# "Mossdeep Space Center Celestial Observatory", then inside, zone 0x152; Cozmo is drawn as
+# SORAISI_RS, sprite 0x136.
+[[scene]]
+after = "story:509:46"
+zone = 0x13
+
+[[scene.beat]]
+zone = 0x152
+id = "space-center-1"
+
+# "...Hmmn. So it's come to this.", then the Sky Pillar's top, zone 0xb5: at night in Omega Ruby,
+# the disguise Magma's; by day in Alpha Sapphire (movie5_delta_episode_intro), the disguise Aqua's.
+[[scene]]
+after = "story:499:13"
+zone = 0x152
+title = 0x000400000011C400
+
+[[scene.beat]]
+zone = 0xb5
+id = "or-sky-pillar-1"
+
+[[scene]]
+after = "story:499:13"
+zone = 0x152
+title = 0x000400000011C500
+
+[[scene.beat]]
+zone = 0xb5
+id = "as-sky-pillar-1"
+
+# "...Looks like I won't be needing THIS... Hiyyup!"
+[[scene]]
+after = "story:330:0"
+zone = 0xb5
+
+[[scene.beat]]
+id = "sky-pillar-hiyyup-1"
+
+# "I swear I'll protect you. ...Aster."
+[[scene]]
+after = "story:330:9"
+zone = 0xb5
+title = 0x000400000011C400
+
+[[scene.beat]]
+at = 1
+id = "or-aster-1"
+
+[[scene]]
+after = "story:330:9"
+zone = 0xb5
+title = 0x000400000011C500
+
+[[scene.beat]]
+at = 1
+id = "as-aster-1"

@@ -81,6 +81,10 @@ pub struct Session {
     /// The page cache the readers read through, whose pages are saved when a reader fails
     /// (ADR-0019); None where they read to the byte.
     pub pages: Option<Rc<PageCache>>,
+    /// The language the save says the game is in, as the last whole sweep read it, or None where
+    /// it is not known: before the sweep, and in Sun, whose save pa3ds cannot reach (spike 226).
+    /// The runtime reads the game again in it where it is not the session's.
+    pub language: Rc<dyn Fn() -> Option<String>>,
 }
 
 /// What a game is started with, besides the emulator and speech: the process running, the log,

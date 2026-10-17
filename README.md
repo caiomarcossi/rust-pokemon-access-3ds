@@ -5,7 +5,9 @@ A screen reader accessibility layer for 3DS Pokémon games running in the
 
 pa3ds reads the game's own memory while you play and sends what it finds to your screen reader
 through [Prism](https://github.com/ethindp/prism): NVDA, or another screen reader Prism supports,
-or SAPI. Every word the game shows is read from the game itself, in your game's language. pa3ds
+or SAPI. Every word the game shows is read from the game itself, in your game's language, and
+pa3ds's own words, for what the game never says, are in your language too
+([Languages](#languages)). pa3ds
 never presses a button for you. The one exception is touch mode, where it taps the touch-screen
 button it has just named, and only when you press its tap key.
 
@@ -34,14 +36,14 @@ to install.
 - **Name entry**: the key under the cursor.
 - **The Trainer Passport's photos** in Sun and Moon: each photo described in pa3ds's own words
   as the cursor moves to it ("Boy, fair skin, blond hair, blue eyes, ..."), since the game shows
-  the photos and never names them. The words are English in every language for now.
+  the photos and never names them. The words are English until they are translated.
 - **X and Y's opening**: the boy and the girl in their mirrors, then the three looks of the
   one you chose, each described in pa3ds's own words as the cursor moves to it ("Boy, fair
   skin, short black hair, ..."; "Brown skin, dark grey-black hair in a short bob, ..."), since
-  the game draws them and never names them. The words are English in every language for now.
+  the game draws them and never names them. The words are English until they are translated.
 - **Omega Ruby and Alpha Sapphire's choice of boy or girl**: each portrait described the same
-  way ("Boy, fair skin, brown hair, ..."; "Girl, ..., a red bandana ..."), also in English for
-  now.
+  way ("Boy, fair skin, brown hair, ..."; "Girl, ..., a red bandana ..."), also in English until
+  translated.
 - **Battles**: the battle text, and each side's Pokémon with its name, gender, level and HP. Your
   HP is said exactly; the enemy's as a percentage, because a bar is all the game shows.
 - **The PC Box, the party, the Bag and the Pokédex**, including the habitat map.
@@ -332,6 +334,7 @@ line you have. Each setting has a comment in the file saying what it does.
 | `interrupt` | `false` | Cut off speech when a menu's cursor moves, instead of queueing. pa3ds's own keys always cut off speech. |
 | `unfocused` | `false` | Keep saying what the game shows while another window is in front. |
 | `tones` | `true` | A short tone as the map's cursor or touch mode moves: higher the further up, panned the further right. |
+| `language` | `""` | The language pa3ds says its own words in: `en`, `fr`, `de`, `es`, `it`, `ja`, `ko`, `zh-CN` or `zh-TW`. Empty follows your game's language, read from your save. Set it for a fan translation, and in Sun and Moon, where it is the game's language too ([Languages](#languages)). |
 | `descriptions` | `false` | Describe the scenes the game shows without words, after the line each scene follows, or as you walk onto the spot that starts it, said as "Narration:" the way a speaker is named. So far in English, for Omega Ruby's opening, where the professor stops talking, and its scenes from Groudon waking in Seafloor Cavern to the sky clearing after it is caught, and from Wally on Victory Road through the Pokémon League, the credits and the Delta Episode's opening; Alpha Sapphire's from Kyogre waking to the sky clearing after it is caught, and from the Hall of Fame through the credits and the Delta Episode's opening; and Sun's chase after Kukui's call, said as it plays. The credits' pictures of your journey are described with the Pokémon your own save remembers, by the nicknames you gave them, or else by species in the form it remembers, Mega or Primal, and with May or Brendan as your rival. |
 | **`[pa3ds.navigation]`** | | |
 | `positions` | `true` | Say where a thing is in the list: "door, 1 of 3". |
@@ -375,6 +378,37 @@ Run `pa3ds.exe --help` for the full list. The ones a player may want:
 - `--no-keys`: answer no keys and rebind no buttons.
 - `--port PORT`: Azahar's RPC port, if you changed it from 45987.
 
+## Languages
+
+In Omega Ruby, Alpha Sapphire, X and Y, pa3ds reads your game's language from your save: the
+language you chose as your game began. Place names, trainer classes and everything else pa3ds
+reads out of the game are in that language, and so are pa3ds's own words. Until a save is loaded, pa3ds speaks English, and it changes language quietly once
+it has read the save.
+
+In Sun and Moon pa3ds cannot read your save's language. Set `language` in `[pa3ds.ui]` to your
+game's: it is then the language of the game's words pa3ds reads as well as its own.
+
+A game translated by fans may keep the number of the language it replaced in its save: the
+Chinese Omega Ruby says Japanese. pa3ds still reads the game's words right, since they are where
+the Japanese ones were, but its own would be Japanese. Set `language = "zh-CN"` and pa3ds
+speaks its own words in Chinese.
+
+pa3ds's own words are in the `data` folder beside pa3ds: every game's in `data\common`, and each
+game's own in `data\oras`, `data\xy` and `data\sm`, a folder for each language inside. They are
+Fluent files (`.ftl`), plain text: a word's name, `=`, and the words. Every word is in English,
+and a word a language has no file for is said in English.
+
+Every language the games come in has every file, and Chinese, Simplified and Traditional, has
+all but the names of people and things on the maps of Omega Ruby, Alpha Sapphire, X and Y. They
+began as a machine's translation, so some words may sound wrong: correct them after the `=` in
+your language's files, and send them to the developers.
+
+To translate pa3ds into another language, copy the `en` folders' `.ftl` files into folders named
+for your language, as `data\common\pt`, and change the words after each `=`. Keep what is inside
+`{ }` as it is: `{ $count }` is a number pa3ds puts in, and `{ POKEMON(383) }` a name it reads
+from your game. Send your folders to the developers so they ship with pa3ds: an update replaces
+the `data` folder, so keep a copy of yours.
+
 ## Names of your own
 
 The game never names some things: most people on the map, signs, doors. pa3ds gives some of them
@@ -407,11 +441,15 @@ all when you move pa3ds. Updating keeps it where it is.
 - `pa3ds.lock`: there while pa3ds runs, so a pa3ds started again can find it and take its place.
 - `cache\`: what pa3ds worked out from your ROM. Safe to delete; it is built again.
 
+The `data` folder beside `user` is pa3ds's, not yours: its words, the names it gives people and
+things, and its descriptions of scenes. An update replaces it. Without it pa3ds says "pa3ds data
+folder not found" as it starts and runs on with much less to say.
+
 ## Updating
 
 When pa3ds starts, it checks for a newer version. If there is one, a window asks whether to
-update. Yes downloads it, replaces `pa3ds.exe`, this manual, `CHANGELOG.md` and the licences in
-pa3ds's folder, and starts the new pa3ds; your `user` folder is kept. No starts the version you
+update. Yes downloads it, replaces `pa3ds.exe`, the `data` folder, this manual, `CHANGELOG.md`
+and the licences in pa3ds's folder, and starts the new pa3ds; your `user` folder is kept. No starts the version you
 have, and pa3ds asks again on its next start. Without an internet connection pa3ds starts as
 usual.
 

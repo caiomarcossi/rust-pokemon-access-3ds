@@ -56,6 +56,7 @@ use regex::Regex;
 use crate::core::binary::{f32, u32};
 use crate::core::memory::Memory;
 use crate::core::rtti::ClassNames;
+use crate::core::words::own;
 use crate::games::common::battle::{Battler, GAUGE_RECORD, MAX_ASKS, REASK, RECORD_PARAM, SIGNS};
 use crate::games::common::layout::Layouts;
 use crate::games::common::screen::ScreenText;
@@ -472,7 +473,7 @@ impl BattleReader {
                 hp.map(|(current, maximum)| format!("{current}/{maximum}{marks}"))
             } else {
                 self.share(gauge.bar)?
-                    .map(|share| format!("{share}%{marks}"))
+                    .map(|share| own("battle-share", &[("percent", &share)]) + &marks)
             };
             let Some(detail) = detail else {
                 continue;
@@ -484,7 +485,10 @@ impl BattleReader {
                 self.pending.shift_remove(&gauge.group);
                 continue;
             }
-            let text = format!("{name} L{level} {detail}");
+            let text = own(
+                "battle-battler",
+                &[("name", &name), ("level", &level), ("hp", &detail)],
+            );
             if self.pending.get(&gauge.group) != Some(&text) {
                 // Held for one poll before it counts: the bar drains as an animation and the HP
                 // box counts down with it, so a single poll catches a frame rather than a value.

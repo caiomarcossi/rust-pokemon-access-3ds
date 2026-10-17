@@ -7,6 +7,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use indexmap::{IndexMap, IndexSet};
@@ -15,7 +16,6 @@ use crate::core::discovery::Found;
 use crate::core::memory::Memory;
 use crate::core::rtti::ClassNames;
 use crate::core::speech::Speech;
-use crate::core::toml;
 use crate::games::common::announce::Focus;
 use crate::games::common::field::things::Field;
 use crate::games::common::layout::Layouts;
@@ -120,11 +120,9 @@ pub enum FurnitureKind {
     Exit(String, String, i64),
 }
 
-/// A game's `data` folder as the binary carries it: each language's `sprites.toml`, by the
-/// language's code. Python's is a `Path` to the folder and `pa3ds.core.names` reads
-/// `<language>/sprites.toml` from it; the Rust binary has no folder beside it, so the files are
-/// `include_str!`ed.
-pub type Data = &'static [(&'static str, &'static str)];
+/// A game's own words' folder beside pa3ds, `data/oras` (ADR-0040). Python's `DATA` is a `Path`
+/// made as the module loads; a `Game` lives in a `static`, so here it is the function making it.
+pub type Data = fn() -> PathBuf;
 
 /// `Callable[[Memory], HiddenReader]`: a plain `fn`, since a `Game` is built once and kept in a
 /// `static`, where an `Rc<dyn Fn>` cannot be.
@@ -175,15 +173,9 @@ pub struct Game {
     pub name: String,
     /// The title ids it runs as, one a version.
     pub titles: HashSet<i64>,
-    /// Its words for what the game never names, a folder a language (`pa3ds.core.names`).
+    /// Its own words, for what the game never names, beside pa3ds: its scenes' timing, and a
+    /// folder a language (ADR-0040).
     pub data: Data,
-    /// Its descriptions of scenes, a `scenes.toml` a language from the same folder as `data`
-    /// (`games.common.scenes`): Python reads `data / language / "scenes.toml"`.
-    pub scenes: Data,
-    /// Its words for the pictures the game draws and never names, a `pictures.toml` a language
-    /// from the same folder as `data` (`games.common.pictures.described`): Python reads
-    /// `data / language / "pictures.toml"`.
-    pub pictures: Data,
     /// Where its ROM keeps the game's own words (`archives`).
     pub rom: RomLayout,
     /// Where a move model keeps the sprite it is drawn with (`mmodel.drawn_as`).
@@ -295,8 +287,6 @@ impl Game {
             name: name.to_string(),
             titles: titles.into_iter().collect(),
             data,
-            scenes: &[],
-            pictures: &[],
             rom,
             drawn,
             hidden: None,
@@ -324,30 +314,6 @@ impl Game {
             memories: None,
             strands: 0,
             gates: false,
-        }
-    }
-
-    /// The names the game's package ships for a language, read as `Names.load` reads
-    /// `data / language / "sprites.toml"`: a language the package has no file for, or a file that
-    /// does not parse, is no names at all. Written for the runtime's `Names.load`, which reads a
-    /// folder the Rust binary does not have.
-    pub fn sprites(&self, language: &str) -> IndexMap<String, String> {
-        toml::strings(self.table(language).get(crate::core::names::SPRITES))
-    }
-
-    /// `toml.read(data / language / "sprites.toml")` of the table the binary carries: every
-    /// section, the sprites' names, the use tiles' and furniture's words and the slots'.
-    pub fn table(&self, language: &str) -> IndexMap<String, ::toml::Value> {
-        let Some((_, text)) = self.data.iter().find(|(held, _)| *held == language) else {
-            return IndexMap::new();
-        };
-        if text.starts_with('\u{feff}') {
-            IndexMap::new()
-        } else {
-            match text.parse::<::toml::Table>() {
-                Ok(loaded) => toml::table(Some(&::toml::Value::Table(loaded))),
-                Err(_) => IndexMap::new(),
-            }
         }
     }
 }

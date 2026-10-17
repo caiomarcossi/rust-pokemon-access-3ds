@@ -15,8 +15,9 @@ use crate::core::rpc::Rpc;
 use crate::core::rtti::ClassNames;
 use crate::core::speech::Speech;
 use crate::core::window;
+use crate::core::words::{self, Words};
+use crate::games::common::scenes;
 use crate::games::common::session::{Profile, Session, Setup};
-use crate::games::common::{pictures, scenes};
 use crate::games::sm::heaps::Blocks;
 use crate::games::sm::profile::{Options, REQUIRED, SunProfile, heap_classes};
 use crate::games::sm::text::SunText;
@@ -30,6 +31,20 @@ use crate::py::{PySet, Result};
 /// reads are fetched together at the next poll of its kind, kept to the small blocks that may be
 /// read now.
 pub fn start(rpc: Rc<dyn Rpc>, speech: Rc<Speech>, setup: Setup) -> Result<Session> {
+    let setup = if setup.ui.language.is_empty() {
+        setup
+    } else {
+        Setup {
+            language: setup.ui.language.clone(),
+            ..setup
+        }
+    };
+    words::r#use(Some(Rc::new(Words::new(
+        &setup.language,
+        Some(&field::names()),
+        IndexMap::new(),
+        setup.log.clone(),
+    )?)));
     let live = Rc::new(heaps::SmallBlocks::new());
     let exact = Rc::new(ExactCache::new(
         rpc.clone(),
@@ -65,36 +80,10 @@ pub fn start(rpc: Rc<dyn Rpc>, speech: Rc<Speech>, setup: Setup) -> Result<Sessi
             "P finds no way",
         )?
         .map(Rc::new);
-    // `Names.load(field.NAMES, ...)` reads `data/<language>/sprites.toml` from the folder beside
-    // `sm.field`, and Sun ships none: it loads no shipped names and keeps the player's own, under
-    // `setup.names_home`, and the window's title for the comment at the top of their file. A
-    // shipped binary has no source tree to read the folder from (`field::names`), so the names are
-    // made as `Names::load` makes them from a folder that holds nothing.
-    let title = window::game_title(window::EMULATOR);
-    let fingerprint = &setup.process.name;
-    let mine = setup.names_home.as_ref().map(|home| {
-        home.join("names")
-            .join(&setup.language)
-            .join(format!("{fingerprint}.toml"))
-    });
-    let header = IndexMap::from([
-        (
-            "game".to_string(),
-            if title.is_empty() {
-                fingerprint
-            } else {
-                &title
-            }
-            .to_string(),
-        ),
-        ("rom".to_string(), fingerprint.to_string()),
-        ("language".to_string(), setup.language.clone()),
-    ]);
-    let named = Rc::new(Names::new(
-        None,
-        mine.as_deref(),
-        Some(&header),
-        None,
+    let named = Rc::new(Names::load(
+        &setup.process.name,
+        setup.names_home.as_deref(),
+        &window::game_title(window::EMULATOR),
         None,
     )?);
     // The field's move models are in a heap of their own, beside the dialogue's, and the field
@@ -148,14 +137,22 @@ pub fn start(rpc: Rc<dyn Rpc>, speech: Rc<Speech>, setup: Setup) -> Result<Sessi
         let live = live.clone();
         Rc::new(move || live.spans())
     };
-    let buttons = pictures::described(field::PICTURES, &setup.language, "buttons");
+    let described = Rc::new(scenes::Described::new(
+        Rc::new(|_: &str, _: i64, _: i64| Ok(None)),
+        Rc::new(|_: &str, _: i64| None),
+        None,
+    )?);
     // Sun's scenes are found by their demo's number, so none follows a line and none names a
     // thing the game does (ADR-0038).
-    let described = if setup.ui.descriptions {
+    let loaded = if setup.ui.descriptions {
+        let known = {
+            let described = described.clone();
+            move |message: &str| described.known(message)
+        };
         scenes::load(
-            field::in_language(field::SCENES, &setup.language),
+            &field::names().join(scenes::FILE),
             &|_: &str, _: i64, _: i64| Ok(None),
-            &|_: &str, _: i64| None,
+            &known,
             &setup.log,
             Some(setup.process.title_id),
         )?
@@ -181,8 +178,8 @@ pub fn start(rpc: Rc<dyn Rpc>, speech: Rc<Speech>, setup: Setup) -> Result<Sessi
                 let exact = exact.clone();
                 Rc::new(move |reads: &[(i64, i64)]| exact.read_each(reads))
             }),
-            buttons: Some(buttons),
-            scenes: described,
+            scenes: loaded,
+            said: Some(Rc::new(move |message: &str| described.said(message))),
         },
     ));
 
@@ -216,6 +213,7 @@ pub fn start(rpc: Rc<dyn Rpc>, speech: Rc<Speech>, setup: Setup) -> Result<Sessi
             Rc::new(move |blocks: &[Block]| watch.borrow_mut().forget(&live.allocated(blocks)))
         },
         walk: Some(walk),
+        language: Rc::new(|| None),
         bases: Vec::new(),
         pages: None,
     })

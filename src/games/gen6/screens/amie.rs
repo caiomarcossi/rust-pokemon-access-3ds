@@ -33,6 +33,7 @@ use indexmap::IndexMap;
 use crate::core::binary::u32;
 use crate::core::memory::Memory;
 use crate::core::rtti::ClassNames;
+use crate::core::words::own;
 use crate::games::common::touch::Target;
 use crate::games::common::{lyt, touch};
 use crate::games::gen6::screens::distribution as d;
@@ -55,7 +56,7 @@ pub const STROKE_SECONDS: f64 = 3.0;
 /// The pane a stroke stands in for in touch mode, which no pane is at.
 pub const STROKE_TARGET: i64 = 1;
 /// pa3ds's word for the slide, the manual's: "you can stroke your Pokémon".
-pub const STROKE_WORD: &str = "stroke";
+pub const STROKE_WORD: &str = "amie-stroke";
 pub const NUMBER: i64 = 0x14C;
 pub const HOLDER: i64 = 0x194;
 pub const HEAD: i64 = HOLDER + 4;
@@ -169,7 +170,7 @@ impl AmiePage {
             seconds: STROKE_SECONDS,
             ..Target::new(
                 STROKE_TARGET,
-                &format!("{STROKE_WORD} {species}"),
+                &own(STROKE_WORD, &[("pokemon", &species)]),
                 160,
                 120,
                 0.0,

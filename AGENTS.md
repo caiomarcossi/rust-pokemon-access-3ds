@@ -44,7 +44,10 @@ Settled. Reopen one only by asking Orion first.
   not. What the game **never** names — a speaker, a sign, a door — may carry a name of pa3ds's own
   under three rules (Orion, 2026-09-21, reopening this): it never replaces something the game
   says, it lives in a data file a game and a language rather than in code, and the player's own
-  names always win. `pa3ds.core.names`.
+  names always win. `pa3ds.core.names`. Every other word pa3ds says of its own is a message in
+  `data/` too: code asks for `own("cant-continue", &[])`, and the English goes in a `.ftl` file
+  under `data/common/en/` or the game's (ADR-0040, `core::words`). `data/` is upstream's, copied
+  by `tools/sync.py mirror`: a word changes there first.
 - **Anchors, not addresses.** Find structures by scanning and validating at runtime, then cache
   the result against a ROM fingerprint. A bare address is never the way to reach data.
 - **Clean-room.** pokemon-access and PKHeX are GPL and Azahar is GPL-2. Read their behaviour and

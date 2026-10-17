@@ -8,6 +8,7 @@ use std::rc::Rc;
 use indexmap::IndexMap;
 
 use crate::core::binary::{f32, u32};
+use crate::core::words::own;
 use crate::games::common::layout::{Layouts, MAX_DEPTH};
 use crate::games::common::layout_file::{LayoutFile, LayoutFiles};
 use crate::games::common::lyt;
@@ -251,12 +252,12 @@ impl Panes {
                     if class_of(&tree, pane) == Some(lyt::PICTURE_CLASS)
                         && self.texture(pane, &file)?.as_ref() == Some(texture)
                     {
-                        said = Some(EMPTY.to_string());
+                        said = Some(own(EMPTY, &[]));
                         break;
                     }
                     pane = self.parent(pane)?;
                 }
-                if said.as_deref() == Some(EMPTY) {
+                if said == Some(own(EMPTY, &[])) {
                     break;
                 }
             }

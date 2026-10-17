@@ -40,6 +40,7 @@ use std::rc::Rc;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::core::binary::{f32, u32};
+use crate::core::words::own;
 use crate::games::common::layout::Layouts;
 use crate::games::common::layout_file::LayoutFile;
 use crate::games::common::screen::{ScreenText, distinct, in_rows, join};
@@ -71,7 +72,8 @@ pub const ACTIONS: [&str; 6] = [
     ROW_NEXT,
     TAP,
 ];
-pub const NOTHING: &str = "nothing to touch";
+/// Said where the bottom screen has nothing to touch.
+pub const NOTHING: &str = "touch-nothing";
 /// How far across its width a pane's place is, by its anchor: left, centre, right.
 pub const ANCHOR: [f64; 3] = [0.0, 0.5, 1.0];
 
@@ -246,7 +248,7 @@ impl TouchTargets {
         self.chosen = found.first().map(|target| target.pane);
         Ok(match found.first() {
             Some(first) => self.said(first),
-            None => NOTHING.to_string(),
+            None => own(NOTHING, &[]),
         })
     }
 
@@ -258,7 +260,7 @@ impl TouchTargets {
         let found = self.targets()?;
         if found.is_empty() {
             self.chosen = None;
-            return Ok(NOTHING.to_string());
+            return Ok(own(NOTHING, &[]));
         }
         let Some(mut at) = found
             .iter()
@@ -271,7 +273,7 @@ impl TouchTargets {
             let target = &found[at];
             if !target.path.is_empty() {
                 let Some(slide) = &self.slide else {
-                    return Ok("touch is off".to_string());
+                    return Ok(own("touch-off", &[]));
                 };
                 let path: Vec<String> = target
                     .path
@@ -286,7 +288,7 @@ impl TouchTargets {
                 return Ok(slide(&target.path, target.seconds).unwrap_or_default());
             }
             let Some(tap) = &self.tap else {
-                return Ok("touch is off".to_string());
+                return Ok(own("touch-off", &[]));
             };
             (self.log)(&format!(
                 "touch: tap {} at ({}, {})",
@@ -573,34 +575,39 @@ impl TouchTargets {
                     // A touch area hanging straight from the root has no button of its own, and
                     // the pictures over it are the screen's: the Battle Box's slots, left on
                     // under BOX 1, were said by its wallpaper, "line pattern" (movie22).
-                    let mut own: Vec<Option<String>> = Vec::new();
+                    // Python's `next` over a generator: the first picture's texture ends the look,
+                    // and no picture after it has its name read.
+                    let mut texture: Option<String> = None;
                     for &p in &owned[&touch] {
                         if tree.get(&p).map(String::as_str) == Some(lyt::PICTURE_CLASS)
                             && shown(&layouts, p)?
                         {
                             let image = drawn.get(&p).cloned().flatten();
-                            own.push(match image {
+                            let t = match image {
                                 Some(image) if !image.is_empty() => Some(image),
                                 _ => textures
                                     .get(&self.name(p)?)
                                     .and_then(|textures| textures.first().cloned()),
-                            });
+                            };
+                            if let Some(t) = t.filter(|t| !t.is_empty()) {
+                                texture = Some(t);
+                                break;
+                            }
                         }
                     }
-                    let mut picture = own
-                        .iter()
-                        .flatten()
-                        .find(|o| !o.is_empty())
-                        .map(|o| pictures::words(o));
-                    if picture.as_deref() == Some(pictures::BUTTON) && y < TOP_BAR {
-                        picture = Some(
+                    let mut picture = texture.as_deref().map(pictures::words);
+                    if let Some(texture) = &texture
+                        && texture.split('.').next() == Some(pictures::BUTTON)
+                        && y < TOP_BAR
+                    {
+                        picture = Some(own(
                             if (x as f64) < WIDTH as f64 / 2.0 {
                                 pictures::PREVIOUS
                             } else {
                                 pictures::NEXT
-                            }
-                            .to_string(),
-                        );
+                            },
+                            &[],
+                        ));
                     }
                     if let Some(picture) = picture
                         && !picture.is_empty()

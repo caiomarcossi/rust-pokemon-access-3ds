@@ -11,13 +11,18 @@ autotests = false
 
 [dependencies]
 flate2 = "1"
+# pa3ds's own words (ADR-0040), as Python's fluent.runtime reads the same files.
+fluent-bundle = "0.16"
+fluent-syntax = "0.12"
 indexmap = "2"
 prismer = { version = "0.1.4", features = ["static"] }
 regex = "1"
 sha1 = "0.10"
 socket2 = { version = "0.6", features = ["all"] }
 toml = { version = "0.8", features = ["preserve_order"] }
+unic-langid = "0.9"
 unicode-general-category = "1"
+unicode-normalization = "0.1"
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Globalization",

@@ -1185,7 +1185,7 @@ fn test_a_beat_waiting_for_a_zone_comes_as_the_field_arrives_there() {
         words: None,
         zone: None,
         beats: vec![Beat {
-            text: "A field.".to_string(),
+            message: "field-1".to_string(),
             demo: false,
             zone: Some(BEDROOM),
             at: 0.0,
@@ -1207,6 +1207,9 @@ fn test_a_beat_waiting_for_a_zone_comes_as_the_field_arrives_there() {
             }),
             zones: Some(Rc::new(rom())),
             scenes: vec![scene],
+            said: Some(Rc::new(|message: &str| {
+                (message == "field-1").then(|| "A field.".to_string())
+            })),
             ..Options::default()
         },
     );

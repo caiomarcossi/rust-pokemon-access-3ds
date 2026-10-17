@@ -11,6 +11,7 @@ use std::rc::Rc;
 use indexmap::IndexMap;
 
 use crate::core::speech::{Category, Speech};
+use crate::core::words::own;
 use crate::games::common::battle::Battler;
 use crate::games::common::dialogue::{PageShown, Shown, TextWritten};
 use crate::py::{Log, Result};
@@ -36,8 +37,9 @@ pub struct Focus {
 /// watch finds it a look or two on, so the name came a moment after the page and 20 of sun_4.ctm's
 /// 23 pages were named (issue 4). A fifth of a second at the runtime's tick.
 pub const SPEAKER_POLLS: i64 = 12;
-/// Who a scene's description is said as, a speaker of pa3ds's own (ADR-0038).
-pub const NARRATOR: &str = "Narration";
+/// Who a scene's description is said as, a speaker of pa3ds's own (ADR-0038): the message
+/// saying its name, "Narration".
+pub const NARRATOR: &str = "narration";
 
 /// `speaker: Callable[[int], str | None]`: who is showing a window's page. It reads the game's
 /// memory (`sm.talk.Speakers.name_for`), so it can raise, and the Rust one returns a `Result` for
@@ -267,10 +269,10 @@ impl Announcements {
         let said = if self.said_speaker.as_deref() == Some(NARRATOR) {
             text.to_string()
         } else {
-            format!("{NARRATOR}: {text}")
+            format!("{}: {text}", own(NARRATOR, &[]))
         };
         self.said_speaker = Some(NARRATOR.to_string());
-        (self.log)(&format!("scene [{NARRATOR}]: {text}"));
+        (self.log)(&format!("scene [{}]: {text}", own(NARRATOR, &[])));
         self.speech.say(&said, Category::Scene);
     }
 

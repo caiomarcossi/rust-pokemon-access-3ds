@@ -23,6 +23,7 @@ use std::rc::Rc;
 use crate::core::binary::u32;
 use crate::core::discovery::{HEAP_SPAN, within};
 use crate::core::memory::Memory;
+use crate::core::words::own;
 use crate::py::Result;
 
 /// Where the field's process holds the field's work.
@@ -83,11 +84,14 @@ impl Lights {
             return Ok(None);
         }
         self.said = now;
-        let colour = if now != 0 {
+        let light = if now != 0 {
             COLOURS[(now - 1) as usize]
         } else {
             DARK
         };
-        Ok(Some(format!("dowsing {colour}")))
+        Ok(Some(own(
+            "dowsing",
+            &[("light", &own(&format!("dowsing-{light}"), &[]))],
+        )))
     }
 }

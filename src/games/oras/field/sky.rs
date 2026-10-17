@@ -53,9 +53,11 @@ use indexmap::IndexMap;
 use crate::core::binary::{f32, u32};
 use crate::core::discovery::{HEAP_SPAN, within};
 use crate::core::memory::Memory;
+use crate::core::pathfind::{AHEAD, BEHIND, LEFT, RIGHT, way};
 use crate::core::rom::lz11;
 use crate::core::rtti::ClassNames;
 use crate::core::speech::{Category, Speech};
+use crate::core::words::own;
 use crate::games::common::field::ground::NO_ZONE;
 use crate::games::common::field::things::{
     APP_SOURCE, Field, Interactable, POKEMON, Steer, place_source, source_number,
@@ -451,7 +453,7 @@ pub fn turn(flight: &Flight, place: &Place) -> Result<String> {
                 return if angle != 0 {
                     turned(angle as f64)
                 } else {
-                    Ok("here".to_string())
+                    Ok(own("here", &[]))
                 };
             }
         }
@@ -461,10 +463,12 @@ pub fn turn(flight: &Flight, place: &Place) -> Result<String> {
     let angle = degrees(right.atan2(ahead));
     let away = py::round((py::hypot(ahead, right) - LOOKUP) / UNIT)?;
     let mut said: Vec<String> = if away != 0 {
-        vec![format!(
-            "{} {}",
-            away.abs(),
-            if away > 0 { "ahead" } else { "behind" }
+        vec![own(
+            "steps",
+            &[
+                ("count", &away.abs()),
+                ("way", &way(if away > 0 { AHEAD } else { BEHIND })),
+            ],
         )]
     } else {
         Vec::new()
@@ -474,7 +478,7 @@ pub fn turn(flight: &Flight, place: &Place) -> Result<String> {
     }
     let said = said.join(", ");
     Ok(if said.is_empty() {
-        "here".to_string()
+        own("here", &[])
     } else {
         said
     })
@@ -485,19 +489,24 @@ pub fn turn(flight: &Flight, place: &Place) -> Result<String> {
 pub fn chase(flight: &Flight, flock: &Flock) -> Result<String> {
     let (ahead, right) = frame(flight, flock.x - flight.x, flock.z - flight.z);
     let angle = degrees(right.atan2(ahead));
-    let mut said = vec![format!(
-        "{} ahead",
-        py::round(py::hypot(ahead, right) / UNIT)?
+    let mut said = vec![own(
+        "steps",
+        &[
+            ("count", &py::round(py::hypot(ahead, right) / UNIT)?),
+            ("way", &way(AHEAD)),
+        ],
     )];
     if angle.abs() > STRAIGHT {
         said.insert(0, turned(angle)?);
     }
     let rise = py::round((flock.height - flight.height) / UNIT)?;
     if rise != 0 {
-        said.push(format!(
-            "{} {}",
-            rise.abs(),
-            if rise > 0 { "above" } else { "below" }
+        said.push(own(
+            "steps",
+            &[
+                ("count", &rise.abs()),
+                ("way", &way(if rise > 0 { "above" } else { "below" })),
+            ],
         ));
     }
     Ok(said.join(", "))
@@ -629,8 +638,10 @@ impl OwnApp for Soaring {
                 py::fixed(flight.z, 0),
                 py::fixed(flight.height, 0)
             ));
-            self.speech
-                .say(&format!("facing {word}"), Category::Guidance);
+            self.speech.say(
+                &own("sky-facing", &[("way", &way(word))]),
+                Category::Guidance,
+            );
         }
         Ok(())
     }
@@ -661,9 +672,12 @@ fn cell(flight: &Flight, dx: f64, dz: f64) -> Result<(i64, i64)> {
 /// A turn this many degrees clockwise, said.
 fn turned(angle: f64) -> Result<String> {
     let degrees = py::round(angle.abs() / TURN_STEP as f64)? * TURN_STEP;
-    Ok(format!(
-        "turn {} {degrees} degrees",
-        if angle > 0.0 { "right" } else { "left" }
+    Ok(own(
+        "sky-turn",
+        &[
+            ("way", &way(if angle > 0.0 { RIGHT } else { LEFT })),
+            ("degrees", &degrees),
+        ],
     ))
 }
 

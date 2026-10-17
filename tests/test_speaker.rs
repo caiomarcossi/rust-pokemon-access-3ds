@@ -10,6 +10,7 @@ use super::fake_memory::FakeMemory;
 use super::fake_speech::Recorder;
 use crate::core::names::{Names, sprite_key};
 use crate::core::speech::Speech;
+use crate::core::words::{ENGLISH, Words};
 use crate::games::common::announce::Announcements;
 use crate::games::common::dialogue::{PageShown, Shown};
 use crate::games::common::field::things::{MODEL_SOURCE, own_name};
@@ -56,10 +57,17 @@ fn reader(memory: &Rc<FakeMemory>) -> SpeakerReader {
     )
 }
 
-/// `Names.load(game.DATA, language, "sango-1")` with no home: the player has named nobody. The
-/// binary carries the table (`Game::sprites`) rather than a folder to read it from.
+/// `Names.load("sango-1", words=Words(language, game.DATA))` with no home: the player has named
+/// nobody.
 fn shipped(game: &Game, language: &str) -> Names {
-    Names::new(Some(&game.sprites(language)), None, None, None, None).unwrap()
+    let words = Words::new(
+        language,
+        Some(&(game.data)()),
+        IndexMap::new(),
+        Rc::new(|_line: &str| {}),
+    )
+    .unwrap();
+    Names::load("sango-1", None, "", Some(&words)).unwrap()
 }
 
 #[test]
@@ -267,7 +275,7 @@ fn test_a_named_speaker_after_an_unnamed_one_is_named_again() {
 /// The file beside the game's code, read the way the runtime reads it.
 #[test]
 fn test_the_shipped_table_is_the_one_that_ships() {
-    let names = shipped(oras::game(), "en");
+    let names = shipped(oras::game(), ENGLISH);
     assert_eq!(names.sprite(NORMAN).as_deref(), Some("Norman"));
     assert_eq!(names.sprite(WALLY).as_deref(), Some("Wally"));
     // The rival is whoever work object 0x7a is filled with, May's sprite or Brendan's (spike 89).
@@ -285,10 +293,38 @@ fn test_the_shipped_table_is_the_one_that_ships() {
     assert_eq!(names.sprite(0x128).as_deref(), Some("Woman"));
 }
 
-/// The keys of `toml.strings(toml.read(DATA / language / "sprites.toml").get("sprites"))`, which
-/// `Game::sprites` reads from the table the binary carries.
 fn keys(table: &IndexMap<String, String>) -> HashSet<String> {
     table.keys().cloned().collect()
+}
+
+/// The sprites one language's `sprites.ftl` names, by key, without English behind it.
+fn sprites(game: &Game, language: &str) -> IndexMap<String, String> {
+    let path = (game.data)().join(language).join("sprites.ftl");
+    let resource = fluent_bundle::FluentResource::try_new(std::fs::read_to_string(path).unwrap())
+        .unwrap_or_else(|(resource, _)| resource);
+    let id: unic_langid::LanguageIdentifier = language.parse().unwrap();
+    let mut bundle = fluent_bundle::FluentBundle::<&fluent_bundle::FluentResource>::new(vec![id]);
+    bundle.set_use_isolating(false);
+    bundle.add_resource(&resource).unwrap();
+    let mut table = IndexMap::new();
+    for entry in resource.entries() {
+        let fluent_syntax::ast::Entry::Message(message) = entry else {
+            continue;
+        };
+        let Some(key) = message.id.name.strip_prefix("sprite-") else {
+            continue;
+        };
+        let Some(pattern) = bundle
+            .get_message(message.id.name)
+            .and_then(|found| found.value())
+        else {
+            continue;
+        };
+        let mut errors = Vec::new();
+        let said = bundle.format_pattern(pattern, None, &mut errors);
+        table.insert(key.to_string(), said.to_string());
+    }
+    table
 }
 
 /// The user, 2026-09-23: a fallback in every language the game carries, each the ROM's own
@@ -296,9 +332,9 @@ fn keys(table: &IndexMap<String, String>) -> HashSet<String> {
 /// the English (Orion): where the ROM has no word, as for the Nurse, it is pa3ds's own.
 #[test]
 fn test_every_language_ships_a_table_of_the_same_people() {
-    let english = keys(&oras::game().sprites("en"));
+    let english = keys(&sprites(oras::game(), ENGLISH));
     for language in ["ja", "fr", "it", "de", "es", "ko"] {
-        let table = oras::game().sprites(language);
+        let table = sprites(oras::game(), language);
         assert_eq!(keys(&table), english, "{language}");
         assert!(table.values().all(|name| !name.is_empty()), "{language}");
     }
@@ -321,14 +357,14 @@ fn test_every_language_ships_a_table_of_the_same_people() {
 /// Spanish Mom, whom the Spanish text calls only "tu madre".
 #[test]
 fn test_x_ships_a_table_in_every_language_it_carries() {
-    let english = keys(&xy::game().sprites("en"));
+    let english = keys(&sprites(xy::game(), ENGLISH));
     let characters: HashSet<String> = xy::characters()
         .keys()
         .map(|&sprite| sprite_key(sprite))
         .collect();
     assert!(characters.is_subset(&english));
     for language in ["ja", "fr", "it", "de", "es", "ko"] {
-        let table = xy::game().sprites(language);
+        let table = sprites(xy::game(), language);
         assert_eq!(keys(&table), english, "{language}");
         assert!(table.values().all(|name| !name.is_empty()), "{language}");
     }

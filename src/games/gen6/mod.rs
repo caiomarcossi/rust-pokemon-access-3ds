@@ -19,6 +19,7 @@ pub mod apps;
 pub mod field;
 pub mod game;
 pub mod gflheap;
+pub mod mystatus;
 pub mod profile;
 pub mod rom;
 pub mod screens;

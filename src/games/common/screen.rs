@@ -27,6 +27,7 @@ use indexmap::{IndexMap, IndexSet};
 use crate::core::binary::{f32, u16, u32};
 use crate::core::memory::Memory;
 use crate::core::rtti::ClassNames;
+use crate::core::words::own;
 use crate::games::common::layout::Layouts;
 use crate::games::common::pictures::{
     HEART, NO_HEART, NO_STAR, PLACES, SPECIAL, STAR, hearts, stars,
@@ -1212,7 +1213,7 @@ pub(crate) fn by_their_labels(
             };
             after = last;
             moved = ScreenText {
-                text: word.clone(),
+                text: own(word, &[]),
                 ..picture.clone()
             };
         } else if let Some(label) = label
@@ -1255,7 +1256,7 @@ pub(crate) fn by_their_labels(
 /// a time after the names, so a place stands far enough past its entrant's words to be said
 /// with them as a value is with its label (`LABEL_GAP`).
 pub(crate) fn places_last(found: &IndexMap<i64, ScreenText>) -> IndexMap<i64, ScreenText> {
-    let places: HashSet<&str> = PLACES.iter().map(|&(_, words)| words).collect();
+    let places: HashSet<String> = PLACES.iter().map(|&(_, place)| own(place, &[])).collect();
     let mut out = found.clone();
     for (&r#box, piece) in found {
         if !piece.picture || !places.contains(piece.text.as_str()) {

@@ -2,16 +2,20 @@
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
+use std::fs;
+use std::path::Path;
 use std::rc::Rc;
 
 use indexmap::IndexMap;
 use regex::Regex;
 
+use super::fake_rom::TmpDir;
 use super::fake_speech::Recorder;
 use crate::core::speech::Speech;
+use crate::core::words::{self, ENGLISH, Words};
 use crate::games::common::announce::{Announcements, Speaker};
 use crate::games::common::dialogue::{PageShown, Shown};
-use crate::games::common::scenes::{Recall, Scenes, last_page, load, yours};
+use crate::games::common::scenes::{Described, FILE, Recall, Scene, Scenes, last_page, load};
 use crate::games::sm::field;
 use crate::py::{Log, Result};
 
@@ -77,54 +81,140 @@ fn logging() -> (Log, Rc<RefCell<Vec<String>>>) {
     )
 }
 
+/// A log that keeps nothing.
+fn quiet() -> Log {
+    Rc::new(|_: &str| {})
+}
+
+/// `Words(language, game)`, put in place.
+fn use_words(language: &str, game: &Path) -> Result<()> {
+    words::r#use(Some(Rc::new(Words::new(
+        language,
+        Some(game),
+        IndexMap::new(),
+        quiet(),
+    )?)));
+    Ok(())
+}
+
+/// `Described(nothing, nothing)`: no line of the ROM's, no word of the game's, no save.
+fn nothing_described() -> Result<Rc<Described>> {
+    Ok(Rc::new(Described::new(
+        Rc::new(|_: &str, _: i64, _: i64| Ok(None)),
+        Rc::new(|_: &str, _: i64| None),
+        None,
+    )?))
+}
+
+/// `Described.said`, as `Scenes` is handed it.
+fn said_of(described: &Rc<Described>) -> Rc<dyn Fn(&str) -> Option<String>> {
+    let described = described.clone();
+    Rc::new(move |message: &str| described.said(message))
+}
+
+/// A game's `scenes.toml` and English `scenes.ftl`, its words put in place, and the scenes as the
+/// runtime loads them: `lines` out of the ROM by (archive, file, number), `named` the game's
+/// words by (kind, number).
+#[allow(clippy::too_many_arguments)]
+fn described(
+    tmp_path: &Path,
+    timing: &str,
+    words: &str,
+    lines: &[((&str, i64, i64), Vec<u8>)],
+    named: &[((&str, i64), &str)],
+    recall: Option<Recall>,
+    log: &Log,
+    title: Option<i64>,
+) -> Result<(Vec<Scene>, Rc<Described>)> {
+    let game = tmp_path.join("data").join("oras");
+    fs::create_dir_all(game.join("en")).unwrap();
+    fs::write(game.join(FILE), timing).unwrap();
+    fs::write(game.join("en").join("scenes.ftl"), words).unwrap();
+    use_words(ENGLISH, &game)?;
+    let found_lines: Rc<IndexMap<(String, i64, i64), Vec<u8>>> = Rc::new(
+        lines
+            .iter()
+            .map(|((archive, file, number), raw)| {
+                ((archive.to_string(), *file, *number), raw.clone())
+            })
+            .collect(),
+    );
+    let found_names: IndexMap<(String, i64), String> = named
+        .iter()
+        .map(|((kind, number), word)| ((kind.to_string(), *number), word.to_string()))
+        .collect();
+    let lines_of = found_lines.clone();
+    let words_of = Rc::new(Described::new(
+        Rc::new(move |archive: &str, file: i64, number: i64| {
+            Ok(lines_of.get(&(archive.to_string(), file, number)).cloned())
+        }),
+        Rc::new(move |kind: &str, number: i64| {
+            found_names.get(&(kind.to_string(), number)).cloned()
+        }),
+        recall,
+    )?);
+    let scenes = load(
+        &game.join(FILE),
+        &|archive: &str, file: i64, number: i64| {
+            Ok(found_lines
+                .get(&(archive.to_string(), file, number))
+                .cloned())
+        },
+        &|message: &str| words_of.known(message),
+        log,
+        title,
+    )?;
+    Ok((scenes, words_of))
+}
+
 /// Groudon woken in Seafloor Cavern (movie40): Archie's "Augh... You..." in zone 0x6f, then the
 /// demo, then ten seconds on; and Tabitha's line, then the arrival on Route 128.
 #[test]
 fn test_a_scene_is_said_a_beat_at_a_time() -> Result<()> {
-    let file = r#"
+    let tmp_path = TmpDir::new();
+    let (log, logged) = logging();
+    let (scenes, words) = described(
+        tmp_path.path(),
+        r#"
 [[scene]]
 after = "story:402:30"
 zone = 0x6f
 [[scene.beat]]
-text = "{trainer:235} walks to the lava."
+id = "wakes-1"
 [[scene.beat]]
 demo = true
-text = "The Orb glows."
+id = "wakes-2"
 [[scene.beat]]
 at = 10
-text = "{pokemon:383} wakes."
+id = "wakes-3"
 
 [[scene]]
 after = "story:402:42"
 zone = 0x6f
 [[scene.beat]]
 zone = 0x39
-text = "The sky glares."
+id = "glare-1"
 
 [[scene]]
 after = "story:402:43"
 zone = 0x6f
 [[scene.beat]]
-text = "{item:9999} is nowhere."
-"#;
-    let lines: IndexMap<(i64, i64), Vec<u8>> = IndexMap::from([
-        ((402, 30), line(&[Part::Text("Augh... You...")])),
-        ((402, 42), line(&[Part::Text("Child! Hurry up!")])),
-        ((402, 43), line(&[Part::Text("Missing.")])),
-    ]);
-    let words: IndexMap<(&str, i64), &str> =
-        IndexMap::from([(("trainer", 235), "Maxie"), (("pokemon", 383), "Groudon")]);
-    let (log, logged) = logging();
-    let scenes = load(
-        Some(file),
-        &|archive: &str, file: i64, number: i64| {
-            Ok(if archive == "story" {
-                lines.get(&(file, number)).cloned()
-            } else {
-                None
-            })
-        },
-        &|kind: &str, number: i64| words.get(&(kind, number)).map(|word| word.to_string()),
+id = "missing-1"
+"#,
+        "
+wakes-1 = { TRAINER(235) } walks to the lava.
+wakes-2 = The Orb glows.
+wakes-3 = { POKEMON(383) } wakes.
+glare-1 = The sky glares.
+missing-1 = { ITEM(9999) } is nowhere.
+",
+        &[
+            (("story", 402, 30), line(&[Part::Text("Augh... You...")])),
+            (("story", 402, 42), line(&[Part::Text("Child! Hurry up!")])),
+            (("story", 402, 43), line(&[Part::Text("Missing.")])),
+        ],
+        &[(("trainer", 235), "Maxie"), (("pokemon", 383), "Groudon")],
+        None,
         &log,
         None,
     )?;
@@ -138,7 +228,7 @@ text = "{item:9999} is nowhere."
     let said: RefCell<Vec<String>> = RefCell::new(Vec::new());
     let now = Rc::new(Cell::new(0.0));
     let clock = now.clone();
-    let mut reader = Scenes::new(scenes, Rc::new(move || clock.get()));
+    let mut reader = Scenes::new(scenes, said_of(&words), Rc::new(move || clock.get()));
     let mut say = |text: &str| said.borrow_mut().push(text.to_string());
     let last = || said.borrow().last().cloned().unwrap_or_default();
     reader.heard(0, "Augh... You...", Some(0x6E), &mut say)?;
@@ -174,45 +264,105 @@ text = "{item:9999} is nowhere."
     Ok(())
 }
 
+/// The timing names a beat no `scenes.ftl` has: said as its id, it would be gibberish.
+#[test]
+fn test_a_beat_with_no_words_in_any_language_leaves_its_scene_out() -> Result<()> {
+    let tmp_path = TmpDir::new();
+    let (log, logged) = logging();
+    let (scenes, _) = described(
+        tmp_path.path(),
+        "[[scene]]\nzone = 0x76\n[[scene.beat]]\nid = \"gone-1\"\n",
+        "",
+        &[],
+        &[],
+        None,
+        &log,
+        None,
+    )?;
+    assert!(
+        scenes.is_empty()
+            && *logged.borrow()
+                == ["scene after arriving: left out, the ROM does not have its line or its names"]
+    );
+    Ok(())
+}
+
+/// ADR-0040: a translation half done is half English, never silent.
+#[test]
+fn test_a_beat_the_language_lacks_is_said_in_english() -> Result<()> {
+    let tmp_path = TmpDir::new();
+    let game = tmp_path.path().join("data").join("oras");
+    fs::create_dir_all(game.join("fr")).unwrap();
+    fs::create_dir_all(game.join("en")).unwrap();
+    fs::write(
+        game.join(FILE),
+        "[[scene]]\nzone = 0x76\n[[scene.beat]]\nid = \"glow-1\"\n\
+         [[scene.beat]]\nid = \"glow-2\"\n",
+    )
+    .unwrap();
+    fs::write(
+        game.join("en").join("scenes.ftl"),
+        "glow-1 = Magma glows.\nglow-2 = It is hot.\n",
+    )
+    .unwrap();
+    fs::write(
+        game.join("fr").join("scenes.ftl"),
+        "glow-1 = Le magma luit.\n",
+    )
+    .unwrap();
+    use_words("fr", &game)?;
+    let words = nothing_described()?;
+    let mut said: Vec<String> = Vec::new();
+    let scenes = load(
+        &game.join(FILE),
+        &|_: &str, _: i64, _: i64| Ok(None),
+        &|message: &str| words.known(message),
+        &quiet(),
+        None,
+    )?;
+    Scenes::with_monotonic(scenes, said_of(&words))
+        .arrived(0x76, &mut |text: &str| said.push(text.to_string()))?;
+    assert_eq!(said, ["Le magma luit.", "It is hot."]);
+    Ok(())
+}
+
 /// Steven's "Good luck to you." on Route 128 is one line in one zone in both versions, and he
 /// flies off into Omega Ruby's glare (movie40) but Alpha Sapphire's rain (Orion's
 /// movie1_kyogre_awakens, 2026-10-14): a scene with a title is the running title's alone.
 #[test]
 fn test_a_scene_of_one_version_is_left_out_of_the_other() -> Result<()> {
-    let file = r#"
+    let tmp_path = TmpDir::new();
+    let timing = r#"
 [[scene]]
 after = "story:148:46"
 zone = 0x39
 title = 0x000400000011C400
 [[scene.beat]]
-text = "Steven flies off into the glare."
+id = "glare-1"
 
 [[scene]]
 after = "story:148:46"
 zone = 0x39
 [[scene.beat]]
-text = "Steven flies off."
+id = "off-1"
 "#;
-    let lines: IndexMap<(i64, i64), Vec<u8>> =
-        IndexMap::from([((148, 46), line(&[Part::Text("Good luck to you.")]))]);
+    let words = "glare-1 = Steven flies off into the glare.\noff-1 = Steven flies off.\n";
+    let lines = [(("story", 148, 46), line(&[Part::Text("Good luck to you.")]))];
     let said_in = |title: Option<i64>| -> Result<Vec<String>> {
         let (log, logged) = logging();
-        let scenes = load(
-            Some(file),
-            &|archive: &str, file: i64, number: i64| {
-                Ok(if archive == "story" {
-                    lines.get(&(file, number)).cloned()
-                } else {
-                    None
-                })
-            },
-            &|_: &str, _: i64| None,
+        let (scenes, described_) = described(
+            tmp_path.path(),
+            timing,
+            words,
+            &lines,
+            &[],
+            None,
             &log,
             title,
         )?;
         assert!(logged.borrow().is_empty());
         let mut said: Vec<String> = Vec::new();
-        let mut reader = Scenes::with_monotonic(scenes);
+        let mut reader = Scenes::with_monotonic(scenes, said_of(&described_));
         reader.heard(0, "Good luck to you.", Some(0x39), &mut |text: &str| {
             said.push(text.to_string())
         })?;
@@ -231,22 +381,19 @@ text = "Steven flies off."
 /// (Orion, 2026-10-12), so it is described each time the player comes down into it.
 #[test]
 fn test_a_scene_with_no_line_is_said_on_arriving_in_its_zone() -> Result<()> {
-    let file = r#"
-[[scene]]
-zone = 0x76
-[[scene.beat]]
-text = "Magma glows to the north."
-"#;
-    let mut said: Vec<String> = Vec::new();
-    let (log, _) = logging();
-    let scenes = load(
-        Some(file),
-        &|_: &str, _: i64, _: i64| Ok(None),
-        &|_: &str, _: i64| None,
-        &log,
+    let tmp_path = TmpDir::new();
+    let (scenes, words) = described(
+        tmp_path.path(),
+        "[[scene]]\nzone = 0x76\n[[scene.beat]]\nid = \"glow-1\"\n",
+        "glow-1 = Magma glows to the north.\n",
+        &[],
+        &[],
+        None,
+        &quiet(),
         None,
     )?;
-    let mut reader = Scenes::with_monotonic(scenes);
+    let mut said: Vec<String> = Vec::new();
+    let mut reader = Scenes::with_monotonic(scenes, said_of(&words));
     let mut say = |text: &str| said.push(text.to_string());
     reader.arrived(0x74, &mut say)?;
     reader.arrived(0x76, &mut say)?;
@@ -263,36 +410,32 @@ text = "Magma glows to the north."
 /// stands in any zone, and the last beat waits for the truck, where the field begins.
 #[test]
 fn test_a_line_in_no_zone_is_said_before_the_player_is_anywhere() -> Result<()> {
-    let file = r#"
+    let tmp_path = TmpDir::new();
+    let (log, logged) = logging();
+    let (scenes, words) = described(
+        tmp_path.path(),
+        r#"
 [[scene]]
 after = "text:118:60"
 [[scene.beat]]
-text = "The doors swing wide."
+id = "truck-1"
 [[scene.beat]]
 zone = 0x18f
-text = "You stand in the truck."
-"#;
-    let lines: IndexMap<(i64, i64), Vec<u8>> = IndexMap::from([(
-        (118, 60),
-        line(&[Part::Text("Come see me in my Pokémon Lab!")]),
-    )]);
-    let (log, logged) = logging();
-    let scenes = load(
-        Some(file),
-        &|archive: &str, file: i64, number: i64| {
-            Ok(if archive == "text" {
-                lines.get(&(file, number)).cloned()
-            } else {
-                None
-            })
-        },
-        &|_: &str, _: i64| None,
+id = "truck-2"
+"#,
+        "truck-1 = The doors swing wide.\ntruck-2 = You stand in the truck.\n",
+        &[(
+            ("text", 118, 60),
+            line(&[Part::Text("Come see me in my Pokémon Lab!")]),
+        )],
+        &[],
+        None,
         &log,
         None,
     )?;
     assert!(logged.borrow().is_empty());
     let said: RefCell<Vec<String>> = RefCell::new(Vec::new());
-    let mut reader = Scenes::with_monotonic(scenes);
+    let mut reader = Scenes::with_monotonic(scenes, said_of(&words));
     let mut say = |text: &str| said.borrow_mut().push(text.to_string());
     reader.heard(0, "Come see me in my Pokémon Lab!", Some(0x10), &mut say)?;
     assert!(said.borrow().is_empty());
@@ -310,26 +453,28 @@ text = "You stand in the truck."
 /// arriving, and the room beyond after it, as the player arrives there.
 #[test]
 fn test_a_scene_of_a_trigger_is_said_as_the_player_first_steps_onto_it() -> Result<()> {
-    let file = r#"
+    let tmp_path = TmpDir::new();
+    let (scenes, words) = described(
+        tmp_path.path(),
+        r#"
 [[scene]]
 zone = 0x16b
 trigger = 0
 [[scene.beat]]
-text = "The doors open."
+id = "doors-1"
 [[scene.beat]]
 zone = 0x162
-text = "A square room."
-"#;
-    let (log, _) = logging();
-    let scenes = load(
-        Some(file),
-        &|_: &str, _: i64, _: i64| Ok(None),
-        &|_: &str, _: i64| None,
-        &log,
+id = "doors-2"
+"#,
+        "doors-1 = The doors open.\ndoors-2 = A square room.\n",
+        &[],
+        &[],
+        None,
+        &quiet(),
         None,
     )?;
     let said: RefCell<Vec<String>> = RefCell::new(Vec::new());
-    let mut reader = Scenes::with_monotonic(scenes);
+    let mut reader = Scenes::with_monotonic(scenes, said_of(&words));
     let mut say = |text: &str| said.borrow_mut().push(text.to_string());
     reader.arrived(0x16B, &mut say)?;
     assert!(said.borrow().is_empty());
@@ -357,48 +502,47 @@ fn recalling(recorded: Vec<((&'static str, i64), &'static str)>) -> Recall {
 }
 
 /// The credits draw the Pokémon that won each Gym and great battle, which the save records
-/// (spike 222): `{memory:N}` is read as the beat is said, and a moment the save never recorded is
+/// (spike 222): `MEMORY(N)` is read as the beat is said, and a moment the save never recorded is
 /// not described.
 #[test]
 fn test_the_players_own_pokemon_are_named_from_the_save_as_each_beat_is_said() -> Result<()> {
-    let file = r#"
+    let tmp_path = TmpDir::new();
+    let (scenes, words) = described(
+        tmp_path.path(),
+        r#"
 [[scene]]
 zone = 0x166
 [[scene.beat]]
-text = "{trainer:4} watches."
+id = "credits-1"
 [[scene.beat]]
-text = "Your {memory:24} faces Wally's Gallade."
+id = "credits-2"
 [[scene.beat]]
-text = "Your {memory:4} is nowhere."
+id = "credits-3"
 [[scene.beat]]
-text = "{text:123:91} shines among the stars."
+id = "credits-4"
 [[scene.beat]]
-text = "{sprite:179} walks in."
-"#;
-    let lines: IndexMap<(String, i64, i64), Vec<u8>> = IndexMap::from([(
-        ("text".to_string(), 123, 91),
-        line(&[Part::Text("THE\nEND")]),
-    )]);
-    let (log, _) = logging();
-    let scenes = load(
-        Some(file),
-        &|archive: &str, file: i64, number: i64| {
-            Ok(lines.get(&(archive.to_string(), file, number)).cloned())
-        },
-        &|kind: &str, number: i64| (kind == "trainer" && number == 4).then(|| "May".to_string()),
-        &log,
+id = "credits-5"
+"#,
+        "
+credits-1 = { TRAINER(4) } watches.
+credits-2 = Your { MEMORY(24) } faces Wally's Gallade.
+credits-3 = Your { MEMORY(4) } is nowhere.
+credits-4 = { TEXT(123, 91) } shines among the stars.
+credits-5 = { SPRITE(179) } walks in.
+",
+        &[(("text", 123, 91), line(&[Part::Text("THE\nEND")]))],
+        &[(("trainer", 4), "May")],
+        Some(recalling(vec![
+            (("memory", 24), "Latios"),
+            (("sprite", 179), "Professor Birch"),
+        ])),
+        &quiet(),
         None,
     )?;
     let said: RefCell<Vec<String>> = RefCell::new(Vec::new());
-    let mut reader = Scenes::with_monotonic(scenes).recalling(
-        recalling(vec![
-            (("memory", 24), "Latios"),
-            (("sprite", 179), "Professor Birch"),
-        ]),
-        "{}".to_string(),
-    );
-    let mut say = |text: &str| said.borrow_mut().push(text.to_string());
-    reader.arrived(0x166, &mut say)?;
+    Scenes::with_monotonic(scenes, said_of(&words)).arrived(0x166, &mut |text: &str| {
+        said.borrow_mut().push(text.to_string())
+    })?;
     assert_eq!(
         *said.borrow(),
         [
@@ -411,41 +555,44 @@ text = "{sprite:179} walks in."
     Ok(())
 }
 
-/// `{yours:N}` is the nickname the player gave a moment's Pokémon (Orion, 2026-10-16), or,
-/// where they gave it none, the file's `yours` around its name; the rival's stays `{memory:N}`.
+/// `YOURS(N)` is the nickname the player gave a moment's Pokémon (Orion, 2026-10-16), or, where
+/// they gave it none, `scene-yours` around its name; the rival's stays `MEMORY(N)`.
 #[test]
 fn test_the_players_own_pokemon_are_called_by_their_nicknames_or_the_files_yours() -> Result<()> {
-    let file = r#"
-yours = "your {}"
+    let tmp_path = TmpDir::new();
+    let (scenes, words) = described(
+        tmp_path.path(),
+        r#"
 [[scene]]
 zone = 0x166
 [[scene.beat]]
-text = "May with her {memory:2}, and you with {yours:1}."
+id = "battle-1"
 [[scene.beat]]
-text = "You and {yours:25} face Steven."
+id = "battle-2"
 [[scene.beat]]
-text = "You and {yours:4} are nowhere."
-"#;
-    let (log, _) = logging();
-    let scenes = load(
-        Some(file),
-        &|_: &str, _: i64, _: i64| Ok(None),
-        &|_: &str, _: i64| None,
-        &log,
-        None,
-    )?;
-    let said: RefCell<Vec<String>> = RefCell::new(Vec::new());
-    let mut reader = Scenes::with_monotonic(scenes).recalling(
-        recalling(vec![
+id = "battle-3"
+"#,
+        "
+scene-yours = your { $pokemon }
+battle-1 = May with her { MEMORY(2) }, and you with { YOURS(1) }.
+battle-2 = You and { YOURS(25) } face Steven.
+battle-3 = You and { YOURS(4) } are nowhere.
+",
+        &[],
+        &[],
+        Some(recalling(vec![
             (("memory", 1), "Torchic"),
             (("yours", 1), "Blaze"),
             (("memory", 2), "Mudkip"),
             (("memory", 25), "Primal Reversion Groudon"),
-        ]),
-        yours(Some(file)),
-    );
-    let mut say = |text: &str| said.borrow_mut().push(text.to_string());
-    reader.arrived(0x166, &mut say)?;
+        ])),
+        &quiet(),
+        None,
+    )?;
+    let said: RefCell<Vec<String>> = RefCell::new(Vec::new());
+    Scenes::with_monotonic(scenes, said_of(&words)).arrived(0x166, &mut |text: &str| {
+        said.borrow_mut().push(text.to_string())
+    })?;
     assert_eq!(
         *said.borrow(),
         [
@@ -462,10 +609,12 @@ text = "You and {yours:4} are nowhere."
 #[test]
 fn test_a_scene_of_suns_is_said_over_the_demo_it_plays_as() -> Result<()> {
     let (log, logged) = logging();
+    use_words(ENGLISH, &field::names())?;
+    let words = nothing_described()?;
     let scenes = load(
-        field::in_language(field::SCENES, "en"),
+        &field::names().join(FILE),
         &|_: &str, _: i64, _: i64| Ok(None),
-        &|_: &str, _: i64| None,
+        &|message: &str| words.known(message),
         &log,
         None,
     )?;
@@ -473,7 +622,7 @@ fn test_a_scene_of_suns_is_said_over_the_demo_it_plays_as() -> Result<()> {
     let said: RefCell<Vec<String>> = RefCell::new(Vec::new());
     let now = Rc::new(Cell::new(100.0));
     let clock = now.clone();
-    let mut reader = Scenes::new(scenes, Rc::new(move || clock.get()));
+    let mut reader = Scenes::new(scenes, said_of(&words), Rc::new(move || clock.get()));
     let mut say = |text: &str| said.borrow_mut().push(text.to_string());
     reader.demo(Some(55), &mut say)?;
     reader.demo(None, &mut say)?;
@@ -501,6 +650,42 @@ fn test_a_scene_of_suns_is_said_over_the_demo_it_plays_as() -> Result<()> {
     reader.poll(&mut say)?;
     assert_eq!(said.borrow().len(), 12);
     Ok(())
+}
+
+/// The timing and the words are two files: each beat's id in one is a message in the other, and
+/// no message is left over (ADR-0040).
+#[test]
+fn test_every_beat_of_every_scene_shipped_has_english_words() {
+    let sun = field::names();
+    for game in [sun.parent().unwrap().join("oras"), sun.clone()] {
+        let timing: ::toml::Table = fs::read_to_string(game.join(FILE))
+            .unwrap()
+            .parse()
+            .unwrap();
+        let beats: Vec<String> = timing["scene"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|scene| scene["beat"].as_array().unwrap().iter())
+            .map(|beat| beat["id"].as_str().unwrap().to_string())
+            .collect();
+        let source = fs::read_to_string(game.join("en").join("scenes.ftl")).unwrap();
+        let body = match fluent_syntax::parser::parse(source.as_str()) {
+            Ok(resource) => resource.body,
+            Err((resource, _)) => resource.body,
+        };
+        let mut messages: HashSet<String> = body
+            .iter()
+            .filter_map(|entry| match entry {
+                fluent_syntax::ast::Entry::Message(message) => Some(message.id.name.to_string()),
+                _ => None,
+            })
+            .collect();
+        messages.remove("scene-yours");
+        let unique: HashSet<String> = beats.iter().cloned().collect();
+        assert_eq!(beats.len(), unique.len(), "{}", game.display());
+        assert_eq!(unique, messages, "{}", game.display());
+    }
 }
 
 /// Orion, 2026-10-12: "Narration:" before a description that follows someone speaking, and not

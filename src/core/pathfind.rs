@@ -23,6 +23,7 @@ use std::hash::Hash;
 
 use indexmap::IndexMap;
 
+use crate::core::words::{own, said};
 use crate::py::{self, Error, Result};
 
 pub type Cell = (i64, i64);
@@ -47,7 +48,11 @@ pub const DIAGONALS: [(&str, Cell); 4] = [
 ];
 /// Clockwise, a quarter turn apart.
 pub const COMPASS: [&str; 4] = [NORTH, EAST, SOUTH, WEST];
-pub const FORWARD: &str = "forward";
+pub const AHEAD: &str = "ahead";
+pub const BEHIND: &str = "behind";
+pub const LEFT: &str = "left";
+/// The ways of a player's own frame, as a player heading one way is told them (`facing`).
+pub const RIGHT: &str = "right";
 
 pub const STEP: i64 = 2;
 /// What a turn costs: a step's worth.
@@ -149,9 +154,27 @@ impl Leg {
 impl fmt::Display for Leg {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if !self.how.is_empty() {
-            return write!(f, "{} {} {}", self.how, self.steps, self.direction);
+            return write!(
+                f,
+                "{}",
+                own(
+                    "leg-with",
+                    &[
+                        ("how", &said("how", &self.how)),
+                        ("steps", &self.steps),
+                        ("way", &way(self.direction)),
+                    ],
+                )
+            );
         }
-        write!(f, "{} {}", self.steps, self.direction)
+        write!(
+            f,
+            "{}",
+            own(
+                "steps",
+                &[("count", &self.steps), ("way", &way(self.direction))]
+            )
+        )
     }
 }
 
@@ -891,6 +914,12 @@ pub fn legs(path: &[Cell], how: Option<&dyn Fn(Cell, Cell) -> Result<String>>) -
     Ok(out)
 }
 
+/// A way of the compass, `north` or `north-east`, or of a player's own frame, `ahead`, as
+/// it is said.
+pub fn way(direction: &str) -> String {
+    own(&format!("way-{direction}"), &[])
+}
+
 /// Legs as they are said: "5 east, 2 north".
 pub fn spoken(runs: &[Leg]) -> String {
     runs.iter()
@@ -918,16 +947,23 @@ pub fn turned(runs: &[Leg], heading: &str, angled: bool) -> Result<String> {
             COMPASS.len() as i64,
         );
         if i == 0 && angled && (turn == 0 || turn == 2) {
-            words.push("camera angled, hold left, hold right".to_string());
+            words.push(own("rail-angled", &[]));
         }
         if turn == 2 {
-            words.push(format!("{} back", leg.steps));
+            words.push(own("rail-back", &[("steps", &leg.steps)]));
             continue;
         }
         if turn != 0 {
-            words.push(if turn == 1 { "hold right" } else { "hold left" }.to_string());
+            words.push(own(
+                if turn == 1 {
+                    "rail-hold-right"
+                } else {
+                    "rail-hold-left"
+                },
+                &[],
+            ));
         }
-        words.push(format!("{} {}", leg.steps, FORWARD));
+        words.push(own("rail-forward", &[("steps", &leg.steps)]));
         heading = leg.direction;
     }
     Ok(words.join(", "))
@@ -957,21 +993,25 @@ pub fn facing(origin: Cell, cell: Cell, heading: &str) -> Result<String> {
     let (ahead, right) = (dx * ahead_x + dz * ahead_z, dx * right_x + dz * right_z);
     let mut parts: Vec<String> = Vec::new();
     if ahead != 0 {
-        parts.push(format!(
-            "{} {}",
-            ahead.abs(),
-            if ahead > 0 { "ahead" } else { "behind" }
+        parts.push(own(
+            "steps",
+            &[
+                ("count", &ahead.abs()),
+                ("way", &way(if ahead > 0 { AHEAD } else { BEHIND })),
+            ],
         ));
     }
     if right != 0 {
-        parts.push(format!(
-            "{} {}",
-            right.abs(),
-            if right > 0 { "right" } else { "left" }
+        parts.push(own(
+            "steps",
+            &[
+                ("count", &right.abs()),
+                ("way", &way(if right > 0 { RIGHT } else { LEFT })),
+            ],
         ));
     }
     Ok(if parts.is_empty() {
-        "here".to_string()
+        own("here", &[])
     } else {
         parts.join(" ")
     })

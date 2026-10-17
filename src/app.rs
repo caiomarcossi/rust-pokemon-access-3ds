@@ -17,6 +17,7 @@ use indexmap::IndexMap;
 use crate::core::config::{Extras, Navigation, Ui};
 use crate::core::discovery::{CODE_SPAN, Discovery};
 use crate::core::heaps::Block;
+use crate::core::keyfile::data_path;
 use crate::core::keys::Hotkeys;
 use crate::core::memory::{self, Memory};
 use crate::core::rpc::{Process, Rpc};
@@ -25,6 +26,7 @@ use crate::core::snapshot::{self, PAGE};
 use crate::core::speech::{Category, Speech};
 use crate::core::tones::Tones;
 use crate::core::touch::{self, SharedLog, TouchServer};
+use crate::core::words::own;
 use crate::games::catalog;
 use crate::games::common::field::keys::{Bindings, DEFAULT_BINDINGS, bound_keys};
 use crate::games::common::session::{Session, Setup};
@@ -76,7 +78,9 @@ pub struct Settings {
     /// What the game shows in a way pa3ds cannot read, said from its numbers
     /// (`[pa3ds.extras]`).
     pub extras: Extras,
-    /// Which of a game's name tables to read for the people it never names (`pa3ds.core.names`).
+    /// The language a game is read in until its save says another, which it is read in from then
+    /// on (ADR-0040): its text out of the ROM, and pa3ds's own words where `[pa3ds.ui] language`
+    /// does not say otherwise.
     pub language: String,
     /// Where the player's own names live, and where a rename is written: beside pa3ds itself from
     /// the command line (ADR-0032). None keeps them for the run only, which is what a replay wants —
@@ -145,7 +149,7 @@ pub fn wait_for_game(
             Err(error) if error.is(Kind::RpcError) => {
                 if !told {
                     log("waiting for the game");
-                    speech.say("Waiting for the game", Category::System);
+                    speech.say(&own("app-waiting", &[]), Category::System);
                     told = true;
                 }
                 time::sleep(settings.wait);
@@ -204,6 +208,9 @@ pub const SLOW_REPLY: f64 = 0.001;
 /// The longest the work that can wait is put off for, so an emulator slow all the time is read
 /// as it was before.
 pub const PATIENCE: f64 = 1.5;
+/// Said once as pa3ds starts without `<pa3ds>/data` beside it, as when only `pa3ds.exe` was copied
+/// somewhere: pa3ds runs on, but every word of its own, the shipped names and the scenes are gone.
+pub const MISSING_DATA: &str = "pa3ds data folder not found";
 
 /// Whether to put off the work that can wait, because the emulator is answering slowly.
 ///
@@ -367,7 +374,8 @@ impl Faults {
             failure.detail
         ));
         self.snapshot();
-        self.speech.say("Reader error", Category::System);
+        self.speech
+            .say(&own("app-reader-error", &[]), Category::System);
         Some(failure.fault.clone())
     }
 
@@ -419,6 +427,21 @@ pub type Start<'a> = &'a dyn Fn(
     &[u8],
 ) -> Result<Session>;
 
+/// `data_path` as `run` checks it, which a test moves where Python's monkeypatch `app.data_path`.
+fn data_folder() -> Result<PathBuf> {
+    #[cfg(test)]
+    if let Some(moved) = DATA_IN_TEST.with(|moved| moved.borrow().clone()) {
+        return Ok(moved);
+    }
+    data_path()
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Where a test says the data folder is, for `run`'s check alone.
+    pub static DATA_IN_TEST: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+}
+
 /// `run`, with the game started by `start`.
 pub fn run_with(
     rpc: Rc<dyn Rpc>,
@@ -430,25 +453,64 @@ pub fn run_with(
 ) -> Result<()> {
     hook_panics();
     let mut restarted = settings.restarted;
+    let data = data_folder()?;
+    if !data.is_dir() {
+        // In English, and in code: the words that would say it in the player's language are in
+        // the folder that is missing (ADR-0040).
+        log(&format!(
+            "no data folder at {}: pa3ds's own words, names and scenes are off",
+            crate::py::path_str(&data)
+        ));
+        speech.say(MISSING_DATA, Category::Warning);
+    }
+    let mut language = settings.language.clone();
     loop {
         let Some(process) = wait_for_game(&*rpc, &speech, until, &log, &settings)? else {
             return Ok(());
         };
-        if !session(
+        let mut ended = session(
             rpc.clone(),
             speech.clone(),
             &settings,
             until,
             &log,
-            process,
+            process.clone(),
             start,
             restarted,
-        )? {
+            &language,
+            false,
+        )?;
+        while let Ended::Language(said) = ended {
+            // The save says another language than the game was read in: read it again in that,
+            // saying nothing of it (ADR-0040).
+            language = said;
+            ended = session(
+                rpc.clone(),
+                speech.clone(),
+                &settings,
+                until,
+                &log,
+                process.clone(),
+                start,
+                false,
+                &language,
+                true,
+            )?;
+        }
+        if let Ended::Gone(false) = ended {
             return Ok(());
         }
         restarted = false;
         log("the game the emulator was running has gone; waiting for a game again");
     }
+}
+
+/// What reading one game came to, Python's `bool | str`.
+enum Ended {
+    /// Whether the game went away, for `run` to wait for the next one.
+    Gone(bool),
+    /// The language the save says, another than the game was read in, to read it again in.
+    Language(String),
 }
 
 /// What one poll's failure is, the way Python's `except` clauses tell them apart.
@@ -484,8 +546,10 @@ fn raise(result: Result<()>) {
     }
 }
 
-/// Read one game until `until()` is true. Returns whether the game went away, for `run` to
-/// wait for the next one. `restarted` says "pa3ds restarted" where "pa3ds ready" goes.
+/// Read one game in `language` until `until()` is true. Returns whether the game went away, for
+/// `run` to wait for the next one, or the language its save says where that is another, to be read
+/// again in. `restarted` says "pa3ds restarted" where "pa3ds ready" goes; `quiet` says neither,
+/// for a game read again in its own language.
 #[allow(clippy::too_many_arguments)]
 fn session(
     rpc: Rc<dyn Rpc>,
@@ -496,7 +560,9 @@ fn session(
     process: Process,
     start: Start<'_>,
     restarted: bool,
-) -> Result<bool> {
+    language: &str,
+    quiet: bool,
+) -> Result<Ended> {
     let began = time::monotonic();
     let code_spans = snapshot::regions(
         &*rpc,
@@ -508,7 +574,7 @@ fn session(
     )?;
     let Some(&code) = code_spans.first() else {
         log("the game's code is not readable");
-        return Ok(false);
+        return Ok(Ended::Gone(false));
     };
     let image = snapshot::sweep(
         &*rpc,
@@ -546,7 +612,7 @@ fn session(
             ui: settings.ui.clone(),
             navigation: settings.navigation.clone(),
             extras: settings.extras.clone(),
-            language: settings.language.clone(),
+            language: language.to_string(),
             names_home: settings.names_home.clone(),
             rom: settings.rom.clone(),
             emulator: settings.emulator.clone(),
@@ -661,7 +727,7 @@ fn session(
     let required: Vec<&str> = session.required.iter().map(String::as_str).collect();
     if discovery.missing(&required).len() == required.len() {
         log("no message window classes in this executable");
-        return Ok(false);
+        return Ok(Ended::Gone(false));
     }
     log(&format!(
         "reading {} as {}: code {:#010x}-{:#010x}, ready in {:.1} s",
@@ -672,9 +738,9 @@ fn session(
         time::monotonic() - began
     ));
     if restarted {
-        speech.say("pa3ds restarted", Category::Warning);
-    } else {
-        speech.say("pa3ds ready", Category::System);
+        speech.say(&own("app-restarted", &[]), Category::Warning);
+    } else if !quiet {
+        speech.say(&own("app-ready", &[]), Category::System);
     }
 
     // The pages the readers had been reading, saved where raw captures live (ADR-0029).
@@ -749,7 +815,7 @@ fn session(
         let started = time::monotonic();
         if silent || rpc.unsure() {
             match still_there(&*rpc)? {
-                Some(false) => return Ok(true),
+                Some(false) => return Ok(Ended::Gone(true)),
                 None => {
                     silent = true;
                     time::sleep(settings.wait);
@@ -762,6 +828,7 @@ fn session(
             }
             silent = false;
         }
+        let mut reread: Option<String> = None;
         let outcome = attempt(|| {
             answer_keys()?;
             let app_started = profile.poll_app()?;
@@ -812,6 +879,16 @@ fn session(
                 swept = found.heap.keys().copied().collect();
                 profile.track(&found)?;
                 (session.adopt)(&found)?;
+                if let Some(said) = (session.language)()
+                    && said != language
+                {
+                    log(&format!(
+                        "the save says the game is in {said}, not {language}: reading it again \
+                         in that"
+                    ));
+                    reread = Some(said);
+                    return Ok(());
+                }
             }
             if !busy.now(started) && looking.due(started) {
                 let mut blocks = memory::phase(&*session.watched, "heaps", || {
@@ -853,6 +930,9 @@ fn session(
             }
             poll_screen()
         });
+        if let Some(said) = reread {
+            return Ok(Ended::Language(said));
+        }
         match outcome {
             Outcome::Done => {}
             Outcome::Raised(error) if error.is(Kind::RpcTimeoutError) => {
@@ -883,7 +963,7 @@ fn session(
         let left = settings.tick - (time::monotonic() - started);
         time::sleep(if left > 0.0 { left } else { 0.0 });
     }
-    Ok(false)
+    Ok(Ended::Gone(false))
 }
 
 /// `Counter(names).most_common()`: each name with how often it came, most first, a tie in the

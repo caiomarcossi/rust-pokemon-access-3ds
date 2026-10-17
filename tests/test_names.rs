@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use indexmap::IndexMap;
 
 use crate::core::names::{FURNITURE, KINDS, Names, TILES};
+use crate::core::words::{ENGLISH, Words};
 use crate::games::common::field::things;
 use crate::games::{oras, xy};
 
@@ -53,15 +54,27 @@ fn read_text(path: &Path) -> String {
         .replace('\r', "\n")
 }
 
-fn shipped(tmp_path: &Path, body: &str) -> PathBuf {
-    let data = tmp_path.join("data").join("en");
-    fs::create_dir_all(&data).unwrap();
-    fs::write(data.join("sprites.toml"), body).unwrap();
-    tmp_path.join("data")
+/// A game's English `sprites.ftl` holding `body`, and its words.
+fn shipped(tmp_path: &Path, body: &str) -> Words {
+    let folder = tmp_path.join("data").join("oras").join("en");
+    fs::create_dir_all(&folder).unwrap();
+    fs::write(folder.join("sprites.ftl"), body).unwrap();
+    words(ENGLISH, &tmp_path.join("data").join("oras"))
 }
 
-fn load(data: &Path, language: &str, fingerprint: &str, home: &Path) -> Names {
-    Names::load(data, language, fingerprint, Some(home), "").unwrap()
+/// `Words(language, game)`.
+fn words(language: &str, game: &Path) -> Words {
+    Words::new(
+        language,
+        Some(game),
+        IndexMap::new(),
+        Rc::new(|_line: &str| {}),
+    )
+    .unwrap()
+}
+
+fn load(words: &Words, fingerprint: &str, home: &Path) -> Names {
+    Names::load(fingerprint, Some(home), "", Some(words)).unwrap()
 }
 
 /// A sprite is one character everywhere in the game: Norman named once is Norman in the Gym
@@ -69,8 +82,8 @@ fn load(data: &Path, language: &str, fingerprint: &str, home: &Path) -> Names {
 #[test]
 fn test_a_shipped_sprite_is_said_for_every_map_it_walks_on() {
     let tmp_path = TmpPath::new();
-    let data = shipped(&tmp_path, "[sprites]\n\"0x13f\" = \"Norman\"\n");
-    let names = load(&data, "en", "sango-1", &tmp_path.join("home"));
+    let data = shipped(&tmp_path, "sprite-0x13f = Norman\n");
+    let names = load(&data, "sango-1", &tmp_path.join("home"));
     assert_eq!(names.sprite(NORMAN).as_deref(), Some("Norman"));
     assert_eq!(names.sprite(WALLY), None);
 }
@@ -78,14 +91,14 @@ fn test_a_shipped_sprite_is_said_for_every_map_it_walks_on() {
 #[test]
 fn test_a_name_the_player_gives_wins_and_is_kept() {
     let tmp_path = TmpPath::new();
-    let data = shipped(&tmp_path, "[sprites]\n\"0x13f\" = \"Norman\"\n");
+    let data = shipped(&tmp_path, "sprite-0x13f = Norman\n");
     let home = tmp_path.join("home");
-    let names = load(&data, "en", "sango-1", &home);
+    let names = load(&data, "sango-1", &home);
     names.name_sprite(NORMAN, "Dad").unwrap();
     names.name_sprite(WALLY, "Wally").unwrap();
     assert_eq!(names.sprite(NORMAN).as_deref(), Some("Dad"));
     assert_eq!(names.sprite(WALLY).as_deref(), Some("Wally"));
-    let again = load(&data, "en", "sango-1", &home);
+    let again = load(&data, "sango-1", &home);
     assert_eq!(again.sprite(NORMAN).as_deref(), Some("Dad"));
     assert_eq!(again.sprite(WALLY).as_deref(), Some("Wally"));
 }
@@ -93,8 +106,8 @@ fn test_a_name_the_player_gives_wins_and_is_kept() {
 #[test]
 fn test_an_empty_name_gives_the_character_back_to_the_shipped_table() {
     let tmp_path = TmpPath::new();
-    let data = shipped(&tmp_path, "[sprites]\n\"0x13f\" = \"Norman\"\n");
-    let names = load(&data, "en", "sango-1", &tmp_path.join("home"));
+    let data = shipped(&tmp_path, "sprite-0x13f = Norman\n");
+    let names = load(&data, "sango-1", &tmp_path.join("home"));
     names.name_sprite(NORMAN, "Dad").unwrap();
     names.name_sprite(NORMAN, "  ").unwrap();
     assert_eq!(names.sprite(NORMAN).as_deref(), Some("Norman"));
@@ -108,11 +121,8 @@ const RIVAL: i64 = 0x13A;
 #[test]
 fn test_the_games_own_word_comes_before_the_shipped_one() {
     let tmp_path = TmpPath::new();
-    let data = shipped(
-        &tmp_path,
-        "[sprites]\n\"0x13a\" = \"Rival\"\n\"0x13f\" = \"Norman\"\n",
-    );
-    let names = load(&data, "en", "sango-1", &tmp_path.join("home"));
+    let data = shipped(&tmp_path, "sprite-0x13a = Rival\nsprite-0x13f = Norman\n");
+    let names = load(&data, "sango-1", &tmp_path.join("home"));
     assert_eq!(names.sprite(RIVAL).as_deref(), Some("Rival"));
     names.use_game(
         Some(Rc::new(|character| {
@@ -127,8 +137,8 @@ fn test_the_games_own_word_comes_before_the_shipped_one() {
 #[test]
 fn test_the_players_own_name_comes_before_the_games() {
     let tmp_path = TmpPath::new();
-    let data = shipped(&tmp_path, "[sprites]\n\"0x13a\" = \"Rival\"\n");
-    let names = load(&data, "en", "sango-1", &tmp_path.join("home"));
+    let data = shipped(&tmp_path, "sprite-0x13a = Rival\n");
+    let names = load(&data, "sango-1", &tmp_path.join("home"));
     names.use_game(
         Some(Rc::new(|character| {
             (character == RIVAL).then(|| "May".to_string())
@@ -145,12 +155,7 @@ fn test_the_players_own_name_comes_before_the_games() {
 #[test]
 fn test_a_place_is_named_on_its_own_map() {
     let tmp_path = TmpPath::new();
-    let names = load(
-        &shipped(&tmp_path, ""),
-        "en",
-        "sango-1",
-        &tmp_path.join("home"),
-    );
+    let names = load(&shipped(&tmp_path, ""), "sango-1", &tmp_path.join("home"));
     names.name_place(GYM, 1, "the Gym's sign").unwrap();
     assert_eq!(names.place(GYM, 1).as_deref(), Some("the Gym's sign"));
     assert_eq!(names.place(GYM, 2), None);
@@ -163,10 +168,10 @@ fn test_names_are_kept_apart_by_fingerprint() {
     let tmp_path = TmpPath::new();
     let data = shipped(&tmp_path, "");
     let home = tmp_path.join("home");
-    load(&data, "en", "sango-1", &home)
+    load(&data, "sango-1", &home)
         .name_sprite(NORMAN, "Norman")
         .unwrap();
-    assert_eq!(load(&data, "en", "sapphire-1", &home).sprite(NORMAN), None);
+    assert_eq!(load(&data, "sapphire-1", &home).sprite(NORMAN), None);
 }
 
 /// Being told the wrong name is a nuisance; a reader that stops mid-game is not.
@@ -180,8 +185,8 @@ fn test_a_names_file_that_cannot_be_read_is_no_names_at_all() {
         "{not toml",
     )
     .unwrap();
-    let data = shipped(&tmp_path, "[sprites]\n\"0x13f\" = \"Norman\"\n");
-    let names = load(&data, "en", "sango-1", &home);
+    let data = shipped(&tmp_path, "sprite-0x13f = Norman\n");
+    let names = load(&data, "sango-1", &home);
     assert_eq!(names.sprite(NORMAN).as_deref(), Some("Norman"));
     names.name_sprite(WALLY, "Wally").unwrap();
     assert_eq!(names.sprite(WALLY).as_deref(), Some("Wally"));
@@ -190,12 +195,8 @@ fn test_a_names_file_that_cannot_be_read_is_no_names_at_all() {
 #[test]
 fn test_a_shipped_table_that_is_not_there_is_no_names_at_all() {
     let tmp_path = TmpPath::new();
-    let names = load(
-        &tmp_path.join("nowhere"),
-        "en",
-        "sango-1",
-        &tmp_path.join("home"),
-    );
+    let nowhere = words(ENGLISH, &tmp_path.join("nowhere").join("oras"));
+    let names = load(&nowhere, "sango-1", &tmp_path.join("home"));
     assert_eq!(names.sprite(NORMAN), None);
     assert_eq!(names.words(TILES), IndexMap::<i64, String>::new());
 }
@@ -208,10 +209,9 @@ fn test_the_shipped_table_says_what_each_kind_of_use_tile_and_furniture_is() {
     let tmp_path = TmpPath::new();
     let data = shipped(
         &tmp_path,
-        "[tiles]\n\"0xdd\" = \"trash can\"\n\"trash\" = \"bin\"\n\
-         [furniture]\n\"0x28f0\" = \"vending machine\"\n",
+        "tile-0xdd = trash can\ntile-trash = bin\nfurniture-0x28f0 = vending machine\n",
     );
-    let names = Names::load(&data, "en", "sango-1", None, "").unwrap();
+    let names = Names::load("sango-1", None, "", Some(&data)).unwrap();
     assert_eq!(
         names.words(TILES),
         IndexMap::from([(0xDD, "trash can".to_string())])
@@ -226,13 +226,32 @@ fn test_the_shipped_table_says_what_each_kind_of_use_tile_and_furniture_is() {
 /// ROM could not be read; it is each table's now.
 #[test]
 fn test_every_shipped_table_says_what_the_pc_is() {
-    let header = IndexMap::new();
     for game in [oras::game(), xy::game()] {
-        for (language, _) in game.data.iter() {
-            let names = Names::from_table(&game.table(language), None, &header).unwrap();
+        for table in sprite_tables(&(game.data)()) {
+            let language = table
+                .parent()
+                .unwrap()
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap();
+            let words = words(language, &(game.data)());
+            let names = Names::load("rom", None, "", Some(&words)).unwrap();
             assert!(!names.words(TILES)[&0xD5].is_empty(), "{language}");
         }
     }
+}
+
+/// `game.DATA.glob("*/sprites.ftl")`.
+fn sprite_tables(data: &Path) -> Vec<PathBuf> {
+    let mut found: Vec<PathBuf> = fs::read_dir(data)
+        .unwrap()
+        .map(|entry| entry.unwrap().path().join("sprites.ftl"))
+        .filter(|table| table.is_file())
+        .collect();
+    found.sort();
+    assert!(!found.is_empty(), "{}", data.display());
+    found
 }
 
 /// The Magma Hideout's first bed: its zone's furniture 0, furniture's tag being 0 (spike 211).
@@ -243,8 +262,8 @@ const BED: (i64, i64) = (0xAA, 0);
 #[test]
 fn test_the_shipped_table_names_a_slot_behind_the_player_and_the_game() {
     let tmp_path = TmpPath::new();
-    let data = shipped(&tmp_path, "[places]\n\"0xaa:furniture:0\" = \"bed\"\n");
-    let names = load(&data, "en", "sango-1", &tmp_path.join("home"));
+    let data = shipped(&tmp_path, "place-0xaa-furniture-0 = bed\n");
+    let names = load(&data, "sango-1", &tmp_path.join("home"));
     assert_eq!(names.place(BED.0, BED.1).as_deref(), Some("bed"));
     names.use_game(
         None,
@@ -262,22 +281,27 @@ fn test_the_shipped_table_names_a_slot_behind_the_player_and_the_game() {
 #[test]
 fn test_every_language_names_what_english_does() {
     for game in [oras::game(), xy::game()] {
-        let english = game.table("en");
-        for (language, _) in game.data.iter() {
-            let theirs = game.table(language);
-            for (section, keys) in &english {
-                let keys: std::collections::HashSet<String> = match keys {
-                    ::toml::Value::Table(table) => table.keys().cloned().collect(),
-                    _ => continue,
-                };
-                let held: std::collections::HashSet<String> = match theirs.get(section) {
-                    Some(::toml::Value::Table(table)) => table.keys().cloned().collect(),
-                    _ => std::collections::HashSet::new(),
-                };
-                assert_eq!(held, keys, "{language} {section}");
-            }
+        let english = ids(&(game.data)().join("en").join("sprites.ftl"));
+        for table in sprite_tables(&(game.data)()) {
+            assert_eq!(ids(&table), english, "{}", table.display());
         }
     }
+}
+
+fn ids(path: &Path) -> std::collections::HashSet<String> {
+    let source = fs::read_to_string(path).unwrap();
+    let resource = match fluent_syntax::parser::parse(source.as_str()) {
+        Ok(resource) => resource,
+        Err((resource, _)) => resource,
+    };
+    resource
+        .body
+        .iter()
+        .filter_map(|entry| match entry {
+            fluent_syntax::ast::Entry::Message(message) => Some(message.id.name.to_string()),
+            _ => None,
+        })
+        .collect()
 }
 
 /// Sharing names is copying the file, so it is written sorted and as words, not as a dump,
@@ -288,11 +312,10 @@ fn test_the_players_names_are_a_file_worth_sending_to_someone() {
     let tmp_path = TmpPath::new();
     let home = tmp_path.join("home");
     let names = Names::load(
-        &shipped(&tmp_path, ""),
-        "en",
         "sango-1",
         Some(&home),
         "Pokémon Omega Ruby",
+        Some(&shipped(&tmp_path, "")),
     )
     .unwrap();
     names.name_sprite(WALLY, "Wally").unwrap();
@@ -319,7 +342,7 @@ fn test_the_players_names_are_a_file_worth_sending_to_someone() {
 fn test_a_rom_the_emulator_does_not_name_names_itself() {
     let tmp_path = TmpPath::new();
     let home = tmp_path.join("home");
-    let names = load(&shipped(&tmp_path, ""), "en", "sango-1", &home);
+    let names = load(&shipped(&tmp_path, ""), "sango-1", &home);
     names.name_sprite(NORMAN, "Norman").unwrap();
     let body = read_text(&home.join("names").join("en").join("sango-1.toml"));
     assert!(
@@ -335,14 +358,13 @@ fn test_a_name_is_kept_per_language_because_a_name_is_a_word_in_one() {
     let tmp_path = TmpPath::new();
     let data = shipped(&tmp_path, "");
     let home = tmp_path.join("home");
-    load(&data, "en", "sango-1", &home)
+    load(&data, "sango-1", &home)
         .name_sprite(NORMAN, "Dad")
         .unwrap();
-    assert_eq!(load(&data, "fr", "sango-1", &home).sprite(NORMAN), None);
+    let french = words("fr", &tmp_path.join("data").join("oras"));
+    assert_eq!(load(&french, "sango-1", &home).sprite(NORMAN), None);
     assert_eq!(
-        load(&data, "en", "sango-1", &home)
-            .sprite(NORMAN)
-            .as_deref(),
+        load(&data, "sango-1", &home).sprite(NORMAN).as_deref(),
         Some("Dad")
     );
 }
@@ -354,12 +376,12 @@ fn test_a_name_may_hold_anything_a_player_can_type() {
     let tmp_path = TmpPath::new();
     let home = tmp_path.join("home");
     let awkward = "the \"old\" man \\ upstairs";
-    let names = load(&shipped(&tmp_path, ""), "en", "sango-1", &home);
+    let names = load(&shipped(&tmp_path, ""), "sango-1", &home);
     names.name_sprite(NORMAN, awkward).unwrap();
     names
         .name_place(GYM, 2, "caf\u{e9}\u{3001} \u{30dd}\u{30b1}\u{30e2}\u{30f3}")
         .unwrap();
-    let again = load(&shipped(&tmp_path, ""), "en", "sango-1", &home);
+    let again = load(&shipped(&tmp_path, ""), "sango-1", &home);
     assert_eq!(again.sprite(NORMAN).as_deref(), Some(awkward));
     assert_eq!(
         again.place(GYM, 2).as_deref(),

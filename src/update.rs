@@ -125,7 +125,9 @@ fn latest() -> Result<Release, String> {
 }
 
 /// Replaces the files of `dir` with the release's. A running exe can be renamed but not
-/// overwritten, so it steps aside as `pa3ds.exe.old` (deleted at the next start).
+/// overwritten, so it steps aside as `pa3ds.exe.old` (deleted at the next start). The `data`
+/// folder is pa3ds's and replaced whole, so a file the release has dropped goes with it (upstream
+/// ADR-0040): it steps aside as `data.old` until the release is unpacked.
 fn update(exe: &Path, dir: &Path, release: &Release) -> Result<(), String> {
     let zip = std::env::temp_dir().join(format!("pa3ds-{}-windows.zip", release.version));
     let result = swap(exe, dir, &release.zip, &zip);
@@ -140,6 +142,9 @@ fn swap(exe: &Path, dir: &Path, url: &str, zip: &Path) -> Result<(), String> {
         .arg(url))?;
     let old = dir.join("pa3ds.exe.old");
     fs::rename(exe, &old).map_err(|error| format!("could not move pa3ds.exe aside: {error}"))?;
+    let (data, old_data) = (dir.join("data"), dir.join("data.old"));
+    let _ = fs::remove_dir_all(&old_data);
+    let moved = fs::rename(&data, &old_data).is_ok();
     // The zip holds one folder, pa3ds-<version>-windows, around the files.
     let unpacked = run(Command::new(system32("tar.exe"))
         .arg("-xf")
@@ -150,6 +155,12 @@ fn swap(exe: &Path, dir: &Path, url: &str, zip: &Path) -> Result<(), String> {
     let new = dir.join("pa3ds.exe");
     if unpacked.is_err() && !new.exists() {
         let _ = fs::rename(&old, exe);
+        if moved {
+            let _ = fs::remove_dir_all(&data);
+            let _ = fs::rename(&old_data, &data);
+        }
+    } else {
+        let _ = fs::remove_dir_all(&old_data);
     }
     unpacked.map(drop)
 }

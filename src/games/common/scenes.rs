@@ -22,53 +22,65 @@
 //! of Sun's is found by it, `demo = 6` for the chase after Kukui's call, in no zone and after no
 //! line.
 //!
-//! A name the game shows is never written into a description: `{pokemon:383}` is the game's own
-//! word for Groudon, out of the player's ROM, and so are `{trainer:N}`, `{item:N}` and `{place:N}`.
-//! The credits draw the player's own Pokémon, which the save records as the story goes:
-//! `{memory:N}` is the one it keeps for the Nth moment, in the form it keeps, read from the save as
-//! the beat is said (spike 222), and `{yours:N}` the same Pokémon as the player's: the nickname they
-//! gave it, where they still have it, or else the file's `yours` with its name in, "your Mega
-//! Latios" (Orion, 2026-10-16). Someone the game never names is `{sprite:N}`, called what a
-//! speaker drawn as sprite N is (`pa3ds.core.names`): the player's own name for them first, so a
-//! rename is heard in the next beat.
+//! When each beat is said is a game's `scenes.toml`, every language's; what it says is the message
+//! of its `id` in the language's `scenes.ftl` (ADR-0040), English's where the language has none.
+//! A name the game shows is never written into a description: `{ POKEMON(383) }` is the game's own
+//! word for Groudon, out of the player's ROM, and so are `TRAINER`, `ITEM` and `PLACE`, and a whole
+//! line of the game's text, `{ TEXT(123, 91) }`. The credits draw the player's own Pokémon, which the
+//! save records as the story goes: `{ MEMORY(24) }` is the one it keeps for the 24th moment, in the
+//! form it keeps, read from the save as the beat is said (spike 222), and `{ YOURS(24) }` the same
+//! Pokémon as the player's: the nickname they gave it, where they still have it, or else
+//! `scene-yours` with its name in, "your Mega Latios" (Orion, 2026-10-16). Someone the game never
+//! names is `{ SPRITE(179) }`, called what a speaker drawn as sprite 179 is (`pa3ds.core.names`):
+//! the player's own name for them first, so a rename is heard in the next beat (`Described`).
 //!
 //! The Python's `Scenes` keeps the callable it says each beat with, the announcements'
 //! `narrate`; here the profile owns the announcements through `&mut`, so it hands the callable to
-//! each method that may say a beat instead (`Say`). A beat's recalled names are read from the
-//! save as it is said, which can raise, so every such method returns a `Result`.
+//! each method that may say a beat instead (`Say`).
 
+use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
-use std::rc::Rc;
-use std::sync::OnceLock;
+use std::path::Path;
+use std::rc::{Rc, Weak};
 
 use ::toml::Value;
 use indexmap::IndexMap;
-use regex::{Captures, Regex};
+use regex::Regex;
 
 use crate::core::toml;
+use crate::core::words::{Function, Words, current};
 use crate::games::common::text::{PAGE_BREAKS, Token, tokens};
 use crate::py::{self, Kind, Log, Result};
 
-/// A game's descriptions in one language, beside its names (`data/<language>/`).
+/// A game's scenes and when each beat of them is said, every language's (`data/<game>/`).
 pub const FILE: &str = "scenes.toml";
 /// The one control sequence inside a page that inserts no words (`games.common.text`).
 pub const COLOUR: i64 = 0xFF00;
 
-/// A name, `{pokemon:383}`, or a whole line of the game's text, `{text:123:91}`: words the game
-/// draws as a picture, "THE END" over the credits' last shooting stars.
-fn word_pattern() -> &'static Regex {
-    static WORD: OnceLock<Regex> = OnceLock::new();
-    WORD.get_or_init(|| Regex::new(r"\{(\w+):(\d+)(?::(\d+))?\}").expect("a fixed pattern"))
-}
-
-/// Names a description takes from the player's own save or names as it is said, not from the ROM
-/// as it is loaded: `{memory:24}` is the Pokémon the save keeps for the credits' 24th moment, the one
-/// that won Wally's battle on Victory Road (spike 222), `{yours:24}` the same Pokémon as the player's
-/// own, by the nickname they gave it ("Windsong") or as the file's `yours` says it ("your Mega
-/// Latios"), and `{sprite:179}` Professor Birch.
-pub const RECALLED: [&str; 3] = ["memory", "yours", "sprite"];
-/// A file's way of saying the player's own Pokémon they never named, `{}` its name: "your {}".
-pub const YOURS: &str = "yours";
+/// The functions a description names what the ROM lists with, by what each is the game's word
+/// for: `{ POKEMON(383) }`.
+pub const NAMED: [(&str, &str); 4] = [
+    ("POKEMON", "pokemon"),
+    ("TRAINER", "trainer"),
+    ("ITEM", "item"),
+    ("PLACE", "place"),
+];
+/// The functions that put in a whole line of the game's text, by its archive: words the game
+/// draws as a picture, `{ TEXT(123, 91) }`, "THE END" over the credits' last shooting stars.
+pub const LINES: [(&str, &str); 2] = [("TEXT", "text"), ("STORY", "story")];
+/// The functions that take a name from the player's own save or names as a beat is said, not
+/// from the ROM: `{ MEMORY(24) }` is the Pokémon the save keeps for the credits' 24th moment, the
+/// one that won Wally's battle on Victory Road (spike 222), `{ YOURS(24) }` the same Pokémon as the
+/// player's own, by the nickname they gave it ("Windsong") or as `scene-yours` says it ("your
+/// Mega Latios"), and `{ SPRITE(179) }` Professor Birch.
+pub const RECALLED: [(&str, &str); 3] = [
+    ("MEMORY", "memory"),
+    ("YOURS", "yours"),
+    ("SPRITE", "sprite"),
+];
+/// How the player's own Pokémon they never named is said, its name `$pokemon`: "your Mega
+/// Latios".
+pub const YOURS: &str = "scene-yours";
 
 /// `recall(kind, number)`: the player's own word for a `RECALLED` name, read as a beat is said.
 pub type Recall = Rc<dyn Fn(&str, i64) -> Result<Option<String>>>;
@@ -79,7 +91,8 @@ pub type Say<'a> = &'a mut dyn FnMut(&str);
 /// One piece of a description, and what it waits for after the beat before it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Beat {
-    pub text: String,
+    /// Its words' id in each language's `scenes.ftl`.
+    pub message: String,
     /// Wait for a scene of the game's own to start.
     pub demo: bool,
     /// Wait for the player to arrive in this zone.
@@ -148,29 +161,30 @@ pub fn last_page(line: &[u8]) -> Result<Option<(i64, Regex)>> {
 
 /// `line(archive, file, number)`: a line of the "story" text or the "text" as the ROM has it.
 pub type Line<'a> = &'a dyn Fn(&str, i64, i64) -> Result<Option<Vec<u8>>>;
+/// `line`, as `Described` keeps it for its messages to call.
+pub type Lines = Rc<dyn Fn(&str, i64, i64) -> Result<Option<Vec<u8>>>>;
 /// `word(kind, number)`: the game's own word for what a description names, or None.
-pub type Word<'a> = &'a dyn Fn(&str, i64) -> Option<String>;
+pub type Word = Rc<dyn Fn(&str, i64) -> Option<String>>;
 
-/// The scenes of a file, each with the line it follows out of the ROM and its names in the
-/// game's own words. A line is `story:402:30`, the story text's file 402 and its line 30, or
+/// The scenes of a game's `scenes.toml`, each with the line it follows out of the ROM, and
+/// each beat by its words' id, `known` where the words and every name they hold out of the ROM
+/// are there (`Described.known`). A line is `story:402:30`, the story text's file 402 and its
+/// line 30, or
 /// `text:147:67` out of the rest of the game's text, in its zone or, with none, before the player
 /// is anywhere; a scene with no line is said on arriving in its zone, as the player steps onto
 /// one of its triggers, `trigger = 0`, or as its demo starts, `demo = 6`, where the game numbers
 /// them. A scene whose line or names the ROM does not have is
 /// left out, and logged. A scene with a `title` is the running `title`'s alone: one version's,
 /// said at a line in a zone the other version shares.
-///
-/// Python reads the file at a path; the binary carries it, so this takes its text, None where
-/// the game has no file in the language, as `toml.read` of a missing file is nothing.
 pub fn load(
-    text: Option<&str>,
+    path: &Path,
     line: Line,
-    word: Word,
+    known: &dyn Fn(&str) -> bool,
     log: &Log,
     title: Option<i64>,
 ) -> Result<Vec<Scene>> {
     let mut scenes: Vec<Scene> = Vec::new();
-    for table in tables(toml::read_text(text).get("scene")) {
+    for table in tables(toml::read(path).get("scene")) {
         // `isinstance(only, int)`, a bool among them, as `int_of` reads it.
         if title.is_some_and(|title| int_of(table.get("title")).is_some_and(|only| only != title)) {
             continue;
@@ -197,11 +211,13 @@ pub fn load(
             None => None,
             Some(raw) => last_page(&raw)?,
         };
-        let mut beats: Vec<Option<Beat>> = Vec::new();
-        for held in tables(table.get("beat")) {
-            beats.push(beat(&held, word, line)?);
-        }
-        let kept: Vec<Beat> = beats.iter().flatten().cloned().collect();
+        let beats: Vec<Option<Beat>> = tables(table.get("beat")).iter().map(beat).collect();
+        let kept: Vec<Beat> = beats
+            .iter()
+            .flatten()
+            .filter(|beat| known(&beat.message))
+            .cloned()
+            .collect();
         if (!after.is_empty() && page.is_none())
             || (demo.is_none() && after.is_empty() && zone.is_none())
             || kept.is_empty()
@@ -236,16 +252,6 @@ fn log_left_out(log: &Log, after: &str, demo: Option<i64>, trigger: Option<i64>)
     log(&format!(
         "scene after {what}: left out, the ROM does not have its line or its names"
     ));
-}
-
-/// How a file says the player's own Pokémon with no nickname (`YOURS`), or its name alone.
-///
-/// Python reads the file at a path; this takes its text, as `load` does.
-pub fn yours(text: Option<&str>) -> String {
-    match toml::read_text(text).get(YOURS) {
-        Some(Value::String(said)) if said.contains("{}") => said.clone(),
-        _ => "{}".to_string(),
-    }
 }
 
 /// `text.partition(":")`'s head and tail.
@@ -301,58 +307,128 @@ fn tables(value: Option<&Value>) -> Vec<IndexMap<String, Value>> {
     }
 }
 
-/// A beat of the file, its names and lines put in, or None where one is missing or the beat
-/// is not.
-fn beat(table: &IndexMap<String, Value>, word: Word, line: Line) -> Result<Option<Beat>> {
-    let Some(Value::String(text)) = table.get("text") else {
-        return Ok(None);
+/// A beat of the file, or None where it is not one.
+fn beat(table: &IndexMap<String, Value>) -> Option<Beat> {
+    let Some(Value::String(message)) = table.get("id") else {
+        return None;
     };
-    let mut missing = false;
-    let mut raised: Option<py::Error> = None;
-    let text = word_pattern()
-        .replace_all(text, |found: &Captures| {
-            if RECALLED.contains(&&found[1]) {
-                return found[0].to_string();
-            }
-            let said = match (py::int_base10(&found[2]), found.get(3)) {
-                (Ok(number), None) => word(&found[1], number),
-                (Ok(file), Some(number)) => match py::int_base10(number.as_str())
-                    .and_then(|number| line(&found[1], file, number))
-                {
-                    Ok(raw) => words(raw.as_deref()),
-                    Err(error) => {
-                        raised.get_or_insert(error);
-                        None
-                    }
-                },
-                (Err(error), _) => {
-                    raised.get_or_insert(error);
-                    None
-                }
-            };
-            missing |= said.is_none();
-            said.unwrap_or_default()
-        })
-        .into_owned();
-    if let Some(error) = raised {
-        return Err(error);
-    }
     let at = match table.get("at") {
         None => 0.0,
         Some(Value::Integer(number)) => *number as f64,
         Some(Value::Float(number)) => *number,
         Some(Value::Boolean(truth)) => *truth as i64 as f64,
-        Some(_) => return Ok(None),
+        Some(_) => return None,
     };
-    if missing {
-        return Ok(None);
-    }
-    Ok(Some(Beat {
-        text,
+    Some(Beat {
+        message: message.clone(),
         demo: truth(table.get("demo")),
         zone: int_of(table.get("zone")),
         at,
-    }))
+    })
+}
+
+/// The words of the scenes' beats in the player's language, the names in them put in: the
+/// game's own out of the ROM, and the player's out of their save and their names as each beat
+/// is said.
+///
+/// A name that cannot be found, or whose reading raises, leaves its beat unsaid: Python's Fluent
+/// keeps a function's exception with the words, and a message with an error is not said
+/// (`Words.get`).
+pub struct Described {
+    words: Rc<Words>,
+    /// Whether a beat is being looked over as its scene loads, before any save is read.
+    checking: Rc<Cell<bool>>,
+}
+
+impl Described {
+    /// `word` is the game's word for a Pokémon, a trainer, an item or a place by its
+    /// number, `line` a line of its text, and `recall` the player's own for what `RECALLED`
+    /// names: None where there is none.
+    pub fn new(line: Lines, word: Word, recall: Option<Recall>) -> Result<Described> {
+        let checking = Rc::new(Cell::new(false));
+        // The words the functions are given to, for YOURS's own message: they hold the functions,
+        // so the functions hold them weakly.
+        let these: Rc<RefCell<Weak<Words>>> = Rc::new(RefCell::new(Weak::new()));
+        let mut functions: IndexMap<String, Function> = IndexMap::new();
+        for (name, kind) in NAMED {
+            let word = word.clone();
+            functions.insert(
+                name.to_string(),
+                Rc::new(move |values| {
+                    let [number] = values else {
+                        return None;
+                    };
+                    word(kind, whole(number)?)
+                }),
+            );
+        }
+        for (name, archive) in LINES {
+            let line = line.clone();
+            functions.insert(
+                name.to_string(),
+                Rc::new(move |values| {
+                    let [file, number] = values else {
+                        return None;
+                    };
+                    let raw = line(archive, whole(file)?, whole(number)?).ok()?;
+                    words(raw.as_deref())
+                }),
+            );
+        }
+        for (name, kind) in RECALLED {
+            let (recall, checking, these) = (recall.clone(), checking.clone(), these.clone());
+            functions.insert(
+                name.to_string(),
+                Rc::new(move |values| {
+                    let [number] = values else {
+                        return None;
+                    };
+                    if checking.get() {
+                        return Some(kind.to_string());
+                    }
+                    let moment = whole(number)?;
+                    let recall = recall.as_ref()?;
+                    let mut said = recall(kind, moment).ok()?;
+                    if said.is_none()
+                        && kind == "yours"
+                        && let Some(species) = recall("memory", moment).ok()?
+                    {
+                        said = these
+                            .borrow()
+                            .upgrade()?
+                            .get(YOURS, &[("pokemon", &species)]);
+                    }
+                    said
+                }),
+            );
+        }
+        let words = Rc::new(current().with_functions(functions)?);
+        *these.borrow_mut() = Rc::downgrade(&words);
+        Ok(Described { words, checking })
+    }
+
+    /// Whether a beat has words, and the ROM every name of the game's in them.
+    pub fn known(&self, message: &str) -> bool {
+        self.checking.set(true);
+        let found = self.words.get(message, &[]).is_some();
+        self.checking.set(false);
+        found
+    }
+
+    /// A beat's words as it is said, or None where the save has none of a name in them: a
+    /// moment the player's game never recorded is not described.
+    pub fn said(&self, message: &str) -> Option<String> {
+        self.words.get(message, &[])
+    }
+}
+
+/// `int(str(number))` of a value Fluent hands a function: a number written without a fraction.
+fn whole(value: &crate::core::words::Value) -> Option<i64> {
+    match value {
+        crate::core::words::Value::Number(number) if number.fract() == 0.0 => Some(*number as i64),
+        crate::core::words::Value::Number(_) => None,
+        crate::core::words::Value::Text(text) => py::int_base10(text).ok(),
+    }
 }
 
 /// A line of the game's text as one run of words, its line breaks spaces; None for none.
@@ -378,12 +454,10 @@ fn words(raw: Option<&[u8]>) -> Option<String> {
 /// Follows the scene the player is in, and says each beat of its description as it comes.
 pub struct Scenes {
     scenes: Vec<Scene>,
+    /// A beat's words as it is said, by their id, or None where they are not to be said
+    /// (`Described.said`).
+    said: Rc<dyn Fn(&str) -> Option<String>>,
     clock: Rc<dyn Fn() -> f64>,
-    /// The player's own word for a `RECALLED` name, read as a beat is said: for `yours`, the
-    /// nickname alone, None where there is none.
-    recall: Recall,
-    /// How the file says the player's own Pokémon with no nickname (`yours`).
-    own: String,
     /// The scene followed now, by its place in `scenes`.
     scene: Option<usize>,
     /// The beat said next.
@@ -399,12 +473,15 @@ pub struct Scenes {
 }
 
 impl Scenes {
-    pub fn new(scenes: Vec<Scene>, clock: Rc<dyn Fn() -> f64>) -> Self {
+    pub fn new(
+        scenes: Vec<Scene>,
+        said: Rc<dyn Fn(&str) -> Option<String>>,
+        clock: Rc<dyn Fn() -> f64>,
+    ) -> Self {
         Scenes {
             scenes,
+            said,
             clock,
-            recall: Rc::new(|_: &str, _: i64| Ok(None)),
-            own: "{}".to_string(),
             scene: None,
             next: 0,
             since: 0.0,
@@ -413,19 +490,9 @@ impl Scenes {
         }
     }
 
-    /// `Scenes(scenes, say)`: on the monotonic clock.
-    pub fn with_monotonic(scenes: Vec<Scene>) -> Self {
-        Scenes::new(scenes, Rc::new(py::time::monotonic))
-    }
-
-    /// `Scenes(..., recall=recall, own=own)`: names read from the player's save and names as each
-    /// beat is said, and the file's way of saying their own Pokémon.
-    pub fn recalling(self, recall: Recall, own: String) -> Self {
-        Scenes {
-            recall,
-            own,
-            ..self
-        }
+    /// `Scenes(scenes, say, said)`: on the monotonic clock.
+    pub fn with_monotonic(scenes: Vec<Scene>, said: Rc<dyn Fn(&str) -> Option<String>>) -> Self {
+        Scenes::new(scenes, said, Rc::new(py::time::monotonic))
     }
 
     /// The triggers of a zone that start a scene, still to be stepped onto: where nothing is
@@ -530,8 +597,7 @@ impl Scenes {
             {
                 return Ok(());
             }
-            let text = beat.text.clone();
-            if let Some(text) = self.recalled(&text)? {
+            if let Some(text) = (self.said)(&beat.message) {
                 say(&text);
             }
             self.next += 1;
@@ -539,40 +605,6 @@ impl Scenes {
         }
         self.scene = None;
         Ok(())
-    }
-
-    /// The beat's words with the save's names put in, or None where the save has none of
-    /// them: a moment the player's game never recorded is not described.
-    fn recalled(&self, text: &str) -> Result<Option<String>> {
-        let mut missing = false;
-        let mut raised: Option<py::Error> = None;
-        let said = word_pattern()
-            .replace_all(text, |found: &Captures| {
-                let kind = &found[1];
-                let recalled = py::int_base10(&found[2]).and_then(|number| {
-                    let said = (self.recall)(kind, number)?;
-                    if said.is_none() && kind == YOURS {
-                        // `own.format(species)`: `yours` keeps only a file's own that holds `{}`.
-                        return Ok((self.recall)("memory", number)?
-                            .map(|species| self.own.replacen("{}", &species, 1)));
-                    }
-                    Ok(said)
-                });
-                let said = match recalled {
-                    Ok(said) => said,
-                    Err(error) => {
-                        raised.get_or_insert(error);
-                        None
-                    }
-                };
-                missing |= said.is_none();
-                said.unwrap_or_default()
-            })
-            .into_owned();
-        if let Some(error) = raised {
-            return Err(error);
-        }
-        Ok(if missing { None } else { Some(said) })
     }
 
     /// The beat next to be said, while it waits for something still to come.

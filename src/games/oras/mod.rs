@@ -5,11 +5,13 @@
 //! contests.
 
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::OnceLock;
 
 use indexmap::IndexMap;
 
+use crate::core::keyfile::data_path;
 use crate::core::memory::Memory;
 use crate::core::pathfind::SOUTH;
 use crate::games::common::field::ground::{CUT, ROCK_SMASH, STRENGTH};
@@ -34,27 +36,14 @@ use crate::games::oras::memories::Memories;
 use crate::games::oras::screens::conditions::Conditions;
 use crate::games::oras::screens::contest::Standings;
 
-/// Words the game does not say itself, a folder a language: `pa3ds.core.names` reads them.
-///
-/// The files are `include_str!`ed, so the binary carries them: `Game.data` is this table in place
-/// of Python's `Path(__file__).parent / "data"`.
-pub const DATA: Data = &[
-    ("ja", include_str!("data/ja/sprites.toml")),
-    ("en", include_str!("data/en/sprites.toml")),
-    ("fr", include_str!("data/fr/sprites.toml")),
-    ("it", include_str!("data/it/sprites.toml")),
-    ("de", include_str!("data/de/sprites.toml")),
-    ("es", include_str!("data/es/sprites.toml")),
-    ("ko", include_str!("data/ko/sprites.toml")),
-];
+/// ORAS's own words, for what the game does not say itself (ADR-0040): its scenes' timing, and a
+/// folder a language of the names, picture words, scene descriptions and words only ORAS says.
+pub const DATA: Data = data;
 
-/// Each language's `scenes.toml` from the same folder, where there is one
-/// (`games.common.scenes.FILE`).
-pub const SCENES: Data = &[("en", include_str!("data/en/scenes.toml"))];
-
-/// Each language's `pictures.toml` from the same folder, where there is one
-/// (`games.common.pictures.PICTURES_FILE`).
-pub const PICTURES: Data = &[("en", include_str!("data/en/pictures.toml"))];
+/// `data_path() / "oras"`, which Python makes as the module loads.
+pub fn data() -> PathBuf {
+    data_path().unwrap_or_default().join("oras")
+}
 
 pub const OMEGA_RUBY: i64 = 0x000400000011C400;
 pub const ALPHA_SAPPHIRE: i64 = 0x000400000011C500;
@@ -800,8 +789,6 @@ pub fn game() -> &'static Game {
         blockers: HashSet::from(BLOCKERS),
         elevators: ELEVATORS.collect(),
         player_looks: PLAYER_LOOKS.collect(),
-        scenes: SCENES,
-        pictures: PICTURES,
         stairs: HashSet::from([SOOTOPOLIS_GYM]),
         apps: vec![Soaring::of],
         warps: warps().clone(),

@@ -13,6 +13,7 @@ use std::rc::Rc;
 
 use indexmap::IndexMap;
 
+use crate::core::words::own;
 use crate::games::common::cursors::picture::PictureCursors;
 use crate::games::common::cursors::shared::{
     CursorItem, Panes, SAME_SPOT, Said, Spot, Where, class_of, framed, near, place_of,
@@ -39,18 +40,15 @@ pub struct CursorPanes {
     /// Cursor pane on screen -> where it was at the last poll and the pane it was fitted to,
     /// an anchor of 0 where none was and the words inside it were its item.
     fits: IndexMap<i64, Spot>,
-    /// pa3ds's own words for a button of pictures alone, by its pane's name.
-    buttons: IndexMap<String, String>,
 }
 
 impl CursorPanes {
-    pub fn new(panes: Rc<Panes>, said: Rc<Said>, buttons: IndexMap<String, String>) -> Self {
+    pub fn new(panes: Rc<Panes>, said: Rc<Said>) -> Self {
         CursorPanes {
             layouts: panes.layouts.clone(),
             panes,
             said,
             fits: IndexMap::new(),
-            buttons,
         }
     }
 
@@ -89,7 +87,7 @@ impl CursorPanes {
                         top,
                         root: spot.root,
                         parent: group,
-                        ..ScreenText::new(group, EMPTY, false)
+                        ..ScreenText::new(group, own(EMPTY, &[]), false)
                     }];
                 } else if item.is_empty()
                     && let Some(named) = self.button_name(spot.root, group)?
@@ -128,11 +126,7 @@ impl CursorPanes {
             }
         }
         let name = self.panes.pane_name(group)?;
-        Ok(self
-            .buttons
-            .get(&name)
-            .cloned()
-            .or_else(|| pane_words(&name)))
+        Ok(pane_words(&name))
     }
 
     /// Does the group hold TextBoxes, none of them shown? Words shown but not yet read the same

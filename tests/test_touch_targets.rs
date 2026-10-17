@@ -138,7 +138,7 @@ fn test_a_tap_reaches_only_the_target_just_named() {
 fn test_nothing_on_the_bottom_screen_is_said_so() {
     let mut screen = Screen::new(Vec::new());
     let started = screen.start();
-    assert!(started == touch::NOTHING && touch::NOTHING == screen.press(touch::ITEM_NEXT));
+    assert!(started == "nothing to touch" && "nothing to touch" == screen.press(touch::ITEM_NEXT));
 }
 
 /// The X menu (layer 10) over the PokéNav (layer 1): its POKÉDEX button covers the DexNav, which a

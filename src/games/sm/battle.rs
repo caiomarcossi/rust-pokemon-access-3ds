@@ -42,6 +42,7 @@ use unicode_general_category::{GeneralCategory, get_general_category};
 use crate::core::binary::{u16, u32};
 use crate::core::memory::Memory;
 use crate::core::rtti::ClassNames;
+use crate::core::words::own;
 use crate::games::common::battle::{Battler, GAUGE_RECORD, MAX_ASKS, REASK, RECORD_PARAM, SIGNS};
 use crate::games::common::layout::Layouts;
 use crate::games::common::pokemon;
@@ -202,7 +203,14 @@ impl SunBattleReader {
             } else {
                 ""
             };
-            let text = format!("{name}{sign} L{level} {detail}");
+            let text = own(
+                "battle-battler",
+                &[
+                    ("name", &format!("{name}{sign}")),
+                    ("level", level),
+                    ("hp", &detail),
+                ],
+            );
             if self.pending.get(&panel) != Some(&text) {
                 // Held for one poll before it counts: the box's words and its fill are rewritten
                 // as the count runs, and a single poll catches a frame rather than a value.
@@ -272,7 +280,7 @@ impl SunBattleReader {
         } else {
             0
         };
-        Ok(Some(format!("{percent}%")))
+        Ok(Some(own("battle-share", &[("percent", &percent)])))
     }
 }
 

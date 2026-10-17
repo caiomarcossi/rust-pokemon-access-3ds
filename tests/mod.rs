@@ -1,11 +1,13 @@
 #![allow(dead_code)]
 
+pub(crate) mod conftest;
 mod fake_emulator;
 mod fake_gdb;
 mod fake_layouts;
 mod fake_memory;
 mod fake_rom;
 mod fake_speech;
+mod fake_words;
 mod test_amie;
 mod test_announce;
 mod test_app;
@@ -34,6 +36,7 @@ mod test_lists;
 mod test_memories;
 mod test_memory;
 mod test_modules;
+mod test_mystatus;
 mod test_names;
 mod test_navigate;
 mod test_oras_text;
@@ -67,4 +70,5 @@ mod test_touch_targets;
 mod test_townmap;
 mod test_training;
 mod test_window;
+mod test_words;
 mod test_xy_intro;

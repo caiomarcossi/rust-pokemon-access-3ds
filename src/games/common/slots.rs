@@ -26,17 +26,20 @@ use std::collections::BTreeSet;
 use indexmap::IndexMap;
 
 use crate::core::binary::{f32, u32};
+use crate::core::words::own;
 use crate::games::common::layout::Layouts;
 use crate::games::common::layout_file::{LayoutFile, LayoutFiles};
 use crate::games::common::lyt;
-use crate::games::common::pictures::{EMPTY, OFF, ON, mark, words};
+use crate::games::common::pictures::{OFF, ON, mark, words};
 use crate::games::common::screen::ScreenText;
 use crate::py::{self, Error, PySet, Result, sorted_by_lt};
 
-pub const PARTY: &str = "Party";
-pub const ROW: &str = "row";
-/// pa3ds's own words for a slot: the game names neither the party's slots nor a box's rows.
-pub const COLUMN: &str = "column";
+pub const PARTY: &str = "slot-party";
+pub const GRID: &str = "slot-grid";
+pub const TITLED_GRID: &str = "slot-titled-grid";
+/// pa3ds's own words for a slot, "Party 2", "BOX 1, row 2, column 3", and one holding no Pokémon:
+/// the game names neither the party's slots nor a box's rows.
+pub const EMPTY_SLOT: &str = "slot-empty";
 /// The alpha from which a mark's picture is drawn as set: 255 set, 127 not (spike 129).
 pub const SET_ALPHA: i64 = 192;
 /// The texture a slot's Pokémon is drawn with.
@@ -110,7 +113,8 @@ pub fn slot(
             }
             places[a].0 < places[b].0
         });
-        r#where = Some(format!("{PARTY} {}", index_of(&order, touch)? + 1));
+        let number = index_of(&order, touch)? + 1;
+        r#where = Some(own(PARTY, &[("number", &number)]));
     }
     let Some(r#where) = r#where else {
         return Ok(None);
@@ -127,7 +131,7 @@ pub fn slot(
     Ok(Some((
         touch,
         if empty {
-            format!("{}, {EMPTY}", r#where)
+            own(EMPTY_SLOT, &[("slot", &r#where)])
         } else {
             r#where
         },
@@ -248,10 +252,13 @@ fn in_grid(
     let title = title
         .map(|piece| piece.text.as_str())
         .filter(|text| !text.is_empty());
-    Ok(Some(format!(
-        "{}{ROW} {row}, {COLUMN} {column}",
-        title.map_or(String::new(), |title| format!("{title}, "))
-    )))
+    Ok(Some(match title {
+        Some(title) => own(
+            TITLED_GRID,
+            &[("title", &title), ("row", &row), ("column", &column)],
+        ),
+        None => own(GRID, &[("row", &row), ("column", &column)]),
+    }))
 }
 
 /// The sign of the mark whose picture lies within this touch area, if one does: beside it in the
@@ -282,13 +289,13 @@ fn mark_of(
                     .pane(pane)?
                     .get(layouts.shape.alpha as usize)
                     .ok_or_else(|| Error::index("index out of range"))?;
-                return Ok(Some(format!(
-                    "{sign}, {}",
+                return Ok(Some(own(
                     if i64::from(alpha) >= SET_ALPHA {
                         ON
                     } else {
                         OFF
-                    }
+                    },
+                    &[("mark", &sign)],
                 )));
             }
         }

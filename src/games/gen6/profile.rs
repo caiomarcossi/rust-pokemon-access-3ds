@@ -20,6 +20,7 @@ use crate::core::names::{FURNITURE, GamePlace, GameSprite, Names, TILES};
 use crate::core::rtti::{ClassNames, demangle};
 use crate::core::speech::{Category, Speech};
 use crate::core::tones::Tones;
+use crate::core::words::own;
 use crate::games::common::announce::{Announcements, Speaker};
 use crate::games::common::cursors::reader::CursorReader;
 use crate::games::common::dialogue::{DialogueReader, Shown};
@@ -35,8 +36,10 @@ use crate::games::common::field::things::{
 };
 use crate::games::common::layout::Layouts;
 use crate::games::common::layout_file::{LayoutFile, LayoutFiles};
-use crate::games::common::pictures::{CAUGHT, described};
-use crate::games::common::scenes::{Recall, Scenes, load as load_scenes, yours as scenes_yours};
+use crate::games::common::pictures::CAUGHT;
+use crate::games::common::scenes::{
+    Described, FILE as SCENES_FILE, Lines, Recall, Scenes, Word, load as load_scenes,
+};
 use crate::games::common::screen::{Pictures, ScreenPoll, ScreenText, ScreenTextReader};
 use crate::games::common::screen_announce::ScreenAnnouncer;
 use crate::games::common::session::Profile;
@@ -51,7 +54,6 @@ use crate::games::gen6::field::speaker::SpeakerReader;
 use crate::games::gen6::field::{camera, mapblock, talk};
 use crate::games::gen6::game::MemoriesReader;
 use crate::games::gen6::game::{ConditionsReader, Game, OpeningReader, OwnApp, StandingsReader};
-use crate::games::gen6::gflheap;
 use crate::games::gen6::rom::archives::GameText;
 use crate::games::gen6::rom::textures;
 use crate::games::gen6::rom::textures::Index;
@@ -69,6 +71,7 @@ use crate::games::gen6::screens::training::{Bags, Goals, Round, TrainingPage};
 use crate::games::gen6::screens::{
     amie, buttons, distribution, partyicons, summary, townmap, training,
 };
+use crate::games::gen6::{gflheap, mystatus};
 use crate::py::{self, Error, Log, PySet, Result};
 
 /// What the heap is swept for: message windows, list controllers, the device manager a choice box
@@ -80,15 +83,15 @@ use crate::py::{self, Error, Log, PySet, Result};
 /// its Pokémon Distribution draws, and its views, which say which of its layouts it draws; the
 /// party and the icons the Bag draws it with; the Pokémon-Amie page, which says whose icon its
 /// Pokémon is; Super Training's, which says whose each party slot's is; and the balls of its
-/// Balloon Bots, which say when a shot is coming. A game's own readers add what they find their
-/// objects
+/// Balloon Bots, which say when a shot is coming; and the save's trainer record, which says the
+/// game's language (`mystatus`). A game's own readers add what they find their objects
 /// by (`Gen6Profile.classes`): ORAS's DexNav, the player's work its hidden Pokémon's record is found
 /// through.
 ///
 /// Not TextBoxes or cursor windows: walking each layout's tree finds every one that can be placed on
 /// screen (spike 62). And the linear heap is not swept: the battle builds its layouts there, and its
 /// message window leads to their pool (spike 64).
-pub const HEAP_CLASSES: [&str; 27] = [
+pub const HEAP_CLASSES: [&str; 28] = [
     msgwin::CLASSES[0],
     msgwin::CLASSES[1],
     talk::CLASSES[0],
@@ -117,6 +120,7 @@ pub const HEAP_CLASSES: [&str; 27] = [
     partyicons::ICON_CLASS,
     buttons::MANAGER_CLASS,
     buttons::BAR_CLASS,
+    mystatus::CLASS,
 ];
 
 /// Without a message window class there is nothing to read: not this game, or not this version.
@@ -226,6 +230,8 @@ pub struct Gen6Profile {
     hidden_words: RefCell<Option<String>>,
     /// Whether the player was riding the bike at the last field poll, to log each change.
     on_bike: Cell<bool>,
+    /// The language the save says the game is in, as the last whole sweep read it.
+    pub save_language: RefCell<Option<String>>,
     pub announcements: Rc<RefCell<Announcements>>,
     pub screen_announcer: RefCell<ScreenAnnouncer>,
     /// The scenes the game shows without words, described where the player asks and the game has
@@ -356,15 +362,14 @@ impl Gen6Profile {
             text.plain.clone(),
         )));
         let files = Rc::new(LayoutFiles::new(memory.clone()));
-        // Omega Ruby's boy and girl are portraits the game never names, said in pa3ds's words.
-        let cursors = CursorReader::with_textures(
+        // Omega Ruby's boy and girl are portraits the game never names, said in pa3ds's words
+        // (`pictures.named`).
+        let cursors = CursorReader::with(
             layouts.clone(),
             names.clone(),
             Some(files.clone()),
             false,
             named_by_image,
-            IndexMap::new(),
-            described(game.pictures, &text.language, "textures"),
         );
         let battlers = Rc::new(Battlers::new(memory.clone(), names.clone()));
         let gauges = Rc::new(Gauges::new(memory.clone(), names.clone()));
@@ -408,16 +413,16 @@ impl Gen6Profile {
         let field = Rc::new(RefCell::new(field));
         // The game's own apps, ORAS's soaring: while one runs, the keys walk what it lists, which
         // the field's stale lists know nothing of (spike 166).
-        let mut own: Vec<Rc<dyn OwnApp>> = Vec::new();
+        let mut owned: Vec<Rc<dyn OwnApp>> = Vec::new();
         for make in &game.apps {
             // Python raises out of the profile's making, which ends the runtime.
             match make(memory.clone(), &text, speech.clone(), log.clone()) {
-                Ok(Some(app)) => own.push(app),
+                Ok(Some(app)) => owned.push(app),
                 Ok(None) => {}
                 Err(error) => panic!("{error}"),
             }
         }
-        let own = Rc::new(own);
+        let owned = Rc::new(owned);
 
         // Touch mode walks the bottom screen's touch areas, and taps one on the player's key
         // (`games.common.touch`, ADR-0009 as amended 2026-10-01).
@@ -492,7 +497,7 @@ impl Gen6Profile {
         let goals = Rc::new(Goals::new(layouts.clone(), image_of.clone()));
         // The DexNav draws a Pokémon caught in colour, and only those are said so: "Ralts",
         // "Zigzagoon caught", with a comma under pauses (Orion, 2026-10-06).
-        let caught = format!("{}{CAUGHT}", if ui.pauses { ", " } else { " " });
+        let caught = format!("{}{}", if ui.pauses { ", " } else { " " }, own(CAUGHT, &[]));
         let images: IndexMap<String, String> = text
             .touch_words
             .iter()
@@ -612,8 +617,8 @@ impl Gen6Profile {
             Rc::new(OwnApps {
                 field: field.clone(),
                 running: {
-                    let (apps, own) = (apps.clone(), own.clone());
-                    Rc::new(move || own_running(&apps, &own))
+                    let (apps, owned) = (apps.clone(), owned.clone());
+                    Rc::new(move || own_running(&apps, &owned))
                 },
                 on_field: {
                     let apps = apps.clone();
@@ -642,7 +647,7 @@ impl Gen6Profile {
                 acro: text.acro.clone(),
                 sides: Some(sides),
                 touch: Some(touch),
-                categories: own
+                categories: owned
                     .iter()
                     .flat_map(|app| app.categories())
                     .map(String::from)
@@ -657,18 +662,31 @@ impl Gen6Profile {
         // The scenes the game shows without words, described where the player asks and the game
         // has descriptions in their language (ADR-0038), those of the other version left out.
         let scenes = if ui.descriptions && text.loaded() {
-            let file = game
-                .scenes
-                .iter()
-                .find(|(held, _)| *held == text.language)
-                .map(|(_, file)| *file);
             // Python raises out of `__init__` here; `new` returns no `Result`, and nothing the
             // file or the ROM holds raises in `load` but a line number in digits no int reads.
-            let loaded = load_scenes(file, &line_of(&text), &word_of(&text), &log, title)
-                .unwrap_or_else(|error| panic!("{error:?}"));
-            Some(RefCell::new(Scenes::with_monotonic(loaded).recalling(
-                recall(named.clone(), memories.clone(), text.clone()),
-                scenes_yours(file),
+            let described = Rc::new(
+                Described::new(
+                    line_of(text.clone()),
+                    word_of(text.clone()),
+                    Some(recall(named.clone(), memories.clone(), text.clone())),
+                )
+                .unwrap_or_else(|error| panic!("{error:?}")),
+            );
+            let known = {
+                let described = described.clone();
+                move |message: &str| described.known(message)
+            };
+            let loaded = load_scenes(
+                &(game.data)().join(SCENES_FILE),
+                &*line_of(text.clone()),
+                &known,
+                &log,
+                title,
+            )
+            .unwrap_or_else(|error| panic!("{error:?}"));
+            Some(RefCell::new(Scenes::with_monotonic(
+                loaded,
+                Rc::new(move |message: &str| described.said(message)),
             )))
         } else {
             None
@@ -755,6 +773,7 @@ impl Gen6Profile {
             hiding: Cell::new(None),
             hidden_words: RefCell::new(None),
             on_bike: Cell::new(false),
+            save_language: RefCell::new(None),
             announcements,
             screen_announcer: RefCell::new(screen_announcer),
             scenes,
@@ -767,7 +786,7 @@ impl Gen6Profile {
             speaker_wanted: Cell::new(false),
             managers: RefCell::new(PySet::new()),
             decorating: RefCell::new(None),
-            own,
+            own: owned,
         }
     }
 
@@ -815,6 +834,11 @@ impl Gen6Profile {
         self.lists.borrow_mut().track(found.of(&[CONTROLLER_CLASS]));
         if let Some(memories) = &self.memories {
             memories.track(found);
+        }
+        if !found.partial
+            && let Some(language) = mystatus::language(found)
+        {
+            *self.save_language.borrow_mut() = Some(language.to_string());
         }
         // A choice box has no class of its own; the device manager it holds does.
         for manager in found.of(&[DEVICE_MANAGER_CLASS]) {
@@ -1541,8 +1565,8 @@ impl FieldSource for OwnApps {
 
 /// A line of the "story" text or the "text" by its file and number, as the ROM has it, or
 /// None.
-fn line_of(text: &GameText) -> impl Fn(&str, i64, i64) -> Result<Option<Vec<u8>>> + '_ {
-    move |archive: &str, file: i64, number: i64| {
+fn line_of(text: Rc<GameText>) -> Lines {
+    Rc::new(move |archive: &str, file: i64, number: i64| {
         let lines = match text.lines.get(archive) {
             Some(lines) => (lines.0)(file)?,
             None => Vec::new(),
@@ -1552,7 +1576,7 @@ fn line_of(text: &GameText) -> impl Fn(&str, i64, i64) -> Result<Option<Vec<u8>>
         } else {
             None
         })
-    }
+    })
 }
 
 /// `Gen6Profile._recall`: the word for what a scene names as it is said: `memory`, the Pokémon
@@ -1583,9 +1607,10 @@ fn recall(
     })
 }
 
-/// The game's own word for what a description names as `{kind:number}`, or None.
-fn word_of(text: &GameText) -> impl Fn(&str, i64) -> Option<String> + '_ {
-    move |kind: &str, number: i64| {
+/// The game's own word for what a description names, `{ POKEMON(383) }` a Pokémon by its
+/// number, or None.
+fn word_of(text: Rc<GameText>) -> Word {
+    Rc::new(move |kind: &str, number: i64| {
         if kind == "place" {
             return text.place(number);
         }
@@ -1600,7 +1625,7 @@ fn word_of(text: &GameText) -> impl Fn(&str, i64) -> Option<String> + '_ {
         } else {
             None
         }
-    }
+    })
 }
 
 /// `speaker.name_for`, as the `Speaker` that `Announcements` asks who is showing a window.

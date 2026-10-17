@@ -67,6 +67,7 @@ use regex::Regex;
 use crate::core::config::Value;
 use crate::core::keys::{ORDER, PUNCTUATION};
 use crate::core::toml;
+use crate::core::words::own;
 use crate::py::{self, Error, Kind, Result};
 
 /// Mode -> key -> action, as `common.field.navigate` defines the modes and the actions. Nothing here
@@ -264,6 +265,23 @@ pub fn home_path() -> Result<PathBuf> {
     Ok(app_path()?.join("user"))
 }
 
+/// `<pa3ds>/data`: the words pa3ds ships, beside the player's folder, a game a folder and a
+/// language a folder inside it, and `common` for what every game says alike (ADR-0040). Shipped
+/// whole with each release, and replaced whole by an update: nothing in it is the player's.
+///
+/// A build run where it was built, `cargo run`, `cargo test` or `tape.exe` under `target\`, has
+/// no folder beside it and reads the checkout's, which `tools/sync.py mirror` keeps as upstream's:
+/// Python's `app_path` is the checkout's when there is no executable.
+pub fn data_path() -> Result<PathBuf> {
+    let beside = app_path()?.join("data");
+    let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).join("data");
+    Ok(if !beside.is_dir() && checkout.is_dir() {
+        checkout
+    } else {
+        beside
+    })
+}
+
 /// `<pa3ds>/user/keys.toml`, or under `home` instead.
 pub fn keys_path(home: Option<&Path>) -> Result<PathBuf> {
     let home = match home {
@@ -323,13 +341,15 @@ pub fn portable(chosen: &Path) -> std::result::Result<PathBuf, String> {
         _ => chosen,
     };
     if !folder.join("azahar.exe").is_file() {
-        return Err(format!("{} has no azahar.exe in it", py::path_str(folder)));
+        return Err(own(
+            "azahar-folder-no-exe",
+            &[("folder", &py::path_str(folder))],
+        ));
     }
     if !folder.join("user").is_dir() {
-        return Err(format!(
-            "{} has no user folder beside its azahar.exe, so this Azahar keeps its settings in \
-             AppData and not beside it",
-            py::path_str(folder)
+        return Err(own(
+            "azahar-folder-not-portable",
+            &[("folder", &py::path_str(folder))],
         ));
     }
     Ok(folder.to_path_buf())
@@ -1366,13 +1386,18 @@ pub fn prepare(
     let name = py::path_str(Path::new(path.file_name().unwrap_or_default()));
     let mut parts = sentence(&over, &saved);
     for (key, action, taken) in &held {
-        parts.push(format!(
-            "new key in {name} commented out: {key} for {action}, because {key} is already \
-             {taken}"
+        parts.push(own(
+            "keys-commented-out",
+            &[
+                ("file", &name),
+                ("key", key),
+                ("action", action),
+                ("taken", taken),
+            ],
         ));
     }
     if !held.is_empty() {
-        parts.push(format!("edit {name} to choose"));
+        parts.push(own("keys-edit-to-choose", &[("file", &name)]));
     }
     if !problem.is_empty() {
         parts.push(unreadable(&path, &problem));
@@ -1389,9 +1414,7 @@ pub fn prepare(
 /// out. The settings file says it the same way.
 pub fn unreadable(path: &Path, problem: &str) -> String {
     let name = py::path_str(Path::new(path.file_name().unwrap_or_default()));
-    format!(
-        "{name} could not be read: {problem}. Fix it, or delete it for pa3ds to write a new one"
-    )
+    own("file-unreadable", &[("file", &name), ("problem", &problem)])
 }
 
 /// What is worth saying at startup of the emulator's buttons: which pa3ds has taken, and
@@ -1406,12 +1429,12 @@ fn sentence(over: &[(String, String, bool)], saved: &str) -> Vec<String> {
     loud.sort();
     loud.dedup();
     if !loud.is_empty() {
-        parts.push(format!("pa3ds takes {}", listed(loud)));
+        parts.push(own("keys-taken", &[("controls", &listed(loud))]));
     }
     if saved == "applied" {
-        parts.push("keys applied to Azahar".to_string());
+        parts.push(own("keys-applied", &[]));
     } else if saved == "waiting" {
-        parts.push("close Azahar and start pa3ds again to apply your keys".to_string());
+        parts.push(own("keys-waiting", &[]));
     }
     parts
 }
@@ -1422,6 +1445,6 @@ fn listed<'a>(things: impl IntoIterator<Item = &'a str>) -> String {
     match items.split_last() {
         None => String::new(),
         Some((only, [])) => only.to_string(),
-        Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+        Some((last, rest)) => own("both", &[("these", &rest.join(", ")), ("last", last)]),
     }
 }

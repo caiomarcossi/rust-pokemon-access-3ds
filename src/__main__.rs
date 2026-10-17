@@ -12,6 +12,7 @@ use indexmap::IndexMap;
 use crate::app::{self, Settings};
 use crate::core::rpc::{DEFAULT_PORT, Rpc, UdpRpc};
 use crate::core::speech::{self, Backend, Category, Speech};
+use crate::core::words::{self, ENGLISH, Words, own};
 use crate::core::{config, instance, keyfile, window};
 use crate::games::common::field::keys::{DEFAULT_BINDINGS, EXPLAINED};
 use crate::py::{self, Log, time};
@@ -204,6 +205,19 @@ fn run(args: Args, hooks: &Hooks) -> py::Result<()> {
     // A patch of Azahar's config is lost when an open Azahar closes, so none is written while
     // it is open.
     let running = !window::titles(window::EMULATOR).is_empty();
+    // What pa3ds says before any game is in the language of its settings, or English: the game's
+    // own is not known until a save has been read (ADR-0040).
+    let language = config::ui_language(None)?;
+    words::r#use(Some(Rc::new(Words::new(
+        if language.is_empty() {
+            ENGLISH
+        } else {
+            &language
+        },
+        None,
+        IndexMap::new(),
+        Rc::new(|_line: &str| {}),
+    )?)));
     let mut settings = config::prepare(None, None, true, running)?;
     let mut asked: Vec<String> = Vec::new();
     // A silent run is an agent's or a developer's, with nobody to answer; and with Azahar open the
@@ -345,9 +359,7 @@ fn run(args: Args, hooks: &Hooks) -> py::Result<()> {
 /// same ones when the player cancels. What was asked and answered goes to `notes`, for the log
 /// that does not exist yet.
 fn ask_for_azahar(settings: config::Config, notes: &mut Vec<String>) -> py::Result<config::Config> {
-    let mut title = "Azahar's settings were not found. Choose the folder azahar.exe is in, or \
-                     cancel if Azahar is installed"
-        .to_string();
+    let mut title = own("azahar-folder-ask", &[]);
     loop {
         println!("{title}");
         let Some(chosen) = choose_folder(&title, notes)? else {
@@ -358,7 +370,7 @@ fn ask_for_azahar(settings: config::Config, notes: &mut Vec<String>) -> py::Resu
         let found = match keyfile::portable(&chosen) {
             Ok(found) => found,
             Err(found) => {
-                title = format!("{found}, choose another folder or cancel");
+                title = own("azahar-folder-again", &[("problem", &found)]);
                 notes.push(found);
                 continue;
             }

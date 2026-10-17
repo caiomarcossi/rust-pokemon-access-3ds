@@ -14,6 +14,7 @@ use crate::core::rpc::Rpc;
 use crate::core::rtti::ClassNames;
 use crate::core::speech::Speech;
 use crate::core::window;
+use crate::core::words::{self, Words};
 use crate::games::common::session::{Profile, Session, Setup};
 use crate::games::gen6::game::Game;
 use crate::games::gen6::profile::{Gen6Profile, Options, REQUIRED};
@@ -34,33 +35,25 @@ pub fn start(
     image: &[u8],
 ) -> Result<Session> {
     let memory = Rc::new(PageCache::new(rpc));
+    let language = if setup.ui.language.is_empty() {
+        &setup.language
+    } else {
+        &setup.ui.language
+    };
+    words::r#use(Some(Rc::new(Words::new(
+        language,
+        Some(&(game.data)()),
+        IndexMap::new(),
+        setup.log.clone(),
+    )?)));
     // The game's own words come from the game; these are for what it never names at all.
     let title = window::game_title(window::EMULATOR);
-    // `Names.load(game.data, ...)`, as `Game::sprites` reads the table the binary carries in
-    // place of a folder.
-    let named = {
-        let fingerprint = &setup.process.name;
-        let table = game.table(&setup.language);
-        let mine = setup.names_home.as_ref().map(|home| {
-            home.join("names")
-                .join(&setup.language)
-                .join(format!("{fingerprint}.toml"))
-        });
-        let header = IndexMap::from([
-            (
-                "game".to_string(),
-                if title.is_empty() {
-                    fingerprint
-                } else {
-                    &title
-                }
-                .to_string(),
-            ),
-            ("rom".to_string(), fingerprint.to_string()),
-            ("language".to_string(), setup.language.clone()),
-        ]);
-        Rc::new(Names::from_table(&table, mine.as_deref(), &header)?)
-    };
+    let named = Rc::new(Names::load(
+        &setup.process.name,
+        setup.names_home.as_deref(),
+        &title,
+        None,
+    )?);
     let text = Rc::new(game_text(&setup, &game.rom)?);
     let mut pictures = None;
     if !game.rom.textures.is_empty()
@@ -117,6 +110,7 @@ pub fn start(
         Some(read_each),
     )));
     let adopting = heaps.clone();
+    let saved = profile.clone();
     Ok(Session {
         classes: profile.classes.clone(),
         profile: profile as Rc<dyn Profile>,
@@ -134,6 +128,7 @@ pub fn start(
         walk: None,
         bases: vec![buttons::BAR_CLASS.to_string()],
         pages: Some(memory),
+        language: Rc::new(move || saved.save_language.borrow().clone()),
     })
 }
 

@@ -14,16 +14,21 @@ use super::fake_rom::{TmpDir, rom_image, rom_image_with};
 use super::fake_speech::Recorder;
 use super::test_archives::oras_files;
 use crate::__main__::{Hooks, KEPT_LOGS, default_log_path, log_path, main, main_with};
-use crate::app::{Busy, Every, Failure, Faults, PATIENCE, Settings, run_with, wait_for_game};
+use crate::app::{
+    Busy, DATA_IN_TEST, Every, Failure, Faults, MISSING_DATA, PATIENCE, Settings, run, run_with,
+    wait_for_game,
+};
+use crate::core::config::Ui;
 use crate::core::memory::{self, Memory};
 use crate::core::rpc::{MAX_READ, Process, Rpc, UdpRpc};
 use crate::core::speech::{Backend, Category, Speech};
-use crate::core::{config, keyfile};
+use crate::core::{config, keyfile, words};
 use crate::games::catalog::{self, Running};
 use crate::games::common::announce::Announcements;
 use crate::games::common::dialogue::{Shown, TextWritten};
 use crate::games::common::msgwin;
 use crate::games::common::session::{Profile, Session, Setup};
+use crate::games::gen6::mystatus;
 use crate::games::gen6::rom::archives::no_text;
 use crate::games::gen6::session::game_text;
 use crate::games::{oras, sm};
@@ -958,6 +963,160 @@ fn test_a_restarted_run_says_so_interrupting_and_only_the_first_time() {
             .interrupting()
             .contains(&"pa3ds restarted".to_string())
     );
+}
+
+/// Orion, 2026-10-17: someone who copied only pa3ds.exe hears why pa3ds says so little, and pa3ds
+/// still reads the game.
+#[test]
+fn test_a_missing_data_folder_is_said_once_and_pa3ds_runs_on() {
+    let tmp_path = TmpDir::new();
+    DATA_IN_TEST.with(|moved| *moved.borrow_mut() = Some(tmp_path.path().join("nowhere")));
+    let backend = Recorder::new();
+    let (log, logged) = logger();
+    let emu = FakeEmulator::with(emulator_running_a_game(), game(), 0, 0);
+    run(
+        connect(&emu),
+        Rc::new(Speech::plain(backend.clone())),
+        Settings {
+            tick: 0.0,
+            wait: 0.0,
+            ..Settings::default()
+        },
+        &ticks_up_to(40),
+        log,
+    )
+    .unwrap();
+    let spoken = backend.spoken();
+    assert_eq!(
+        spoken.iter().filter(|said| *said == MISSING_DATA).count(),
+        1
+    );
+    assert!(backend.interrupting().contains(&MISSING_DATA.to_string()));
+    assert!(spoken.contains(&"pa3ds ready".to_string()));
+    assert!(
+        logged
+            .borrow()
+            .iter()
+            .any(|line| line.contains("no data folder"))
+    );
+}
+
+#[test]
+fn test_a_data_folder_beside_pa3ds_says_nothing_of_it() {
+    let backend = Recorder::new();
+    let emu = FakeEmulator::with(emulator_running_a_game(), game(), 0, 0);
+    run(
+        connect(&emu),
+        Rc::new(Speech::plain(backend.clone())),
+        Settings {
+            tick: 0.0,
+            wait: 0.0,
+            ..Settings::default()
+        },
+        &ticks_up_to(40),
+        Rc::new(|_: &str| {}),
+    )
+    .unwrap();
+    assert!(!backend.spoken().contains(&MISSING_DATA.to_string()));
+}
+
+/// `emulator_running_a_game`, with the save's trainer record in the heap saying `language`
+/// (`mystatus`).
+fn emulator_running_a_save_in(language: u8) -> HashMap<i64, Vec<u8>> {
+    let memory = FakeMemory::new();
+    memory.write(CODE.0, b"fake executable");
+    let classes = FakeClasses::new(memory.clone());
+    for mangled in msgwin::CLASSES {
+        classes.add(mangled);
+    }
+    let record = 0x08100000;
+    memory.u32(record, &[classes.add(mystatus::CLASS)]);
+    memory.write(record + mystatus::LANGUAGE, &[language]);
+    let image = memory.read(CODE.0, 0x2000).unwrap();
+    let mut served: HashMap<i64, Vec<u8>> = (0..image.len())
+        .step_by(MAX_READ as usize)
+        .map(|at| {
+            (
+                CODE.0 + at as i64,
+                image[at..at + MAX_READ as usize].to_vec(),
+            )
+        })
+        .collect();
+    served.insert(record, memory.read(record, MAX_READ).unwrap());
+    served
+}
+
+/// `run(rpc, Speech(backend), Settings(tick=0.0, wait=0.0, ui=ui), ticks_up_to(40), log)` on an
+/// emulator whose save says `language`.
+fn run_a_save_in(language: u8, backend: &Rc<Recorder>, ui: Ui, log: Log) {
+    let emu = FakeEmulator::with(emulator_running_a_save_in(language), game(), 0, 0);
+    run(
+        connect(&emu),
+        Rc::new(Speech::plain(backend.clone())),
+        Settings {
+            tick: 0.0,
+            wait: 0.0,
+            ui,
+            ..Settings::default()
+        },
+        &ticks_up_to(40),
+        log,
+    )
+    .unwrap();
+}
+
+/// ADR-0040: English until the save says otherwise, then the game's text, the names and pa3ds's
+/// own words in the save's language, saying nothing of it: one "pa3ds ready".
+#[test]
+fn test_a_game_whose_save_says_another_language_is_read_again_in_it_quietly() {
+    let backend = Recorder::new();
+    let (log, logged) = logger();
+    run_a_save_in(3, &backend, Ui::default(), log);
+    assert_eq!(
+        backend
+            .spoken()
+            .iter()
+            .filter(|said| *said == "pa3ds ready")
+            .count(),
+        1
+    );
+    assert!(
+        logged
+            .borrow()
+            .iter()
+            .any(|line| line.contains("the save says the game is in fr, not en"))
+    );
+    assert_eq!(words::current().language, "fr");
+}
+
+#[test]
+fn test_a_game_whose_save_says_english_is_read_once() {
+    let backend = Recorder::new();
+    let (log, logged) = logger();
+    run_a_save_in(2, &backend, Ui::default(), log);
+    assert!(
+        !logged
+            .borrow()
+            .iter()
+            .any(|line| line.contains("the save says"))
+    );
+    assert_eq!(words::current().language, "en");
+}
+
+/// The Chinese fan Omega Ruby's save says Japanese, whose text its Chinese replaced: the game's
+/// words are read as the Japanese, and pa3ds's own are the setting's.
+#[test]
+fn test_the_language_setting_says_pa3ds_words_and_leaves_the_games_to_the_save() {
+    run_a_save_in(
+        1,
+        &Recorder::new(),
+        Ui {
+            language: "zh-CN".to_string(),
+            ..Ui::default()
+        },
+        Rc::new(|_: &str| {}),
+    );
+    assert_eq!(words::current().language, "zh-CN");
 }
 
 #[test]

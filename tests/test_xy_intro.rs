@@ -6,8 +6,11 @@ use std::rc::Rc;
 use indexmap::IndexMap;
 
 use super::fake_memory::FakeMemory;
+use super::fake_rom::TmpDir;
+use super::fake_words::words_in;
+use crate::core::words::{ENGLISH, Words};
 use crate::games::common::announce::Focus;
-use crate::games::common::pictures::described;
+use crate::games::common::pictures::MODEL;
 use crate::games::gen6::game::OpeningReader;
 use crate::games::xy;
 use crate::games::xy::intro;
@@ -17,24 +20,32 @@ const PROCESS: i64 = 0x08C61BE8;
 const HEAP: i64 = 0x081FB124;
 const WORK: i64 = 0x081FB234;
 
-fn table(pairs: &[(&str, &str)]) -> IndexMap<String, String> {
-    pairs
-        .iter()
-        .map(|(key, value)| (key.to_string(), value.to_string()))
-        .collect()
+const WORDS: &str = "
+model-boy = Boy, red cap
+model-girl = Girl, pink hat
+model-boy_left = Pale skin
+model-boy_middle = Fair skin
+model-boy_right = Brown skin
+model-girl_left = Pale skin, long hair
+model-girl_middle = Fair skin, long hair
+model-girl_right = Brown skin, long hair
+";
+
+/// pytest's autouse `looks`: the looks' words in place, read out of a folder of their own.
+fn looks() {
+    let tmp_path = TmpDir::new();
+    words_in(tmp_path.path(), WORDS, "xy", ENGLISH, "pictures.ftl");
 }
 
-fn words() -> IndexMap<String, String> {
-    table(&[
-        ("boy", "Boy, red cap"),
-        ("girl", "Girl, pink hat"),
-        ("boy_left", "Pale skin"),
-        ("boy_middle", "Fair skin"),
-        ("boy_right", "Brown skin"),
-        ("girl_left", "Pale skin, long hair"),
-        ("girl_middle", "Fair skin, long hair"),
-        ("girl_right", "Brown skin, long hair"),
-    ])
+/// `Words(language, game)`.
+fn words(language: &str, game: &std::path::Path) -> Words {
+    Words::new(
+        language,
+        Some(game),
+        IndexMap::new(),
+        Rc::new(|_line: &str| {}),
+    )
+    .unwrap()
 }
 
 /// The intro's process and its work, as X lays them out.
@@ -49,7 +60,8 @@ impl Opening {
         memory.u32(PROCESS + intro::HEAP, &[HEAP]);
         memory.u32(PROCESS + intro::WORK, &[WORK]);
         memory.u32(WORK + intro::BACK, &[PROCESS + intro::BACK_TO, HEAP]);
-        let reader = IntroReader::new(memory.clone(), words());
+        looks();
+        let reader = IntroReader::new(memory.clone());
         Opening { memory, reader }
     }
 
@@ -111,27 +123,32 @@ fn test_a_work_that_does_not_point_back_is_not_read() {
 
 #[test]
 fn test_every_choice_has_words_and_a_language_without_a_file_has_the_english() {
-    let english = described(xy::PICTURES, "en", "models");
-    let mut wanted: Vec<String> = intro::GENDERS
+    looks();
+    let mut looks: Vec<String> = intro::GENDERS
         .iter()
         .map(|gender| gender.to_string())
         .collect();
     for gender in intro::GENDERS {
         for place in intro::PLACES {
-            wanted.push(format!("{gender}_{place}"));
+            looks.push(format!("{gender}_{place}"));
         }
     }
-    let mut keys: Vec<String> = english.keys().cloned().collect();
-    keys.sort();
-    wanted.sort();
-    assert_eq!(keys, wanted);
-    assert_eq!(described(xy::PICTURES, "fr", "models"), english);
+    let in_language = |language: &str| -> Vec<Option<String>> {
+        let words = words(language, &(xy::DATA)());
+        looks
+            .iter()
+            .map(|look| words.get(&format!("{MODEL}{look}"), &[]))
+            .collect()
+    };
+    let english = in_language(ENGLISH);
+    assert!(english.iter().all(Option::is_some));
+    assert_eq!(in_language("nl"), english);
 }
 
 #[test]
 fn test_a_missing_folder_is_no_words_at_all() {
-    assert_eq!(
-        described(&[], "en", "models"),
-        IndexMap::<String, String>::new()
-    );
+    looks();
+    let tmp_path = TmpDir::new();
+    let nowhere = words(ENGLISH, &tmp_path.path().join("nowhere").join("xy"));
+    assert_eq!(nowhere.get(&format!("{MODEL}boy"), &[]), None);
 }

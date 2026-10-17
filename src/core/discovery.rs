@@ -73,6 +73,17 @@ impl Found {
             .collect()
     }
 
+    /// `size` bytes at `address` out of the pages swept, or None where the sweep did not read them
+    /// all: what an object found holds, at no read more.
+    pub fn read(&self, address: i64, size: i64) -> Option<&[u8]> {
+        let start = address - address.rem_euclid(PAGE);
+        let page = self.pages.get(&start)?;
+        if address + size > start + page.len() as i64 {
+            return None;
+        }
+        Some(&page[(address - start) as usize..(address - start + size) as usize])
+    }
+
     /// Every word-aligned address in the heap's pages that holds one of these addresses.
     pub fn holders(&self, targets: &[i64]) -> Result<Vec<i64>> {
         Ok(find_objects(&self.pages, targets)?.into_keys().collect())

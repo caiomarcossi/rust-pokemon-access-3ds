@@ -98,10 +98,10 @@ pub struct Options {
     /// Python's `phases`: the cache whose `phase` each poll opens. None is `nullcontext`, no phase.
     pub phases: Option<Rc<dyn Cache>>,
     pub read_each: Option<ReadEach>,
-    /// pa3ds's own words for buttons of pictures alone, by pane name (`pictures::buttons`).
-    pub buttons: Option<IndexMap<String, String>>,
     /// pa3ds's own words for the cutscenes, by demo (`scenes::load`).
     pub scenes: Vec<Scene>,
+    /// Each beat's words by its id (`Described.said`); None words none.
+    pub said: Option<Rc<dyn Fn(&str) -> Option<String>>>,
 }
 
 /// Sun's readers, and what each sweep and poll does with them.
@@ -180,9 +180,9 @@ impl SunProfile {
 
     /// `phases` opens a named phase of `memory`'s cache round each poll, as ORAS's page cache
     /// has (`memory.ExactCache.phase`): the reads a poll makes are fetched together at the start
-    /// of the next poll of its kind, where each was sent alone (issue 4). `buttons` is pa3ds's
-    /// own words for buttons of pictures alone, by pane name (`pictures.buttons`), and `scenes`
-    /// its words for the cutscenes, by demo (`scenes.load`).
+    /// of the next poll of its kind, where each was sent alone (issue 4). `scenes` is pa3ds's
+    /// words for the cutscenes, by demo (`scenes.load`), each beat worded by `said`
+    /// (`Described.said`).
     pub fn with(
         memory: Rc<dyn Memory>,
         names: Rc<ClassNames>,
@@ -201,8 +201,8 @@ impl SunProfile {
             walls,
             phases,
             read_each,
-            buttons,
             scenes,
+            said,
         } = options;
         // The layout readers follow pointers down each layout's tree to its words, and read only
         // inside the blocks the last walk found, as the field's do (ADR-0035).
@@ -230,14 +230,7 @@ impl SunProfile {
             IndexMap::new(),
             HashSet::new(),
         );
-        let cursors = CursorReader::with(
-            layouts.clone(),
-            names.clone(),
-            None,
-            true,
-            None,
-            buttons.unwrap_or_default(),
-        );
+        let cursors = CursorReader::with(layouts.clone(), names.clone(), None, true, None);
         let ui = ui.unwrap_or_default();
         let screen_announcer = ScreenAnnouncer::with(speech.clone(), log.clone(), ui.pauses);
         let speakers = Rc::new(Speakers::new(memory.clone(), names.clone()));
@@ -252,8 +245,12 @@ impl SunProfile {
         )));
         // The scenes the game shows without words, described where the player asks and Sun has
         // descriptions in their language, each over the demo it plays as (ADR-0038).
-        let scenes = (ui.descriptions && !scenes.is_empty())
-            .then(|| RefCell::new(Scenes::with_monotonic(scenes)));
+        let scenes = (ui.descriptions && !scenes.is_empty()).then(|| {
+            RefCell::new(Scenes::with_monotonic(
+                scenes,
+                said.unwrap_or_else(|| Rc::new(|_message: &str| None)),
+            ))
+        });
         let langselect = LangSelectReader::new(memory.clone(), names.clone(), text.clone());
         // The HP box is the battle reader's to say, from the gauges behind its panels, and a
         // gauge's pointers are followed only inside the blocks the last walk found (spike 124).

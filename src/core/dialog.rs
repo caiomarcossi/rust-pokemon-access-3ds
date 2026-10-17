@@ -41,7 +41,18 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     SetForegroundWindow,
 };
 
+use crate::core::words::own;
 use crate::py::{Error, Kind, Result};
+
+/// The buttons' words of the box asked for last, found on the thread that asked (`Asker.ask`).
+static BUTTONS: Mutex<Option<(String, String)>> = Mutex::new(None);
+
+/// "OK" and "Cancel" in the words in place, or as the thread that asked for a box found them.
+fn buttons() -> (String, String) {
+    lock(&BUTTONS)
+        .clone()
+        .unwrap_or_else(|| (own("dialog-ok", &[]), own("dialog-cancel", &[])))
+}
 
 pub const DS_SETFONT: i64 = 0x0040;
 pub const DS_MODALFRAME: i64 = 0x0080;
@@ -173,6 +184,7 @@ fn item(
 /// checkbox of those words after the edit, a Tab away, which a checkbox's own words name. Python's
 /// `check` defaults to "" and `width` to 260.
 pub fn template(title: &str, label: &str, check: &str, width: i64) -> Result<Vec<u8>> {
+    let (ok, cancel) = buttons();
     let mut items = Vec::new();
     // The label comes immediately before the edit, because that is how Win32 says which static
     // names which control: MSAA takes a control's name from the static before it in tab order.
@@ -226,7 +238,7 @@ pub fn template(title: &str, label: &str, check: &str, width: i64) -> Result<Vec
         14,
         IDOK,
         ATOM_BUTTON,
-        "OK",
+        &ok,
     )?;
     item(
         &mut items,
@@ -238,7 +250,7 @@ pub fn template(title: &str, label: &str, check: &str, width: i64) -> Result<Vec
         14,
         IDCANCEL,
         ATOM_BUTTON,
-        "Cancel",
+        &cancel,
     )?;
 
     let mut data = Vec::new();
@@ -507,6 +519,9 @@ impl Asker {
             return Ok(false);
         }
         let (show, answers) = (self.show.clone(), self.answers.clone());
+        // The box is built on its own thread, where the words in place are not: its buttons'
+        // words are found here, as Python's thread reads the one module's.
+        *lock(&BUTTONS) = Some((own("dialog-ok", &[]), own("dialog-cancel", &[])));
         let (what, title, label, current, check) = (
             what.to_string(),
             title.to_string(),

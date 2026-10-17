@@ -83,6 +83,7 @@ use crate::core::binary::{f32, u32};
 use crate::core::memory::Memory;
 use crate::core::rtti::ClassNames;
 use crate::core::speech::Category;
+use crate::core::words::own;
 use crate::games::common::layout::Layouts;
 use crate::games::common::pictures::words as picture_words;
 use crate::games::common::touch::{HEIGHT, Idle, ImageOf, Target, WIDTH};
@@ -102,10 +103,10 @@ pub const INDEX: i64 = 0x150;
 pub const PARAM_STRIDE: i64 = 0x20;
 pub const SLOTS: i64 = 6;
 /// pa3ds's word for a goal: the game's dialogue speaks of "the white goals" and names none.
-pub const GOAL: &str = "goal";
+pub const GOAL: &str = "training-goal";
 /// pa3ds's word for the big goal, after the coach's "red goals"; seen only in the round's archive
 /// so far.
-pub const RED_GOAL: &str = "red goal";
+pub const RED_GOAL: &str = "training-red-goal";
 pub const GOAL_IMAGE: &str = "target01";
 pub const BIG_GOAL_IMAGE: &str = "big_target";
 /// What the texture's name of a goal's picture starts with: the white goal's or the big one's, then
@@ -138,7 +139,7 @@ pub const CLOCK_MARKS: [i64; 6] = [150, 120, 90, 60, 30, 10];
 /// "game over" (`pictures.SPELLINGS`).
 pub const BANNERS: [&str; 4] = ["start", "clear", "cleared", "gameover"];
 /// pa3ds's words for a ball of the Balloon Bot's in flight; the game says nothing.
-pub const SHOT: &str = "shot coming";
+pub const SHOT: &str = "training-shot-coming";
 pub const MISSILE: &str = "N5actor20SparringMissileActorE";
 pub const MISSILE_STATE: i64 = 0x04;
 /// A ball's state in flight; 2 once landed, 0 unused.
@@ -349,14 +350,17 @@ impl Goals {
                 TOP_WIDTH as f64 / 2.0 + across,
                 TOP_HEIGHT as f64 / 2.0 - up,
             )? {
-                let word = if image.starts_with(BIG_GOAL_IMAGE) {
-                    RED_GOAL
-                } else {
-                    GOAL
-                };
+                let word = own(
+                    if image.starts_with(BIG_GOAL_IMAGE) {
+                        RED_GOAL
+                    } else {
+                        GOAL
+                    },
+                    &[],
+                );
                 found.push(Target::new(
                     pane,
-                    word,
+                    &word,
                     x,
                     y,
                     up,
@@ -637,7 +641,7 @@ impl Round {
         // The warning first: it interrupts, and the lines after it queue behind it.
         let mut out = Vec::new();
         if self.launched()? {
-            out.push((SHOT.to_string(), Category::Warning));
+            out.push((own(SHOT, &[]), Category::Warning));
         }
         out.extend(self.hear(&seen)?);
         Ok(out)
@@ -694,10 +698,12 @@ impl Round {
         let Some(&mark) = passed.iter().min() else {
             return Vec::new();
         };
-        vec![format!(
-            "{}:{:02} left",
-            py::floordiv(mark, 60),
-            py::modulo(mark, 60)
+        vec![own(
+            "training-left",
+            &[(
+                "time",
+                &format!("{}:{:02}", py::floordiv(mark, 60), py::modulo(mark, 60)),
+            )],
         )]
     }
 

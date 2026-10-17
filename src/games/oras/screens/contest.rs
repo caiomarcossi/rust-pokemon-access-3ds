@@ -20,6 +20,7 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::core::binary::{f32, u32};
 use crate::core::memory::Memory;
+use crate::core::words::own;
 use crate::games::common::layout::Layouts;
 use crate::games::common::layout_file::LayoutFiles;
 use crate::games::common::lyt;
@@ -131,7 +132,7 @@ pub fn standings(
             a.x < b.x
         },
     );
-    let places: Vec<&str> = PLACES.iter().map(|&(_, words)| words).collect();
+    let places: Vec<String> = PLACES.iter().map(|&(_, place)| own(place, &[])).collect();
     let mut lines: Vec<String> = Vec::new();
     for (at, (index, portrait)) in ranked.into_iter().enumerate() {
         if (Some(index) == mine) != player {

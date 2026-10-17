@@ -5,8 +5,8 @@
 //! it sits exactly on: the frame round each choice sits on its own pictures, not on a pane beside it.
 //! The choice is said by its own words, or, having none, by the words of the textures the other
 //! choices do not share — both portraits sit on the same white backing, and only `intro_male.bclim`
-//! and `intro_famale.bclim` tell them apart. A texture pa3ds has words of its own for is said by
-//! those, whole: each portrait as the boy or the girl it shows (`pictures::described`).
+//! and `intro_famale.bclim` tell them apart. A texture the data names is said by those words,
+//! whole: each portrait as the boy or the girl it shows (`pictures.named`).
 
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -18,7 +18,7 @@ use crate::games::common::cursors::menu::MenuCursors;
 use crate::games::common::cursors::shared::{CursorItem, Panes, Said, Where, class_of, near};
 use crate::games::common::layout::Layouts;
 use crate::games::common::lyt;
-use crate::games::common::pictures::words;
+use crate::games::common::pictures::{named, words};
 use crate::games::common::screen::{ScreenText, distinct, in_rows};
 use crate::py::{self, Result};
 
@@ -37,21 +37,16 @@ pub struct ChoiceFrames {
     choices_seen: IndexSet<i64>,
     /// (root, choice) -> the words of the textures of the pictures under it, once known.
     choice_words: IndexMap<(i64, i64), Vec<String>>,
-    /// pa3ds's own words for a picture, by its texture's name less `.bclim`, said whole in
-    /// place of the texture's words: Omega Ruby's boy and girl, `intro_male` and
-    /// `intro_famale`.
-    described: IndexMap<String, String>,
 }
 
 impl ChoiceFrames {
-    pub fn new(panes: Rc<Panes>, said: Rc<Said>, described: IndexMap<String, String>) -> Self {
+    pub fn new(panes: Rc<Panes>, said: Rc<Said>) -> Self {
         ChoiceFrames {
             layouts: panes.layouts.clone(),
             panes,
             said,
             choices_seen: IndexSet::new(),
             choice_words: IndexMap::new(),
-            described,
         }
     }
 
@@ -224,15 +219,8 @@ impl ChoiceFrames {
             let Some(texture) = self.panes.texture(pane, &file)? else {
                 continue;
             };
-            let stem = texture
-                .rsplit_once('.')
-                .map_or(texture.as_str(), |(stem, _)| stem);
-            match self
-                .described
-                .get(stem)
-                .filter(|described| !described.is_empty())
-            {
-                Some(described) => said.push(described.clone()),
+            match named(&texture).filter(|whole| !whole.is_empty()) {
+                Some(whole) => said.push(whole),
                 None => said.extend(py::split(&words(&texture)).into_iter().map(String::from)),
             }
         }

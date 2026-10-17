@@ -23,13 +23,17 @@ import subprocess
 import sys
 import tomllib
 from pathlib import Path
+from typing import Final
 
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON = Path(os.environ.get("PA3DS_PYTHON", ROOT.parent / "pokemon-access-3ds"))
 MANIFEST = ROOT / "port.toml"
 
-MIRRORED = ("LICENSE", "tests/fake_qt_config.ini")
-"""Carried over byte for byte."""
+MIRRORED = ("LICENSE", "tests/fake_qt_config.ini", "data/")
+"""Carried over byte for byte. `data/` is pa3ds's own words, which ship beside pa3ds.exe as they
+ship beside the Python's checkout (ADR-0040): `mirror` makes the port's folder upstream's, file
+for file."""
+DATA: Final = "data/"
 ADAPTED = ("README.md", "AGENTS.md", "CLAUDE.md")
 """Written again for the Rust repository: they name commands and tools."""
 NOT_PORTED = ("spikes/", "docs/", "GLOSSARY.md", "pyproject.toml", "uv.lock", ".gitignore",
@@ -155,9 +159,11 @@ def layout() -> int:
 
 
 def mirror() -> int:
-    """Copy every mirrored file and data file from the Python checkout's committed HEAD."""
-    copied = 0
-    for python in tracked():
+    """Copy every mirrored file and data file from the Python checkout's committed HEAD, and take
+    out of `data/` every file upstream's has not."""
+    copied = removed = 0
+    upstream = tracked()
+    for python in upstream:
         target = rust_path(python)
         if target is None or not (python.startswith(MIRRORED) or "/data/" in python):
             continue
@@ -168,7 +174,12 @@ def mirror() -> int:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
             copied += 1
-    print(f"mirror: {copied} files copied")
+    kept = {python for python in upstream if python.startswith(DATA)}
+    for path in sorted((ROOT / DATA).rglob("*")) if (ROOT / DATA).is_dir() else []:
+        if path.is_file() and path.relative_to(ROOT).as_posix() not in kept:
+            path.unlink()
+            removed += 1
+    print(f"mirror: {copied} files copied, {removed} removed")
     return 0
 
 

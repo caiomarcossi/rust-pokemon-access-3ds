@@ -35,6 +35,7 @@ use indexmap::IndexMap;
 use crate::core::keyfile;
 use crate::core::toml;
 use crate::core::touch;
+use crate::core::words::own;
 use crate::py::{self, Error, Result};
 
 pub const FILE_NAME: &str = "config.toml";
@@ -103,6 +104,7 @@ pub struct Ui {
     pub unfocused: bool,
     pub tones: bool,
     pub descriptions: bool,
+    pub language: String,
 }
 
 impl Default for Ui {
@@ -113,6 +115,7 @@ impl Default for Ui {
             unfocused: false,
             tones: true,
             descriptions: false,
+            language: String::new(),
         }
     }
 }
@@ -125,6 +128,7 @@ impl Table for Ui {
             ("unfocused", Value::Bool(self.unfocused)),
             ("tones", Value::Bool(self.tones)),
             ("descriptions", Value::Bool(self.descriptions)),
+            ("language", Value::Str(self.language.clone())),
         ]
     }
 
@@ -135,6 +139,7 @@ impl Table for Ui {
             ("unfocused", Value::Bool(value)) => self.unfocused = value,
             ("tones", Value::Bool(value)) => self.tones = value,
             ("descriptions", Value::Bool(value)) => self.descriptions = value,
+            ("language", Value::Str(value)) => self.language = value,
             _ => {}
         }
     }
@@ -228,7 +233,7 @@ fn defaults(name: &str) -> Vec<(&'static str, Value)> {
 }
 
 /// What each setting does, as the file's comment above it says it.
-pub const EXPLAINED: [(&str, &str); 16] = [
+pub const EXPLAINED: [(&str, &str); 17] = [
     (
         "pa3ds.keys",
         "answer pa3ds's keys and bind Azahar's buttons, as keys.toml says",
@@ -268,6 +273,14 @@ pub const EXPLAINED: [(&str, &str); 16] = [
         "pa3ds.ui.descriptions",
         "describe the scenes the game shows without words, as Groudon wakes: pa3ds's own words, \
          said after the line each scene follows; for the scenes described so far, in English",
+    ),
+    (
+        "pa3ds.ui.language",
+        "the language pa3ds says its own words in, as the name of a folder of its data: en, fr, \
+         de, es, it, ja, ko, zh-CN or zh-TW. Empty follows the game's own language, which pa3ds \
+         reads from the save; set it where that is wrong, as for a fan translation over another \
+         language, and in Sun and Moon, whose save pa3ds cannot read, where it is the game's \
+         language too",
     ),
     (
         "pa3ds.navigation.positions",
@@ -662,6 +675,16 @@ fn table<T: Table>(
     defaults
 }
 
+/// `[pa3ds.ui] language` as the settings file says it, or "": read before anything is said,
+/// `prepare`'s own sentence among it, so that it is said in that language.
+pub fn ui_language(home: Option<&Path>) -> Result<String> {
+    let ours = toml::table(toml::read(&config_path(home)?).get("pa3ds"));
+    Ok(match toml::table(ours.get("ui")).get("language") {
+        Some(::toml::Value::String(language)) => language.clone(),
+        _ => String::new(),
+    })
+}
+
 /// Read the settings file, writing it the first time, and patch Azahar's settings.
 ///
 /// `write` off reads and reports without touching either file. `running` says Azahar is open,
@@ -787,16 +810,13 @@ pub fn prepare(
             saved = "missing".to_string();
         }
     }
-    let said = match saved.as_str() {
-        "applied" => "Azahar settings applied",
-        "waiting" => "close Azahar and start pa3ds again to apply its settings",
-        "missing" => {
-            "Azahar's settings were not found: start Azahar once, close it, and start pa3ds again"
-        }
-        _ => "",
+    let said = if saved.is_empty() {
+        String::new()
+    } else {
+        own(&format!("azahar-settings-{saved}"), &[])
     };
     let said = if problem.is_empty() {
-        said.to_string()
+        said
     } else {
         keyfile::unreadable(&path, &problem)
     };

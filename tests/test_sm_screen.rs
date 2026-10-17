@@ -10,9 +10,10 @@ use indexmap::IndexMap;
 use super::fake_layouts::FakeLayouts;
 use super::fake_memory::{CODE, FakeClasses, FakeMemory};
 use crate::core::rtti::ClassNames;
+use crate::core::words::{self, ENGLISH, Words};
 use crate::games::common::cursors::reader::CursorReader;
+use crate::games::common::lyt;
 use crate::games::common::screen::{ScreenText, ScreenTextReader, join};
-use crate::games::common::{lyt, pictures};
 use crate::games::sm::lyt::SHAPE;
 use crate::games::sm::{field, msgwin};
 
@@ -89,14 +90,7 @@ impl Title {
             IndexMap::new(),
             HashSet::new(),
         );
-        let reader = CursorReader::with(
-            fake.layouts.clone(),
-            names,
-            None,
-            true,
-            None,
-            IndexMap::new(),
-        );
+        let reader = CursorReader::with(fake.layouts.clone(), names, None, true, None);
         let mut title = Title {
             memory,
             classes,
@@ -322,13 +316,21 @@ fn test_a_button_of_pictures_alone_is_said_by_its_panes_name() {
 #[test]
 fn test_a_button_of_pictures_alone_is_said_by_pa3ds_own_words_where_it_has_some() {
     let mut title = Title::new();
+    words::r#use(Some(Rc::new(
+        Words::new(
+            ENGLISH,
+            Some(&field::names()),
+            IndexMap::new(),
+            Rc::new(|_line: &str| {}),
+        )
+        .unwrap(),
+    )));
     title.reader = CursorReader::with(
         title.fake.layouts.clone(),
         Rc::new(ClassNames::new(title.memory.clone(), CODE)),
         None,
         true,
         None,
-        pictures::described(field::PICTURES, "en", "buttons"),
     );
     title.heard();
     let mut name = b"Hero_00".to_vec();

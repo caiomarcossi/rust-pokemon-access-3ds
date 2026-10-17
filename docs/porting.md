@@ -24,8 +24,10 @@ The reference ports show every rule below in use: `src/core/rpc.rs`, `src/core/m
   made `pub`, a missing accessor), make the smallest change and list it in your report.
 - `src/py.rs` holds what Python does differently from Rust (below). Do not edit it; ask for what
   it lacks in your report, and write a private helper meanwhile.
-- A data file (`games/*/data/**`) is read with `include_str!` from where `tools/sync.py mirror`
-  copied it, so the binary carries it.
+- A data file is read at run time from `data/` (`core::keyfile::data_path`), which
+  `tools/sync.py mirror` keeps as upstream's: the words pa3ds says of its own, the shipped names
+  and the scenes, a game a folder and a language a folder inside it (ADR-0040). A build run under
+  `target\` reads the checkout's, and the release zip carries the folder beside `pa3ds.exe`.
 
 ## Names and documentation
 
@@ -270,5 +272,15 @@ Kept here so the next porter, and anyone reading a tape that differs, knows what
   hides, which the Python's test monkeypatched, and the lock is let go by a guard dropped at the
   end of `__main__`'s `run`, where the Python registers `atexit`. The tests' stand-in for the pa3ds
   replaced is `ping`, where the Python's is its own interpreter asleep.
+- **pa3ds's own words** (`core::words`). The `fluent-bundle` crate stands in for Python's
+  `fluent.runtime`. A function a message calls, a scene's `POKEMON(383)`, is looked up on the
+  thread that formats it, since the crate wants functions it can send to another thread; one that
+  finds nothing marks the message failed, as Python's catching its exception does. Values are
+  integers or text: the crate writes a float as "1.5" where Python's writes it in the language's
+  own way, and no message is given one. The words in place are a thread's own, where Python's are
+  the module's: the rename box is built on a thread of its own, so its OK and Cancel are looked up
+  on the thread that asks for it and handed over. Under `cargo test` a thread that has put no
+  words in place reads Omega Ruby's English, where pytest's autouse fixture puts them in place
+  before each test.
 - **What the tapes cannot check.** A movie presses no pa3ds keys, so the navigation keys are
   checked by their tests alone; and no tape so far holds a reader's failure.

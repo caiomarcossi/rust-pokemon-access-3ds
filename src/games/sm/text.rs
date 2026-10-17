@@ -20,8 +20,8 @@ pub const TEXT_ARCHIVES: [(&str, &str); 9] = [
     ("de", "a/0/3/5"),
     ("es", "a/0/3/6"),
     ("ko", "a/0/3/7"),
-    ("zh-hans", "a/0/3/8"),
-    ("zh-hant", "a/0/3/9"),
+    ("zh-CN", "a/0/3/8"),
+    ("zh-TW", "a/0/3/9"),
 ];
 
 /// Some of Sun's system text files, each a list of lines without their control sequences.

@@ -31,6 +31,7 @@ use crate::core::binary::{s16, u16, u32};
 use crate::core::discovery::{Found, HEAP_SPAN, within};
 use crate::core::memory::Memory;
 use crate::core::pathfind::{self, Cell};
+use crate::core::words::own;
 use crate::games::common::field::chunk::HOLE as BOULDER_HOLE;
 use crate::games::common::field::chunk::{
     BIKE_RAILS, BLOCKED, BUMPY_SLOPES, CHUNK, CURRENTS, Chunk, DIVE, FALLS, SLOPES,
@@ -41,7 +42,7 @@ use crate::games::common::field::ground::{
 use crate::games::common::field::things::{
     BIKE, BIKE_SOURCE, CURRENT_SOURCE, CURRENTS_CATEGORY, DECORATION_SOURCE, DIVE_SOURCE,
     EDGE_SOURCE, FURNITURE_SOURCE, Field, Interactable, OBSTACLES, STAIRS_SOURCE, TILE_SOURCE,
-    TRIGGER_SOURCE, WARP_SOURCE, place_source,
+    TRIGGER_SOURCE, WARP_SOURCE, kind_said, place_source,
 };
 use crate::games::gen6::field::features::{
     DoorReader, Feature, HiddenReader, Hiding, IceReader, SecretBaseReader, Tracked,
@@ -196,7 +197,11 @@ pub const WALL: &str = "wall";
 /// draws its squares green or red and says "You cannot set it there!" only once A is pressed
 /// (omega_ruby_secret-base5.ctm).
 pub fn fit(fits: bool) -> &'static str {
-    if fits { "placeable" } else { "not placeable" }
+    if fits {
+        "decorating-placeable"
+    } else {
+        "decorating-not-placeable"
+    }
 }
 
 pub const BASE_ASKS: i64 = 5;
@@ -841,12 +846,12 @@ impl FieldReader {
         let (Some(bases), Some((cell, fits))) = (&self.secret_bases, cursor) else {
             return Ok(None);
         };
-        let under = self.under_cursor(r#where, bases.as_ref(), cell)?;
+        let under = kind_said(&self.under_cursor(r#where, bases.as_ref(), cell)?);
         Ok(Some((
             cell,
             match fits {
                 None => under,
-                Some(fits) => format!("{}, {under}", fit(fits)),
+                Some(fits) => format!("{}, {under}", own(fit(fits), &[])),
             },
         )))
     }

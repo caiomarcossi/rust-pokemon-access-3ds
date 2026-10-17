@@ -9,6 +9,7 @@ use std::rc::Rc;
 use indexmap::IndexMap;
 
 use crate::core::binary::{f32, u32};
+use crate::core::words::own;
 use crate::games::common::cursors::shared::{
     CursorItem, MARKER_SIZE, Panes, Said, Spot, Where, near,
 };
@@ -197,7 +198,7 @@ impl PictureCursors {
                 top,
                 root: spot.root,
                 parent: group,
-                ..ScreenText::new(group, EMPTY, false)
+                ..ScreenText::new(group, own(EMPTY, &[]), false)
             }]);
         }
         if !inside.is_empty() {

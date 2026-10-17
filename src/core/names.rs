@@ -21,15 +21,17 @@
 //!
 //! Two things get named, and they are keyed differently because they are different. A **sprite** is
 //! one character everywhere in the game, so naming Norman once names him in every scene; the shipped
-//! table is per language, beside the game's code. A **place** is a slot on one map — the zone list's
+//! table is a game's `sprites.ftl`, a language a folder under `<pa3ds>/data` (ADR-0040). A **place**
+//! is a slot on one map — the zone list's
 //! (map, slot) — so a sign named in Petalburg says nothing about a sign in Rustboro. The shipped
 //! table names some slots too: furniture each zone shows a message of its own for, but the same
 //! thing in many, as the Pokémon Journals and the beds are.
 //!
-//! The player's names live in `names/<language>/<rom>.toml` under their own folder, laid out the same
-//! way as the shipped table beside the game's code: **TOML, per language, one file a ROM**
-//! (ADR-0031). A name is a word in a language, so English names for a ROM played in French belong to
-//! neither.
+//! The player's names live in `names/<language>/<rom>.toml` under their own folder, keyed as the
+//! shipped table is: **TOML, per language, one file a ROM** (ADR-0031), since pa3ds writes it, where
+//! the shipped table is Fluent, which a translator opens (ADR-0040). The language is the one pa3ds
+//! speaks its own words in. A name is a word in a language, so English names for a ROM played in
+//! French belong to neither.
 //!
 //! The file opens with a comment saying which game, which ROM and which language it is for, because
 //! `sango-1` says nothing to somebody who did not choose it and sharing names is a matter of sending
@@ -49,6 +51,7 @@ use indexmap::IndexMap;
 use regex::Regex;
 
 use crate::core::toml;
+use crate::core::words::{Words, current};
 use crate::py::{self, Result};
 
 pub const SPRITES: &str = "sprites";
@@ -59,6 +62,23 @@ pub const TILES: &str = "tiles";
 /// The shipped table's words for furniture by the game's shared script it runs (`words`).
 pub const FURNITURE: &str = "furniture";
 pub const WORDS: [&str; 2] = [TILES, FURNITURE];
+/// How each table's messages begin in a game's `sprites.ftl`: `sprite-0x118`, and a slot's
+/// `place-0xaa-furniture-0`, its key with dashes where the player's file has colons.
+pub const SHIPPED: [(&str, &str); 4] = [
+    (SPRITES, "sprite-"),
+    (PLACES, "place-"),
+    (TILES, "tile-"),
+    (FURNITURE, "furniture-"),
+];
+
+/// `SHIPPED[section]`.
+fn shipped(section: &str) -> &'static str {
+    SHIPPED
+        .iter()
+        .find(|(held, _)| *held == section)
+        .map(|(_, prefix)| *prefix)
+        .unwrap_or_default()
+}
 
 /// What the game itself calls a character, where RAM does not say but the ROM does.
 pub type GameSprite = Rc<dyn Fn(i64) -> Option<String>>;
@@ -210,18 +230,21 @@ impl Names {
 
     /// The names for one game, one language and one player.
     ///
-    /// `data/<language>/sprites.toml` from the game's own package, its characters' names, its
-    /// words for use tiles and furniture and its names for slots, and the player's
+    /// The game's `sprites.ftl`, in the language of `words` (the words in place) and English
+    /// where it has none: its characters' names, `sprite-0x118`, its words for use tiles,
+    /// `tile-0xdd`, and furniture, `furniture-0x28f0`, and its names for slots,
+    /// `place-0xaa-furniture-0` (ADR-0040). And the player's
     /// `names/<language>/<fingerprint>.toml` under `home`. `title` is what the emulator says it
     /// is running, for the comment at the top of that file; without it the ROM names itself.
     pub fn load(
-        data: &Path,
-        language: &str,
         fingerprint: &str,
         home: Option<&Path>,
         title: &str,
+        words: Option<&Words>,
     ) -> Result<Names> {
-        let table = toml::read(&data.join(language).join("sprites.toml"));
+        let placed = current();
+        let words = words.unwrap_or(&placed);
+        let language = words.language.as_str();
         let mine = home.map(|home| {
             home.join("names")
                 .join(language)
@@ -235,27 +258,21 @@ impl Names {
             ("rom".to_string(), fingerprint.to_string()),
             ("language".to_string(), language.to_string()),
         ]);
-        Names::from_table(&table, mine.as_deref(), &header)
-    }
-
-    /// `cls(toml.strings(table.get(SPRITES)), mine, header, {section: ... for section in
-    /// WORDS}, toml.strings(table.get(PLACES)))`, the shipped table read: `load`'s, and the runtime's, which reads the table the
-    /// binary carries (`Game::table`).
-    pub fn from_table(
-        table: &IndexMap<String, ::toml::Value>,
-        mine: Option<&Path>,
-        header: &IndexMap<String, String>,
-    ) -> Result<Names> {
-        let words: IndexMap<String, IndexMap<String, String>> = WORDS
+        let places: IndexMap<String, String> = words
+            .prefixed(shipped(PLACES))
+            .into_iter()
+            .map(|(key, said)| (key.replace('-', ":"), said))
+            .collect();
+        let tables: IndexMap<String, IndexMap<String, String>> = WORDS
             .iter()
-            .map(|section| (section.to_string(), toml::strings(table.get(*section))))
+            .map(|section| (section.to_string(), words.prefixed(shipped(section))))
             .collect();
         Names::new(
-            Some(&toml::strings(table.get(SPRITES))),
-            mine,
-            Some(header),
-            Some(&words),
-            Some(&toml::strings(table.get(PLACES))),
+            Some(&words.prefixed(shipped(SPRITES))),
+            mine.as_deref(),
+            Some(&header),
+            Some(&tables),
+            Some(&places),
         )
     }
 

@@ -26,6 +26,7 @@ use indexmap::IndexMap;
 use crate::core::binary::f32;
 use crate::core::memory::Memory;
 use crate::core::speech::{Category, Speech};
+use crate::core::words::own;
 use crate::games::common::layout::Layouts;
 use crate::games::common::layout_file::{LayoutFile, LayoutFiles};
 use crate::games::common::lyt;
@@ -42,15 +43,15 @@ pub const POINT: &str = "poke_point.bclim";
 ///
 /// Python's `dict`, as (image, word) pairs: it is only ever looked up.
 pub const WAYS: [(&str, &str); 3] = [
-    ("map_ico_00.bclim", "grass"),
-    ("map_ico_01.bclim", "water"),
-    ("map_ico_02.bclim", "fishing"),
+    ("map_ico_00.bclim", "habitat-grass"),
+    ("map_ico_01.bclim", "habitat-water"),
+    ("map_ico_02.bclim", "habitat-fishing"),
 ];
 /// Half the top screen's height: the icons' middle is within it only once the map is open.
 pub const HALF_HEIGHT: f64 = 120.0;
 /// Said before a place drawn as the Pokémon's: the game draws it and never says it (Orion's
 /// words, 2026-10-01, for the longer "is a known habitat" first tried).
-pub const FOUND: &str = "Found in";
+pub const FOUND: &str = "habitat-found";
 
 /// Says the habitat page's places, and owns its top screen's words while its map is up.
 pub struct HabitatReader {
@@ -169,7 +170,7 @@ impl HabitatReader {
                     self.place = Some(place.text.clone());
                     let mut text = place.text.clone();
                     if self.lit.contains(&place.text) {
-                        text = format!("{FOUND} {}", place.text)
+                        text = own(FOUND, &[("place", &place.text)])
                             + &if !ways.is_empty() {
                                 format!("{}{}", self.separator, ways.join(", "))
                             } else {
@@ -206,27 +207,27 @@ impl HabitatReader {
         let mut icons: Vec<(i64, String)> = Vec::new();
         for (pane, kind) in self.layouts.tree(root) {
             if kind == lyt::PICTURE_CLASS
-                && let Some(own) = drawn_with(&file, &self.name(pane)?)
+                && let Some(icon) = drawn_with(&file, &self.name(pane)?)
             {
-                icons.push((pane, own));
+                icons.push((pane, icon));
             }
         }
         if icons.is_empty() {
             return Ok(None);
         }
-        for (pane, _own) in &icons {
+        for (pane, _icon) in &icons {
             let near = (f32(&self.layouts.pane(*pane)?, lyt::Y)? - root_y).abs() < HALF_HEIGHT;
             if !near {
                 return Ok(None);
             }
         }
         let mut found: Vec<String> = Vec::new();
-        for (pane, own) in &icons {
+        for (pane, icon) in &icons {
             let at = textures::drawn_at(&*self.memory, *pane)?;
             if let Some(at) = at
-                && self.files.image_at(at).as_deref() == Some(own.as_str())
+                && self.files.image_at(at).as_deref() == Some(icon.as_str())
             {
-                found.push(way(own)?.to_string());
+                found.push(own(way(icon)?, &[]));
             }
         }
         Ok(Some(found))
@@ -311,18 +312,18 @@ impl HabitatReader {
 
 /// The icon of `WAYS` a picture of the top screen's panel is drawn with in colour, or None.
 fn drawn_with(file: &LayoutFile, picture: &str) -> Option<String> {
-    let own = file.textures.get(picture).map_or(&[][..], Vec::as_slice);
-    if own.len() == 1 && WAYS.iter().any(|(image, _)| *image == own[0]) {
-        Some(own[0].clone())
+    let icons = file.textures.get(picture).map_or(&[][..], Vec::as_slice);
+    if icons.len() == 1 && WAYS.iter().any(|(image, _)| *image == icons[0]) {
+        Some(icons[0].clone())
     } else {
         None
     }
 }
 
-/// `WAYS[own]`.
-fn way(own: &str) -> Result<&'static str> {
+/// `WAYS[icon]`.
+fn way(icon: &str) -> Result<&'static str> {
     WAYS.iter()
-        .find(|(image, _)| *image == own)
+        .find(|(image, _)| *image == icon)
         .map(|&(_, word)| word)
-        .ok_or_else(|| Error::key(py::repr(own)))
+        .ok_or_else(|| Error::key(py::repr(icon)))
 }

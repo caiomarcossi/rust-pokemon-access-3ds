@@ -35,6 +35,7 @@ use std::time::{Duration, Instant};
 use flate2::Crc;
 use indexmap::IndexMap;
 
+use crate::core::words::own;
 use crate::py::{self, Error, Kind, Result, time};
 
 /// Azahar's `udp_input_port` as it ships.
@@ -52,7 +53,8 @@ pub const TICK: f64 = 1.0 / 120.0;
 /// How long a client is sent states after its last request; it asks every three seconds.
 pub const LISTENING: f64 = 6.0;
 
-pub const NOT_LISTENING: &str = "Azahar is not taking touches from pa3ds";
+/// Said for a tap Azahar is not listening for: its touch device is not pa3ds's.
+pub const NOT_LISTENING: &str = "touch-not-listening";
 pub const CLIENT: &[u8; 4] = b"DSUC";
 pub const SERVER: &[u8; 4] = b"DSUS";
 pub const VERSION: i64 = 1001;
@@ -269,7 +271,7 @@ impl TouchServer {
     /// and let go at its last. Says why not as `tap` does.
     pub fn slide(&self, path: &[(i64, i64)], seconds: f64) -> Option<String> {
         if !self.listened() {
-            return Some(NOT_LISTENING.to_string());
+            return Some(own(NOT_LISTENING, &[]));
         }
         let points: Vec<(i64, i64)> = path
             .iter()

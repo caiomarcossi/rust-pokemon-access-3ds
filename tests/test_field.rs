@@ -162,7 +162,13 @@ fn dex_nav(memory: Rc<dyn Memory>) -> Rc<dyn HiddenReader> {
 
 /// A gen 6 game with nothing of its own: a test gives it what it needs.
 pub(crate) fn game() -> Game {
-    Game::new("test", [], &[], oras::rom().clone(), mmodel::DRAWN)
+    Game::new(
+        "test",
+        [],
+        std::path::PathBuf::new,
+        oras::rom().clone(),
+        mmodel::DRAWN,
+    )
 }
 
 /// `field_reader`'s keyword arguments that are the ROM's words, chunks and `shared` furniture,

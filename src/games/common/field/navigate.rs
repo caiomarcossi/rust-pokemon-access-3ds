@@ -48,8 +48,9 @@ use indexmap::IndexMap;
 use crate::core::config::Navigation;
 use crate::core::dialog::Asker;
 use crate::core::names::Names;
-use crate::core::pathfind::Cell;
+use crate::core::pathfind::{self, AHEAD, BEHIND, Cell, LEFT, RIGHT};
 use crate::core::speech::{Category, Speech};
+use crate::core::words::own;
 use crate::games::common::field::guide::{Clock, FieldSource, Guide, Key};
 use crate::games::common::field::keys::{
     Bindings, CATEGORY_NEXT, CATEGORY_PREVIOUS, COORDINATES, DEFAULT_BINDINGS, DIRECTIONS, EAST,
@@ -58,8 +59,11 @@ use crate::games::common::field::keys::{
     RENAME_SPEAKER, SOUTH, TOUCH, WEST,
 };
 use crate::games::common::field::things::Naming as Named;
-use crate::games::common::field::things::{self, ALL, Field, Interactable, SPRITE};
+use crate::games::common::field::things::{
+    self, ALL, Field, Interactable, SPRITE, category_said, kind_said,
+};
 use crate::games::common::touch::ACTIONS as TOUCH_ACTIONS;
+use crate::games::common::touch::NOTHING as TOUCH_NOTHING;
 use crate::games::common::touch::TouchTargets;
 use crate::py::{self, Error, Log, Result};
 
@@ -75,21 +79,21 @@ pub const CATEGORIES: [&str; 11] = {
 };
 
 /// A dict in Python, read here by `find` on the key.
-pub const RELATIVE: [(&str, &str); 4] = [
-    (NORTH, "ahead"),
-    (EAST, "right"),
-    (SOUTH, "behind"),
-    (WEST, "left"),
-];
+pub const RELATIVE: [(&str, &str); 4] =
+    [(NORTH, AHEAD), (EAST, RIGHT), (SOUTH, BEHIND), (WEST, LEFT)];
 
 /// What a dialog's answer is for, as `dialog.Answer` carries it.
+/// The answer to a key with nothing to answer about: an empty map, no category with anything in
+/// it, nothing chosen.
+pub const NOTHING_HERE: &str = "key-nothing-here";
+
 pub const RENAMING: &str = "interactable";
 pub const SPEAKING: &str = "speaker";
 
 /// The rename box's checkbox, for somebody or something that can be named alone, apart from
 /// everyone drawn as it: ticked as it opens, since the shipped names already call everybody what
 /// they look like (Orion, 2026-10-11).
-pub const ONLY: &str = "Only this one";
+pub const ONLY: &str = "rename-only-this-one";
 
 /// How far direction mode looks, in cells each way: a box, so a thing 10 north and 10 east is
 /// in. The top screen shows about 13 cells across and 9 deep (measured from a rig screenshot,
@@ -200,7 +204,7 @@ impl Naming {
     pub fn name_of(&self, item: &Interactable, zone: i64) -> Result<String> {
         Ok(match self.name(item, zone)? {
             Some(name) if !name.is_empty() => name,
-            _ => item.kind.clone(),
+            _ => kind_said(&item.kind),
         })
     }
 
@@ -413,11 +417,14 @@ impl Navigator {
         }
         // Off the map too: a way kept from before a menu or a warp is still the player's to drop.
         if action == PATHFIND_OFF {
-            self.say(if self.guide.guidance.is_some() {
-                "path off"
-            } else {
-                "no path"
-            });
+            self.say(&own(
+                if self.guide.guidance.is_some() {
+                    "key-path-off"
+                } else {
+                    "key-no-path"
+                },
+                &[],
+            ));
             self.guide.guidance = None;
             return Ok(());
         }
@@ -425,7 +432,7 @@ impl Navigator {
         if action == OUR_SIDE || action == ENEMY_SIDE {
             let text = match (self.sides)(action == OUR_SIDE)? {
                 Some(text) if !text.is_empty() => text,
-                _ => "no battle".to_string(),
+                _ => own("key-no-battle", &[]),
             };
             self.say(&text);
             return Ok(());
@@ -451,25 +458,28 @@ impl Navigator {
             if self.mode == TOUCH {
                 let first = match &mut self.touch {
                     Some(touch) => touch.start()?,
-                    None => "nothing to touch".to_string(),
+                    None => own(TOUCH_NOTHING, &[]),
                 };
-                self.say(&format!("touch mode, {first}"));
+                self.say(&own("key-touch-mode", &[("first", &first)]));
             } else {
-                self.say(&format!("{} mode", self.mode));
+                self.say(&own(&format!("key-{}-mode", self.mode), &[]));
             }
             return Ok(());
         }
         if action == HIDE_UNREACHABLE {
             self.hiding = !self.hiding;
-            self.say(if self.hiding {
-                "unreachable hidden"
-            } else {
-                "unreachable shown"
-            });
+            self.say(&own(
+                if self.hiding {
+                    "key-unreachable-hidden"
+                } else {
+                    "key-unreachable-shown"
+                },
+                &[],
+            ));
             return Ok(());
         }
         let Some(r#where) = self.field.poll()? else {
-            self.say("no map");
+            self.say(&own("key-no-map", &[]));
             return Ok(());
         };
         if action == COORDINATES {
@@ -481,7 +491,7 @@ impl Navigator {
         if action == ITEM_COORDINATES {
             let item = self.chosen_item(&r#where)?;
             let said = match item {
-                None => "nothing here".to_string(),
+                None => own(NOTHING_HERE, &[]),
                 Some(item) => coordinates(&item.cells(), item.height, self.wording.show_y)?,
             };
             self.say(&said);
@@ -492,11 +502,11 @@ impl Navigator {
         }
         if action == PATHFIND || action == PATHFIND_HM {
             if !r#where.walkable {
-                self.say("can't walk now");
+                self.say(&own("key-cant-walk-now", &[]));
                 return Ok(());
             }
             let Some(item) = self.chosen_item(&r#where)? else {
-                self.say("nothing here");
+                self.say(&own(NOTHING_HERE, &[]));
                 return Ok(());
             };
             if let Some(steer) = &r#where.steer {
@@ -540,10 +550,15 @@ impl Navigator {
                 let items = self.items(&r#where)?;
                 if !items.is_empty() {
                     self.chosen = Some(items[0].key());
-                    self.say(&format!(
-                        "{}, {}",
-                        self.categories[self.category as usize],
-                        items.len()
+                    self.say(&own(
+                        "key-category",
+                        &[
+                            (
+                                "category",
+                                &category_said(&self.categories[self.category as usize]),
+                            ),
+                            ("count", &(items.len() as i64)),
+                        ],
                     ));
                     return Ok(());
                 }
@@ -551,7 +566,7 @@ impl Navigator {
             // Nowhere to go: the category stays, so an empty map's "nothing north" does not
             // turn into "no items north" a press later.
             self.category = was;
-            self.say("nothing here");
+            self.say(&own(NOTHING_HERE, &[]));
             return Ok(());
         }
         if DIRECTIONS.contains(&action) {
@@ -559,7 +574,7 @@ impl Navigator {
         }
         let items = self.items(&r#where)?;
         if items.is_empty() {
-            self.say("nothing here");
+            self.say(&own(NOTHING_HERE, &[]));
             return Ok(());
         }
         let keys: Vec<Key> = items.iter().map(Interactable::key).collect();
@@ -594,18 +609,21 @@ impl Navigator {
             self.facing = None;
             let category = self.categories[self.category as usize].as_str();
             // In the sky the list is in the player's own frame, north the way they face.
-            let way = if r#where.steer.is_some() {
+            let way = pathfind::way(if r#where.steer.is_some() {
                 match RELATIVE.iter().find(|(key, _)| *key == direction) {
-                    Some((_, word)) => *word,
+                    Some((_, word)) => word,
                     None => return Err(Error::key(py::repr(direction))),
                 }
             } else {
                 direction
-            };
+            });
             self.say(&if category == ALL {
-                format!("nothing {way}")
+                own("key-nothing-way", &[("way", &way)])
             } else {
-                format!("no {category} {way}")
+                own(
+                    "key-none-way",
+                    &[("category", &category_said(category)), ("way", &way)],
+                )
             });
             return Ok(());
         }
@@ -629,15 +647,15 @@ impl Navigator {
     /// its side: "push east, 2 of 2". Anything else has one way to it.
     fn choose_push(&mut self, r#where: &Field, step: i64) -> Result<()> {
         let Some(item) = self.chosen_item(r#where)? else {
-            self.say("nothing here");
+            self.say(&own(NOTHING_HERE, &[]));
             return Ok(());
         };
         let Some(pushes) = &item.pushes else {
-            self.say("one way to it");
+            self.say(&own("key-one-way", &[]));
             return Ok(());
         };
         if pushes.is_empty() {
-            self.say("immoveable");
+            self.say(&own("boulder-immoveable", &[]));
             return Ok(());
         }
         let ways: Vec<&'static str> = pushes.iter().map(|&(way, _)| way).collect();
@@ -653,12 +671,12 @@ impl Navigator {
         let (way, drops) = pushes[at as usize];
         self.chosen = Some(item.key());
         self.pushing = Some((item.key(), way));
-        let mut text = format!("push {way}");
-        if drops {
-            text += " into a hole";
-        }
+        let mut text = own("key-push", &[("way", &pushed(way, drops))]);
         if self.wording.positions {
-            text += &format!(", {} of {count}", at + 1);
+            text += &format!(
+                ", {}",
+                own("position", &[("number", &(at + 1)), ("count", &count)])
+            );
         }
         self.say(&text);
         Ok(())
@@ -694,7 +712,13 @@ impl Navigator {
         let item = &items[at as usize];
         let mut way = item.bearing(r#where.cell, r#where.heading)?;
         if let Some(arrival) = item.arrival {
-            way += &format!(", out at {}", things::bearing(r#where.cell, arrival));
+            way += &format!(
+                ", {}",
+                own(
+                    "out-at",
+                    &[("bearing", &things::bearing(r#where.cell, arrival))]
+                )
+            );
         }
         let start = if self.wording.track_boulders {
             item.start
@@ -704,7 +728,13 @@ impl Navigator {
         if let Some(start) = start
             && start != item.cell
         {
-            way += &format!(", moved {}", things::bearing(start, item.cell));
+            way += &format!(
+                ", {}",
+                own(
+                    "boulder-moved",
+                    &[("bearing", &things::bearing(start, item.cell))]
+                )
+            );
         }
         if let Some(pushes) = &item.pushes {
             way += &format!(", {}", moveable(pushes));
@@ -713,7 +743,10 @@ impl Navigator {
         if self.wording.positions {
             parts.insert(
                 if self.wording.position_first { 1 } else { 2 },
-                format!("{} of {}", at + 1, items.len()),
+                own(
+                    "position",
+                    &[("number", &(at + 1)), ("count", &(items.len() as i64))],
+                ),
             );
         }
         self.say(&parts.join(", "));
@@ -819,38 +852,45 @@ impl Navigator {
     /// mistyped key, and it must not leave a window in front of the game.
     fn rename(&mut self, r#where: &Field) -> Result<()> {
         let Some(item) = self.chosen_item(r#where)? else {
-            self.say("nothing to rename");
+            self.say(&own("rename-nothing", &[]));
             return Ok(());
         };
         let Some(naming) = item.naming(r#where.zone) else {
             // A hidden Pokémon: a different one each time, and the game names the species itself.
-            self.say(&format!("{} cannot be renamed", item.kind));
+            self.say(&own("rename-cannot", &[("thing", &kind_said(&item.kind))]));
             return Ok(());
         };
         if self.asker.open() {
-            self.say("already renaming");
+            self.say(&own("rename-already", &[]));
             return Ok(());
         }
         let called = self.name(&item, r#where.zone)?;
-        let own = item.own()?;
-        self.renaming = Some((naming, own, self.label(&item, r#where.zone)?));
-        let label = format!(
-            "{}, {}. ",
-            leading(
-                &item.kind,
-                self.destination(&item, r#where.zone)?.as_deref()
-            ),
-            item.bearing(r#where.cell, r#where.heading)?
-        ) + &match called.as_deref() {
-            Some(called) if !called.is_empty() => format!("Called: {called}"),
-            _ => "Not named yet".to_string(),
-        };
+        let alone = item.own()?;
+        self.renaming = Some((naming, alone, self.label(&item, r#where.zone)?));
+        let label = own(
+            "rename-label",
+            &[
+                (
+                    "thing",
+                    &leading(
+                        &kind_said(&item.kind),
+                        self.destination(&item, r#where.zone)?.as_deref(),
+                    ),
+                ),
+                ("bearing", &item.bearing(r#where.cell, r#where.heading)?),
+                ("name", &named(called.as_deref())),
+            ],
+        );
         self.asker.ask(
             RENAMING,
-            "Rename",
+            &own("rename-title", &[]),
             &label,
             called.as_deref().unwrap_or_default(),
-            if own.is_some() { ONLY } else { "" },
+            &if alone.is_some() {
+                own(ONLY, &[])
+            } else {
+                String::new()
+            },
         )?;
         Ok(())
     }
@@ -858,35 +898,38 @@ impl Navigator {
     /// Put the dialog up for whoever last spoke.
     fn rename_speaker(&mut self) -> Result<()> {
         let Some(speaker) = (self.speaker)() else {
-            self.say("nobody has spoken");
+            self.say(&own("rename-nobody-spoke", &[]));
             return Ok(());
         };
         if self.asker.open() {
-            self.say("already renaming");
+            self.say(&own("rename-already", &[]));
             return Ok(());
         }
-        let (character, own) = speaker;
+        let (character, alone) = speaker;
         let naming: Named = (SPRITE, character, 0);
-        let called = self.naming.called(naming, own);
+        let called = self.naming.called(naming, alone);
         let called = called.filter(|called| !called.is_empty());
         self.renaming = Some((
             naming,
-            own,
+            alone,
             called
                 .clone()
-                .unwrap_or_else(|| "the last speaker".to_string()),
+                .unwrap_or_else(|| own("rename-the-last-speaker", &[])),
         ));
-        let label = "The last speaker. ".to_string()
-            + &match &called {
-                Some(called) => format!("Called: {called}"),
-                None => "Not named yet".to_string(),
-            };
+        let label = own(
+            "rename-speaker-label",
+            &[("name", &named(called.as_deref()))],
+        );
         self.asker.ask(
             SPEAKING,
-            "Rename",
+            &own("rename-title", &[]),
             &label,
             called.as_deref().unwrap_or_default(),
-            if own.is_some() { ONLY } else { "" },
+            &if alone.is_some() {
+                own(ONLY, &[])
+            } else {
+                String::new()
+            },
         )?;
         Ok(())
     }
@@ -901,11 +944,11 @@ impl Navigator {
             if (answer.what != RENAMING && answer.what != SPEAKING) || self.renaming.is_none() {
                 continue;
             }
-            let Some((naming, own, was)) = self.renaming.take() else {
+            let Some((naming, alone, was)) = self.renaming.take() else {
                 continue;
             };
-            let (what, first, second) = match own {
-                Some(own) if answer.ticked => own,
+            let (what, first, second) = match alone {
+                Some(alone) if answer.ticked => alone,
                 _ => naming,
             };
             if what == SPRITE {
@@ -913,10 +956,12 @@ impl Navigator {
             } else {
                 self.names.name_place(first, second, &answer.said)?;
             }
-            let now = self.naming.called(naming, own);
+            let now = self.naming.called(naming, alone);
             match now {
-                Some(now) if !now.is_empty() => self.say(&format!("{was} is now {now}")),
-                _ => self.say(&format!("{was} has no name")),
+                Some(now) if !now.is_empty() => {
+                    self.say(&own("rename-now", &[("thing", &was), ("name", &now)]))
+                }
+                _ => self.say(&own("rename-no-name", &[("thing", &was)])),
             }
         }
         Ok(())
@@ -932,18 +977,41 @@ impl Navigator {
 /// or east", or "immoveable" (Orion's words, 2026-10-11: what it can do, not what it is doing).
 fn moveable(ways: &[(&str, bool)]) -> String {
     if ways.is_empty() {
-        return "immoveable".to_string();
+        return own("boulder-immoveable", &[]);
     }
-    let said: Vec<String> = ways
+    let pushed: Vec<String> = ways
         .iter()
-        .map(|&(way, drops)| format!("{way}{}", if drops { " into a hole" } else { "" }))
+        .map(|&(way, drops)| pushed(way, drops))
         .collect();
-    "moveable ".to_string()
-        + &if said.len() == 1 {
-            said[0].clone()
-        } else {
-            said[..said.len() - 1].join(", ") + " or " + &said[said.len() - 1]
-        }
+    let ways = if pushed.len() == 1 {
+        pushed[0].clone()
+    } else {
+        own(
+            "either",
+            &[
+                ("these", &pushed[..pushed.len() - 1].join(", ")),
+                ("last", &pushed[pushed.len() - 1]),
+            ],
+        )
+    };
+    own("boulder-moveable", &[("ways", &ways)])
+}
+
+/// A way a big boulder can be pushed, "north", or "north into a hole".
+fn pushed(way: &str, drops: bool) -> String {
+    if drops {
+        own("boulder-into-hole", &[("way", &pathfind::way(way))])
+    } else {
+        pathfind::way(way)
+    }
+}
+
+/// What the rename box says a thing is called now, or that nothing is.
+fn named(called: Option<&str>) -> String {
+    match called {
+        Some(called) if !called.is_empty() => own("rename-called", &[("name", &called)]),
+        _ => own("rename-not-named", &[]),
+    }
 }
 
 /// Where `cells` are, "x 94, z 171", an axis they span by its first and last, "x 80 to 119";
@@ -955,7 +1023,7 @@ fn coordinates(cells: &[Cell], height: Option<f64>, show_y: bool) -> Result<Stri
         if low == high {
             format!("{low}")
         } else {
-            format!("{low} to {high}")
+            own("span", &[("low", low), ("high", high)])
         }
     }
 
@@ -978,7 +1046,9 @@ fn coordinates(cells: &[Cell], height: Option<f64>, show_y: bool) -> Result<Stri
 /// `called` with the place it leads to after it, unless it already says it.
 fn leading(called: &str, place: Option<&str>) -> String {
     match place {
-        Some(place) if !called.contains(place) => format!("{called} to {place}"),
+        Some(place) if !called.contains(place) => {
+            own("leads-to", &[("thing", &called), ("place", &place)])
+        }
         _ => called.to_string(),
     }
 }

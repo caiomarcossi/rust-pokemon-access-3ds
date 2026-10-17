@@ -4,7 +4,8 @@
 use std::fmt;
 use std::rc::Rc;
 
-use crate::core::pathfind::{self, Cell};
+use crate::core::pathfind::{self, Cell, EAST, NORTH, SOUTH, WEST, way};
+use crate::core::words::{own, said};
 use crate::py::{Error, Result};
 
 /// `{n:#x}`, which writes a negative number as Python does, with its sign before the prefix.
@@ -525,24 +526,40 @@ pub fn bearing(origin: (i64, i64), cell: (i64, i64)) -> String {
     let (dx, dz) = (cell.0 - origin.0, cell.1 - origin.1);
     let mut parts: Vec<String> = Vec::new();
     if dx != 0 {
-        parts.push(format!(
-            "{} {}",
-            dx.abs(),
-            if dx > 0 { "east" } else { "west" }
+        parts.push(own(
+            "steps",
+            &[
+                ("count", &dx.abs()),
+                ("way", &way(if dx > 0 { EAST } else { WEST })),
+            ],
         ));
     }
     if dz != 0 {
-        parts.push(format!(
-            "{} {}",
-            dz.abs(),
-            if dz > 0 { "south" } else { "north" }
+        parts.push(own(
+            "steps",
+            &[
+                ("count", &dz.abs()),
+                ("way", &way(if dz > 0 { SOUTH } else { NORTH })),
+            ],
         ));
     }
     if parts.is_empty() {
-        "here".to_string()
+        own("here", &[])
     } else {
         parts.join(" ")
     }
+}
+
+/// What a thing is, as it is said: pa3ds's own word in the player's language,
+/// `kind-stairs-up`, or the word itself where it is the game's or the data's already, "PC",
+/// "trash can".
+pub fn kind_said(kind: &str) -> String {
+    said("kind", kind)
+}
+
+/// A category of the list as it is said, `category-exits`.
+pub fn category_said(category: &str) -> String {
+    said("category", category)
 }
 
 fn distance(a: (i64, i64), b: (i64, i64)) -> i64 {

@@ -8,35 +8,27 @@
 //! version and is taken to be laid out as X is; no Y has been read.
 
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use indexmap::IndexMap;
 
+use crate::core::keyfile::data_path;
 use crate::games::common::field::ground::{CUT, ROCK_SMASH, STRENGTH};
-use crate::games::common::pictures::described;
 use crate::games::gen6::game::{Data, FurnitureKind, Game};
 use crate::games::gen6::rom::layout::{RomLayout, TownFacilities, owned};
 use crate::games::xy::intro::IntroReader;
 use crate::py::PySet;
 
-/// Words the game does not say itself, a folder a language: `sprites.toml`, X's fallback names
-/// for the people on its maps (spike 108), and `pictures.toml`, its opening's choices (spike 216).
-///
-/// The files are `include_str!`ed, so the binary carries them: `Game.data` is this table in place
-/// of Python's `Path(__file__).parent / "data"`.
-pub const DATA: Data = &[
-    ("ja", include_str!("data/ja/sprites.toml")),
-    ("en", include_str!("data/en/sprites.toml")),
-    ("fr", include_str!("data/fr/sprites.toml")),
-    ("it", include_str!("data/it/sprites.toml")),
-    ("de", include_str!("data/de/sprites.toml")),
-    ("es", include_str!("data/es/sprites.toml")),
-    ("ko", include_str!("data/ko/sprites.toml")),
-];
+/// X's own words, for what the game does not say itself (ADR-0040): beside its scenes, a folder a
+/// language holding `sprites.ftl`, the fallback names for the people on its maps (spike 108), and
+/// `pictures.ftl`, its opening's choices (spike 216).
+pub const DATA: Data = data;
 
-/// Each language's `pictures.toml` from the same folder, where there is one: its opening's
-/// choices (`pictures::described`).
-pub const PICTURES: Data = &[("en", include_str!("data/en/pictures.toml"))];
+/// `data_path() / "xy"`, which Python makes as the module loads.
+pub fn data() -> PathBuf {
+    data_path().unwrap_or_default().join("xy")
+}
 
 pub const X: i64 = 0x0004000000055D00;
 pub const Y: i64 = 0x0004000000055E00;
@@ -337,12 +329,7 @@ pub fn game() -> &'static Game {
         models: Some(MODELS),
         strands: STRAND,
         gates: true,
-        opening: Some(|memory, language| {
-            Box::new(IntroReader::new(
-                memory,
-                described(PICTURES, language, "models"),
-            ))
-        }),
+        opening: Some(|memory, _language| Box::new(IntroReader::new(memory))),
         ..Game::new("X and Y", [X, Y], DATA, rom().clone(), DRAWN)
     })
 }

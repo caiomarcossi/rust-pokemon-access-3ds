@@ -36,6 +36,7 @@ use crate::core::binary::{u16, u32};
 use crate::core::memory::Memory;
 use crate::core::rom::{Rom, lz11};
 use crate::core::toml;
+use crate::core::words::own;
 use crate::games::common::garc::{GARC_MAGIC, garc_variants};
 use crate::games::common::layout_file::{TEXTURE, darc_entries};
 use crate::games::common::{lyt, pictures};
@@ -366,7 +367,7 @@ pub fn said(textures: &[impl AsRef<str>], text: &GameText) -> Result<Option<Stri
             return Ok(Some(sign.to_string()));
         }
         if let Some(place) = pictures::place(texture) {
-            return Ok(Some(place.to_string()));
+            return Ok(Some(own(place, &[])));
         }
         let (index, words): (i64, &[String]);
         let tab = TAB

@@ -9,6 +9,7 @@ use super::fake_layouts::FakeLayouts;
 use super::fake_memory::{CODE, FakeClasses, FakeMemory};
 use crate::core::memory::Memory;
 use crate::core::rtti::ClassNames;
+use crate::core::words::own;
 use crate::games::common::screen::{
     self, Pictures, ScreenPoll, ScreenText, ScreenTextReader, after_the_name, in_rows, join,
 };
@@ -932,9 +933,16 @@ fn test_a_contests_place_is_read_after_its_entrant() {
     let place = ScreenText {
         parent: 7,
         picture: true,
-        ..ScreenText::placed(0x10, "third place", false, -154.0, -124.0, -55.0, 30.0)
+        ..ScreenText::placed(
+            0x10,
+            own(pictures::place("three").unwrap(), &[]),
+            false,
+            -154.0,
+            -124.0,
+            -55.0,
+            30.0,
+        )
     };
-    assert_eq!(pictures::place("three"), Some(place.text.as_str()));
     let found: IndexMap<i64, ScreenText> = IndexMap::from([(0x10, place), (0x20, names)]);
     let mut placed: Vec<ScreenText> = screen::places_last(&found).into_values().collect();
     placed.sort_by_key(|piece| piece.r#box);

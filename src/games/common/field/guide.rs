@@ -9,6 +9,7 @@ use indexmap::IndexMap;
 
 use crate::core::config::Navigation;
 use crate::core::pathfind::{self, Cell, Leg};
+use crate::core::words::own;
 use crate::games::common::field::ground::{
     CUT, Ground, IceRoom, Of, ROCK_SMASH, SOLID, STRENGTH, SURF, WATERFALL, WHOLE,
 };
@@ -137,7 +138,8 @@ pub struct Guidance {
     /// The place last told whether it is lined up with the next leg, so a player standing still
     /// hears it once.
     pub judged: Option<(f64, f64)>,
-    /// The way the player was last told to step to line up, "a little west", until they are.
+    /// The way the player was last told to step to line up, `west` for "a little west", until
+    /// they are.
     pub nudge: Option<&'static str>,
 }
 
@@ -366,8 +368,8 @@ fn dive_again(
     Ok(Some((
         up,
         format!(
-            ", surface and go to the dive spot {}",
-            field::bearing(rise, down)
+            ", {}",
+            own("p-surface", &[("bearing", &field::bearing(rise, down))])
         ),
     )))
 }
@@ -403,7 +405,8 @@ type Past = (
 );
 
 /// The way to step to line up with the leg from `path[at]`, where the player stands off its
-/// line and would catch a wall's corner on it: "a little west". None where they are lined up,
+/// line and would catch a wall's corner on it: `west`, said "a little west" (`nudged`). None
+/// where they are lined up,
 /// or nothing beside the leg is in the way: off the line in open ground, the step is taken.
 ///
 /// In Seafloor Cavern the way north was a gap a cell wide between two pillars, and the player,
@@ -461,20 +464,25 @@ fn nudge(
     }
     Ok(Some(if dx == 0 {
         if side > 0 {
-            "a little west"
+            pathfind::WEST
         } else {
-            "a little east"
+            pathfind::EAST
         }
     } else if side > 0 {
-        "a little north"
+        pathfind::NORTH
     } else {
-        "a little south"
+        pathfind::SOUTH
     }))
+}
+
+/// The way to step, as it is said: "a little west".
+fn nudged(nudge: &str) -> String {
+    own("p-nudge", &[("way", &pathfind::way(nudge))])
 }
 
 /// Whether a player told `nudge` now stands within `LINED_UP` of the line it was for.
 fn lined(nudge: &str, place: (f64, f64), cell: Cell) -> bool {
-    if nudge.ends_with("west") || nudge.ends_with("east") {
+    if nudge == pathfind::WEST || nudge == pathfind::EAST {
         (place.0 - cell.0 as f64).abs() <= LINED_UP
     } else {
         (place.1 - cell.1 as f64).abs() <= LINED_UP
@@ -611,7 +619,10 @@ fn spoken(legs: &[Leg], r#where: &Field) -> Result<String> {
             continue;
         }
         if drift != (0, 0) {
-            parts.push(format!("{CURRENT} {}", field::bearing((0, 0), drift)));
+            parts.push(own(
+                "p-current",
+                &[("bearing", &field::bearing((0, 0), drift))],
+            ));
             drift = (0, 0);
         }
         if let Some(leg) = leg {
@@ -940,9 +951,10 @@ impl Guide {
         let name = (self.name_of)(item, r#where.zone)?;
         if !self.routes {
             let text = format!(
-                "{}, {}, no route in this game yet",
+                "{}, {}, {}",
                 (self.label)(item, r#where.zone)?,
-                item.bearing(r#where.cell, r#where.heading)?
+                item.bearing(r#where.cell, r#where.heading)?,
+                own("p-no-route-in-game", &[])
             );
             say(&text);
             return Ok(());
@@ -951,8 +963,9 @@ impl Guide {
             // Off the rails the game has loaded, the walls are not known, and the chunks there
             // mark every cell a wall: a way found on them would be nonsense.
             let text = format!(
-                "{name}, {}, no route on these streets",
-                item.bearing(r#where.cell, r#where.heading)?
+                "{name}, {}, {}",
+                item.bearing(r#where.cell, r#where.heading)?,
+                own("p-no-route-on-streets", &[])
             );
             say(&text);
             return Ok(());
@@ -979,7 +992,7 @@ impl Guide {
                 self.guidance = Some(held.clone());
                 let mut text = left(&held.borrow(), at, r#where)?;
                 if held.borrow().short {
-                    text += ", then can't continue";
+                    text += &format!(", {}", own("p-then-cant-continue", &[]));
                 }
                 say(&text);
                 return Ok(());
@@ -995,7 +1008,8 @@ impl Guide {
             blocker = match stood {
                 None => String::new(),
                 Some(stood) => {
-                    format!(", {} in the way", (self.label)(&stood, r#where.zone)?)
+                    let thing = (self.label)(&stood, r#where.zone)?;
+                    format!(", {}", own("p-in-the-way", &[("thing", &thing)]))
                 }
             };
         } else if short && let Some(again) = dive_again(r#where.cell, &ground, &goals, heading)? {
@@ -1006,7 +1020,7 @@ impl Guide {
         let path = match path {
             Some(path) if !(short && path.len() == 1) => path,
             _ => {
-                say(&format!("no path to {name}{blocker}"));
+                say(&(own("p-no-path-to", &[("thing", &name)]) + &blocker));
                 return Ok(());
             }
         };
@@ -1018,7 +1032,7 @@ impl Guide {
         };
         let to_push = match pushing {
             None => String::new(),
-            Some(pushing) => format!("to push {pushing}: "),
+            Some(pushing) => own("p-to-push", &[("way", &pathfind::way(pushing))]) + " ",
         };
         if path.len() == 1 {
             let text = format!(
@@ -1125,14 +1139,14 @@ impl Guide {
             };
             text += &to_push;
             if let Some(nudge) = nudge {
-                text += &format!("{nudge}, then ");
+                text += &(own("p-nudge-then", &[("nudge", &nudged(nudge))]) + " ");
             }
             text += &spoken(&legs, r#where)?;
             if short {
-                text += &format!(", then can't continue{blocker}");
+                text += &format!(", {}{blocker}", own("p-then-cant-continue", &[]));
             }
             if ice {
-                text += ", and the ice is cleared";
+                text += &format!(", {}", own("p-and-ice-cleared", &[]));
             }
             say(&text);
         }
@@ -1192,14 +1206,18 @@ impl Guide {
                 let text = format!(
                     "{}{}{}, {}",
                     if guidance.borrow().short {
-                        format!("can't continue{}, ", guidance.borrow().blocker)
+                        format!(
+                            "{}{}, ",
+                            own("p-cant-continue", &[]),
+                            guidance.borrow().blocker
+                        )
                     } else {
                         String::new()
                     },
                     if guidance.borrow().ice {
-                        "ice cleared, "
+                        format!("{}, ", own("p-ice-cleared", &[]))
                     } else {
-                        ""
+                        String::new()
                     },
                     guidance.borrow().name,
                     item.bearing(r#where.cell, r#where.heading)?
@@ -1284,9 +1302,12 @@ impl Guide {
             Some(guidance) => guidance.borrow().at(r#where.cell)?.is_none(),
         };
         if drift.len() > 1 && off_the_way {
-            let text = format!(
-                "{CURRENT} {}",
-                field::bearing(r#where.cell, drift[drift.len() - 1])
+            let text = own(
+                "p-current",
+                &[(
+                    "bearing",
+                    &field::bearing(r#where.cell, drift[drift.len() - 1]),
+                )],
             );
             (self.tell)(&text);
         }
@@ -1324,7 +1345,7 @@ impl Guide {
                 }
             };
             if lined_up {
-                (self.tell)("lined up");
+                (self.tell)(&own("p-lined-up", &[]));
             }
             return Ok(());
         }
@@ -1346,7 +1367,7 @@ impl Guide {
         let nudge = nudge(&ground, Some(place), &guidance.borrow().path, at)?;
         if let Some(nudge) = nudge {
             guidance.borrow_mut().nudge = Some(nudge);
-            (self.tell)(nudge);
+            (self.tell)(&nudged(nudge));
         }
         Ok(())
     }
@@ -1524,7 +1545,7 @@ impl Guide {
             .find(|item| item.key() == guidance.key)
             .cloned();
         if item.is_none() {
-            (self.tell)(&format!("{} gone", guidance.name));
+            (self.tell)(&own("p-gone", &[("thing", &guidance.name)]));
         }
         item
     }
