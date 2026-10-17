@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.1] - 2026-10-17
+
+### Fixed
+
+- `P` finds the way across Santalune Gym's spider web in X and Y, along its diagonal threads, and
+  says a step along one as "1 north-east".
+- In Santalune Gym, the pole down to the web and the one back up are exits, as are the stairs past
+  Viola's tent, and the lobby's statues and photographs are said as statues and photographs.
+- The gate behind Viola in Santalune Gym is no longer listed as five nameless people.
+
 ## [0.2.0] - 2026-10-17
 
 ### Added
