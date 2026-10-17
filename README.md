@@ -186,8 +186,9 @@ the `[azahar]` table of `user\config.toml`, so you can change them there.
 | `shaders_accurate_mul` | `false` | Faster, at the cost of a rare wrong pixel. |
 | `use_vsync` | `false` | Faster. |
 
-Delete a line from the table to leave that setting as Azahar has it. Any other Azahar setting can
-be added by its name in `qt-config.ini`.
+Put a `#` in front of a line in the table to leave that setting as Azahar has it. A line you
+delete is put back the next time pa3ds starts. Any other Azahar setting can be added by its name
+in `qt-config.ini`.
 
 ## Keys
 
@@ -277,8 +278,9 @@ pa3ds says so as it starts.
 
 ### Changing keys
 
-Keys live in `user\keys.toml`, written with the defaults on the first start and never
-overwritten.
+Keys live in `user\keys.toml`, written with the defaults on the first start. After that pa3ds
+only adds the keys it gains in later versions, and never changes a line you have. To unbind a key,
+put a `#` in front of its line: a line you delete is put back the next time pa3ds starts.
 
 - `[pa3ds.navigation]` holds keys that do the same thing in every mode.
   `[pa3ds.navigation.list]`, `[pa3ds.navigation.direction]` and `[pa3ds.navigation.touch]` hold
@@ -287,13 +289,17 @@ overwritten.
   two sticks. It is empty by default. The comments in the file list what Azahar's buttons are
   bound to now. Changes apply the next time pa3ds starts with Azahar closed.
 
-A key added to pa3ds after your file was written is not added to your file, so it cannot take a
-key you are using. pa3ds says so as it starts, and the log has the line to add.
+A new key whose default you already use for something else is added with a `#` in front of it,
+so your key keeps doing what it did. pa3ds says so as it starts, interrupting: "New key in
+keys.toml commented out: c for coordinates, because c is already item next. Edit keys.toml to
+choose." A comment above the line says the same. Give one of the two another key, then take the
+`#` off the new line.
 
 ## Settings
 
-Settings live in `user\config.toml`, written with the defaults on the first start and never
-overwritten. Each setting has a comment in the file saying what it does.
+Settings live in `user\config.toml`, written with the defaults on the first start. After that
+pa3ds only adds the settings it gains in later versions, at their defaults, and never changes a
+line you have. Each setting has a comment in the file saying what it does.
 
 | Setting | Default | What it does |
 |---|---|---|
@@ -318,8 +324,10 @@ overwritten. Each setting has a comment in the file saying what it does.
 | `conditions` | `false` | Say a Pokémon's contest conditions as numbers on its summary and in the Pokéblock Case: "Conditions Coolness 116 Beauty 70 Cuteness 70 Cleverness 70 Toughness 70". |
 | **`[azahar]`** | | Azahar's own settings: see [above](#azahar-settings-pa3ds-needs). |
 
-A setting added to pa3ds after your file was written is not added to your file. It works at its
-default, and you can add the line yourself.
+If `config.toml` or `keys.toml` has a mistake pa3ds cannot read past, pa3ds uses its defaults
+instead, leaves the file as it is, and says so as it starts, interrupting, with the line the
+mistake is on: "config.toml could not be read: Invalid string (at line 2, column 10). Fix it,
+or delete it for pa3ds to write a new one."
 
 ### Extras
 

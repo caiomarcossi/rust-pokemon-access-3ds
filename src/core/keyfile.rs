@@ -5,8 +5,8 @@
 //! happens to have I, J, K and L on the C-stick and O on the debug button, which cost nothing —
 //! until M was bound to the navigation mode and M turned out to be Start.
 //!
-//! So `<pa3ds>/user/keys.toml` holds both halves, written with defaults on the first run and never
-//! overwritten afterwards:
+//! So `<pa3ds>/user/keys.toml` holds both halves, written with defaults on the first run and
+//! afterwards only **filled in** with the keys pa3ds gains (`fill`):
 //!
 //! - **`[pa3ds.navigation]`** — key to action. A key that means the same thing in both navigation
 //!   modes lives here; a key that does not lives in `[pa3ds.navigation.list]` or
@@ -43,8 +43,15 @@
 //! start while Azahar is closed; with Azahar open it writes nothing and says to close it and start
 //! pa3ds again (`save`).
 //!
-//! Nothing here raises at a player. A keys file that is missing, unreadable or malformed reads as
-//! the defaults, and a config that cannot be patched is said and left alone.
+//! A key pa3ds gains is added to the player's file at the next start, unless its key is already
+//! one of theirs: then it is added **commented out**, with a comment saying what has the key, and
+//! said, interrupting, for the player to choose (Orion, 2026-10-17, reopening ADR-0022's "never
+//! written into a file that exists"). A key commented out counts as there, which is how a player
+//! unbinds one on purpose.
+//!
+//! Nothing here raises at a player. A keys file that is missing or malformed reads as the
+//! defaults, and a config that cannot be patched is said and left alone. A keys file that will not
+//! parse is left alone and said, interrupting.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -770,6 +777,17 @@ pub fn shared(bindings: &Bindings) -> IndexMap<String, String> {
         .collect()
 }
 
+/// One key's lines: what its action does where the name does not say it all, and the key.
+fn line(key: &str, action: &str, explained: &IndexMap<String, String>) -> Vec<String> {
+    let said = explained.get(action).filter(|said| !said.is_empty());
+    let mut lines = match said {
+        Some(said) => toml::comment(py::wrap(said, 94).expect("94 is a positive width")),
+        None => Vec::new(),
+    };
+    lines.push(format!("{} = {}", toml::quote(key), toml::quote(action)));
+    lines
+}
+
 /// The keys file as it is first written: the defaults, and the emulator's own bindings set
 /// down as a comment so a player can read their layout without Azahar's settings dialog.
 /// `explained` is what an action does where its name does not say it all, written above each
@@ -785,20 +803,16 @@ pub fn render(
     let no_explained = IndexMap::new();
     let explained = explained.unwrap_or(&no_explained);
 
-    let line = |key: &str, action: &str| -> Vec<String> {
-        let said = explained.get(action).filter(|said| !said.is_empty());
-        let mut lines = match said {
-            Some(said) => toml::comment(py::wrap(said, 94).expect("94 is a positive width")),
-            None => Vec::new(),
-        };
-        lines.push(format!("{} = {}", toml::quote(key), toml::quote(action)));
-        lines
-    };
+    let line = |key: &str, action: &str| -> Vec<String> { self::line(key, action, explained) };
 
     let both = shared(bindings);
     let mut lines: Vec<String> = vec![
         "# What every key does: the keys pa3ds answers and the buttons Azahar is bound to.".into(),
-        "# Written once with the defaults, and never overwritten — this file is yours.".into(),
+        "# This file is yours: pa3ds adds the keys it gains later and never changes a line you"
+            .into(),
+        "# have. To unbind a key, put a # in front of it rather than deleting it, or pa3ds adds"
+            .into(),
+        "# it back.".into(),
         "".into(),
         "# pa3ds takes these while Azahar's window is in front, and the game never sees them."
             .into(),
@@ -1030,39 +1044,130 @@ pub struct Keys {
     /// The one sentence worth saying out loud, or "" when there is nothing the player must
     /// hear.
     pub said: String,
+    /// Whether `said` has something the player must act on: a new key left commented out, or a
+    /// file that will not parse.
+    pub warning: bool,
 }
 
-/// Actions pa3ds has that the player's file puts on no key, with the key pa3ds would use and
-/// the table of the file it would go in.
+/// A key `fill` added to the file, and the key of the player's that kept it commented out.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Added {
+    pub table: String,
+    pub key: String,
+    pub action: String,
+    /// The action the player already has on `key`, or None when the key was free.
+    pub taken: Option<String>,
+}
+
+/// The keys file with every key pa3ds has and the file lacks added at the end of its table.
 ///
-/// The file is written once and never overwritten, which is what makes it the player's — and
-/// what means a key added to pa3ds after they first ran it is not in their file. Saying so is
-/// the only honest way out: writing the key in would overrule a player who unbound it on
-/// purpose, and staying quiet leaves a feature they cannot reach and no way to find out why. So
-/// the log says the line to add, and where (Orion, 2026-09-29: a utility beside pa3ds may one day
-/// walk a player through its settings, this file's new keys among them).
-pub fn unreachable(bindings: &Bindings, defaults: &Bindings) -> IndexMap<String, (String, String)> {
-    let bound: HashSet<&str> = bindings
-        .values()
-        .flat_map(|keys| keys.values().map(String::as_str))
+/// An action is lacking from a mode when neither `[pa3ds.navigation]` nor the mode's own table
+/// has a line for it, commented out or not: one commented out is the player unbinding it. A key
+/// every mode lacks, and that is the same key in each, goes under `[pa3ds.navigation]` once; the
+/// rest under their modes. A key the player already has in a mode it would land in is added
+/// commented out, with a comment saying what has it, so nothing they bound changes meaning.
+pub fn fill(
+    text: &str,
+    loaded: &IndexMap<String, ::toml::Value>,
+    defaults: &Bindings,
+    explained: Option<&IndexMap<String, String>>,
+) -> Result<(String, Vec<Added>)> {
+    let no_explained = IndexMap::new();
+    let explained = explained.unwrap_or(&no_explained);
+    let have = toml::offered(text);
+    let group = ::toml::Value::Table(
+        toml::table(toml::table(loaded.get(SECTION)).get(GROUP))
+            .into_iter()
+            .collect(),
+    );
+    let live: IndexMap<&String, IndexMap<String, String>> = defaults
+        .keys()
+        .map(|mode| {
+            let mut keys = strings(Some(&group));
+            keys.extend(strings(toml::table(Some(&group)).get(mode)));
+            (mode, keys)
+        })
         .collect();
-    let both = shared(defaults);
-    let mut out: IndexMap<String, (String, String)> = IndexMap::new();
-    for (mode, keys) in defaults {
-        for (key, action) in keys {
-            if !bound.contains(action.as_str()) {
-                let table = if both.get(key) == Some(action) {
-                    format!("{SECTION}.{GROUP}")
-                } else {
-                    format!("{SECTION}.{GROUP}.{mode}")
-                };
-                if !out.contains_key(action) {
-                    out.insert(action.clone(), (key.clone(), table));
-                }
+
+    let offered = |mode: &str, action: &str| -> bool {
+        [
+            format!("{SECTION}.{GROUP}"),
+            format!("{SECTION}.{GROUP}.{mode}"),
+        ]
+        .iter()
+        .any(|name| {
+            have.get(name).is_some_and(|pairs| {
+                pairs.iter().any(
+                    |(_, value)| matches!(value, ::toml::Value::String(value) if value == action),
+                )
+            })
+        })
+    };
+
+    let mut lacking: IndexMap<&String, IndexMap<String, String>> = defaults
+        .iter()
+        .map(|(mode, keys)| {
+            let keys = keys
+                .iter()
+                .filter(|(_, action)| !offered(mode, action))
+                .map(|(key, action)| (key.clone(), action.clone()))
+                .collect();
+            (mode, keys)
+        })
+        .collect();
+    // (table, key, action, the modes it lands in).
+    let mut adding: Vec<(String, String, String, Vec<&String>)> = Vec::new();
+    for (key, action) in shared(defaults) {
+        if defaults
+            .keys()
+            .all(|mode| lacking[mode].get(&key) == Some(&action))
+        {
+            for mode in defaults.keys() {
+                lacking[mode].shift_remove(&key);
             }
+            adding.push((
+                format!("{SECTION}.{GROUP}"),
+                key,
+                action,
+                defaults.keys().collect(),
+            ));
         }
     }
-    out
+    for (mode, keys) in &lacking {
+        for (key, action) in keys {
+            adding.push((
+                format!("{SECTION}.{GROUP}.{mode}"),
+                key.clone(),
+                action.clone(),
+                vec![*mode],
+            ));
+        }
+    }
+
+    let mut text = text.to_string();
+    let mut added: Vec<Added> = Vec::new();
+    for (table, key, action, modes) in adding {
+        let taken = modes.iter().find_map(|mode| live[mode].get(&key).cloned());
+        let mut lines = line(&key, &action, explained);
+        if let Some(taken) = &taken {
+            let note = format!(
+                "{key} is already {}, so this is commented out: give one of them another key, \
+                 then take the # off the line below.",
+                toml::quote(taken)
+            );
+            let last = lines.pop().unwrap_or_default();
+            lines.extend(toml::comment(py::wrap(&note, 94)?));
+            lines.push(format!("# {last}"));
+        }
+        text = toml::append(&text, &table, &lines);
+        added.push(Added {
+            table,
+            key,
+            action,
+            taken,
+        });
+    }
+    Ok((text, added))
 }
 
 /// Which of the emulator's controls pa3ds's keys are sitting on: what it is called, which key
@@ -1120,6 +1225,8 @@ pub fn prepare(
 
     let mut read: Option<Bindings> = None;
     let mut wanted = Wanted::new();
+    let mut added: Vec<Added> = Vec::new();
+    let mut problem = String::new();
     if !path.exists() {
         if write {
             let parent = path.parent().unwrap_or(&path);
@@ -1159,15 +1266,41 @@ pub fn prepare(
             }
         }
     } else {
-        let loaded = toml::read(&path);
-        if !loaded.is_empty() {
-            read = read_keys(&path, &loaded, defaults, &mut notes);
-            wanted = read_emulator(&path, &loaded, &mut notes);
-        } else {
+        let (mine, mut loaded, found) = toml::load(&path);
+        problem = found;
+        if !problem.is_empty() {
             notes.push(format!(
-                "{} could not be read, using the default keys",
+                "{} could not be read, using the default keys: {problem}",
                 py::path_str(&path)
             ));
+        } else {
+            let filled;
+            (filled, added) = fill(&mine, &loaded, defaults, explained)?;
+            for each in &added {
+                let held = match &each.taken {
+                    None => String::new(),
+                    Some(taken) => format!(
+                        ", commented out: {} is already {}",
+                        each.key,
+                        py::repr(taken)
+                    ),
+                };
+                notes.push(format!(
+                    "added to {} under [{}]: {} = {}{held}",
+                    py::path_str(&path),
+                    each.table,
+                    toml::quote(&each.key),
+                    toml::quote(&each.action)
+                ));
+            }
+            if !added.is_empty() {
+                loaded = toml::parse(&filled).0;
+                if write && !toml::write(&path, &filled)? {
+                    notes.push(format!("{} could not be written", py::path_str(&path)));
+                }
+            }
+            read = read_keys(&path, &loaded, defaults, &mut notes);
+            wanted = read_emulator(&path, &loaded, &mut notes);
         }
     }
     let bindings: &Bindings = read.as_ref().unwrap_or(defaults);
@@ -1186,31 +1319,49 @@ pub fn prepare(
     for (control, key, _) in &over {
         notes.push(format!("pa3ds takes {key}, which is {control}"));
     }
-    let missing = if read.is_some() {
-        unreachable(bindings, defaults)
-    } else {
-        IndexMap::new()
-    };
-    for (action, (key, table)) in &missing {
-        notes.push(format!(
-            "{} puts no key on {}: add {} = {} under [{table}]",
-            py::path_str(&path),
-            py::repr(action),
-            toml::quote(key),
-            toml::quote(action)
+    let mut held: Vec<(&str, &str, &str)> = Vec::new();
+    for each in &added {
+        if let Some(taken) = &each.taken {
+            let one = (each.key.as_str(), each.action.as_str(), taken.as_str());
+            if !held.contains(&one) {
+                held.push(one);
+            }
+        }
+    }
+    let name = py::path_str(Path::new(path.file_name().unwrap_or_default()));
+    let mut parts = sentence(&over, &saved);
+    for (key, action, taken) in &held {
+        parts.push(format!(
+            "new key in {name} commented out: {key} for {action}, because {key} is already \
+             {taken}"
         ));
     }
-    let said = sentence(&over, &saved, &missing.keys().cloned().collect::<Vec<_>>());
+    if !held.is_empty() {
+        parts.push(format!("edit {name} to choose"));
+    }
+    if !problem.is_empty() {
+        parts.push(unreadable(&path, &problem));
+    }
     Ok(Keys {
         bindings: bindings.clone(),
         notes,
-        said,
+        said: parts.join(". "),
+        warning: !held.is_empty() || !problem.is_empty(),
     })
 }
 
-/// The one thing worth saying at startup: which buttons pa3ds has taken, whether a rebinding
-/// is waiting for Azahar to be closed, and anything the player cannot reach at all.
-fn sentence(over: &[(String, String, bool)], saved: &str, missing: &[String]) -> String {
+/// What is said of a file of the player's that will not parse: which, where, and the two ways
+/// out. The settings file says it the same way.
+pub fn unreadable(path: &Path, problem: &str) -> String {
+    let name = py::path_str(Path::new(path.file_name().unwrap_or_default()));
+    format!(
+        "{name} could not be read: {problem}. Fix it, or delete it for pa3ds to write a new one"
+    )
+}
+
+/// What is worth saying at startup of the emulator's buttons: which pa3ds has taken, and
+/// whether a rebinding is waiting for Azahar to be closed.
+fn sentence(over: &[(String, String, bool)], saved: &str) -> Vec<String> {
     let mut parts: Vec<String> = Vec::new();
     let mut loud: Vec<&str> = over
         .iter()
@@ -1227,15 +1378,7 @@ fn sentence(over: &[(String, String, bool)], saved: &str, missing: &[String]) ->
     } else if saved == "waiting" {
         parts.push("close Azahar and start pa3ds again to apply your keys".to_string());
     }
-    if !missing.is_empty() {
-        let mut sorted: Vec<&str> = missing.iter().map(String::as_str).collect();
-        sorted.sort();
-        parts.push(format!(
-            "your keys file has no key for {}, the log says what to add",
-            listed(sorted)
-        ));
-    }
-    parts.join(". ")
+    parts
 }
 
 /// Several things as `A, B and C`: how a list is heard rather than how one is read.

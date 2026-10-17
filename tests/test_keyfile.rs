@@ -459,10 +459,8 @@ fn test_an_edit_the_player_makes_is_what_is_answered() {
     )
     .unwrap();
     let keys = prepare(&bindings(), &home, &written(&tmp_path), true, false, None);
-    assert_eq!(
-        keys.bindings,
-        modes(&[(LIST, &[("z", "item read")]), (DIRECTION, &[])])
-    );
+    assert_eq!(keys.bindings[LIST]["z"], "item read");
+    assert!(!keys.bindings[LIST].contains_key("k"));
 }
 
 /// Falling through to the navigator, a typo would not be quiet: an unknown action lands in
@@ -478,10 +476,8 @@ fn test_an_action_pa3ds_does_not_do_is_said_and_dropped() {
     )
     .unwrap();
     let keys = prepare(&bindings(), &home, &written(&tmp_path), true, false, None);
-    assert_eq!(
-        keys.bindings,
-        modes(&[(LIST, &[("k", "item read")]), (DIRECTION, &[])])
-    );
+    assert!(!keys.bindings[LIST].contains_key("z"));
+    assert_eq!(keys.bindings[LIST]["k"], "item read");
     assert!(
         keys.notes
             .iter()
@@ -489,11 +485,42 @@ fn test_an_action_pa3ds_does_not_do_is_said_and_dropped() {
     );
 }
 
-/// The file is never overwritten, so a key pa3ds gained after it was written is not in it; the
-/// log says the line and its table, and the spoken sentence where to find them (Orion,
-/// 2026-09-29: R and shift and R were the first).
+// ---------------------------------------------------------------- keys pa3ds gains
+
+/// Orion, 2026-10-17, reopening ADR-0022: players should not have to delete their file to get a
+/// new key. It goes after the table's last key, not after the comment that follows it.
 #[test]
-fn test_a_key_the_file_does_not_have_is_said_with_the_line_to_add() {
+fn test_a_key_pa3ds_gained_is_added_to_its_table_and_nothing_else_changes() {
+    let tmp_path = TmpPath::new();
+    let home = tmp_path.join("home");
+    fs::create_dir(&home).unwrap();
+    let mut older = bindings();
+    older[DIRECTION].shift_remove("shift+k");
+    let before = keyfile::render(
+        &older,
+        &keyfile::emulator_keys(&config()).unwrap(),
+        None,
+        None,
+    )
+    .unwrap();
+    fs::write(home.join("keys.toml"), &before).unwrap();
+    let keys = prepare(&bindings(), &home, &written(&tmp_path), true, false, None);
+    let after = read_text(&home.join("keys.toml"));
+    assert_eq!(
+        after,
+        before.replace(
+            "\";\" = \"east\"\n",
+            "\";\" = \"east\"\n\"shift+k\" = \"rename\"\n"
+        )
+    );
+    assert_eq!(keys.bindings, bindings());
+    assert!(keys.said.is_empty() && !keys.warning);
+    let again = prepare(&bindings(), &home, &written(&tmp_path), true, false, None);
+    assert!(!again.notes.iter().any(|note| note.contains("added")));
+}
+
+#[test]
+fn test_a_key_every_mode_lacks_is_added_once_above_them() {
     let tmp_path = TmpPath::new();
     let home = tmp_path.join("home");
     fs::create_dir(&home).unwrap();
@@ -503,17 +530,62 @@ fn test_a_key_the_file_does_not_have_is_said_with_the_line_to_add() {
     )
     .unwrap();
     let keys = prepare(&bindings(), &home, &written(&tmp_path), true, false, None);
+    let loaded: toml::Table = read(&home.join("keys.toml")).parse().unwrap();
+    let navigation = loaded["pa3ds"]["navigation"].as_table().unwrap();
+    assert_eq!(navigation["'"], toml::Value::String("mode".to_string()));
+    assert!(!navigation[LIST].as_table().unwrap().contains_key("'"));
+    assert!(!navigation[DIRECTION].as_table().unwrap().contains_key("'"));
+    assert_eq!(keys.bindings, bindings());
+}
+
+/// The player's shift and K is east, and pa3ds gains shift and K for rename: the player's key
+/// keeps its meaning, the new one waits behind a #, and the player is told, once.
+#[test]
+fn test_a_new_key_on_a_key_the_player_has_is_added_commented_out_and_said() {
+    let tmp_path = TmpPath::new();
+    let home = tmp_path.join("home");
+    fs::create_dir(&home).unwrap();
+    fs::write(
+        home.join("keys.toml"),
+        concat!(
+            "[pa3ds.navigation]\n\"'\" = \"mode\"\n\n[pa3ds.navigation.list]\n",
+            "i = \"category previous\"\nk = \"item read\"\n\n[pa3ds.navigation.direction]\n",
+            "o = \"north\"\n\"shift+k\" = \"east\"\n"
+        ),
+    )
+    .unwrap();
+    let keys = prepare(&bindings(), &home, &written(&tmp_path), true, false, None);
+    let text = read_text(&home.join("keys.toml"));
+    assert!(text.ends_with("# \"shift+k\" = \"rename\"\n"), "{text}");
+    assert!(text.contains("shift+k is already \"east\""));
+    assert_eq!(keys.bindings[DIRECTION]["shift+k"], "east");
     assert!(
-        keys.notes
-            .iter()
-            .any(|note| note.ends_with(r#"add "'" = "mode" under [pa3ds.navigation]"#))
+        !keys.bindings[DIRECTION]
+            .values()
+            .any(|action| action == "rename")
     );
-    assert!(
-        keys.notes
-            .iter()
-            .any(|note| note.ends_with(r#"add "o" = "north" under [pa3ds.navigation.direction]"#))
-    );
-    assert!(keys.said.contains("the log says what to add"));
+    assert!(keys.warning);
+    assert!(keys.said.contains(
+        "new key in keys.toml commented out: shift+k for rename, because shift+k is already \
+         east. edit keys.toml to choose"
+    ));
+    let again = prepare(&bindings(), &home, &written(&tmp_path), true, false, None);
+    assert!(again.said.is_empty() && !again.warning);
+    assert_eq!(read_text(&home.join("keys.toml")), text);
+}
+
+/// Commenting a key out is how a player unbinds one, now that a key deleted comes back.
+#[test]
+fn test_a_key_the_player_commented_out_stays_unbound() {
+    let tmp_path = TmpPath::new();
+    let home = tmp_path.join("home");
+    prepare(&bindings(), &home, &written(&tmp_path), true, false, None);
+    let path = home.join("keys.toml");
+    let text = read_text(&path).replace("\"shift+k\" = \"rename\"", "# \"shift+k\" = \"rename\"");
+    fs::write(&path, text).unwrap();
+    let keys = prepare(&bindings(), &home, &written(&tmp_path), true, false, None);
+    assert!(!keys.bindings[DIRECTION].contains_key("shift+k"));
+    assert!(!keys.notes.iter().any(|note| note.contains("added")));
 }
 
 #[test]
@@ -553,6 +625,16 @@ fn test_a_file_that_will_not_parse_costs_the_edit_not_the_keys() {
             .iter()
             .any(|note| note.contains("could not be read"))
     );
+    // Said, interrupting, with where it breaks: a player who edited it would otherwise wonder why
+    // nothing they did took (Orion, 2026-10-17). And left alone, for them to fix.
+    assert!(keys.warning);
+    assert!(keys.said.starts_with("keys.toml could not be read: "));
+    assert!(keys.said.contains("line 2"), "{}", keys.said);
+    assert!(
+        keys.said
+            .ends_with("delete it for pa3ds to write a new one")
+    );
+    assert!(read_text(&home.join("keys.toml")).ends_with("\"unclosed\n"));
 }
 
 #[test]
@@ -866,13 +948,8 @@ fn test_a_modes_own_key_wins_over_the_one_above_it() {
     )
     .unwrap();
     let keys = prepare(&bindings(), &home, &written(&tmp_path), true, false, None);
-    assert_eq!(
-        keys.bindings,
-        modes(&[
-            (LIST, &[("k", "item read")]),
-            (DIRECTION, &[("k", "north")])
-        ])
-    );
+    assert_eq!(keys.bindings[LIST]["k"], "item read");
+    assert_eq!(keys.bindings[DIRECTION]["k"], "north");
 }
 
 /// NVDA swallows insert in its own hook, so Windows never says it is held, and insert and R,

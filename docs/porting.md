@@ -262,5 +262,9 @@ Kept here so the next porter, and anyone reading a tape that differs, knows what
   call the runtime's `Rc` log: its lines go through a channel the session loop drains each poll,
   so a line can land a poll later than Python's. A tone that cannot start its sound thread is
   dropped where Python would raise to the key's handler. Neither exists in a replay.
+- **A settings or keys file that will not parse** is said with the `toml` crate's words for what
+  is wrong, not `tomllib`'s: "Invalid string (at line 2, column 10)" where the Python says
+  "Invalid value (at line 2, column 10)". The line and the column are the same (`core::toml`'s
+  `parse`). No tape starts with a broken file.
 - **What the tapes cannot check.** A movie presses no pa3ds keys, so the navigation keys are
   checked by their tests alone; and no tape so far holds a reader's failure.

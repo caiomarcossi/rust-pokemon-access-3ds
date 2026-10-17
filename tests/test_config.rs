@@ -246,16 +246,67 @@ fn test_a_file_from_before_the_tables_says_what_it_has_lost() {
 }
 
 #[test]
-fn test_a_line_taken_out_of_azahar_s_table_leaves_that_setting_alone() {
+fn test_a_line_commented_out_of_azahar_s_table_leaves_that_setting_alone() {
+    // A line deleted comes back at its default, so a # is how a player keeps Azahar's own.
     let tmp_path = TmpPath::new();
     let home = tmp_path.join("home");
     fs::create_dir(&home).unwrap();
-    fs::write(home.join("config.toml"), "[azahar]\nuse_vsync = false\n").unwrap();
+    fs::write(
+        home.join("config.toml"),
+        "[azahar]\nuse_vsync = false\n# graphics_api = 2\n",
+    )
+    .unwrap();
     let ini = emulator(&tmp_path);
     prepare(&home, &ini, false);
     let after = read(&ini);
     assert!(after.contains("use_vsync=false"));
     assert!(after.contains("graphics_api=1\r\n"));
+    assert!(after.contains("enable_rpc_server=true\r\n"));
+}
+
+#[test]
+fn test_a_setting_pa3ds_gained_is_added_and_nothing_else_changes() {
+    // Orion, 2026-10-17: players should not have to delete their file to get a new setting. It
+    // goes in at its default, explained, at the end of its table.
+    let tmp_path = TmpPath::new();
+    let home = tmp_path.join("home");
+    fs::create_dir(&home).unwrap();
+    let full = config::render().unwrap();
+    let show_y = full.find("\n\n# Say how high").unwrap();
+    let line = full.find("show_y = ").unwrap();
+    let end = line + full[line..].find('\n').unwrap();
+    let older = format!("{}{}", &full[..show_y], &full[end..]);
+    let older = older.replace("pauses = false", "pauses = true");
+    fs::write(home.join("config.toml"), older).unwrap();
+    let settings = prepare(&home, &tmp_path.join("none.ini"), false);
+    assert_eq!(
+        read(&home.join("config.toml")).replace("\r\n", "\n"),
+        full.replace("pauses = false", "pauses = true")
+    );
+    assert!(settings.ui.pauses);
+    assert!(
+        settings
+            .notes
+            .iter()
+            .any(|note| note.ends_with("[pa3ds.navigation] show_y"))
+    );
+    assert!(!settings.said.contains("could not be read"));
+}
+
+#[test]
+fn test_a_file_that_will_not_parse_is_said_and_left_alone() {
+    let tmp_path = TmpPath::new();
+    let home = tmp_path.join("home");
+    fs::create_dir(&home).unwrap();
+    fs::write(home.join("config.toml"), "[pa3ds.ui]\npauses = yes\n").unwrap();
+    let settings = prepare(&home, &emulator(&tmp_path), false);
+    assert!(settings.warning);
+    assert!(settings.said.starts_with("config.toml could not be read: "));
+    assert!(settings.said.contains("line 2"), "{}", settings.said);
+    assert_eq!(
+        read(&home.join("config.toml")),
+        "[pa3ds.ui]\npauses = yes\n"
+    );
 }
 
 #[test]

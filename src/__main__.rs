@@ -237,19 +237,12 @@ fn run(args: Args, hooks: &Hooks) -> py::Result<()> {
     // Before the game, not after: what a key does and which buttons it costs is about the
     // keyboard, and there is nothing to wait for. A patched binding needs the emulator
     // restarted anyway, so the player wants to hear about it before they start playing.
+    // One sentence for both files: a second warning would interrupt the first.
     for note in &settings.notes {
         log(note);
     }
-    if !settings.said.is_empty() {
-        speech.say(
-            &settings.said,
-            if settings.warning {
-                Category::Warning
-            } else {
-                Category::System
-            },
-        );
-    }
+    let mut said = vec![settings.said.clone()];
+    let mut warning = settings.warning;
     let mut bindings = None;
     if settings.general.keys && !args.no_keys {
         let explained: IndexMap<String, String> = EXPLAINED
@@ -267,10 +260,25 @@ fn run(args: Args, hooks: &Hooks) -> py::Result<()> {
         for note in &keys.notes {
             log(note);
         }
-        if !keys.said.is_empty() {
-            speech.say(&keys.said, Category::System);
-        }
+        said.push(keys.said);
+        warning = warning || keys.warning;
         bindings = Some(keys.bindings);
+    }
+    let sentence = said
+        .iter()
+        .filter(|part| !part.is_empty())
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(". ");
+    if !sentence.is_empty() {
+        speech.say(
+            &sentence,
+            if warning {
+                Category::Warning
+            } else {
+                Category::System
+            },
+        );
     }
 
     let until = move || deadline.is_some_and(|deadline| time::monotonic() >= deadline);

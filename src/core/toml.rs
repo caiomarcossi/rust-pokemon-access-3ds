@@ -9,11 +9,17 @@
 //! nothing at all: being told the wrong name is a nuisance, and a reader that stops mid-game is not.
 //! A single line that is the wrong shape loses itself rather than the file, because these are
 //! written by hand as often as by pa3ds.
+//!
+//! The keys file and the settings file are **filled in** as pa3ds gains keys and settings: a line
+//! is added at the end of its table, and nothing else in the file changes (`offered`, `append`). A
+//! line the player has commented out counts as there, which is how they turn one off.
 
 use std::ffi::OsString;
 use std::path::{Component, Path};
+use std::sync::LazyLock;
 
 use indexmap::IndexMap;
+use regex::Regex;
 use toml::Value;
 
 use crate::py::{self, Error, Kind, Result};
@@ -31,13 +37,148 @@ pub const ESCAPES: [(char, &str); 7] = [
 
 /// A TOML file as its top-level tables, or empty when there is nothing readable there.
 pub fn read(path: &Path) -> IndexMap<String, Value> {
-    let Ok(bytes) = std::fs::read(path) else {
-        return IndexMap::new();
+    load(path).1
+}
+
+/// A file's text, its top-level tables, and what stops it being read: "" when nothing does,
+/// or where the TOML breaks, "Unterminated string (at line 2, column 21)", for a player to be
+/// told. A file that cannot be read is empty tables, as `read` has it.
+pub fn load(path: &Path) -> (String, IndexMap<String, Value>, String) {
+    let bytes = match std::fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) => return (String::new(), IndexMap::new(), strerror(&error)),
     };
     let Ok(text) = String::from_utf8(bytes) else {
-        return IndexMap::new();
+        return (
+            String::new(),
+            IndexMap::new(),
+            "it is not UTF-8 text".to_string(),
+        );
     };
-    read_text(Some(&text))
+    // `Path.read_text` reads with universal newlines: "\r\n" and a lone "\r" are each "\n".
+    let text = text.replace("\r\n", "\n").replace('\r', "\n");
+    let (loaded, problem) = parse(&text);
+    (text, loaded, problem)
+}
+
+/// `OSError.strerror` of what the file system answered.
+fn strerror(error: &std::io::Error) -> String {
+    match error.kind() {
+        std::io::ErrorKind::NotFound => "No such file or directory".to_string(),
+        std::io::ErrorKind::PermissionDenied => "Permission denied".to_string(),
+        _ => error.to_string(),
+    }
+}
+
+/// TOML text as its top-level tables, and where it breaks when it does.
+///
+/// The `toml` crate's words for what is wrong are its own, not `tomllib`'s: the line and the
+/// column are the same, and the message before them is the crate's first line.
+pub fn parse(text: &str) -> (IndexMap<String, Value>, String) {
+    // `tomllib` takes U+FEFF for an invalid statement where the `toml` crate skips it.
+    if text.starts_with('\u{feff}') {
+        return (
+            IndexMap::new(),
+            "Invalid statement (at line 1, column 1)".to_string(),
+        );
+    }
+    match text.parse::<toml::Table>() {
+        Ok(loaded) => (table(Some(&Value::Table(loaded))), String::new()),
+        Err(error) => {
+            let mut words = error.message().lines().next().unwrap_or("").chars();
+            let said: String = words
+                .next()
+                .map(|first| first.to_uppercase().chain(words).collect())
+                .unwrap_or_default();
+            let at = error.span().map_or(0, |span| span.start);
+            let before = text.get(..at).unwrap_or(text);
+            let line = before.matches('\n').count() + 1;
+            let column = before.rsplit('\n').next().unwrap_or("").chars().count() + 1;
+            (
+                IndexMap::new(),
+                format!("{said} (at line {line}, column {column})"),
+            )
+        }
+    }
+}
+
+static HEADER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*\[([^\[\]]+)\]\s*(?:#.*)?$").expect("a valid pattern"));
+
+/// The table a header line opens, `pa3ds.ui` for `[pa3ds.ui]`, or None for any other line.
+fn header(line: &str) -> Option<String> {
+    let found = HEADER.captures(line)?;
+    Some(
+        found[1]
+            .split('.')
+            .map(|part| py::strip(part).trim_matches(|c| c == '"' || c == '\''))
+            .collect::<Vec<_>>()
+            .join("."),
+    )
+}
+
+/// The one `key = value` a line holds, or None for anything else: a comment, a header, a
+/// blank. Each line is parsed whole, so a comment in prose is never mistaken for a setting.
+fn entry(line: &str) -> Option<(String, Value)> {
+    let parsed = line.parse::<toml::Table>().ok()?;
+    if parsed.len() != 1 {
+        return None;
+    }
+    let (key, value) = parsed.into_iter().next()?;
+    if matches!(value, Value::Table(_)) {
+        return None;
+    }
+    Some((key, value))
+}
+
+/// Every `key = value` line of a file by the table it is under, the ones commented out
+/// (`# key = value`) as well as the rest: everything the file has been given, counting what the
+/// player put a # in front of to turn it off. Lines above the first header are under "". Pairs,
+/// not a table: a key commented out beside the same key in use is two lines, both offered.
+pub fn offered(text: &str) -> IndexMap<String, Vec<(String, Value)>> {
+    let mut found: IndexMap<String, Vec<(String, Value)>> = IndexMap::new();
+    let mut current = String::new();
+    for line in py::splitlines(text) {
+        if let Some(name) = header(line) {
+            current = name;
+        } else if let Some(pair) =
+            entry(py::strip(line).strip_prefix('#').unwrap_or(py::strip(line)))
+        {
+            found.entry(current.clone()).or_default().push(pair);
+        }
+    }
+    found
+}
+
+/// `text` with `lines` added to the table `name`: after its last line that is not a comment,
+/// so a comment above a line stays above it and one introducing the next table stays with that,
+/// or straight after its header when it has none. A table the file does not have is added at the
+/// end, header and all.
+pub fn append<S: AsRef<str>>(text: &str, name: &str, lines: &[S]) -> String {
+    let mut rows: Vec<String> = py::splitlines(text).into_iter().map(String::from).collect();
+    let mut at: Option<usize> = None;
+    let mut current = String::new();
+    for (index, row) in rows.iter().enumerate() {
+        if let Some(found) = header(row) {
+            if found == name {
+                at = Some(index);
+            }
+            current = found;
+        } else if current == name && entry(row).is_some() {
+            at = Some(index);
+        }
+    }
+    let lines = lines.iter().map(|line| line.as_ref().to_string());
+    match at {
+        None => {
+            rows.extend(["".to_string(), format!("[{name}]")]);
+            rows.extend(lines);
+        }
+        Some(at) => {
+            rows.splice(at + 1..at + 1, lines);
+        }
+    }
+    rows.join("\n") + "\n"
 }
 
 /// `read` of a file the binary carries, by its text: None where the game has no such file, as a
@@ -46,14 +187,7 @@ pub fn read_text(text: Option<&str>) -> IndexMap<String, Value> {
     let Some(text) = text else {
         return IndexMap::new();
     };
-    // `tomllib` takes U+FEFF for an invalid statement where the `toml` crate skips it.
-    if text.starts_with('\u{feff}') {
-        return IndexMap::new();
-    }
-    match text.parse::<toml::Table>() {
-        Ok(loaded) => table(Some(&Value::Table(loaded))),
-        Err(_) => IndexMap::new(),
-    }
+    parse(text).0
 }
 
 /// Write a file whole and move it into place; False when it could not be written.

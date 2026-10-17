@@ -1,8 +1,11 @@
 //! `<pa3ds>/user/config.toml`: pa3ds's settings, and the emulator settings pa3ds wants (ADR-0026).
 //!
-//! The file is written once with the defaults, each explained in a comment, and never
-//! overwritten — as the keys file is (`pa3ds.core.keyfile`), which stays a file of its own. Its
-//! tables:
+//! The file is written with the defaults, each explained in a comment, and afterwards only
+//! **filled in**: a setting pa3ds gains is added at its default, and nothing the player has is
+//! changed. A line commented out counts as there (`toml.offered`), so a line of `[azahar]` the
+//! player wants Azahar to keep its own value for is commented out, not deleted (Orion,
+//! 2026-10-17). The keys file is filled in the same way (`pa3ds.core.keyfile`), and stays a file of
+//! its own. Its tables:
 //!
 //! - **`[pa3ds]`**: whether pa3ds answers its keys, and how often it reads the game.
 //! - **`[pa3ds.ui]`**: how menus, lists and screens are said.
@@ -19,8 +22,10 @@
 //! run is a flag. Each table is a dataclass here, so its defaults, the file's lines and what a
 //! reader is handed are one thing.
 //!
-//! Nothing here raises at a player. A file that is missing or malformed reads as the defaults,
-//! and a setting of the wrong kind or an unknown name is logged and left at its default.
+//! Nothing here raises at a player. A file that is missing reads as the defaults, and a setting of
+//! the wrong kind or an unknown name is logged and left at its default. A file that will not parse
+//! is left alone and read as the defaults too, and said, interrupting: a player who edited it would
+//! otherwise wonder why nothing they did took (Orion, 2026-10-17).
 
 use std::path::{Path, PathBuf};
 
@@ -371,7 +376,8 @@ pub struct Config {
     pub extras: Extras,
     pub notes: Vec<String>,
     pub said: String,
-    /// Whether `said` is something the player must do before Azahar has pa3ds's settings.
+    /// Whether `said` is something the player must do: before Azahar has pa3ds's settings, or
+    /// before their settings file is read at all.
     pub warning: bool,
 }
 
@@ -387,22 +393,16 @@ pub fn config_path(home: Option<&Path>) -> Result<PathBuf> {
 /// The file as it is first written: every setting at its default, each explained.
 pub fn render() -> Result<String> {
     let mut lines: Vec<String> = vec![
-        "# pa3ds's settings. Written once with the defaults, and never overwritten — this file is"
+        "# pa3ds's settings, read as pa3ds starts. This file is yours: pa3ds adds the settings it"
             .to_string(),
-        "# yours. pa3ds reads it as it starts.".to_string(),
+        "# gains later and never changes a line you have. To turn a line off, put a # in front of"
+            .to_string(),
+        "# it rather than deleting it, or pa3ds adds it back.".to_string(),
     ];
     for name in TABLES {
         lines.extend(["".to_string(), format!("[{name}]")]);
-        for (setting, default) in defaults(name) {
-            let key = format!("{name}.{setting}");
-            let said = EXPLAINED
-                .iter()
-                .find(|(explained, _)| *explained == key)
-                .map(|(_, said)| *said)
-                .ok_or_else(|| Error::key(py::repr(&key)))?;
-            lines.push("".to_string());
-            lines.extend(explained(said));
-            lines.push(format!("{setting} = {}", value(&default)));
+        for (setting, value, said) in settings(name)? {
+            lines.extend(setting_lines(setting, &value, said));
         }
     }
     lines.extend([
@@ -413,16 +413,76 @@ pub fn render() -> Result<String> {
             .to_string(),
         "# Azahar is closed. Azahar saves its own over them when it closes, so close it before"
             .to_string(),
-        "# starting pa3ds after a change here. A line taken out leaves Azahar's own value alone."
+        "# starting pa3ds after a change here. A line commented out leaves Azahar's own value"
             .to_string(),
+        "# alone.".to_string(),
     ]);
-    for (name, (default, said)) in azahar() {
-        lines.push("".to_string());
-        lines.extend(explained(said));
-        lines.push(format!("{name} = {}", value(&default)));
+    for (setting, value, said) in settings(EMULATOR_SECTION)? {
+        lines.extend(setting_lines(setting, &value, said));
     }
     lines.push("".to_string());
     Ok(lines.join("\n"))
+}
+
+/// A table's settings as the file has them: name, default and what it does.
+fn settings(table: &str) -> Result<Vec<(&'static str, Value, &'static str)>> {
+    if table == EMULATOR_SECTION {
+        return Ok(azahar()
+            .into_iter()
+            .map(|(name, (default, said))| (name, default, said))
+            .collect());
+    }
+    defaults(table)
+        .into_iter()
+        .map(|(setting, default)| {
+            let key = format!("{table}.{setting}");
+            let said = EXPLAINED
+                .iter()
+                .find(|(explained, _)| *explained == key)
+                .map(|(_, said)| *said)
+                .ok_or_else(|| Error::key(py::repr(&key)))?;
+            Ok((setting, default, said))
+        })
+        .collect()
+}
+
+/// One setting's lines: a blank, what it does, and the setting at its default.
+fn setting_lines(name: &str, value_: &Value, said: &str) -> Vec<String> {
+    let mut lines = vec!["".to_string()];
+    lines.extend(explained(said));
+    lines.push(format!("{name} = {}", value(value_)));
+    lines
+}
+
+/// The file with every setting it lacks added at its default, at the end of its table, and
+/// the name of each added. One commented out is not lacking: the player turned it off.
+pub fn fill(text: &str) -> Result<(String, Vec<String>)> {
+    let have = toml::offered(text);
+    let mut text = text.to_string();
+    let mut added: Vec<String> = Vec::new();
+    for table in TABLES.into_iter().chain([EMULATOR_SECTION]) {
+        let named: Vec<&str> = have
+            .get(table)
+            .map(|pairs| pairs.iter().map(|(name, _)| name.as_str()).collect())
+            .unwrap_or_default();
+        let lacking: Vec<(&str, Value, &str)> = settings(table)?
+            .into_iter()
+            .filter(|(name, _, _)| !named.contains(name))
+            .collect();
+        if !lacking.is_empty() {
+            let lines: Vec<String> = lacking
+                .iter()
+                .flat_map(|(name, value, said)| setting_lines(name, value, said))
+                .collect();
+            text = toml::append(&text, table, &lines);
+            added.extend(
+                lacking
+                    .iter()
+                    .map(|(name, _, _)| format!("[{table}] {name}")),
+            );
+        }
+    }
+    Ok((text, added))
 }
 
 /// What a setting does, as a sentence in comment lines short enough for a terminal.
@@ -601,6 +661,7 @@ pub fn prepare(
     let path = config_path(home)?;
     let mut notes: Vec<String> = Vec::new();
     let mut loaded: IndexMap<String, ::toml::Value> = IndexMap::new();
+    let mut problem = String::new();
     if !path.exists() {
         if write && toml::write(&path, &render()?)? {
             notes.push(format!(
@@ -622,12 +683,28 @@ pub fn prepare(
         }
         loaded.insert(EMULATOR_SECTION.to_string(), ::toml::Value::Table(shipped));
     } else {
-        loaded = toml::read(&path);
-        if loaded.is_empty() {
+        let text;
+        (text, loaded, problem) = toml::load(&path);
+        let (filled, added) = if problem.is_empty() {
+            fill(&text)?
+        } else {
+            (text, Vec::new())
+        };
+        if !problem.is_empty() {
             notes.push(format!(
-                "{} could not be read, using the default settings",
+                "{} could not be read, using the default settings: {problem}",
                 py::path_str(&path)
             ));
+        } else if !added.is_empty() {
+            notes.push(format!(
+                "added to {}: {}",
+                py::path_str(&path),
+                added.join(", ")
+            ));
+            loaded = toml::parse(&filled).0;
+            if write && !toml::write(&path, &filled)? {
+                notes.push(format!("{} could not be written", py::path_str(&path)));
+            }
         }
     }
     for name in loaded.keys() {
@@ -704,13 +781,18 @@ pub fn prepare(
         }
         _ => "",
     };
+    let said = if problem.is_empty() {
+        said.to_string()
+    } else {
+        keyfile::unreadable(&path, &problem)
+    };
     Ok(Config {
         general,
         ui,
         navigation,
         extras,
         notes,
-        said: said.to_string(),
-        warning: matches!(saved.as_str(), "waiting" | "missing"),
+        said,
+        warning: !problem.is_empty() || matches!(saved.as_str(), "waiting" | "missing"),
     })
 }

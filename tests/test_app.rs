@@ -15,10 +15,10 @@ use super::fake_speech::Recorder;
 use super::test_archives::oras_files;
 use crate::__main__::{Hooks, KEPT_LOGS, default_log_path, log_path, main, main_with};
 use crate::app::{Busy, Every, Failure, Faults, PATIENCE, Settings, run_with, wait_for_game};
-use crate::core::keyfile;
 use crate::core::memory::{self, Memory};
 use crate::core::rpc::{MAX_READ, Process, Rpc, UdpRpc};
 use crate::core::speech::{Backend, Category, Speech};
+use crate::core::{config, keyfile};
 use crate::games::catalog::{self, Running};
 use crate::games::common::announce::Announcements;
 use crate::games::common::dialogue::{Shown, TextWritten};
@@ -102,10 +102,20 @@ fn connect(emu: &FakeEmulator) -> Rc<dyn Rpc> {
     Rc::new(UdpRpc::connect(emu.port()).unwrap())
 }
 
-/// The player's `config.toml`, which is where a setting lives now there is no flag for it.
+/// The player's `config.toml`, which is where a setting lives now there is no flag for it,
+/// with Azahar's settings commented out as a player keeping Azahar's own has them: a table
+/// missing would be filled in, and there is no Azahar here to apply it to.
 fn settings_file(home: &Path, text: &str) {
     std::fs::create_dir_all(home).unwrap();
-    std::fs::write(home.join("config.toml"), text).unwrap();
+    let azahar: String = config::azahar()
+        .keys()
+        .map(|name| format!("# {name} = 0\n"))
+        .collect();
+    std::fs::write(
+        home.join("config.toml"),
+        format!("{text}\n[azahar]\n{azahar}"),
+    )
+    .unwrap();
 }
 
 #[test]
