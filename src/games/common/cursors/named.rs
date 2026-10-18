@@ -342,6 +342,7 @@ impl ListCursors {
                     for row in self
                         .panes
                         .alike(piece.root, piece.parent, button.is_empty())?
+                        .iter()
                     {
                         rows.insert((piece.root, row));
                     }

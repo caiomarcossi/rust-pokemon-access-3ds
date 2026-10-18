@@ -69,6 +69,10 @@ texture-list_button = training bags
 # The button that starts a regimen of Super Training once it is cleared, `stage_icon00_rock` and
 # every `stage_icon` after it: before then the game titles each (Khai's session of 2026-10-09).
 texture-stage_icon = start
+# The battle's move info screen, opened from its move list, draws each move's button as a
+# `waza_pos` picture with no words: no name of its own, said by its place (`picture-move`)
+# (or_move-learning, 2026-10-18).
+texture-waza_pos = {""}
 
 ## The ◀ and ▶ in the top bar's corners, which turn the PlayNav's pages and the sub-screen
 ## tutorial's: both draw `button.bclim`, and only their side of the screen tells them apart
@@ -82,6 +86,9 @@ top-bar-next = next
 # A button that is only the plate other buttons' words are written on, and a slot of the PC Box
 # holding no Pokémon.
 picture-empty = empty
+# A battle's button drawn with no words, by its place among those like it in reading order: the
+# move info's four bars, in the move list's order (Khai, 2026-10-18).
+picture-move = move { $number }
 # A Box mark set or not, which the game says only by drawing it solid: "●, on". The mark is its
 # sign, which the screen reader names.
 mark-on = { $mark }, on

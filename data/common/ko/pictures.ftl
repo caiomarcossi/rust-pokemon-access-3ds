@@ -50,6 +50,7 @@ top-bar-next = 다음
 ## What pa3ds says of a picture rather than what it is called
 
 picture-empty = 비어 있음
+picture-move = 기술 { $number }
 mark-on = { $mark }, 켜짐
 mark-off = { $mark }, 꺼짐
 slot-party = 지닌 포켓몬 { $number }

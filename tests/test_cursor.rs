@@ -730,6 +730,112 @@ impl Battle {
     }
 }
 
+/// `MoveInfo.PLACES`: where the move info draws its four moves' buttons.
+const MOVE_INFO_PLACES: [(f64, f64); 4] = [
+    (-25.0, -80.0),
+    (25.0, -80.0),
+    (-25.0, -100.0),
+    (25.0, -100.0),
+];
+
+/// `MoveInfo()`: the battle's move info: its four moves' buttons, each a group of a picture
+/// textured `waza_pos_00` and the empty pane the cursor rests on, in two rows of two, and no
+/// words (or_move-learning, 2026-10-18).
+fn move_info() -> Battle {
+    let memory = FakeMemory::new();
+    let classes = FakeClasses::new(memory.clone());
+    let picture_class = classes.add(lyt::PICTURE_CLASS);
+    let fake = FakeLayouts::new(&memory, &classes);
+    let (work, root) = fake.screen_with(COMMAND, false, false);
+    fake.project(work, 320.0);
+    let reader = reader_of(&fake, &memory);
+    let mut info = Battle {
+        memory,
+        picture_class,
+        fake,
+        root,
+        marker: 0,
+        reader,
+    };
+    info.name(root, "RootPane");
+    // Built out of reading order, as nothing promises the game builds them in it.
+    let mut panes: Vec<(&[u8], String)> = Vec::new();
+    for n in [3, 0, 2, 1] {
+        let at = MOVE_INFO_PLACES[n];
+        let group = COMMAND + 0x1000 * (n as i64 + 1);
+        info.button(
+            group,
+            &format!("g{n}"),
+            &format!("a{n}"),
+            at,
+            &format!("p{n}"),
+        );
+        put(&info.memory, group + 0x400 + lyt::X, &[at.0]);
+        put(&info.memory, group + 0x400 + lyt::Y, &[at.1]);
+        panes.extend([
+            (&b"pan1"[..], format!("g{n}")),
+            (&b"pan1"[..], format!("a{n}")),
+            (&b"pic1"[..], format!("p{n}")),
+        ]);
+    }
+    let (work, marker_root) = info.fake.screen_with(MARKER, false, false);
+    info.fake.project(work, 320.0);
+    info.marker = MARKER + 0x800;
+    info.fake
+        .pane_with_vtable(info.marker, marker_root, Some(info.picture_class));
+    info.size(20.0, 20.0);
+    info.r#move(MOVE_INFO_PLACES[0].0, MOVE_INFO_PLACES[0].1);
+    info.fake.track().unwrap();
+    let names: Vec<String> = (0..4).map(|n| format!("p{n}")).collect();
+    let mut sections = vec![
+        clyt::section(b"txl1", &clyt::names_table(&["waza_pos_00.bclim"])),
+        clyt::section(
+            b"mat1",
+            &clyt::materials(
+                &names
+                    .iter()
+                    .map(|name| clyt::material(name, &[0]))
+                    .collect::<Vec<_>>(),
+            ),
+        ),
+        clyt::pane(b"pan1", "RootPane"),
+    ];
+    for (kind, name) in &panes {
+        let material = if *kind == b"pic1" {
+            name[1..2].parse().unwrap()
+        } else {
+            0
+        };
+        sections.push(clyt::pane_with(kind, name, material));
+    }
+    info.memory.write(FILE, &layout_archive(sections));
+    let files = Rc::new(LayoutFiles::new(info.memory.clone()));
+    files.add_archive(FILE).unwrap();
+    info.reader = reader_with_files(&info.fake, &info.memory, &files);
+    info
+}
+
+/// The move info's four buttons, drawn as `waza_pos_00` alike, said "pos 00" each; they are
+/// the move list's four in its order (Khai, 2026-10-18).
+#[test]
+fn test_a_battle_button_of_no_words_is_said_by_its_place_among_those_like_it() {
+    let mut info = move_info();
+    let mut heard = info.heard();
+    for at in &MOVE_INFO_PLACES[1..] {
+        info.r#move(at.0, at.1);
+        heard.extend(info.heard());
+    }
+    assert_eq!(
+        heard,
+        said(&[
+            (&["move 1"], true),
+            (&["move 2"], false),
+            (&["move 3"], false),
+            (&["move 4"], false)
+        ])
+    );
+}
+
 /// The command menu draws FIGHT as a picture textured `fight_button.bclim` (spike 50).
 #[test]
 fn test_a_picture_cursor_on_a_buttons_pane_says_the_words_of_its_picture() {

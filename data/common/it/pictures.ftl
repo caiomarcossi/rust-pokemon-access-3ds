@@ -50,6 +50,7 @@ top-bar-next = successivo
 ## What pa3ds says of a picture rather than what it is called
 
 picture-empty = vuoto
+picture-move = Mossa { $number }
 mark-on = { $mark }, attivo
 mark-off = { $mark }, disattivo
 slot-party = Squadra { $number }

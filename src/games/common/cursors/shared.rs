@@ -272,21 +272,23 @@ impl Panes {
     /// x and of its size. The Poké Mart's rows share one window; each row of the PC Box's menu
     /// for a chosen Pokémon is a picture of its own (or/movie6_pc, 2026-09-27). Not in one
     /// `column`, the cells of a grid: the Pokéblock Case's (spike 196).
-    pub fn alike(&self, root: i64, row: i64, column: bool) -> Result<HashSet<i64>> {
+    pub fn alike(&self, root: i64, row: i64, column: bool) -> Result<py::PySet> {
         let tree = self.layouts.tree(root);
         let parent = self.parent(row)?;
         let ((x, _y), (width, height)) = (self.place(row)?, self.size(row)?);
-        let mut alike: HashSet<i64> = HashSet::from([row]);
+        let mut alike: Vec<i64> = Vec::new();
         for pane in self.layouts.children(root, parent) {
             if class_of(&tree, pane) == class_of(&tree, row)
                 && (!column || near(self.place(pane)?.0, x))
                 && near(self.size(pane)?.0, width)
                 && near(self.size(pane)?.1, height)
             {
-                alike.insert(pane);
+                alike.push(pane);
             }
         }
-        Ok(alike)
+        // `{row} | {...}`, a set iterated in its order: a move info button's number is its place
+        // among them (`PictureCursors.number`).
+        Ok(py::PySet::of([row]).union(&py::PySet::of(alike)))
     }
 
     /// Is this picture or window drawn with a texture its designer named a cursor? A pane

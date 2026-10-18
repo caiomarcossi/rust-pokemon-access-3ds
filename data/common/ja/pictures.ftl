@@ -50,6 +50,7 @@ top-bar-next = 次へ
 ## What pa3ds says of a picture rather than what it is called
 
 picture-empty = 空き
+picture-move = わざ{ $number }
 mark-on = { $mark }、オン
 mark-off = { $mark }、オフ
 slot-party = 手持ち{ $number }

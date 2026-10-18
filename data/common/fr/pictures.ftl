@@ -50,6 +50,7 @@ top-bar-next = suivant
 ## What pa3ds says of a picture rather than what it is called
 
 picture-empty = vide
+picture-move = Capacité { $number }
 mark-on = { $mark }, activé
 mark-off = { $mark }, désactivé
 slot-party = Équipe { $number }

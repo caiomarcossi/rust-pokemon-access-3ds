@@ -15,7 +15,7 @@ use crate::games::common::cursors::shared::{
 };
 use crate::games::common::layout::Layouts;
 use crate::games::common::lyt;
-use crate::games::common::pictures::EMPTY;
+use crate::games::common::pictures::{EMPTY, MOVE};
 use crate::games::common::screen::{ScreenText, distinct, in_rows};
 use crate::py::{self, Error, Result};
 
@@ -204,14 +204,49 @@ impl PictureCursors {
         if !inside.is_empty() {
             return Ok(inside);
         }
-        let Some(said) = self.panes.pictured(spot.root, group, on_screen, None)? else {
+        let Some(mut said) = self.panes.pictured(spot.root, group, on_screen, None)? else {
             return Ok(Vec::new());
         };
+        if said.is_empty() {
+            // A button drawn with no words: the move info's four, which only their places tell
+            // apart, in the move list's order (Khai, 2026-10-18, or_move-learning).
+            said = own(MOVE, &[("number", &self.number(spot.root, group)?)]);
+        }
         Ok(vec![ScreenText {
             top,
             root: spot.root,
             parent: group,
             ..ScreenText::new(group, said, false)
         }])
+    }
+
+    /// A button's place among the buttons drawn like it, in reading order, from 1.
+    fn number(&self, root: i64, group: i64) -> Result<i64> {
+        let tree = self.layouts.tree(root);
+        let place = |button: i64| -> Result<(i64, i64)> {
+            let (mut x, mut y) = self.panes.place(button)?;
+            let picture = self
+                .layouts
+                .children(root, button)
+                .into_iter()
+                .find(|pane| tree.get(pane).map(String::as_str) == Some(lyt::PICTURE_CLASS));
+            if let Some(picture) = picture {
+                (x, y) = (
+                    x + self.panes.place(picture)?.0,
+                    y + self.panes.place(picture)?.1,
+                );
+            }
+            Ok((-py::round(y)?, py::round(x)?))
+        };
+        let mut keyed: Vec<((i64, i64), i64)> = Vec::new();
+        for button in self.panes.alike(root, group, false)?.iter() {
+            keyed.push((place(button)?, button));
+        }
+        let sorted = py::sorted_by_lt(keyed, |a, b| a.0 < b.0);
+        let at = sorted
+            .iter()
+            .position(|&(_key, button)| button == group)
+            .ok_or_else(|| Error::new(py::Kind::ValueError, format!("{group} is not in list")))?;
+        Ok(at as i64 + 1)
     }
 }

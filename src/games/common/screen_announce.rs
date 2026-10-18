@@ -124,9 +124,16 @@ struct Gathering {
     lead: (i64, String),
     /// What the cursor said of the item, left out of its details.
     item: String,
+    /// The root of the layout the item is in.
+    menu: i64,
 }
 
 impl Gathering {
+    /// What the panels its moves change are kept under (`ScreenAnnouncer.detail_panels`).
+    fn kept(&self) -> (i64, i64) {
+        (self.cursor, self.menu)
+    }
+
     /// `_Gathering(cursor, quiet=quiet, count=count, held=held)`: `polls` at 0 and no panels or
     /// words said yet.
     fn new(cursor: i64, quiet: bool, count: String, held: bool) -> Self {
@@ -141,6 +148,7 @@ impl Gathering {
             held,
             lead: (0, String::new()),
             item: String::new(),
+            menu: 0,
         }
     }
 }
@@ -163,9 +171,12 @@ pub struct ScreenAnnouncer {
     /// place the poll after: the Bag's said "Pokéblock Kit" as it opened and again 0.2 s later
     /// (movie30).
     opened: IndexMap<i64, (String, i64)>,
-    /// Cursor -> every panel its moves have changed. Ember to Scratch changes only the
-    /// description, and the move's power and accuracy went unsaid.
-    detail_panels: IndexMap<i64, IndexSet<Panel>>,
+    /// (cursor, layout of its item) -> every panel its moves among that layout's items have
+    /// changed. Ember to Scratch changes only the description, and the move's power and accuracy
+    /// went unsaid. Kept a layout at a time: the battle's move to forget, changed as the cursor
+    /// went onto FORGET, was read again for "return" in the move list beside it
+    /// (or_move-learning, 2026-10-18).
+    detail_panels: IndexMap<(i64, i64), IndexSet<Panel>>,
     polls: i64,
     /// Words a cursor said lately -> the poll it said them at (`said_by_cursor`).
     cursor_said: IndexMap<String, i64>,
@@ -341,7 +352,7 @@ impl ScreenAnnouncer {
                 // stood, the Bag's panel, half written for the next item, read the next item's
                 // name with the last one's count (movie33). Its panels are kept.
                 self.detail_panels
-                    .entry(0)
+                    .entry((0, 0))
                     .or_default()
                     .extend(rewrite.panels.iter().copied());
                 (self.log)(&format!(
@@ -385,12 +396,13 @@ impl ScreenAnnouncer {
             if !item.opened {
                 if let Some(gathering) = &self.gathering {
                     self.detail_panels
-                        .entry(gathering.cursor)
+                        .entry(gathering.kept())
                         .or_default()
                         .extend(gathering.panels.iter().copied());
                 }
                 self.gathering = Some(Gathering {
                     item: text.clone(),
+                    menu: item.pieces[0].root,
                     ..Gathering::new(item.cursor, item.quiet, count, held)
                 });
             }
@@ -437,13 +449,23 @@ impl ScreenAnnouncer {
         let news = |piece: &ScreenText| {
             rowed.contains(&piece.root) || (asking.contains(&piece.root) && sentence(piece))
         };
+        // A panel framed in a menu's layout, holding none of what a cursor is over, is the
+        // screen's: the battle's move info and the move to forget, each drawn beside the buttons
+        // its cursor walks, were never heard (or_move-learning, 2026-10-18).
+        let over: HashSet<Panel> = under.iter().flatten().map(ScreenText::group).collect();
+        // `self._menus` as it stands from here on: nothing below changes it.
+        let menu_roots = self.menus.clone();
+        let menus = |piece: &ScreenText| {
+            menu_roots.contains(&piece.root)
+                && !listed.contains_key(&piece.root)
+                && !(piece.frame != 0 && !over.contains(&piece.group()))
+        };
         let heard: Vec<ScreenText> = texts
             .iter()
             .filter(|p| {
                 !labels.contains(&p.text)
                     && !cursored.contains(&p.r#box)
-                    && !(self.menus.contains(&p.root)
-                        && !listed.contains_key(&p.root)
+                    && !(menus(p)
                         && ((p.changed && !news(p))
                             || p.with_layout
                             || p.scrolled
@@ -464,7 +486,7 @@ impl ScreenAnnouncer {
             // summary once it showed Party 2's Pokémon (spike 129).
             if let Some(moved) = gathering.take() {
                 self.detail_panels
-                    .entry(moved.cursor)
+                    .entry(moved.kept())
                     .or_default()
                     .extend(moved.panels.iter().copied());
             }
@@ -496,10 +518,7 @@ impl ScreenAnnouncer {
             // opening, which is a screen of its own, nor words new to a menu, as a question is.
             let joining: Vec<ScreenText> = shown
                 .iter()
-                .filter(|p| {
-                    !p.with_layout
-                        && !(self.menus.contains(&p.root) && !listed.contains_key(&p.root))
-                })
+                .filter(|p| !p.with_layout && !menus(p))
                 .cloned()
                 .collect();
             gathered
@@ -536,12 +555,7 @@ impl ScreenAnnouncer {
         let [moved_on, ready] = [moved_on, ready].map(|pieces| {
             pieces
                 .into_iter()
-                .filter(|p| {
-                    !(p.with_layout
-                        && self.menus.contains(&p.root)
-                        && !listed.contains_key(&p.root)
-                        && !sentence(p))
-                })
+                .filter(|p| !(p.with_layout && menus(p) && !sentence(p)))
                 .collect::<Vec<ScreenText>>()
         });
         // Words arriving now are said with the rest of this poll, not taken for what moved on.
@@ -778,7 +792,7 @@ impl ScreenAnnouncer {
             return false;
         }
         let mut panels: IndexSet<Panel> = IndexSet::new();
-        if let Some(known) = self.detail_panels.get(&gathering.cursor) {
+        if let Some(known) = self.detail_panels.get(&gathering.kept()) {
             panels.extend(known.iter().copied());
         }
         panels.extend(gathering.panels.iter().copied());
@@ -804,7 +818,7 @@ impl ScreenAnnouncer {
         cursored: &HashSet<i64>,
     ) -> HashSet<i64> {
         self.gathering = None;
-        let kept = self.detail_panels.entry(gathering.cursor).or_default();
+        let kept = self.detail_panels.entry(gathering.kept()).or_default();
         kept.extend(gathering.panels.iter().copied());
         let mut panels = kept.clone();
         panels.extend(gathering.joined.iter().copied());
@@ -873,7 +887,7 @@ impl ScreenAnnouncer {
             }
         }
         for table in tables {
-            let group = distinct(by_rows(table));
+            let group = under_their_labels(distinct(by_rows(table)));
             if !group.is_empty() {
                 let mut text = join(&group, self.pauses);
                 if gathering.held && !gathering.count.is_empty() && texts.is_empty() {
@@ -1006,7 +1020,7 @@ impl ScreenAnnouncer {
         cursored: &HashSet<i64>,
     ) -> HashSet<i64> {
         self.rewrite = None;
-        let kept = self.detail_panels.entry(0).or_default();
+        let kept = self.detail_panels.entry((0, 0)).or_default();
         kept.extend(rewrite.panels.iter().copied());
         let mut panels = kept.clone();
         panels.extend(rewrite.joined.iter().copied());
@@ -1118,6 +1132,44 @@ fn without(piece: &ScreenText, item: &str) -> ScreenText {
         },
         _ => piece.clone(),
     }
+}
+
+/// Pieces read row by row, each row's first moved to just after the words above it where it
+/// is drawn under them, starting where they end with nothing else of their row over it: the
+/// battle's move panel writes PHYSICAL under CATEGORY, and POWER 80 on CATEGORY's row, "CATEGORY
+/// POWER 80 PHYSICAL" (or_move-learning, 2026-10-18).
+fn under_their_labels(pieces: Vec<ScreenText>) -> Vec<ScreenText> {
+    let mut rows: Vec<Vec<ScreenText>> = Vec::new();
+    for piece in pieces {
+        match rows.last_mut() {
+            Some(row) if side_by_side(&row[0], &piece) => row.push(piece),
+            _ => rows.push(vec![piece]),
+        }
+    }
+    for at in 1..rows.len() {
+        let (before, after) = rows.split_at_mut(at);
+        let (above, row) = (&mut before[at - 1], &mut after[0]);
+        let Some(first) = row.first().cloned() else {
+            continue;
+        };
+        if first.glyph <= 0.0 {
+            continue;
+        }
+        let label = above.iter().rposition(|p| p.right <= first.left + p.glyph);
+        let Some(label) = label else {
+            continue;
+        };
+        if label == above.len() - 1
+            || above
+                .iter()
+                .any(|p| p.left < first.right && p.right > first.left)
+        {
+            continue;
+        }
+        row.remove(0);
+        above.insert(label + 1, first);
+    }
+    rows.into_iter().flatten().collect()
 }
 
 /// Python's `min(a, b)` on floats: `a`, unless `b < a`, so a NaN stays where Python puts it.

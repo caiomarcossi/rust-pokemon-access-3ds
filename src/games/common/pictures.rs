@@ -45,8 +45,9 @@ pub const PANE: &str = "button-";
 pub const MODEL: &str = "model-";
 /// Textures named by how their name starts: Super Training's cleared regimens draw
 /// `stage_icon00_rock` and every `stage_icon` after it, each `texture-stage_icon` (Khai's session of
-/// 2026-10-09).
-pub const PREFIXED: [&str; 1] = ["stage_icon"];
+/// 2026-10-09); the battle's move info screen draws its move buttons `waza_pos_00` and on
+/// (or_move-learning, 2026-10-18).
+pub const PREFIXED: [&str; 2] = ["stage_icon", "waza_pos"];
 pub const PREVIOUS: &str = "top-bar-previous";
 /// What the ◀ and ▶ in the top bar's corners do: the PlayNav's pages and the sub-screen
 /// tutorial's. Both draw `button.bclim`, a ◀, and the right one is mirrored by its material, not
@@ -76,6 +77,9 @@ pub fn spellings() -> &'static IndexMap<&'static str, &'static str> {
 /// Said of a button that is only the plate other buttons' words are written on, and of a slot of
 /// the PC Box holding no Pokémon.
 pub const EMPTY: &str = "picture-empty";
+/// Said of a battle's button drawn with no words, by its place among those drawn like it: the
+/// move info's four moves.
+pub const MOVE: &str = "picture-move";
 
 /// The sign each mark's picture shows, which a screen reader names in the player's own words, as
 /// it does the gender signs. The game draws the marks and never names them.

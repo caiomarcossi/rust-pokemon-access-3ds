@@ -50,6 +50,7 @@ top-bar-next = weiter
 ## What pa3ds says of a picture rather than what it is called
 
 picture-empty = leer
+picture-move = Attacke { $number }
 mark-on = { $mark }, an
 mark-off = { $mark }, aus
 slot-party = Team { $number }

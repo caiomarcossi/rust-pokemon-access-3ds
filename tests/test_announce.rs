@@ -1508,6 +1508,126 @@ fn test_details_of_words_hanging_from_the_root_are_the_frames_their_changes_are_
     assert_eq!(screen.on(&all), ["Category Power 40 Accuracy 100"]);
 }
 
+/// The battle's move info, framed beside the buttons its cursor walks, in their layout: a
+/// category written under its label, the power beside its own (or_move-learning).
+fn battle_move_panel(r#move: &str, category: &str, power: &str, words: &str) -> Vec<ScreenText> {
+    [
+        piece(40, r#move, -108.0, 70.0, MENU),
+        piece(41, "CATEGORY", -150.0, 40.0, MENU),
+        piece(42, category, -100.0, 20.0, MENU),
+        piece(43, "POWER", 15.0, 40.0, MENU),
+        piece(44, power, 131.0, 40.0, MENU),
+        piece(45, "ACCURACY", 15.0, 20.0, MENU),
+        piece(46, "100", 124.0, 20.0, MENU),
+        piece(47, words, -157.0, -30.0, MENU),
+    ]
+    .into_iter()
+    .map(|p| ScreenText {
+        frame: 0x70,
+        panel: p.r#box,
+        ..p
+    })
+    .collect()
+}
+
+#[test]
+fn test_a_panel_framed_beside_a_menus_buttons_is_the_screens_and_its_items_details() {
+    // The battle's move info and its move to forget each frame a move's panel in the layout of
+    // the buttons the cursor walks, and as the menu's own it was never heard. The move info's
+    // panel changes only as A chooses the move a button stands for (or_move-learning,
+    // 2026-10-18).
+    let mut screen = Screen::new();
+    let under = |r#box: i64, text: &str| {
+        piece_kw(r#box, text, 0.0, -100.0, MENU, Kw { parent: 9, ..PLAIN })
+    };
+    let first = vec![under(1, "move 1")];
+    let shown = battle_move_panel("Waterfall", "PHYSICAL", "80", "Charges at the target.");
+    let said = screen.say(args(
+        &shown,
+        vec![CursorItem::new(0x0C, first.clone(), true)],
+        &cat(&[&first, &shown]),
+    ));
+    assert!(
+        said[0] == "move 1"
+            && said
+                .iter()
+                .any(|line| line.contains("Charges at the target.")),
+        "{said:?}"
+    );
+    let second = vec![under(1, "move 2")];
+    let mut heard = screen.say(args(
+        &[],
+        vec![CursorItem::new(0x0C, second.clone(), false)],
+        &cat(&[&second, &shown]),
+    ));
+    for _ in 0..DETAIL_POLLS + 1 {
+        heard.extend(screen.on(&cat(&[&second, &shown])));
+    }
+    let picked = battle_move_panel("Dragon Pulse", "SPECIAL", "85", "A shock wave.");
+    let rewritten: Vec<ScreenText> = picked
+        .iter()
+        .map(|p| ScreenText {
+            changed: true,
+            with_layout: false,
+            ..p.clone()
+        })
+        .collect();
+    heard.extend(screen.say(args(&rewritten, vec![], &cat(&[&second, &picked]))));
+    for _ in 0..DETAIL_POLLS {
+        heard.extend(screen.on(&cat(&[&second, &picked])));
+    }
+    assert_eq!(
+        heard,
+        [
+            "move 2",
+            "Dragon Pulse",
+            "CATEGORY, SPECIAL, POWER 85, ACCURACY 100, A shock wave."
+        ]
+    );
+}
+
+#[test]
+fn test_a_panel_one_layouts_moves_changed_is_not_read_for_another_layouts_items() {
+    // The battle's move to forget stays on screen as the cursor goes back to "return" in the
+    // move list beside it, and was read again there (or_move-learning, 2026-10-18).
+    let mut screen = Screen::new();
+    let forget = vec![piece_kw(
+        1,
+        "FORGET",
+        0.0,
+        -90.0,
+        PANEL,
+        Kw { parent: 9, ..PLAIN },
+    )];
+    let words = description("Doubles damage on a switch.");
+    let back = vec![piece_kw(
+        2,
+        "return",
+        120.0,
+        -100.0,
+        MENU,
+        Kw { parent: 8, ..PLAIN },
+    )];
+    screen.say(args(
+        &[changed(&words)],
+        vec![CursorItem::new(0x0C, forget.clone(), false)],
+        &cat(&[&forget, &one(&words)]),
+    ));
+    for _ in 0..DETAIL_POLLS {
+        screen.on(&cat(&[&forget, &one(&words)]));
+    }
+    let everything = cat(&[&forget, &back, &one(&words)]);
+    let mut said = screen.say(args(
+        &[],
+        vec![CursorItem::new(0x0C, back.clone(), false)],
+        &everything,
+    ));
+    for _ in 0..DETAIL_POLLS {
+        said.extend(screen.on(&everything));
+    }
+    assert_eq!(said, ["return"]);
+}
+
 #[test]
 fn test_details_are_read_only_from_the_layouts_this_move_changed() {
     // A summary keeps its other page's panel on screen as that page last showed it, and Zen

@@ -50,6 +50,7 @@ top-bar-next = siguiente
 ## What pa3ds says of a picture rather than what it is called
 
 picture-empty = vacío
+picture-move = Movimiento { $number }
 mark-on = { $mark }, activada
 mark-off = { $mark }, desactivada
 slot-party = Equipo { $number }

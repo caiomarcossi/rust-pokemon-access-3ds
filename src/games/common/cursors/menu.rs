@@ -98,7 +98,7 @@ impl MenuCursors {
             let mut rows: HashSet<(i64, i64)> = HashSet::new();
             for piece in &inside {
                 if piece.parent != piece.root {
-                    for row in self.panes.alike(piece.root, piece.parent, false)? {
+                    for row in self.panes.alike(piece.root, piece.parent, false)?.iter() {
                         rows.insert((piece.root, row));
                     }
                 }

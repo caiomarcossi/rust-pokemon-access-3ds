@@ -404,3 +404,11 @@ fn test_super_trainings_buttons_are_said_by_what_they_do() {
     // The same button once the regimen is cleared (2026-10-10).
     assert_eq!(words("stage_icon00_rock.bclim"), "start");
 }
+
+/// Each move's button on the battle's move info screen is a `waza_pos` picture the panel
+/// above names as it is chosen; by its name it was "pos 00", all four (or_move-learning).
+#[test]
+fn test_the_battles_move_info_buttons_are_nameless() {
+    assert_eq!(words("waza_pos_00.bclim"), "");
+    assert_eq!(words("waza_pos_03.bclim"), "");
+}

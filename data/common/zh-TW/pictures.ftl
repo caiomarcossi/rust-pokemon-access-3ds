@@ -50,6 +50,7 @@ top-bar-next = 下一頁
 ## What pa3ds says of a picture rather than what it is called
 
 picture-empty = 空
+picture-move = 招式{ $number }
 mark-on = { $mark }，開
 mark-off = { $mark }，關
 slot-party = 隊伍{ $number }
