@@ -626,7 +626,7 @@ fn session(
                     as Rc<dyn Fn(&[(i64, i64)], f64) -> Option<String>>
             }),
             tones: if settings.keys.is_some() && settings.ui.tones {
-                Some(Rc::new(Tones::new()))
+                Some(Rc::new(Tones::new(None, 1.0)))
             } else {
                 None
             },

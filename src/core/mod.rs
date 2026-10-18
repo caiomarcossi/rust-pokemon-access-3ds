@@ -36,3 +36,8 @@ pub mod tones;
 pub mod touch;
 
 pub mod instance;
+
+pub mod bcsar;
+pub mod clips;
+pub mod loudness;
+pub mod mixer;

@@ -4,8 +4,10 @@
 //! nothing, so a player cannot tell moving through sea from standing at the map's edge; touch
 //! mode's targets are spread over a screen the player cannot see (Orion, 2026-10-01). A short tone
 //! at each move says where the cursor now is: its pitch from 880 Hz at the top to 220 Hz at the
-//! bottom, an octave a half of the height, and its balance from the left ear to the right.
-//! `[pa3ds.ui] tones` turns them off.
+//! bottom, an octave a half of the height, and its balance from the left ear to the right. They
+//! follow how loud Azahar plays the game (`loudness`), times `[pa3ds.audio] tones`: 1 as loud as
+//! they always were beside the game at Azahar's full volume, above 1 louder, 0 none (Orion,
+//! 2026-10-18).
 //!
 //! Touch mode's targets jump, and each is a tone (`play`). The map's cursor glides on every frame
 //! for as long as the circle pad is held, and is read every screen poll, a fifth of a second
@@ -22,6 +24,7 @@
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread::JoinHandle;
 
+use crate::core::loudness::Loudness;
 use crate::py::{self, Error, Kind, Result};
 
 pub const RATE: i64 = 22050;
@@ -98,8 +101,10 @@ impl Voice {
         self.left = frames(GLIDE + HOLD);
     }
 
-    /// The next `count` frames, 16-bit stereo.
-    pub fn render(&mut self, count: i64) -> Result<Vec<u8>> {
+    /// The next `count` frames, 16-bit stereo, `gain` times `VOLUME` loud.
+    ///
+    /// Python's `gain` defaults to 1.
+    pub fn render(&mut self, count: i64, gain: f64) -> Result<Vec<u8>> {
         let mut out: Vec<u8> = Vec::new();
         let step = 1.0 / (RATE as f64 * FADE);
         for _ in 0..count {
@@ -119,7 +124,10 @@ impl Voice {
                     + 2.0 * std::f64::consts::PI * HIGH * (LOW / HIGH).powf(down) / RATE as f64,
                 2.0 * std::f64::consts::PI,
             );
-            let value = 32767.0 * VOLUME * self.level * self.phase.sin();
+            // `max(-32767.0, min(32767.0, value))`, a NaN held at the top as Python holds it.
+            let value = 32767.0 * VOLUME * gain * self.level * self.phase.sin();
+            let value = if value < 32767.0 { value } else { 32767.0 };
+            let value = if value > -32767.0 { value } else { -32767.0 };
             out.extend_from_slice(&short(py::round(
                 value * (across * std::f64::consts::PI / 2.0).cos(),
             )?)?);
@@ -196,6 +204,8 @@ impl Event {
 struct Shared {
     voice: Mutex<Voice>,
     wake: Event,
+    loudness: Option<Loudness>,
+    level: f64,
 }
 
 fn locked(voice: &Mutex<Voice>) -> MutexGuard<'_, Voice> {
@@ -210,11 +220,14 @@ pub struct Tones {
 }
 
 impl Tones {
-    pub fn new() -> Self {
+    /// `loudness` how loud Azahar plays, None as at its full volume; `level` the setting.
+    pub fn new(loudness: Option<Loudness>, level: f64) -> Self {
         Tones {
             shared: Arc::new(Shared {
                 voice: Mutex::new(Voice::new()),
                 wake: Event::new(),
+                loudness,
+                level,
             }),
             thread: Mutex::new(None),
         }
@@ -252,7 +265,7 @@ impl Tones {
 
 impl Default for Tones {
     fn default() -> Self {
-        Tones::new()
+        Tones::new(None, 1.0)
     }
 }
 
@@ -265,13 +278,18 @@ fn run(shared: &Shared) {
         shared.wake.wait();
         shared.wake.clear();
         loop {
+            let gain = shared.level
+                * shared
+                    .loudness
+                    .as_ref()
+                    .map_or(1.0, |loudness| loudness.azahar());
             let data = {
                 let mut voice = locked(&shared.voice);
                 if !voice.sounding() {
                     break;
                 }
                 // Python's thread ends here with the exception, as it would on a NaN.
-                match voice.render(BUFFER) {
+                match voice.render(BUFFER, gain) {
                     Ok(data) => data,
                     Err(_) => return,
                 }

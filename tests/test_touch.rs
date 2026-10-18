@@ -96,8 +96,41 @@ fn tone(across: f64, down: f64) -> Vec<u8> {
     let mut voice = tones::Voice::new();
     voice.play(across, down);
     voice
-        .render(crate::py::round(tones::RATE as f64 * tones::LENGTH).unwrap())
+        .render(
+            crate::py::round(tones::RATE as f64 * tones::LENGTH).unwrap(),
+            1.0,
+        )
         .unwrap()
+}
+
+/// `[pa3ds.audio] tones` above 1 is louder (Orion, 2026-10-18); far above, the wave stops at
+/// full scale instead of wrapping into noise.
+#[test]
+fn test_a_tone_is_as_loud_as_asked_and_never_wraps_round() {
+    fn peak(gain: f64) -> i64 {
+        let mut voice = tones::Voice::new();
+        voice.play(0.5, 0.5);
+        let data = voice
+            .render(
+                crate::py::round(tones::RATE as f64 * tones::LENGTH).unwrap(),
+                gain,
+            )
+            .unwrap();
+        (0..data.len())
+            .step_by(2)
+            .map(|at| s16_at(&data, at).abs())
+            .max()
+            .unwrap()
+    }
+
+    let ratio = peak(1.5) as f64 / peak(1.0) as f64;
+    assert!(1.4 < ratio && ratio < 1.6, "{ratio}");
+    assert_eq!(peak(0.0), 0);
+    // full scale, panned to the middle
+    assert_eq!(
+        peak(20.0),
+        crate::py::round(32767.0 * (std::f64::consts::PI / 4.0).cos()).unwrap()
+    );
 }
 
 /// The left channel of rendered 16-bit stereo frames.
@@ -155,7 +188,10 @@ fn test_a_glide_slides_from_its_start_to_its_end() {
     let mut voice = tones::Voice::new();
     voice.glide((0.5, 0.0), (0.5, 1.0));
     let data = voice
-        .render(crate::py::round(tones::RATE as f64 * tones::GLIDE).unwrap())
+        .render(
+            crate::py::round(tones::RATE as f64 * tones::GLIDE).unwrap(),
+            1.0,
+        )
         .unwrap();
     let lefts = lefts(&data);
     let tenth = lefts.len() / 10;
@@ -176,7 +212,7 @@ fn test_slides_a_poll_apart_sound_without_a_break() {
     let mut data: Vec<u8> = Vec::new();
     for i in 0..4 {
         voice.glide((0.1 * i as f64, 0.5), (0.1 * (i + 1) as f64, 0.5));
-        data.extend(voice.render(poll).unwrap());
+        data.extend(voice.render(poll, 1.0).unwrap());
     }
     let lefts = lefts(&data);
     let cycle = crate::py::round(tones::RATE as f64 / tones::LOW).unwrap() as usize;
@@ -186,7 +222,10 @@ fn test_slides_a_poll_apart_sound_without_a_break() {
         .collect();
     assert!(*loudest.iter().min().unwrap() as f64 > 0.8 * 32767.0 * tones::VOLUME);
     voice
-        .render(crate::py::round(tones::RATE as f64 * (tones::HOLD + tones::FADE)).unwrap())
+        .render(
+            crate::py::round(tones::RATE as f64 * (tones::HOLD + tones::FADE)).unwrap(),
+            1.0,
+        )
         .unwrap();
     assert!(!voice.sounding());
 }
