@@ -24,10 +24,12 @@ The reference ports show every rule below in use: `src/core/rpc.rs`, `src/core/m
   made `pub`, a missing accessor), make the smallest change and list it in your report.
 - `src/py.rs` holds what Python does differently from Rust (below). Do not edit it; ask for what
   it lacks in your report, and write a private helper meanwhile.
-- A data file is read at run time from `data/` (`core::keyfile::data_path`), which
-  `tools/sync.py mirror` keeps as upstream's: the words pa3ds says of its own, the shipped names
-  and the scenes, a game a folder and a language a folder inside it (ADR-0040). A build run under
-  `target\` reads the checkout's, and the release zip carries the folder beside `pa3ds.exe`.
+- `data/` is upstream's, which `tools/sync.py mirror` keeps: a game a folder and a language a
+  folder inside it (ADR-0040). Its `.ftl` files, everything a translator edits, are read at run
+  time (`core::keyfile::data_path`): a build run under `target\` reads the checkout's, and the
+  release zip carries them beside `pa3ds.exe`. Anything else, a `.toml` table that is no
+  translation, is built in by the reader that reads it, with `include_str!` (#16): its `shipped`
+  is the table, and its `load` takes the table's text where the Python's takes its path.
 
 ## Names and documentation
 
@@ -282,5 +284,13 @@ Kept here so the next porter, and anyone reading a tape that differs, knows what
   on the thread that asks for it and handed over. Under `cargo test` a thread that has put no
   words in place reads Omega Ruby's English, where pytest's autouse fixture puts them in place
   before each test.
+- **Tables built in** (#16). `scenes.toml` and `footsteps.toml` are part of `pa3ds.exe`, where
+  the Python reads them from `data/` as it starts: a player editing a copy beside the port's
+  `pa3ds.exe` changes nothing, and a table edited in the checkout takes a rebuild. Tuning them by
+  ear stays upstream's.
+- **pa3ds's own sounds.** The footsteps' random volume, `random.uniform`, draws on the standard
+  library's randomly keyed hasher, not Python's generator; `wave.Error` and `EOFError` are
+  ValueErrors, which `footsteps::load` catches with an OSError. A sound plays only where pa3ds
+  takes keys, so no tape hears one.
 - **What the tapes cannot check.** A movie presses no pa3ds keys, so the navigation keys are
   checked by their tests alone; and no tape so far holds a reader's failure.

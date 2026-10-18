@@ -15,7 +15,9 @@ use crate::core::speech::Speech;
 use crate::core::words::{self, ENGLISH, Words};
 use crate::games::common::announce::{Announcements, Speaker};
 use crate::games::common::dialogue::{PageShown, Shown};
-use crate::games::common::scenes::{Described, FILE, Recall, Scene, Scenes, last_page, load};
+use crate::games::common::scenes::{
+    Described, FILE, Recall, Scene, Scenes, last_page, load, shipped,
+};
 use crate::games::sm::field;
 use crate::py::{Log, Result};
 
@@ -154,7 +156,7 @@ fn described(
         recall,
     )?);
     let scenes = load(
-        &game.join(FILE),
+        &fs::read_to_string(game.join(FILE)).unwrap(),
         &|archive: &str, file: i64, number: i64| {
             Ok(found_lines
                 .get(&(archive.to_string(), file, number))
@@ -314,7 +316,7 @@ fn test_a_beat_the_language_lacks_is_said_in_english() -> Result<()> {
     let words = nothing_described()?;
     let mut said: Vec<String> = Vec::new();
     let scenes = load(
-        &game.join(FILE),
+        &fs::read_to_string(game.join(FILE)).unwrap(),
         &|_: &str, _: i64, _: i64| Ok(None),
         &|message: &str| words.known(message),
         &quiet(),
@@ -612,7 +614,7 @@ fn test_a_scene_of_suns_is_said_over_the_demo_it_plays_as() -> Result<()> {
     use_words(ENGLISH, &field::names())?;
     let words = nothing_described()?;
     let scenes = load(
-        &field::names().join(FILE),
+        shipped(&field::names()),
         &|_: &str, _: i64, _: i64| Ok(None),
         &|message: &str| words.known(message),
         &log,

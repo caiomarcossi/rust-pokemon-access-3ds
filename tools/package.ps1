@@ -6,9 +6,12 @@ Build pa3ds for release and pack it into one zip a player unpacks and runs.
 Builds the release, checks the executable starts, and writes
 target\package\pa3ds-<version>-windows.zip holding:
 
-  pa3ds.exe          the program, with Prism (which reaches the player's screen reader) built in
-  data\              what pa3ds says of its own, the names it ships and the scenes it describes,
-                     a folder a game and a language a folder inside it, read beside pa3ds.exe
+  pa3ds.exe          the program, with Prism (which reaches the player's screen reader) built in,
+                     and the tables of data\ that are no translation: when each scene is said and
+                     which footsteps play where
+  data\              the .ftl files alone, which a translator edits: what pa3ds says of its own,
+                     the names it ships and its descriptions of scenes, a folder a game and a
+                     language a folder inside it, read beside pa3ds.exe
   README.md          the player's manual, its first page
   manual\            the rest of the manual: keys, settings, languages
   CHANGELOG.md       what changed for players in each release
@@ -62,7 +65,13 @@ $licenses = Join-Path $stage "licenses"
 New-Item -ItemType Directory -Force $licenses | Out-Null
 
 Copy-Item (Join-Path $release "pa3ds.exe") $stage
-Copy-Item -Recurse data (Join-Path $stage "data")
+# Every .ftl, each at its path under data\; the rest of data\ is built into pa3ds.exe (#16).
+$data = (Resolve-Path data).Path
+foreach ($file in Get-ChildItem -Recurse -File -Filter *.ftl $data) {
+    $target = Join-Path (Join-Path $stage "data") $file.FullName.Substring($data.Length + 1)
+    New-Item -ItemType Directory -Force (Split-Path -Parent $target) | Out-Null
+    Copy-Item $file.FullName $target
+}
 Copy-Item -Recurse manual (Join-Path $stage "manual")
 Copy-Item README.md, CHANGELOG.md $stage
 Copy-Item LICENSE (Join-Path $licenses "pa3ds.txt")

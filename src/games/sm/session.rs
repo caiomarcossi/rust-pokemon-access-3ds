@@ -150,7 +150,7 @@ pub fn start(rpc: Rc<dyn Rpc>, speech: Rc<Speech>, setup: Setup) -> Result<Sessi
             move |message: &str| described.known(message)
         };
         scenes::load(
-            &field::names().join(scenes::FILE),
+            scenes::shipped(&field::names()),
             &|_: &str, _: i64, _: i64| Ok(None),
             &known,
             &setup.log,

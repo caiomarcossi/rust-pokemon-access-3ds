@@ -39,7 +39,7 @@ use crate::games::common::layout::Layouts;
 use crate::games::common::layout_file::{LayoutFile, LayoutFiles};
 use crate::games::common::pictures::CAUGHT;
 use crate::games::common::scenes::{
-    Described, FILE as SCENES_FILE, Lines, Recall, Scenes, Word, load as load_scenes,
+    Described, Lines, Recall, Scenes, Word, load as load_scenes, shipped as scenes_shipped,
 };
 use crate::games::common::screen::{Pictures, ScreenPoll, ScreenText, ScreenTextReader};
 use crate::games::common::screen_announce::ScreenAnnouncer;
@@ -698,7 +698,7 @@ impl Gen6Profile {
                 move |message: &str| described.known(message)
             };
             let loaded = load_scenes(
-                &(game.data)().join(SCENES_FILE),
+                scenes_shipped(&(game.data)()),
                 &*line_of(text.clone()),
                 &known,
                 &log,

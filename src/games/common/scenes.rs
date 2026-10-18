@@ -37,6 +37,10 @@
 //! The Python's `Scenes` keeps the callable it says each beat with, the announcements'
 //! `narrate`; here the profile owns the announcements through `&mut`, so it hands the callable to
 //! each method that may say a beat instead (`Say`).
+//!
+//! The port builds each game's `scenes.toml` in (pa3ds/rust-pokemon-access-3ds#16): it is no
+//! translation, and only the translations ship as files, the `scenes.ftl` among them. `shipped`
+//! is the table, and `load` reads a table's text where the Python reads its file.
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
@@ -54,6 +58,16 @@ use crate::py::{self, Kind, Log, Result};
 
 /// A game's scenes and when each beat of them is said, every language's (`data/<game>/`).
 pub const FILE: &str = "scenes.toml";
+
+/// The `scenes.toml` built in for the game whose data folder is `data`, by the folder's name, or
+/// "" for a game with none.
+pub fn shipped(data: &Path) -> &'static str {
+    match data.file_name().and_then(|name| name.to_str()) {
+        Some("oras") => include_str!("../../../data/oras/scenes.toml"),
+        Some("sm") => include_str!("../../../data/sm/scenes.toml"),
+        _ => "",
+    }
+}
 /// The one control sequence inside a page that inserts no words (`games.common.text`).
 pub const COLOUR: i64 = 0xFF00;
 
@@ -166,7 +180,7 @@ pub type Lines = Rc<dyn Fn(&str, i64, i64) -> Result<Option<Vec<u8>>>>;
 /// `word(kind, number)`: the game's own word for what a description names, or None.
 pub type Word = Rc<dyn Fn(&str, i64) -> Option<String>>;
 
-/// The scenes of a game's `scenes.toml`, each with the line it follows out of the ROM, and
+/// The scenes of a game's `scenes.toml`, its `text`, each with the line it follows out of the ROM, and
 /// each beat by its words' id, `known` where the words and every name they hold out of the ROM
 /// are there (`Described.known`). A line is `story:402:30`, the story text's file 402 and its
 /// line 30, or
@@ -177,14 +191,14 @@ pub type Word = Rc<dyn Fn(&str, i64) -> Option<String>>;
 /// left out, and logged. A scene with a `title` is the running `title`'s alone: one version's,
 /// said at a line in a zone the other version shares.
 pub fn load(
-    path: &Path,
+    text: &str,
     line: Line,
     known: &dyn Fn(&str) -> bool,
     log: &Log,
     title: Option<i64>,
 ) -> Result<Vec<Scene>> {
     let mut scenes: Vec<Scene> = Vec::new();
-    for table in tables(toml::read(path).get("scene")) {
+    for table in tables(toml::parse(text).0.get("scene")) {
         // `isinstance(only, int)`, a bool among them, as `int_of` reads it.
         if title.is_some_and(|title| int_of(table.get("title")).is_some_and(|only| only != title)) {
             continue;
