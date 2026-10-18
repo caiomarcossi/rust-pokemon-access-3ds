@@ -205,6 +205,48 @@ fn test_a_setting_of_the_wrong_kind_is_logged_and_left_at_its_default() {
     );
 }
 
+/// Until 2026-10-18 `[pa3ds.ui] tones` was on or off; `[pa3ds.audio]` takes how loud, and a
+/// player's false is filled in there as 0 and their footsteps as they had them.
+#[test]
+fn test_the_tones_turned_off_stay_off_as_they_move_to_the_audio_table() {
+    let tmp_path = TmpPath::new();
+    let home = tmp_path.join("home");
+    fs::create_dir(&home).unwrap();
+    fs::write(
+        home.join("config.toml"),
+        "[pa3ds.ui]\ntones = false\nfootsteps = 0.5\n",
+    )
+    .unwrap();
+    let none = tmp_path.join("none.ini");
+    let settings = config::prepare(Some(&home), Some(&none), true, false).unwrap();
+    assert_eq!(
+        settings.audio,
+        config::Audio {
+            tones: 0.0,
+            footsteps: 0.5
+        }
+    );
+    assert!(
+        settings
+            .notes
+            .iter()
+            .any(|note| note.contains("[pa3ds.ui] tones is [pa3ds.audio] tones now")),
+        "{:?}",
+        settings.notes
+    );
+    let text = read_text(&home.join("config.toml"));
+    assert!(text.contains("\ntones = 0\n") && text.contains("\nfootsteps = 0.5\n"));
+    assert_eq!(
+        config::prepare(Some(&tmp_path.join("new")), Some(&none), true, false)
+            .unwrap()
+            .audio,
+        config::Audio {
+            tones: 1.0,
+            footsteps: 1.0
+        }
+    );
+}
+
 #[test]
 fn test_an_extra_is_on_only_when_asked_for() {
     let tmp_path = TmpPath::new();

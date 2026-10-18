@@ -10,6 +10,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use crate::core::clips::Clips;
 use crate::core::config::{Extras, Navigation, Ui};
 use crate::core::discovery::{Discovery, Found, Walk};
 use crate::core::heaps::{Block, Heaps};
@@ -91,7 +92,8 @@ pub struct Session {
 /// and the settings its readers read by (`app.Settings`).
 ///
 /// Python's defaults are `DEFAULT_BINDINGS`, `Ui()`, `Navigation()`, `Extras()`, `"en"`, no
-/// `names_home`, no `rom`, no `emulator`, a `sweep_chunk` of 512, and no `tap` or `tones`:
+/// `names_home`, no `rom`, no `emulator`, a `sweep_chunk` of 512, and no `tap`, `tones` or
+/// `clips`:
 /// [`Setup::new`] has them, and the rest is set with `Setup { language, ..Setup::new(process, log) }`.
 #[derive(Clone)]
 pub struct Setup {
@@ -113,8 +115,11 @@ pub struct Setup {
     /// A press dragged along a path over so many seconds (`TouchServer.slide`).
     pub slide: Option<Rc<dyn Fn(&[(i64, i64)], f64) -> Option<String>>>,
     /// The tones that say where a cursor is (`pa3ds.core.tones`); None where pa3ds takes no keys,
-    /// so a replay makes no sound, or where `[pa3ds.ui] tones` is off.
+    /// so a replay makes no sound, or where `[pa3ds.audio] tones` is 0.
     pub tones: Option<Rc<Tones>>,
+    /// Where the game's own sounds pa3ds plays go, its footsteps (`pa3ds.core.clips`); None where
+    /// pa3ds takes no keys, as in a replay, or where `[pa3ds.audio] footsteps` is 0.
+    pub clips: Option<Rc<Clips>>,
 }
 
 impl Setup {
@@ -134,6 +139,7 @@ impl Setup {
             tap: None,
             slide: None,
             tones: None,
+            clips: None,
         }
     }
 

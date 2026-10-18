@@ -340,6 +340,7 @@ fn run(args: Args, hooks: &Hooks) -> py::Result<()> {
         Settings {
             tick: 1.0 / settings.general.poll_rate,
             ui,
+            audio: settings.audio.clone(),
             navigation: settings.navigation.clone(),
             extras: settings.extras.clone(),
             keys: bindings,

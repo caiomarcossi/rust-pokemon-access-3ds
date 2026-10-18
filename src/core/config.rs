@@ -10,6 +10,9 @@
 //! - **`[pa3ds]`**: whether pa3ds answers its keys, how often it reads the game, and the folder of a
 //!   portable Azahar, whose `user\config` holds the `qt-config.ini` patched rather than AppData's.
 //! - **`[pa3ds.ui]`**: how menus, lists and screens are said.
+//! - **`[pa3ds.audio]`**: how loud pa3ds's own sounds are, its tones and footsteps, 1 as loud as
+//!   the game and Azahar play it; until 2026-10-18 the tones were on or off under `[pa3ds.ui]`,
+//!   and a player's value there is carried over (`MOVED`).
 //! - **`[pa3ds.navigation]`**: how the map's list and the way to a thing are said.
 //! - **`[pa3ds.extras]`**: what the game shows in a way pa3ds cannot read, said from its numbers.
 //! - **`[azahar]`**: Azahar's own settings, written into its `qt-config.ini` whenever pa3ds
@@ -97,27 +100,13 @@ impl Table for General {
 }
 
 /// `[pa3ds.ui]`: how menus, lists and screens are said.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Ui {
     pub pauses: bool,
     pub interrupt: bool,
     pub unfocused: bool,
-    pub tones: bool,
     pub descriptions: bool,
     pub language: String,
-}
-
-impl Default for Ui {
-    fn default() -> Self {
-        Ui {
-            pauses: false,
-            interrupt: false,
-            unfocused: false,
-            tones: true,
-            descriptions: false,
-            language: String::new(),
-        }
-    }
 }
 
 impl Table for Ui {
@@ -126,7 +115,6 @@ impl Table for Ui {
             ("pauses", Value::Bool(self.pauses)),
             ("interrupt", Value::Bool(self.interrupt)),
             ("unfocused", Value::Bool(self.unfocused)),
-            ("tones", Value::Bool(self.tones)),
             ("descriptions", Value::Bool(self.descriptions)),
             ("language", Value::Str(self.language.clone())),
         ]
@@ -137,9 +125,47 @@ impl Table for Ui {
             ("pauses", Value::Bool(value)) => self.pauses = value,
             ("interrupt", Value::Bool(value)) => self.interrupt = value,
             ("unfocused", Value::Bool(value)) => self.unfocused = value,
-            ("tones", Value::Bool(value)) => self.tones = value,
             ("descriptions", Value::Bool(value)) => self.descriptions = value,
             ("language", Value::Str(value)) => self.language = value,
+            _ => {}
+        }
+    }
+}
+
+/// `[pa3ds.audio]`: how loud pa3ds's own sounds are beside the game's, 1 as loud as the game
+/// (Orion, 2026-10-18).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Audio {
+    pub tones: f64,
+    pub footsteps: f64,
+}
+
+impl Default for Audio {
+    fn default() -> Self {
+        Audio {
+            tones: 1.0,
+            footsteps: 1.0,
+        }
+    }
+}
+
+impl Table for Audio {
+    fn fields(&self) -> Vec<(&'static str, Value)> {
+        vec![
+            ("tones", Value::Float(self.tones)),
+            ("footsteps", Value::Float(self.footsteps)),
+        ]
+    }
+
+    fn set(&mut self, setting: &str, value: Value) {
+        let value = match value {
+            Value::Int(value) => value as f64,
+            Value::Float(value) => value,
+            _ => return,
+        };
+        match setting {
+            "tones" => self.tones = value,
+            "footsteps" => self.footsteps = value,
             _ => {}
         }
     }
@@ -219,13 +245,27 @@ impl Table for Extras {
 
 /// The tables of the file, in the order it writes them: each is a settings dataclass, and
 /// `defaults` is what `kind()` holds.
-pub const TABLES: [&str; 4] = ["pa3ds", "pa3ds.ui", "pa3ds.navigation", "pa3ds.extras"];
+pub const TABLES: [&str; 5] = [
+    "pa3ds",
+    "pa3ds.ui",
+    "pa3ds.audio",
+    "pa3ds.navigation",
+    "pa3ds.extras",
+];
+/// Settings that moved to another table, (old table, setting) -> new table, with
+/// `[pa3ds.audio]` (2026-10-18): the player's value is carried into the new line as it is filled
+/// in, tones turned off as 0 (`fill`).
+pub const MOVED: [((&str, &str), &str); 2] = [
+    (("pa3ds.ui", "tones"), "pa3ds.audio"),
+    (("pa3ds.ui", "footsteps"), "pa3ds.audio"),
+];
 
 /// `kind().fields()` for the dataclass `TABLES` names.
 fn defaults(name: &str) -> Vec<(&'static str, Value)> {
     match name {
         "pa3ds" => General::default().fields(),
         "pa3ds.ui" => Ui::default().fields(),
+        "pa3ds.audio" => Audio::default().fields(),
         "pa3ds.navigation" => Navigation::default().fields(),
         "pa3ds.extras" => Extras::default().fields(),
         _ => Vec::new(),
@@ -233,7 +273,7 @@ fn defaults(name: &str) -> Vec<(&'static str, Value)> {
 }
 
 /// What each setting does, as the file's comment above it says it.
-pub const EXPLAINED: [(&str, &str); 17] = [
+pub const EXPLAINED: [(&str, &str); 18] = [
     (
         "pa3ds.keys",
         "answer pa3ds's keys and bind Azahar's buttons, as keys.toml says",
@@ -265,11 +305,6 @@ pub const EXPLAINED: [(&str, &str); 17] = [
          quiet then, but for its own keys and messages",
     ),
     (
-        "pa3ds.ui.tones",
-        "a short tone as a map's cursor or touch mode moves, higher the further up and panned the \
-         further right, to say where the cursor is",
-    ),
-    (
         "pa3ds.ui.descriptions",
         "describe the scenes the game shows without words, as Groudon wakes: pa3ds's own words, \
          said after the line each scene follows; for the scenes described so far, in English",
@@ -281,6 +316,18 @@ pub const EXPLAINED: [(&str, &str); 17] = [
          reads from the save; set it where that is wrong, as for a fan translation over another \
          language, and in Sun and Moon, whose save pa3ds cannot read, where it is the game's \
          language too",
+    ),
+    (
+        "pa3ds.audio.tones",
+        "how loud the short tone is as a map's cursor or touch mode moves, higher the further up \
+         and panned the further right, to say where the cursor is: 1 as loud as the game, 0.5 \
+         half as loud, 1.5 louder, 0 none",
+    ),
+    (
+        "pa3ds.audio.footsteps",
+        "how loud pa3ds's own footsteps are on the ground where the game plays none, as streets, \
+         floors and caves: 1 as loud as the game would play them, 0.5 half as loud, 1.5 louder, 0 \
+         none",
     ),
     (
         "pa3ds.navigation.positions",
@@ -396,6 +443,7 @@ pub fn azahar() -> IndexMap<&'static str, (Value, &'static str)> {
 pub struct Config {
     pub general: General,
     pub ui: Ui,
+    pub audio: Audio,
     pub navigation: Navigation,
     pub extras: Extras,
     pub notes: Vec<String>,
@@ -485,6 +533,7 @@ fn setting_lines(name: &str, value_: &Value, said: &str) -> Vec<String> {
 /// the name of each added. One commented out is not lacking: the player turned it off.
 pub fn fill(text: &str) -> Result<(String, Vec<String>)> {
     let have = toml::offered(text);
+    let parsed = toml::parse(text).0;
     let mut text = text.to_string();
     let mut added: Vec<String> = Vec::new();
     for table in TABLES.into_iter().chain([EMULATOR_SECTION]) {
@@ -495,6 +544,7 @@ pub fn fill(text: &str) -> Result<(String, Vec<String>)> {
         let lacking: Vec<(&str, Value, &str)> = settings(table)?
             .into_iter()
             .filter(|(name, _, _)| !named.contains(name))
+            .map(|(name, value, said)| (name, carried(&parsed, table, name, value), said))
             .collect();
         if !lacking.is_empty() {
             let lines: Vec<String> = lacking
@@ -510,6 +560,33 @@ pub fn fill(text: &str) -> Result<(String, Vec<String>)> {
         }
     }
     Ok((text, added))
+}
+
+/// A setting's value as the file had it before it moved here (`MOVED`), or its default: a
+/// number as it was, on or off as 1 or 0.
+fn carried(
+    parsed: &IndexMap<String, ::toml::Value>,
+    table: &str,
+    setting: &str,
+    default: Value,
+) -> Value {
+    let old = MOVED
+        .iter()
+        .find(|&&((_, name), new)| new == table && name == setting)
+        .map(|&((old_table, _), _)| old_table);
+    let Some(old) = old else {
+        return default;
+    };
+    let mut found = parsed.clone();
+    for key in old.split('.') {
+        found = toml::table(found.get(key));
+    }
+    match found.get(setting) {
+        Some(::toml::Value::Boolean(value)) => Value::Float(if *value { 1.0 } else { 0.0 }),
+        Some(::toml::Value::Integer(value)) => Value::Float(*value as f64),
+        Some(::toml::Value::Float(value)) => Value::Float(*value),
+        _ => default,
+    }
 }
 
 /// What a setting does, as a sentence in comment lines short enough for a terminal.
@@ -653,6 +730,16 @@ fn table<T: Table>(
         if TABLES.contains(&format!("{name}.{setting}").as_str()) {
             continue;
         }
+        if let Some((_, new)) = MOVED
+            .iter()
+            .find(|((old, moved), _)| *old == name && *moved == setting.as_str())
+        {
+            notes.push(format!(
+                "{}: [{name}] {setting} is [{new}] {setting} now",
+                py::path_str(path)
+            ));
+            continue;
+        }
         match fields.iter().find(|(field, _)| *field == setting.as_str()) {
             None => notes.push(format!(
                 "{}: [{name}] has no setting called {}",
@@ -748,7 +835,7 @@ pub fn prepare(
         if !TABLES.contains(&name.as_str()) && name != EMULATOR_SECTION {
             notes.push(format!(
                 "{}: there is no [{name}] table, only [pa3ds], [pa3ds.ui], \
-                 [pa3ds.navigation], [pa3ds.extras] and [azahar]",
+                 [pa3ds.audio], [pa3ds.navigation], [pa3ds.extras] and [azahar]",
                 py::path_str(&path)
             ));
         }
@@ -767,6 +854,23 @@ pub fn prepare(
         general.poll_rate = rate;
     }
     let ui: Ui = table(&toml::table(ours.get("ui")), "pa3ds.ui", &path, &mut notes);
+    let mut audio: Audio = table(
+        &toml::table(ours.get("audio")),
+        "pa3ds.audio",
+        &path,
+        &mut notes,
+    );
+    if audio.tones < 0.0 || audio.footsteps < 0.0 {
+        notes.push(format!(
+            "{}: [pa3ds.audio] cannot be below 0, playing at 1",
+            py::path_str(&path)
+        ));
+        let kept = |each: f64| if each >= 0.0 { each } else { 1.0 };
+        audio = Audio {
+            tones: kept(audio.tones),
+            footsteps: kept(audio.footsteps),
+        };
+    }
     let navigation: Navigation = table(
         &toml::table(ours.get("navigation")),
         "pa3ds.navigation",
@@ -823,6 +927,7 @@ pub fn prepare(
     Ok(Config {
         general,
         ui,
+        audio,
         navigation,
         extras,
         notes,

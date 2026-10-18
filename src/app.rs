@@ -14,11 +14,13 @@ use std::sync::{Arc, mpsc};
 
 use indexmap::IndexMap;
 
-use crate::core::config::{Extras, Navigation, Ui};
+use crate::core::clips::Clips;
+use crate::core::config::{Audio, Extras, Navigation, Ui};
 use crate::core::discovery::{CODE_SPAN, Discovery};
 use crate::core::heaps::Block;
-use crate::core::keyfile::data_path;
+use crate::core::keyfile::{data_path, emulator_config};
 use crate::core::keys::Hotkeys;
+use crate::core::loudness::Loudness;
 use crate::core::memory::{self, Memory};
 use crate::core::rpc::{Process, Rpc};
 use crate::core::rtti::demangle;
@@ -73,6 +75,8 @@ pub struct Settings {
     /// asked for, since a screen reader reads "Torchic, ♂, L, 5" more clumsily than "Torchic ♂ L 5"
     /// (the user, 2026-09-14).
     pub ui: Ui,
+    /// How loud pa3ds's own tones and footsteps are (`[pa3ds.audio]`).
+    pub audio: Audio,
     /// How the map's list and the way to a thing are said (`[pa3ds.navigation]`).
     pub navigation: Navigation,
     /// What the game shows in a way pa3ds cannot read, said from its numbers
@@ -118,6 +122,7 @@ impl Default for Settings {
             screen_tick: 0.2,
             wait: 1.0,
             ui: Ui::default(),
+            audio: Audio::default(),
             navigation: Navigation::default(),
             extras: Extras::default(),
             language: "en".to_string(),
@@ -599,6 +604,23 @@ fn session(
             }
         })
     };
+    // pa3ds's own sounds, as loud as Azahar plays the game; none in a replay, which takes no keys.
+    let audio = if settings.keys.is_some() {
+        settings.audio.clone()
+    } else {
+        Audio {
+            tones: 0.0,
+            footsteps: 0.0,
+        }
+    };
+    let loudness = if audio.tones > 0.0 || audio.footsteps > 0.0 {
+        Some(Loudness::new(&match &settings.emulator {
+            Some(emulator) => emulator.clone(),
+            None => emulator_config("")?,
+        }))
+    } else {
+        None
+    };
     let session = start(
         game,
         rpc.clone(),
@@ -625,10 +647,17 @@ fn session(
                 Rc::new(move |path: &[(i64, i64)], seconds: f64| touching.slide(path, seconds))
                     as Rc<dyn Fn(&[(i64, i64)], f64) -> Option<String>>
             }),
-            tones: if settings.keys.is_some() && settings.ui.tones {
-                Some(Rc::new(Tones::new(None, 1.0)))
-            } else {
-                None
+            tones: match &loudness {
+                Some(loudness) if audio.tones > 0.0 => {
+                    Some(Rc::new(Tones::new(Some(loudness.clone()), audio.tones)))
+                }
+                _ => None,
+            },
+            clips: match &loudness {
+                Some(loudness) if audio.footsteps > 0.0 => {
+                    Some(Rc::new(Clips::new(loudness.clone(), audio.footsteps)))
+                }
+                _ => None,
             },
             ..Setup::new(process.clone(), log.clone())
         },
