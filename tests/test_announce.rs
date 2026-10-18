@@ -574,6 +574,56 @@ fn test_a_letter_typed_into_a_name_is_said_alone() {
 }
 
 #[test]
+fn test_a_letter_typed_from_a_keyboard_is_said_though_its_key_was_just_said() {
+    // X's name entry: the keyboard's cursor says each key, and the letter it types was left out
+    // as words the cursor had just said, alone, "R", and in the name read with the next move,
+    // "R a" for "R a i" (x_movie1_opening, #12).
+    let mut screen = Screen::new();
+    let name = 0x30;
+    let key = |letter: &str| vec![piece(10, letter, 0.0, -60.0, MENU)];
+    let moved = |letter: &str| vec![CursorItem::new(0x0C, key(letter), false)];
+    assert_eq!(screen.say(args(&[], moved("R"), &key("R"))), ["R"]);
+    let mut typed = vec![piece_kw(
+        1,
+        "R",
+        -90.0,
+        100.0,
+        PANEL,
+        Kw {
+            parent: name,
+            ..PLAIN
+        },
+    )];
+    assert_eq!(
+        screen.say(args(&typed, moved("r"), &cat(&[&key("r"), &typed]))),
+        ["r", "R"]
+    );
+    for (index, letter) in ["a", "i"].into_iter().enumerate() {
+        let index = index as i64 + 2;
+        let mut heard = screen.say(args(&[], moved(letter), &cat(&[&key(letter), &typed])));
+        let new = piece_kw(
+            index,
+            letter,
+            -90.0 + 18.0 * (index - 1) as f64,
+            100.0,
+            PANEL,
+            Kw {
+                parent: name,
+                with_layout: false,
+                ..PLAIN
+            },
+        );
+        typed.push(new.clone());
+        heard.extend(screen.say(args(&[new], vec![], &cat(&[&key(letter), &typed]))));
+        for _ in 0..DETAIL_POLLS {
+            heard.extend(screen.on(&cat(&[&key(letter), &typed])));
+        }
+        let name: Vec<&str> = typed.iter().map(|p| p.text.as_str()).collect();
+        assert_eq!(heard, [letter.to_string(), name.join(" ")], "{letter}");
+    }
+}
+
+#[test]
 fn test_words_arriving_in_a_screen_up_a_while_are_not_held() {
     // movie3.ctm's name entry said "w e e" for two quick letters, held while the name box, up for
     // seconds, still had words being written.

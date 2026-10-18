@@ -657,8 +657,11 @@ impl ScreenAnnouncer {
             said.extend(pieces.iter().map(|p| p.r#box));
             self.words_said
                 .extend(pieces.iter().map(|p| (p.r#box, (p.root, p.text.clone()))));
-            // Nor the item a cursor has just said: the Bag's panel names it as it opens.
-            if !self.fresh(&text, root) || self.said_by_cursor(&text) {
+            // Nor the item a cursor has just said: the Bag's panel names it as it opens. A letter
+            // typed is said, though its key was (`letter`).
+            if !self.fresh(&text, root)
+                || (self.said_by_cursor(&text) && !pieces.iter().all(letter))
+            {
                 (self.log)(&format!(
                     "screen shown, just said elsewhere: {text}  [layout {root:#x}]"
                 ));
@@ -858,7 +861,8 @@ impl ScreenAnnouncer {
             }
             // Nor the item the cursor said, nor a title still saying what was last said of it:
             // the Bag's pocket and item were the first words of every item's details,
-            // "MEDICINE Full Heal", then the count and the description (Khai, 2026-10-18).
+            // "MEDICINE Full Heal", then the count and the description (Khai, 2026-10-18). A
+            // name's letter is never the item, though its key was the cursor's (`letter`).
             let pieces: Vec<ScreenText> = on_screen
                 .iter()
                 .filter(|p| {
@@ -866,7 +870,7 @@ impl ScreenAnnouncer {
                         && !labels.contains(&p.text)
                         && !gathering.said.contains(&p.r#box)
                         && !cursored.contains(&p.r#box)
-                        && p.text != gathering.item
+                        && (p.text != gathering.item || letter(p))
                         && !self.heading(p, on_screen)
                 })
                 .map(|p| without(p, &gathering.item))
@@ -1385,6 +1389,13 @@ pub const SENTENCE_WORDS: usize = 4;
 /// Is this a sentence rather than a label, a value or an item's name?
 fn sentence(piece: &ScreenText) -> bool {
     py::split(&piece.text).len() >= SENTENCE_WORDS
+}
+
+/// Is this one letter of words being spelled, as a name is typed a letter a TextBox
+/// (`say_what_is_left`)? Never words a cursor said again: the keyboard's cursor says the key a
+/// letter is typed with, and the letter went unsaid, alone and in the name (#12).
+fn letter(piece: &ScreenText) -> bool {
+    piece.text.chars().count() == 1
 }
 
 fn rows(
