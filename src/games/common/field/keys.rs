@@ -142,7 +142,7 @@ fn keys(pairs: &[(&str, &str)]) -> IndexMap<String, String> {
 /// last spoke. Shift and P is the way there with HMs (2026-09-28). R says the player's side of a
 /// battle again and shift and R the enemy's (2026-09-29). The apostrophe steps on to touch mode
 /// after direction mode (Orion, 2026-10-02; it was shift and T for a day), where J and L walk the
-/// bottom screen's buttons, I and O a row at a time, K says the one chosen again and Enter taps it.
+/// bottom screen's buttons, I and O a row at a time, K says the one chosen again and U taps it.
 /// C says the player's cell and alt and P stops guiding (2026-10-10), and shift and C the cells of
 /// the thing chosen (Orion, 2026-10-15). All of these are the player's to change in
 /// `<pa3ds>\user\keys.toml`.
