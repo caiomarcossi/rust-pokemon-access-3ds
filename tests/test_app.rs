@@ -747,6 +747,9 @@ impl Profile for Patched {
     fn poll_guidance(&self) -> Result<()> {
         self.real.poll_guidance()
     }
+    fn poll_footsteps(&self) -> Result<()> {
+        self.real.poll_footsteps()
+    }
     fn poll_pointers(&self) -> Result<()> {
         self.real.poll_pointers()
     }

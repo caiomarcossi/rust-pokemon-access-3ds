@@ -57,6 +57,9 @@ pub struct RomLayout {
     /// The map chunks' files, LZ11-compressed, by the number a map's field map lists each chunk
     /// under, where a game has streets placed on rails in them (`Streets`); None in one without.
     pub chunks: Option<String>,
+    /// The sound archive, whose footsteps pa3ds plays where the game plays none (`footsteps`);
+    /// None in a game whose footsteps are not measured.
+    pub sounds: Option<String>,
     /// The story text archive a language, whose file a zone-table row's +0x06 gives is what the
     /// zone's script shows, its plates' words among it (`plates.plate_names`); none in a game
     /// whose plates are not read.
@@ -186,6 +189,7 @@ impl RomLayout {
             characters: IndexMap::new(),
             protagonists: false,
             chunks: None,
+            sounds: None,
             story: IndexMap::new(),
             street_marks: None,
             street_names: None,

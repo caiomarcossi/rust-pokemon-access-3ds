@@ -26,6 +26,7 @@ mod test_discovery;
 mod test_distribution;
 mod test_dowsing;
 mod test_field;
+mod test_footsteps;
 mod test_gdb;
 mod test_heaps;
 mod test_instance;

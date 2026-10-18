@@ -952,6 +952,7 @@ fn session(
                 }
             }
             poll_dialogue()?;
+            profile.poll_footsteps()?;
             profile.poll_guidance()?;
             profile.poll_pointers()?;
             if profile.poll_menus(&mut discovery)? {

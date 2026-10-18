@@ -326,6 +326,8 @@ pub struct FieldReader {
     drawn: i64,
     /// Where the game's things' and Pokémon's models start (`Game.models`).
     model_starts: Option<(i64, i64)>,
+    /// Where the player's model says what they move as (`Game.form`).
+    form: Option<i64>,
     /// What each kind of use tile is: the game's own word where it has one, the PC's out of
     /// the ROM (`archives.PC_LINES`), ahead of the shipped table's.
     words: IndexMap<i64, String>,
@@ -460,6 +462,7 @@ impl FieldReader {
             outdoors: text.outdoors.clone(),
             drawn: game.drawn,
             model_starts: game.models,
+            form: game.form,
             words,
             furniture_words: furniture.cloned().unwrap_or_default(),
             shared: text.shared.clone(),
@@ -582,6 +585,11 @@ impl FieldReader {
         Ok(())
     }
 
+    /// The player's move model as the last poll found it, not looked at since.
+    pub fn player(&self) -> Option<i64> {
+        self.player.get()
+    }
+
     /// The player's zone and cell, or None while nothing says where they are: before the first
     /// sweep, and on the title screen, where the pool holds the save's models with no zone data
     /// behind them.
@@ -602,13 +610,23 @@ impl FieldReader {
             Some(zone) => zone,
             None => mmodel::zone_of(&head)?,
         };
-        let bike = mmodel::on_bike(&head)?;
+        let form = match self.form {
+            None => None,
+            Some(at) => Some(
+                *self
+                    .memory
+                    .read(player + at, 1)?
+                    .first()
+                    .ok_or_else(|| py::Error::index("index out of range"))? as i64,
+            ),
+        };
+        let bike = mmodel::on_bike(&head, form)?;
         if !mmodel::on_rail(&head)? {
             *self.rails.corridor.borrow_mut() = None;
             return Ok(Some(Field {
                 on_bike: bike,
                 place: Some(mmodel::place(&head)?),
-                surfing: mmodel::surfing(&head)?,
+                surfing: mmodel::surfing(&head, form)?,
                 height: self.height.get(),
                 ..Field::new(zone, cell)
             }));

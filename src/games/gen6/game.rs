@@ -271,6 +271,9 @@ pub struct Game {
     /// of their zone has, is an invisible gate: not listed, and in the way. X's Santalune Gym has
     /// five behind Viola, and AZ's room five (spike 223).
     pub gates: bool,
+    /// Where the player's move model says what they move as, on foot, on the bike or on a
+    /// Pokémon (`mmodel.FORM`), or None where it was not read: X's.
+    pub form: Option<i64>,
 }
 
 impl Game {
@@ -314,6 +317,7 @@ impl Game {
             memories: None,
             strands: 0,
             gates: false,
+            form: None,
         }
     }
 }

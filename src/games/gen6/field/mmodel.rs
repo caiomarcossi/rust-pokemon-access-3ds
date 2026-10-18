@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! +0x04 u32 zero while the slot is free; for the player, bit 0x200000 (+0x06's 0x20) is set
-//!           while they ride the Mach Bike (spike 158)
+//!           while they ride the Mach Bike (spike 158) or a Pokémon on the sea (spike 227)
 //! +0x0c u32 zone << 16 | the entity index in that zone's table; the player is index 0xff
 //! +0x10 u32 flag << 16 | character — who or what it is: Norman 0x13f, Wally 0xb4, Birch 0x13e,
 //!           and 0x2000 for a Poké Ball lying on the ground
@@ -26,6 +26,8 @@
 //!           (omega_ruby_strength-boulders.ctm, 2026-10-01)
 //! +0x898 u32 the sprite it is drawn with: the character again for most, and for a work object
 //!           the sprite a script filled it with (spike 89); +0x890 in X and Y (spike 100)
+//! +0xa2c u8 for the player, what they move as: 1 on foot, 2 on the bike, 0 on a Pokémon on
+//!           the sea or under it (spike 227)
 //! ```
 //!
 //! A sweep for the class finds **32 of them, 0xab0 apart**: a fixed pool the game fills as a zone
@@ -57,7 +59,12 @@ pub const IN_USE: i64 = 0x04;
 pub const RIDING: i64 = 0x06;
 pub const BIKE: i64 = 0x20;
 pub const MOUNT: i64 = 0x07;
+/// +0x07's bit on the usual ride on the water, which X's riders are told apart by (`on_bike`).
 pub const SURFING: i64 = 0x10;
+/// What the player moves as, a u8: 1 on foot, `FORM_BIKE` on the bike, 0 on a Pokémon on the
+/// sea or under it, Gyarados, Kyogre or Sharpedo alike (spike 227).
+pub const FORM: i64 = 0xA2C;
+pub const FORM_BIKE: i64 = 2;
 pub const ZONE: i64 = 0x0C;
 pub const CHARACTER: i64 = 0x10;
 pub const CELL_X: i64 = 0x94;
@@ -181,21 +188,27 @@ pub fn footprint(head: &[u8], cell: (i64, i64)) -> Result<((i64, i64), (i64, i64
     ))
 }
 
-/// Whether the player is riding the bike. In Jagged Pass +0x06 read 0x01 on foot and 0x21
-/// from the moment the player got on to the moment they got off, twice, the pictures showing
-/// them riding between; +0x07 went 0 to 3 and +0xa2c 1 to 2 with it, and nothing in the
-/// player's work changed (omega_ruby_bike.ctm, spike 158). Surfing sets the same bit, and
-/// +0x07 to 0x13: on Route 122 the log said "on the bike" from the moment the player went onto
-/// the water to the moment they came off it (omega_ruby_surf3.ctm, spike 162).
-pub fn on_bike(head: &[u8]) -> Result<bool> {
-    Ok(byte(head, RIDING)? & BIKE != 0 && byte(head, MOUNT)? & SURFING == 0)
+/// Whether the player is riding the bike, `form` the model's byte at `FORM`, or None in a
+/// game it is not known in. In Jagged Pass +0x06 read 0x01 on foot and 0x21 from the moment the
+/// player got on to the moment they got off, twice, the pictures showing them riding between,
+/// and +0xa2c 1 to 2 with it (omega_ruby_bike.ctm, spike 158). Riding a Pokémon on the sea or
+/// under it sets the same bit, and +0x07 tells only the usual ride on the water from the bike,
+/// 0x13 where the bike has 0x03, and not Sharpedo, Kyogre or anyone under the water, who have
+/// 0x03 too (spike 227); X's are told apart by it still, their +0xa2c not having been read.
+pub fn on_bike(head: &[u8], form: Option<i64>) -> Result<bool> {
+    let riding = byte(head, RIDING)? & BIKE != 0;
+    match form {
+        None => Ok(riding && byte(head, MOUNT)? & SURFING == 0),
+        Some(form) => Ok(riding && form == FORM_BIKE),
+    }
 }
 
-/// Whether the player is surfing: +0x07 has 0x10 on the water (`on_bike`). On Routes 132 and
+/// Whether the player rides a Pokémon, on the sea or under it (`on_bike`). On Routes 132 and
 /// 133 +0x06 read 0x21 surfing and 0x01 once a current had carried the player onto a sandbar
-/// (movie43, spike 208).
-pub fn surfing(head: &[u8]) -> Result<bool> {
-    Ok(byte(head, RIDING)? & BIKE != 0 && byte(head, MOUNT)? & SURFING != 0)
+/// (movie43, spike 208). Only the bike is ruled out, not a Pokémon's 0 asked for: just after a
+/// save is loaded on the water, +0xa2c reads 1 until the ride's animation begins (spike 227).
+pub fn surfing(head: &[u8], form: Option<i64>) -> Result<bool> {
+    Ok(byte(head, RIDING)? & BIKE != 0 && !on_bike(head, form)?)
 }
 
 /// Which zone the slot was built in.

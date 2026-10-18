@@ -1,0 +1,35 @@
+# pa3ds's own footsteps in Omega Ruby and Alpha Sapphire, under [pa3ds.audio] footsteps: what it
+# plays at each step, walking and running, and every few cells surfing and diving, by the
+# ground under the player (ADR-0025, `games.gen6.field.footsteps`). This file is every
+# language's.
+#
+# A ground is `silent`, every ground the game plays no footstep on, or a kind of cell, the top
+# byte of its word in hex: "0x24" a cave floor, "0x00" streets and floors, "0x42" the seaweed
+# under the sea (docs/findings/footsteps.md has them all). A kind wins over `silent`, and plays where the
+# game plays a footstep of its own too, over it. What is played is one sound or several at once:
+# the game's own by its name in the ROM's sound archive, "SEQ_SE_FT_03", read out of the
+# player's ROM, or a WAV of pa3ds's own in data/sounds, which every game shares, "seaweed.wav",
+# 16-bit; each as it is, or as { sound = "water.wav", volume = 0.5 }, half as loud.
+#
+# On a Pokémon on the sea or under it, `[surf]` and `[dive]` play every so many cells carried,
+# `every`, and at once on a ground with a sound unlike the last one's, as the player swims into
+# it.
+
+[walk]
+silent = ["SEQ_SE_FT_03"]
+
+[run]
+silent = ["SEQ_SE_RU_03"]
+
+# Off for now (Orion, 2026-10-18): the game plays sounds of its own on Sharpedo on the water,
+# FLD_167 about once a second, and in the seaweed, DV_01, which these doubled. As Orion chose
+# them by ear: surfing, the game's sound of something stirring in the sea; diving, the sound it
+# plays once as the player arrives under the sea; the seaweed, its own with the grass's step.
+# [surf]
+# every = 4.5
+# silent = {sound = "SEQ_SE_FLD_167", volume = 0.8}
+#
+# [dive]
+# every = 3
+# silent = {sound = "SEQ_SE_FLD_142", volume = 0.5}
+# "0x42" = [{sound = "SEQ_SE_DV_01", volume = 1.2}, {sound = "SEQ_SE_FT_04", volume = 0.7}]

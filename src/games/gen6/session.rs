@@ -6,6 +6,7 @@ use std::rc::Rc;
 
 use indexmap::IndexMap;
 
+use crate::core::clips::sounds;
 use crate::core::discovery::{Found, HEAP_SPAN};
 use crate::core::heaps::{Block, Heaps};
 use crate::core::memory::{Cache, PageCache};
@@ -16,6 +17,7 @@ use crate::core::speech::Speech;
 use crate::core::window;
 use crate::core::words::{self, Words};
 use crate::games::common::session::{Profile, Session, Setup};
+use crate::games::gen6::field::footsteps;
 use crate::games::gen6::game::Game;
 use crate::games::gen6::profile::{Gen6Profile, Options, REQUIRED};
 use crate::games::gen6::rom::archives::{GameText, no_text};
@@ -74,6 +76,26 @@ pub fn start(
         )?
         .map(Rc::new);
     }
+    let mut clips = setup.clips.clone();
+    let (mut found, mut swims) = (IndexMap::new(), IndexMap::new());
+    if let (Some(playing), Some(archive)) = (&clips, &game.rom.sounds)
+        && !archive.is_empty()
+    {
+        (found, swims) = footsteps::load(
+            footsteps::FILE,
+            footsteps::shipped(&(game.data)()),
+            setup.rom_path()?.as_deref(),
+            archive,
+            &sounds()?,
+            &setup.log,
+        )?;
+        for (name, sound) in &found {
+            playing.add(name, sound.clone());
+        }
+    }
+    if found.is_empty() {
+        clips = None;
+    }
     let profile = Rc::new(Gen6Profile::new(
         memory.clone(),
         Rc::new(ClassNames::new(memory.clone(), code)),
@@ -92,6 +114,8 @@ pub fn start(
             tap: setup.tap.clone(),
             slide: setup.slide.clone(),
             tones: setup.tones.clone(),
+            clips,
+            swims: Some(swims),
             title: Some(setup.process.title_id),
         },
     ));

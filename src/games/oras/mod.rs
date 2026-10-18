@@ -139,6 +139,8 @@ pub fn characters() -> &'static IndexMap<i64, i64> {
 /// The map chunks, a file a chunk by the number the field map lists it under: Route 109's four
 /// round the beach are files 43 to 46, each the cell table the game loads (spike 136).
 pub const MAP_CHUNKS: &str = "a/0/3/9";
+/// Every sound the game plays, named, in both games (spike 225).
+pub const SOUND_ARCHIVE: &str = "sound/sango_sound.bcsar";
 /// The matrices, a file a matrix by the number a zone-table row's +0x04 gives: Route 126's is 28, 8
 /// chunks by 8, and the water under it 31, 3 by 3 (spike 165).
 pub const MATRICES: &str = "a/0/4/0";
@@ -434,6 +436,7 @@ pub fn rom() -> &'static RomLayout {
         towns: Some(towns().clone()),
         characters: characters().clone(),
         protagonists: true,
+        sounds: Some(SOUND_ARCHIVE.to_string()),
         story: crate::games::gen6::rom::layout::owned(story_archives()),
         moves: Some(MOVE_NAMES),
         map_chunks: Some(MAP_CHUNKS.to_string()),
@@ -819,6 +822,7 @@ pub fn game() -> &'static Game {
         standings: Some(Standings::of),
         conditions: Some(Conditions::of),
         memories: Some(Memories::of),
+        form: Some(mmodel::FORM),
         ..Game::new(
             "Omega Ruby and Alpha Sapphire",
             [OMEGA_RUBY, ALPHA_SAPPHIRE],

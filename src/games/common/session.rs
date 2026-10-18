@@ -45,6 +45,8 @@ pub trait Profile {
 
     fn poll_guidance(&self) -> Result<()>;
 
+    fn poll_footsteps(&self) -> Result<()>;
+
     fn poll_pointers(&self) -> Result<()>;
 
     fn poll_renames(&self) -> Result<()>;

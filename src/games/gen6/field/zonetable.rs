@@ -226,6 +226,19 @@ impl ZoneTable {
         }))
     }
 
+    /// Whether a zone is under the sea, its kind `UNDERWATER`: read out of the ROM's table,
+    /// or the game's where there is no ROM; False with neither.
+    pub fn underwater(&self, zone: i64) -> Result<bool> {
+        let at = zone * INFO_SIZE + INFO_KIND;
+        if self.rom.len() as i64 >= at + 2 {
+            return Ok(u16(&self.rom, at)? == UNDERWATER);
+        }
+        Ok(match self.row(zone)? {
+            None => false,
+            Some(row) => u16(&row, INFO_KIND)? == UNDERWATER,
+        })
+    }
+
     /// Whether two zones are on one matrix, walked between with no warp: Route 119's foot and
     /// its top, which the game calls by one name (spike 159).
     pub fn one_matrix(&self, here: i64, there: i64) -> Result<bool> {

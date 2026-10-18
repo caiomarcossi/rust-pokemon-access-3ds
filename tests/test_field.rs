@@ -786,6 +786,28 @@ fn test_the_player_is_on_the_bike_while_the_models_riding_bit_is_set() -> Result
     Ok(())
 }
 
+/// kyogre.ctm, sharpedo.ctm and movie43 (spike 227): +0x06 and +0x07 read 0x21 and 0x03 on the
+/// Mach Bike, on Sharpedo and on Kyogre alike, and +0xa2c 2 on the bike, 0 on a Pokémon. Just
+/// after a save is loaded on the water it reads 1, as on foot.
+#[test]
+fn test_the_bike_is_told_from_a_pokemon_by_what_the_player_moves_as() -> Result<()> {
+    let riding = |six: u8, seven: u8| {
+        let mut head = vec![0u8; mmodel::RIDING as usize];
+        head.extend([six, seven]);
+        head.extend(vec![0u8; (mmodel::HEAD - mmodel::RIDING - 2) as usize]);
+        head
+    };
+    let head = riding(0x21, 0x03);
+    assert!(mmodel::on_bike(&head, Some(2))? && !mmodel::surfing(&head, Some(2))?);
+    assert!(!mmodel::on_bike(&head, Some(0))? && mmodel::surfing(&head, Some(0))?);
+    assert!(mmodel::surfing(&head, Some(1))?);
+    // X's, by +0x07 alone
+    assert!(mmodel::on_bike(&head, None)?);
+    let head = riding(0x01, 0x00);
+    assert!(!mmodel::on_bike(&head, Some(1))? && !mmodel::surfing(&head, Some(1))?);
+    Ok(())
+}
+
 #[test]
 fn test_nothing_is_said_before_a_sweep() -> Result<()> {
     assert!(Town::new().reader.poll()?.is_none());

@@ -694,6 +694,11 @@ impl Profile for SunProfile {
     }
 
     /// Sample where each named cursor stands, every tick while there is one, as in ORAS. Sun's
+    /// Nothing: Sun's footsteps are not measured (`gen6.field.footsteps`).
+    fn poll_footsteps(&self) -> Result<()> {
+        Ok(())
+    }
+
     /// cursor reader has no layout files, so it knows no named cursor and nothing is read.
     fn poll_pointers(&self) -> Result<()> {
         if !self.cursors.borrow().sampling() {

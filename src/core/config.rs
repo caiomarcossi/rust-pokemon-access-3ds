@@ -639,7 +639,7 @@ fn value_of(value: &::toml::Value) -> Option<Value> {
 }
 
 /// `repr(value)` of what a TOML parser handed back to Python: a `dict`, a `list`, a `datetime`.
-fn repr_of(value: &::toml::Value) -> String {
+pub(crate) fn repr_of(value: &::toml::Value) -> String {
     match value {
         ::toml::Value::String(value) => py::repr(value),
         ::toml::Value::Integer(value) => value.to_string(),

@@ -13,6 +13,7 @@ use std::rc::Rc;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::core::binary::u32;
+use crate::core::clips::Clips;
 use crate::core::config::{Extras, Navigation, Ui};
 use crate::core::discovery::{Discovery, Found, HEAP_SPAN, LINEAR_SPAN, within};
 use crate::core::memory::{Cache, Memory, phase};
@@ -49,6 +50,7 @@ use crate::games::common::touch::{
 use crate::games::common::{lyt, msgwin, pokemon, strbuf};
 use crate::games::gen6::apps::{BATTLE, DEMOS, FIELD, MANAGER_CLASS, RunningApp};
 use crate::games::gen6::field::dowsing::Lights;
+use crate::games::gen6::field::footsteps::Footsteps;
 use crate::games::gen6::field::reader::{FieldReader, MOVE_MODEL_CLASS};
 use crate::games::gen6::field::speaker::SpeakerReader;
 use crate::games::gen6::field::{camera, mapblock, talk};
@@ -146,6 +148,9 @@ pub struct Options {
     pub tap: Option<Tap>,
     pub slide: Option<touch::Slide>,
     pub tones: Option<Rc<Tones>>,
+    pub clips: Option<Rc<Clips>>,
+    /// None is `{}`.
+    pub swims: Option<IndexMap<String, f64>>,
     pub title: Option<i64>,
 }
 
@@ -209,6 +214,7 @@ pub struct Gen6Profile {
     pub party_icons: Rc<RefCell<PartyIcons>>,
     pub standings: Option<Rc<RefCell<dyn StandingsReader>>>,
     pub map_cursor: RefCell<MapCursor>,
+    pub footsteps: Option<RefCell<Footsteps>>,
     /// Python's `self.touch` is the navigator's `touch`, which it owns here.
     pub navigator: RefCell<Navigator>,
     log: Log,
@@ -303,6 +309,8 @@ impl Gen6Profile {
             tap,
             slide,
             tones,
+            clips,
+            swims,
             title,
         } = options;
         let cache = memory;
@@ -613,6 +621,19 @@ impl Gen6Profile {
                 }) as crate::games::gen6::screens::mapcursor::Tone
             }),
         );
+        // A footstep of pa3ds's own where the game plays none, at the game's own moment, and a
+        // sound every few cells swum (ADR-0025, spike 227).
+        let footsteps = clips.map(|clips| {
+            let reader = field.borrow().clone();
+            let grounds = clips.names();
+            RefCell::new(Footsteps::with(
+                memory.clone(),
+                Rc::new(move |name: &str| clips.play(name)),
+                grounds,
+                &swims.unwrap_or_default(),
+                Rc::new(move |zone: i64| reader.zones.underwater(zone)),
+            ))
+        });
         let navigator = Navigator::new(
             Rc::new(OwnApps {
                 field: field.clone(),
@@ -763,6 +784,7 @@ impl Gen6Profile {
             party_icons,
             standings,
             map_cursor: RefCell::new(map_cursor),
+            footsteps,
             navigator: RefCell::new(navigator),
             log,
             speech,
@@ -1165,6 +1187,18 @@ impl Gen6Profile {
     pub fn press(&self, key: &str) -> Result<()> {
         phase(&*self.memory, "keys", || {
             self.navigator.borrow_mut().press_key(key)
+        })
+    }
+
+    /// Play a footstep where the player's foot came down on silent ground, every tick: the
+    /// game's own come a frame of its walk apart, a thirtieth of a second. Three small reads,
+    /// and none without a player.
+    pub fn poll_footsteps(&self) -> Result<()> {
+        let (Some(footsteps), Some(player)) = (&self.footsteps, self.field().player()) else {
+            return Ok(());
+        };
+        phase(&*self.memory, "footsteps", || {
+            footsteps.borrow_mut().poll(player)
         })
     }
 
@@ -1733,6 +1767,10 @@ impl Profile for Gen6Profile {
 
     fn poll_field(&self) -> Result<()> {
         Gen6Profile::poll_field(self)
+    }
+
+    fn poll_footsteps(&self) -> Result<()> {
+        Gen6Profile::poll_footsteps(self)
     }
 
     fn poll_guidance(&self) -> Result<()> {

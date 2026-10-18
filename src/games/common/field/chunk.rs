@@ -59,6 +59,19 @@ pub const BOARD: i64 = 10;
 /// Where a cell's kind sits in its word: the top byte.
 pub const KIND_SHIFT: i64 = 24;
 
+/// The footstep of ground the game plays no footstep on: streets, floors, cave floors (spike
+/// 225).
+pub const SILENT: i64 = 0;
+
+/// Which footstep the game plays on a cell, as it reads the word (`0x00402fcc`): bits 12 to
+/// 16, and `SILENT` for an all-ones word or one of kind `0xff` (spike 225).
+pub fn footstep(word: i64) -> i64 {
+    if word == 0xFFFFFFFF || word >> KIND_SHIFT == 0xFF {
+        return SILENT;
+    }
+    (word >> 12) & 0x1F
+}
+
 /// The floor a cell of a chunk with one floor is on, and one with floors where which is not
 /// asked: whichever is open (`Ground.floor`).
 pub const ANY_FLOOR: i64 = -1;
