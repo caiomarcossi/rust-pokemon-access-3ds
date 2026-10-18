@@ -1906,7 +1906,8 @@ const MART_ROWS: [(&str, &str, f64); 3] = [
 /// The Poké Mart's list as spike 95 read it, on the top screen: its words in a window under
 /// the root, and the cursor a pane beside them holding the two halves of `shop_cursor.bclim`,
 /// moved onto the chosen row. `party` puts the PC Box's party panel beside it, a picture holding
-/// a touch area a slot and each the icon of the Pokémon in it.
+/// a touch area a slot and each the icon of the Pokémon in it. `as_window` draws the cursor as
+/// X's is (spike 196 on x_poke-mart): a window textured so, beside the rows' TextBoxes.
 struct Mart {
     memory: Rc<FakeMemory>,
     fake: FakeLayouts,
@@ -1922,11 +1923,16 @@ impl Mart {
     }
 
     fn with(texture: &str, party: i64) -> Mart {
+        Mart::shaped(texture, party, false)
+    }
+
+    fn shaped(texture: &str, party: i64, as_window: bool) -> Mart {
         let memory = FakeMemory::new();
         let classes = FakeClasses::new(memory.clone());
         let window = classes.add(lyt::WINDOW_CLASS);
         let picture = classes.add(lyt::PICTURE_CLASS);
         let bounding = classes.add(lyt::BOUNDING_CLASS);
+        let textbox = classes.add(lyt::TEXTBOX_CLASS);
         let fake = FakeLayouts::new(&memory, &classes);
         let (work, root) = fake.screen_with(MART, true, false);
         fake.project(work, 400.0);
@@ -1940,7 +1946,7 @@ impl Mart {
             for (column, (words, x)) in [(item, -55.0), (price, 137.0)].into_iter().enumerate() {
                 let column = column as i64;
                 let r#box = list + 0x200 * (2 * index + column + 1);
-                fake.pane(r#box, list);
+                fake.pane_with_vtable(r#box, list, as_window.then_some(textbox));
                 panes.push((format!("t{}", 2 * index + column), r#box));
                 if !words.is_empty() {
                     pieces.push(ScreenText {
@@ -1953,7 +1959,7 @@ impl Mart {
             }
         }
         let cursor = MART + 0x3000;
-        fake.pane(cursor, list);
+        fake.pane_with_vtable(cursor, list, as_window.then_some(window));
         put(&memory, cursor + lyt::WIDTH, &[280.0, 20.0]);
         put(&memory, cursor + lyt::SCALE_X, &[1.0]);
         put(&memory, cursor + lyt::SCALE_Y, &[1.0]);
@@ -1967,15 +1973,19 @@ impl Mart {
             reader,
         };
         mart.r#move(90.0);
-        mart.fake
-            .pane_with_vtable(mart.cursor + 0x200, mart.cursor, Some(picture));
-        mart.fake
-            .pane_with_vtable(mart.cursor + 0x400, mart.cursor, Some(picture));
-        panes.extend([
-            ("3z".to_string(), mart.cursor),
-            ("3v".to_string(), mart.cursor + 0x200),
-            ("3x".to_string(), mart.cursor + 0x400),
-        ]);
+        if as_window {
+            panes.push(("2p".to_string(), mart.cursor));
+        } else {
+            mart.fake
+                .pane_with_vtable(mart.cursor + 0x200, mart.cursor, Some(picture));
+            mart.fake
+                .pane_with_vtable(mart.cursor + 0x400, mart.cursor, Some(picture));
+            panes.extend([
+                ("3z".to_string(), mart.cursor),
+                ("3v".to_string(), mart.cursor + 0x200),
+                ("3x".to_string(), mart.cursor + 0x400),
+            ]);
+        }
         if party != 0 {
             let panel = MART + 0x5000;
             mart.fake.pane_with_vtable(panel, mart.root, Some(picture));
@@ -2007,6 +2017,10 @@ impl Mart {
             ),
         ];
         for (name, _pane) in &panes {
+            if name == "2p" {
+                sections.push(clyt::window(name, 0, &[]));
+                continue;
+            }
             let kind: &[u8] =
                 if ["3v", "3x", "pp"].contains(&name.as_str()) || name.starts_with("pi") {
                     b"pic1"
@@ -2196,6 +2210,21 @@ fn test_a_named_cursors_list_is_the_words_beside_those_it_is_over() {
         mart.reader.last.lists.clone(),
         lists_of(mart.root, mart.pieces.iter().map(|p| p.r#box))
     );
+}
+
+/// X's Mart draws `shop_cursor.bclim` as a window in its list's window, beside the rows'
+/// TextBoxes, and the description and the count to buy went unsaid as a menu's (x_poke-mart,
+/// Khai, 2026-10-18).
+#[test]
+fn test_a_window_textured_as_a_cursor_beside_its_rows_knows_its_list() {
+    let mut mart = Mart::shaped("shop_cursor.bclim", 0, true);
+    assert_eq!(mart.heard(), said(&[(&["Poké Ball", "$ 200"], true)]));
+    assert_eq!(
+        mart.reader.last.lists.clone(),
+        lists_of(mart.root, mart.pieces.iter().map(|p| p.r#box))
+    );
+    mart.r#move(70.0);
+    assert_eq!(mart.heard(), said(&[(&["Potion", "$ 300"], false)]));
 }
 
 /// The PC's Box draws its cursor with `cursol01.bclim`, and its menu for a chosen Pokémon

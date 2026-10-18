@@ -4,7 +4,8 @@
 //! choices point one, `cursor.bclim`, at their words from beside them (spike 98): Buy, Sell and No
 //! thanks, and a purchase's Yes and No, in a window alone under their root. Over no words, such a
 //! picture says the words on its row to its right; and a window holding panes of its own is a box,
-//! not the corners of an app menu's cursor.
+//! not the corners of an app menu's cursor. X's Mart draws `shop_cursor.bclim` as a window beside
+//! its rows' words, and it walks them as the pictures do.
 //!
 //! The PC Box draws one with `cursol01.bclim`, as its designers spelt it there (spike 127): a picture
 //! in a plain pane the game moves onto the chosen row of its menu for a chosen Pokémon, where each
@@ -521,12 +522,30 @@ impl ListCursors {
                 if placement.is_some_and(|placement| placement.shown)
                     && !self.parked(holder, root)?
                 {
-                    found.insert(holder, (root, name == lyt::PICTURE_CLASS));
+                    let walks =
+                        name == lyt::PICTURE_CLASS || self.among_rows(root, holder, &tree)?;
+                    found.insert(holder, (root, walks));
                     self.named_roots.add(root);
                 }
             }
         }
         Ok(found)
+    }
+
+    /// Is this window drawn among the words it frames, beside them in the pane holding them?
+    /// X's Poké Mart draws `shop_cursor.bclim` as a window in its list's window, beside every
+    /// row's words, where ORAS's is a pane holding two pictures, and taken for a frame it made a
+    /// menu of the whole layout: the description and the count to buy went unsaid
+    /// (x_poke-mart, Khai, 2026-10-18). It walks its list as a picture does. The main menu's
+    /// frame hangs from its root, its rows in panes of their own.
+    fn among_rows(&self, root: i64, window: i64, tree: &IndexMap<i64, String>) -> Result<bool> {
+        let parent = u32(&self.layouts.pane(window)?, lyt::PARENT)?;
+        Ok(parent != root
+            && self
+                .layouts
+                .children(root, parent)
+                .into_iter()
+                .any(|child| class_of(tree, child) == Some(lyt::TEXTBOX_CLASS)))
     }
 
     /// Where a named cursor is drawn: its holder's place, a row of its pictures tall where a
