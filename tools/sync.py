@@ -140,7 +140,8 @@ def layout() -> int:
             [p.stem for p in folder.glob("*.rs") if p.name not in ("mod.rs", "lib.rs", "main.rs")]
             + [p.name for p in folder.iterdir() if p.is_dir() and (p / "mod.rs").exists()])
         text = parent.read_text(encoding="utf-8") if parent.exists() else ""
-        missing = [c for c in children if not re.search(rf"^\s*(pub )?mod {c};", text, re.M)]
+        missing = [c for c in children
+                   if not re.search(rf"^\s*(pub(\(crate\))? )?mod {c};", text, re.M)]
         if missing:
             text = text.rstrip("\n") + ("\n\n" if text.strip() else "")
             text += "".join(f"pub mod {c};\n" for c in missing)
@@ -150,7 +151,8 @@ def layout() -> int:
     test_mods = sorted(p.stem for p in tests.glob("*.rs") if p.name != "mod.rs")
     mod_rs = tests / "mod.rs"
     text = mod_rs.read_text(encoding="utf-8") if mod_rs.exists() else ""
-    missing = [m for m in test_mods if not re.search(rf"^\s*(pub )?mod {m};", text, re.M)]
+    missing = [m for m in test_mods
+               if not re.search(rf"^\s*(pub(\(crate\))? )?mod {m};", text, re.M)]
     if missing:
         text = text.rstrip("\n") + ("\n" if text.strip() else "")
         text += "".join(f"mod {m};\n" for m in missing)
