@@ -29,7 +29,7 @@ rail-angled = カメラが斜め、左を押し続ける、右を押し続ける
 
 category-all = すべて
 category-exits = 出口
-category-signs = 看板
+category-signs = 調べられるもの
 category-obstacles = 障害物
 category-people = 人
 category-items = 道具

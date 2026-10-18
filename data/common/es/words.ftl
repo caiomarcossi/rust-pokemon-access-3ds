@@ -29,7 +29,7 @@ rail-angled = cámara en ángulo, mantener izquierda, mantener derecha
 
 category-all = todo
 category-exits = salidas
-category-signs = carteles
+category-signs = objetos interactivos
 category-obstacles = obstáculos
 category-people = personas
 category-items = objetos

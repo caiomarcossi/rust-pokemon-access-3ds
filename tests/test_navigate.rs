@@ -674,7 +674,7 @@ fn test_a_sign_saying_only_its_doors_name_is_left_out_unless_asked_for() {
     shown.press(CATEGORY_NEXT);
     let mut both = said(&hiding.backend);
     both.extend(said(&shown.backend));
-    assert_eq!(both, ["signs, 1", "people, 1", "signs, 2"]);
+    assert_eq!(both, ["interactables, 1", "people, 1", "interactables, 2"]);
 }
 
 #[test]
@@ -682,7 +682,7 @@ fn test_a_category_is_said_with_how_many_things_are_in_it() {
     let mut rig = navigator(Want::default());
     rig.press(CATEGORY_NEXT);
     rig.press(CATEGORY_NEXT);
-    assert_eq!(said(&rig.backend), ["exits, 2", "signs, 1"]);
+    assert_eq!(said(&rig.backend), ["exits, 2", "interactables, 1"]);
 }
 
 #[test]
@@ -1121,8 +1121,8 @@ fn test_a_direction_with_nothing_that_way_says_so_by_category() {
         said(&rig.backend),
         [
             "exits, 2",
-            "signs, 1",
-            "no signs south",
+            "interactables, 1",
+            "no interactables south",
             "sign, 1 of 1, 3 east 1 north"
         ]
     );

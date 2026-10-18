@@ -45,7 +45,7 @@ rail-angled = camera angled, hold left, hold right
 # `words.ftl`): "exits, 3".
 category-all = all
 category-exits = exits
-category-signs = signs
+category-signs = interactables
 category-obstacles = obstacles
 category-people = people
 category-items = items

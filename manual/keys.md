@@ -6,7 +6,7 @@ When one of them is also bound to an Azahar button, pa3ds says so as it starts.
 
 ## The map's list
 
-pa3ds lists what is on the map in categories: all, exits, signs, obstacles, people, items,
+pa3ds lists what is on the map in categories: all, exits, interactables, obstacles, people, items,
 berries, ash, bike, currents and pokémon, and while soaring, towns, routes, landmarks and mirage
 spots. A category with nothing in it is skipped. Each thing is said with where it is from you:
 "door, 1 of 3, 3 east 2 north".

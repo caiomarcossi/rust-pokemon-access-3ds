@@ -30,7 +30,7 @@ rail-angled = 카메라 비스듬함, 왼쪽 누르기, 오른쪽 누르기
 
 category-all = 전체
 category-exits = 출구
-category-signs = 표지판
+category-signs = 상호작용 대상
 category-obstacles = 장애물
 category-people = 사람
 category-items = 도구

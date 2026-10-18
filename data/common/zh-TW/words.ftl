@@ -29,7 +29,7 @@ rail-angled = 鏡頭傾斜，按住左，按住右
 
 category-all = 全部
 category-exits = 出口
-category-signs = 告示牌
+category-signs = 可互動物件
 category-obstacles = 障礙物
 category-people = 人物
 category-items = 道具

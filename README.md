@@ -43,8 +43,8 @@ the Game Boy games. Nothing here is taken from its code.
 - **Contests and the Pokéblock Kit**: each move with its appeal and jamming, each entrant's
   place, and your berries and blocks with how many you have.
 - **Where you are**: the place name when you arrive somewhere new.
-- **The map**: exits, signs, people, items, berry spots, obstacles and more, each with its
-  direction and distance, and the way to any of them on foot.
+- **The map**: exits, interactables (signs and the like), people, items, berry spots, obstacles
+  and more, each with its direction and distance, and the way to any of them on foot.
 - **The touch screen**: the buttons on the bottom screen, which touch mode can tap for you, the
   PokéNav's and PlayNav's apps among them.
 - **The DexNav**: the area's Pokémon and which you have caught, searching, and a hidden

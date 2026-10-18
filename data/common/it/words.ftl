@@ -29,7 +29,7 @@ rail-angled = telecamera inclinata, tieni sinistra, tieni destra
 
 category-all = tutto
 category-exits = uscite
-category-signs = cartelli
+category-signs = oggetti interattivi
 category-obstacles = ostacoli
 category-people = persone
 category-items = strumenti
