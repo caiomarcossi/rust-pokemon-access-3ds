@@ -24,6 +24,12 @@ in a comment or doc here means the Python checkout's. This repository's only doc
 - **What to port** is an open issue in this repository labelled `upstream`, kept up to date by
   `.github/workflows/upstream.yml`: each push to upstream's main rewrites it with
   `sync.py status`, and a push here that brings `port.toml` level with upstream closes it.
+- **Claim an issue before working on it**, the `upstream` one or any other. Orion and Khai port
+  from machines of their own, and once nearly cut the same release twice (Orion, 2026-10-18).
+  Look first (`gh issue view <n>`): an issue labelled `in progress` is someone else's, so stop and
+  ask. Otherwise mark it: `gh issue edit <n> --add-label "in progress" --add-assignee @me`. The
+  mark stays until the work reaches the default branch, which closes the issue; if you stop
+  before then, take it off (`--remove-label "in progress" --remove-assignee @me`).
 - **A bug found in the Python while porting** is ported as it is (below) and filed as an issue in
   the Python repository, labelled `from-port`:
   `gh issue create --repo pa3ds/pokemon-access-3ds --label from-port --title ... --body ...`,
@@ -96,6 +102,7 @@ python tools/sync.py mark       # port.toml now matches upstream's HEAD
 
 The Python checkout is `PA3DS_PYTHON`, or `../pokemon-access-3ds` beside this one. To sync:
 
+0. Claim the `upstream` issue (*Talking to upstream*, above).
 1. `status`, then for each file listed to port by hand, read its upstream diff
    (`git -C ../pokemon-access-3ds diff <port.toml's commit>..HEAD -- <path>`) and make the same
    change to its Rust file, following `docs/porting.md`. Port the change to its tests too.
