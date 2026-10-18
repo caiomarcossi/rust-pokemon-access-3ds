@@ -554,6 +554,8 @@ pub const UNDERWATER_126: i64 = 0x42;
 pub const UNDER_SOOTOPOLIS: i64 = 0x4C;
 pub const UNDERWATER_134: i64 = 0xA0;
 pub const UNDERWATER_134_SOUTH: i64 = 0xA1;
+pub const MOVING_TRUCK: i64 = 0x18F;
+pub const LITTLEROOT_TOWN: i64 = 0x6;
 
 /// Mauville Gym's triggers, by their scripts (spike 146): its five floor switches, each one cell,
 /// the two by the entrance at (58, 38) and (66, 38), the three by Wattson at (5, 40), (13, 36) and
@@ -599,6 +601,12 @@ pub const UNDERWATER_134_SOUTH: i64 = 0xA1;
 /// player in `0xa1` at (19, 6), and `0xa1`'s at (16, 5) puts them back at (19, 35). Diving down
 /// into `0xa0`, the list held nothing but the dive spot; the player swam south and came up in
 /// `0xa1` at (19, 6) (movie44, 2026-10-13).
+///
+/// The moving truck the opening leaves the player in, `0x18f`, has no warp record either: its only
+/// trigger, script 4, three cells deep at (9, 3) and walked onto going east, is the open back door.
+/// Its case ends in the script's one call into Littleroot Town's outdoors, `0x6`, at (100, 172),
+/// between the two houses' doors at (94, 171) and (106, 171). Until 2026-10-18 the truck listed its
+/// five signs and no exit (or_desc and or_desc2, the boy's opening and the girl's).
 ///
 /// Python's value is `tuple[str, str] | tuple[str, str, int]`: the zone is the third item, None
 /// where the tuple has two.
@@ -661,6 +669,14 @@ pub fn triggers() -> &'static IndexMap<(i64, i64), (String, String, Option<i64>)
                 PASSAGE.0.to_string(),
                 PASSAGE.1.to_string(),
                 Some(UNDERWATER_134),
+            ),
+        );
+        out.insert(
+            (MOVING_TRUCK, 0x4),
+            (
+                "exits".to_string(),
+                "way out".to_string(),
+                Some(LITTLEROOT_TOWN),
             ),
         );
         for &zone in secret_bases_zones() {
