@@ -423,6 +423,27 @@ fn test_choosing_a_folder_brings_back_a_line_commented_out() {
 }
 
 #[test]
+fn test_a_line_separator_in_a_comment_does_not_end_the_line() {
+    let tmp_path = TmpPath::new();
+    let home = tmp_path.join("home");
+    fs::create_dir(&home).unwrap();
+    // TOML ends a line only at LF or CRLF, so this is one comment and no setting commented out.
+    let before = "[pa3ds]\n# azahar_folder = \"\"\u{2028}kept apart\nkeys = true\n";
+    fs::write(home.join("config.toml"), before).unwrap();
+    assert!(config::remember_azahar(&tmp_path, Some(&home)).unwrap());
+    let text = read_text(&home.join("config.toml"));
+    assert_eq!(
+        text,
+        format!("{before}azahar_folder = {}\n", quoted(&tmp_path))
+    );
+    let parsed: toml::Table = text.parse().unwrap();
+    assert_eq!(
+        parsed["pa3ds"]["azahar_folder"].as_str(),
+        Some(py::path_str(&tmp_path).as_str())
+    );
+}
+
+#[test]
 fn test_a_folder_is_not_kept_in_a_file_that_will_not_parse() {
     let tmp_path = TmpPath::new();
     let home = tmp_path.join("home");

@@ -105,6 +105,12 @@ pub fn parse(text: &str) -> (IndexMap<String, Value>, String) {
 static HEADER: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\s*\[([^\[\]]+)\]\s*(?:#.*)?$").expect("a valid pattern"));
 
+/// TOML's lines, each with its ending. TOML ends a line only at LF or CRLF, where
+/// `str.splitlines` also ends one at U+2028, a form feed and others a comment may hold.
+fn rows(text: &str) -> Vec<String> {
+    text.split_inclusive('\n').map(String::from).collect()
+}
+
 /// The table a header line opens, `pa3ds.ui` for `[pa3ds.ui]`, or None for any other line.
 fn header(line: &str) -> Option<String> {
     let found = HEADER.captures(line)?;
@@ -155,7 +161,10 @@ pub fn offered(text: &str) -> IndexMap<String, Vec<(String, Value)>> {
 /// or straight after its header when it has none. A table the file does not have is added at the
 /// end, header and all.
 pub fn append<S: AsRef<str>>(text: &str, name: &str, lines: &[S]) -> String {
-    let mut rows: Vec<String> = py::splitlines(text).into_iter().map(String::from).collect();
+    let mut rows: Vec<String> = rows(text)
+        .iter()
+        .map(|row| row.trim_end_matches(['\r', '\n']).to_string())
+        .collect();
     let mut at: Option<usize> = None;
     let mut current = String::new();
     for (index, row) in rows.iter().enumerate() {
@@ -185,10 +194,7 @@ pub fn append<S: AsRef<str>>(text: &str, name: &str, lines: &[S]) -> String {
 /// or else the first commented out. None when the table has neither, for `append`. Nothing else
 /// in the text changes, line endings included.
 pub fn replace(text: &str, name: &str, key: &str, line: &str) -> Option<String> {
-    let mut rows: Vec<String> = py::splitlines_keepends(text)
-        .into_iter()
-        .map(String::from)
-        .collect();
+    let mut rows: Vec<String> = rows(text);
     let sets = |row: &str| entry(row).is_some_and(|(found, _)| found == key);
     let mut current = String::new();
     let mut chosen: Option<usize> = None;
