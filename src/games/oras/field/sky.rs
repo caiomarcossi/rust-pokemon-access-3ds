@@ -358,13 +358,14 @@ pub fn flocks(memory: &dyn Memory, process: i64, names: &ClassNames) -> Result<V
         return Ok(Vec::new());
     }
     let last = u32(&memory.read(manager + LAST_MODEL, 4)?, 0)?;
-    let mut seen: Vec<i64> = Vec::new();
+    if !within(HEAP_SPAN, last) {
+        return Ok(Vec::new());
+    }
+    let mut seen: Vec<i64> = vec![last];
     for link in [PREVIOUS, NEXT] {
-        let mut model = last;
-        while within(HEAP_SPAN, model) && seen.len() < MODELS {
-            if !seen.contains(&model) {
-                seen.push(model);
-            }
+        let mut model = u32(&memory.read(last + link, 4)?, 0)?;
+        while within(HEAP_SPAN, model) && !seen.contains(&model) && seen.len() < MODELS {
+            seen.push(model);
             model = u32(&memory.read(model + link, 4)?, 0)?;
         }
     }

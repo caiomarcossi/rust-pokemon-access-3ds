@@ -334,6 +334,28 @@ fn test_flocks_are_found_among_the_skys_models_and_chased_from_the_player() {
 }
 
 #[test]
+fn test_flocks_stop_where_the_models_links_loop_back() {
+    let memory = FakeMemory::new();
+    let classes = FakeClasses::new(memory.clone());
+    let flock = classes.add(sky::FLOCK_CLASS);
+    memory.u32(PROCESS + sky::MANAGER, &[0x08295D04]);
+    memory.u32(0x08295D04 + sky::LAST_MODEL, &[0x082A1EA4]);
+    // Freed models whose links were rewritten: each leads back to the other, both ways.
+    memory.u32(0x082A1EA4, &[flock, 0x082A3884, 0x082A3884]);
+    memory.u32(0x082A3884, &[flock, 0x082A1EA4, 0x082A1EA4]);
+    let found = sky::flocks(
+        &*memory,
+        PROCESS,
+        &ClassNames::new(memory.clone(), LOADED_CODE),
+    )
+    .unwrap();
+    assert_eq!(
+        found.iter().map(|each| each.model).collect::<Vec<_>>(),
+        vec![0x082A1EA4, 0x082A3884]
+    );
+}
+
+#[test]
 fn test_the_heading_is_said_as_a_compass_point() {
     let said: Vec<&str> = [PI, PI / 2.0, 0.0, 3.0 * PI / 2.0, 3.9]
         .iter()
