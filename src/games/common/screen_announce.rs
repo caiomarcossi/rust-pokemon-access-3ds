@@ -122,6 +122,8 @@ struct Gathering {
     /// For a screen rewritten, the layout its first row was said from, whose rest comes first,
     /// and that row's words, said once.
     lead: (i64, String),
+    /// What the cursor said of the item, left out of its details.
+    item: String,
 }
 
 impl Gathering {
@@ -138,6 +140,7 @@ impl Gathering {
             count,
             held,
             lead: (0, String::new()),
+            item: String::new(),
         }
     }
 }
@@ -173,13 +176,14 @@ pub struct ScreenAnnouncer {
     /// Layout root -> the words that came on screen while more of the layout's words were still
     /// being written, each with the poll it came at.
     arriving: IndexMap<i64, Vec<(i64, ScreenText)>>,
-    /// (layout root, group) -> the poll words last left it at, for `REPEAT_POLLS`.
-    left_groups: IndexMap<(i64, i64), i64>,
-    /// TextBox -> its layout's root, for words that came on screen with their layout, while
-    /// that layout lives.
-    opened_with: IndexMap<i64, i64>,
+    /// Layout root -> the poll words last left it at, for `REPEAT_POLLS`.
+    left: IndexMap<i64, i64>,
     /// The place's name the field said last, and the poll it was said at.
     placed: Option<(String, i64)>,
+    /// TextBox -> its layout's root and the words last said of it, as screen text or details,
+    /// until they change: a title still saying them, the Bag's pocket, is no detail
+    /// (`heading`).
+    words_said: IndexMap<i64, (i64, String)>,
 }
 
 impl ScreenAnnouncer {
@@ -203,9 +207,9 @@ impl ScreenAnnouncer {
             recent: IndexMap::new(),
             on_screen_since: IndexMap::new(),
             arriving: IndexMap::new(),
-            left_groups: IndexMap::new(),
-            opened_with: IndexMap::new(),
+            left: IndexMap::new(),
             placed: None,
+            words_said: IndexMap::new(),
         }
     }
 
@@ -271,6 +275,9 @@ impl ScreenAnnouncer {
             &screen.settling,
             &screen.left,
         );
+        for piece in texts.iter().chain(left.iter()) {
+            self.words_said.shift_remove(&piece.r#box);
+        }
         let (items, under, listed, moving, rows) = (
             &cursors.items,
             &cursors.under,
@@ -294,6 +301,7 @@ impl ScreenAnnouncer {
                 panels.retain(|panel| roots.contains(&panel.0));
                 !panels.is_empty()
             });
+            self.words_said.retain(|_box, said| roots.contains(&said.0));
         }
 
         let mut spoken: HashSet<String> = HashSet::new();
@@ -368,7 +376,7 @@ impl ScreenAnnouncer {
                 );
                 spoken.insert(text.clone());
             }
-            self.cursor_said.insert(text, self.polls);
+            self.cursor_said.insert(text.clone(), self.polls);
             cursored.extend(item.pieces.iter().map(|p| p.r#box));
             // Only a move brings up details. A cursor coming on screen comes with whatever else
             // the key changed: the bag's cursor came back with the pocket name, and "MEDICINE"
@@ -381,7 +389,10 @@ impl ScreenAnnouncer {
                         .or_default()
                         .extend(gathering.panels.iter().copied());
                 }
-                self.gathering = Some(Gathering::new(item.cursor, item.quiet, count, held));
+                self.gathering = Some(Gathering {
+                    item: text.clone(),
+                    ..Gathering::new(item.cursor, item.quiet, count, held)
+                });
             }
         }
 
@@ -390,21 +401,16 @@ impl ScreenAnnouncer {
         // alone, what changes beside a menu's rows names it: the Pokéblock Case writes the chosen
         // block's name under its grid (movie30, spike 196). Not otherwise: the PC Box rewrites its
         // box's name as its menu's cursor moves, "BOX 1" each time (movie9).
-        // Words the menu opened with, coming back as they left in place of words that have just
-        // left, are its own too: the Bag's party draws its levels again after an evolution
-        // stone's "UNABLE!", and they were read again (movie31). The "UNABLE!" coming back is
-        // said, and so is a question.
+        // Words coming in place of words that have just left the menu are its own too: the Bag's
+        // party draws "ABLE!" or "UNABLE!" for a TM or a stone in place of each level, and the
+        // levels again after it, and both were read at every pocket (movie31, Khai,
+        // 2026-10-18); a paralysed Pokémon shows no level, and its "UNABLE!" came alone
+        // (hm_tm). A question is said.
         let polls = self.polls;
-        self.left_groups
-            .retain(|_group, &mut poll| polls - poll <= REPEAT_POLLS);
+        self.left
+            .retain(|_root, &mut poll| polls - poll <= REPEAT_POLLS);
         for p in left {
-            self.left_groups.insert((p.root, p.parent), self.polls);
-        }
-        for p in texts.iter().filter(|p| p.with_layout) {
-            self.opened_with.insert(p.r#box, p.root);
-        }
-        if let Some(roots) = roots {
-            self.opened_with.retain(|_box, root| roots.contains(root));
+            self.left.insert(p.root, self.polls);
         }
         let counting = self
             .gathering
@@ -441,9 +447,7 @@ impl ScreenAnnouncer {
                         && ((p.changed && !news(p))
                             || p.with_layout
                             || p.scrolled
-                            || (p.returned
-                                && self.opened_with.contains_key(&p.r#box)
-                                && self.left_groups.contains_key(&(p.root, p.parent)))))
+                            || (!p.changed && !sentence(p) && self.left.contains_key(&p.root))))
             })
             .cloned()
             .collect();
@@ -526,6 +530,20 @@ impl ScreenAnnouncer {
         let changed_roots: HashSet<i64> =
             texts.iter().filter(|p| p.changed).map(|p| p.root).collect();
         let (moved_on, ready) = self.arrived(&shown, on_screen, settling, &changed_roots);
+        // A layout that came with words a poll before a cursor showed on it is a menu all the
+        // same: the Bag coming back after a move was learned read its list a row at a time. A
+        // sentence is still said: a Secret Base's "You cannot set it there!".
+        let [moved_on, ready] = [moved_on, ready].map(|pieces| {
+            pieces
+                .into_iter()
+                .filter(|p| {
+                    !(p.with_layout
+                        && self.menus.contains(&p.root)
+                        && !listed.contains_key(&p.root)
+                        && !sentence(p))
+                })
+                .collect::<Vec<ScreenText>>()
+        });
         // Words arriving now are said with the rest of this poll, not taken for what moved on.
         let coming: HashSet<i64> = ready.iter().map(|p| p.r#box).collect();
         let kept: HashSet<i64> = cursored.union(&coming).copied().collect();
@@ -623,7 +641,10 @@ impl ScreenAnnouncer {
             let text = join(&pieces, self.pauses);
             let root = pieces[0].root;
             said.extend(pieces.iter().map(|p| p.r#box));
-            if !self.fresh(&text, root) {
+            self.words_said
+                .extend(pieces.iter().map(|p| (p.r#box, (p.root, p.text.clone()))));
+            // Nor the item a cursor has just said: the Bag's panel names it as it opens.
+            if !self.fresh(&text, root) || self.said_by_cursor(&text) {
                 (self.log)(&format!(
                     "screen shown, just said elsewhere: {text}  [layout {root:#x}]"
                 ));
@@ -787,6 +808,15 @@ impl ScreenAnnouncer {
         kept.extend(gathering.panels.iter().copied());
         let mut panels = kept.clone();
         panels.extend(gathering.joined.iter().copied());
+        // Words hung under a label are of the label's panel: the Bag's TM pocket hangs each number
+        // under its own, and a number this move left as it was went unsaid, "TYPE Fighting POWER
+        // CATEGORY STATUS ACCURACY PP" (or_tm-hm, 2026-10-18).
+        let hung: Vec<Panel> = on_screen
+            .iter()
+            .filter(|p| panels.contains(&p.group()))
+            .map(|p| (p.root, p.r#box))
+            .collect();
+        panels.extend(hung);
         // Only the layouts this move changed: a summary keeps its other page's panel on screen,
         // left as that page last showed it, and Zen Headbutt's details on the contest page were
         // read with Iron Defense's from the battle page (movie32).
@@ -812,6 +842,9 @@ impl ScreenAnnouncer {
             if !panels.contains(&panel) || (!changed.is_empty() && !changed.contains(&panel.0)) {
                 continue;
             }
+            // Nor the item the cursor said, nor a title still saying what was last said of it:
+            // the Bag's pocket and item were the first words of every item's details,
+            // "MEDICINE Full Heal", then the count and the description (Khai, 2026-10-18).
             let pieces: Vec<ScreenText> = on_screen
                 .iter()
                 .filter(|p| {
@@ -819,8 +852,10 @@ impl ScreenAnnouncer {
                         && !labels.contains(&p.text)
                         && !gathering.said.contains(&p.r#box)
                         && !cursored.contains(&p.r#box)
+                        && p.text != gathering.item
+                        && !self.heading(p, on_screen)
                 })
-                .cloned()
+                .map(|p| without(p, &gathering.item))
                 .collect();
             let beside = tables.iter_mut().find(|table| {
                 !table.is_empty()
@@ -861,6 +896,8 @@ impl ScreenAnnouncer {
                 } else {
                     texts.push(text);
                     roots.push(group[0].root);
+                    self.words_said
+                        .extend(group.iter().map(|p| (p.r#box, (p.root, p.text.clone()))));
                 }
                 said.extend(group.iter().map(|p| p.r#box));
             }
@@ -882,6 +919,16 @@ impl ScreenAnnouncer {
             self.speech.say(&line, Category::Screen);
         }
         said
+    }
+
+    /// Is this a title on a row of its own whose words were said and have not changed since?
+    /// A label alone on its row, a move's "Category" beside no icon, is still said.
+    fn heading(&self, piece: &ScreenText, on_screen: &[ScreenText]) -> bool {
+        piece.plain
+            && self.words_said.get(&piece.r#box) == Some(&(piece.root, piece.text.clone()))
+            && !on_screen.iter().any(|other| {
+                other.r#box != piece.r#box && other.root == piece.root && side_by_side(other, piece)
+            })
     }
 
     /// Say the first row of a screen rewritten at once, as a cursor's item is, and gather the
@@ -1058,6 +1105,19 @@ fn line(parts: &[String]) -> String {
         out += part;
     }
     out
+}
+
+/// The piece less the item its cursor has just said, where its words end with it: the TM
+/// pocket names "TM04 Calm Mind" under the cursor's "Calm Mind".
+fn without(piece: &ScreenText, item: &str) -> ScreenText {
+    let suffix = format!(" {item}");
+    match piece.text.strip_suffix(&suffix) {
+        Some(text) if !item.is_empty() => ScreenText {
+            text: text.to_string(),
+            ..piece.clone()
+        },
+        _ => piece.clone(),
+    }
 }
 
 /// Python's `min(a, b)` on floats: `a`, unless `b < a`, so a NaN stays where Python puts it.

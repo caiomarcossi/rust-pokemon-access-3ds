@@ -334,8 +334,10 @@ impl ListCursors {
                 self.said.steady.borrow_mut().shift_remove(&other);
             }
             // A button's cursor walks a grid of buttons alike, the contest's two columns of moves.
+            // A cursor carrying its own words walks no list of its layout: taken for one, the
+            // Bag's select bar left the item list to be read whole as the Bag came back.
             let mut rows: HashSet<(i64, i64)> = HashSet::new();
-            if walks && !at_slot {
+            if walks && !at_slot && own.is_empty() {
                 for piece in &inside {
                     for row in self
                         .panes

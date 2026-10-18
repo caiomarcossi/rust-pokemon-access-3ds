@@ -306,6 +306,11 @@ pub fn bag_pockets() -> &'static (i64, IndexMap<&'static str, i64>) {
         )
     })
 }
+/// The Bag's pocket names, the title over the chosen item, said with an item's details only as
+/// the pocket changes (or_tm-hm, 2026-10-18).
+pub fn bag_plain() -> (i64, [i64; 5]) {
+    (bag_pockets().0, [0, 1, 2, 3, 4])
+}
 /// The AreaNav's map, `map_lower`, which the Pokédex's habitat draws too: its archive opens
 /// with its panes' names, and an AreaNav row keeps its zone's touch area among them at +0x04
 /// (spike 152: Route 101 is `m`, Route 102 `1p`).
@@ -479,7 +484,10 @@ pub fn rom() -> &'static RomLayout {
             .map(|image| image.to_string())
             .collect(),
         labels: vec![dexnav_labels()],
-        plain: vec![(DEXNAV_PLAIN.0, DEXNAV_PLAIN.1.to_vec())],
+        plain: vec![
+            (DEXNAV_PLAIN.0, DEXNAV_PLAIN.1.to_vec()),
+            (bag_plain().0, bag_plain().1.to_vec()),
+        ],
         ..RomLayout::new(
             "ORAS",
             text_archives(),

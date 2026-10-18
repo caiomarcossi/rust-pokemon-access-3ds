@@ -3310,6 +3310,17 @@ fn test_a_named_cursor_holding_words_says_its_own_once_they_hold_still() {
     assert_eq!(bag.heard(), said(&[(&["Ralts", "ABLE!"], false)]));
 }
 
+/// Taken for a list, the select bar's own words left the rest of the Bag's layout to be read
+/// as any screen's, its items a row at a time as it came back (or_tm-hm, 2026-10-18).
+#[test]
+fn test_a_named_cursor_holding_words_walks_no_list() {
+    let mut bag = BagParty::new();
+    bag.heard();
+    assert_eq!(bag.heard(), said(&[(&["Wingull", "ABLE!"], true)]));
+    bag.fake.layouts.refresh();
+    assert!(bag.reader.poll(&bag.pieces).unwrap().lists.is_empty());
+}
+
 /// The Bag keeps its select bar at x -320 while the player walks its items (spike 139).
 #[test]
 fn test_a_named_cursor_parked_off_its_screen_is_no_cursor() {

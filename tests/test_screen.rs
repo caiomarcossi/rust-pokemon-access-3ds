@@ -1447,8 +1447,11 @@ fn test_a_known_work_built_again_for_another_layout_is_read_as_that_layout() {
 #[test]
 fn test_words_hanging_from_the_root_are_framed_by_the_window_drawn_round_them() {
     let mut game = Game::new();
-    let frame_class =
-        FakeClasses::starting(game.memory.clone(), CODE.0 + 0x8000).add(lyt::WINDOW_CLASS);
+    let classes = FakeClasses::starting(game.memory.clone(), CODE.0 + 0x8000);
+    let (frame_class, picture) = (
+        classes.add(lyt::WINDOW_CLASS),
+        classes.add(lyt::PICTURE_CLASS),
+    );
     let (_work, root) = game.fake.screen_with(TOP, true, false);
     let frame = TOP + 0x800;
     game.fake.pane_with_vtable(frame, root, Some(frame_class));
@@ -1468,6 +1471,26 @@ fn test_words_hanging_from_the_root_are_framed_by_the_window_drawn_round_them() 
     game.place(power, (-150.0, -10.0), 90.0, 12.0);
     let attack = game.text_box(TOP + 0x1200, root, "ATTACK");
     game.place(attack, (55.0, 50.0), 70.0, 12.0);
+    // The category icon hangs from the root too, and grouped with the stats it read them all as
+    // each move's details (or_tm-hm, 2026-10-18).
+    let icon = TOP + 0x1400;
+    game.fake.pane_with_vtable(icon, root, Some(picture));
+    write_floats(
+        &game.memory,
+        icon,
+        &[
+            (lyt::X, -80.0),
+            (lyt::Y, 13.0),
+            (lyt::WIDTH, 50.0),
+            (lyt::HEIGHT, 20.0),
+            (lyt::SCALE_X, 1.0),
+            (lyt::SCALE_Y, 1.0),
+        ],
+    );
+    game.reader = reader_with(
+        &game,
+        Rc::new(move |pane| Ok((pane == icon).then(|| "SPECIAL".to_string()))),
+    );
     game.sweep();
     game.heard();
     let frames: HashMap<String, i64> = game
@@ -1480,7 +1503,11 @@ fn test_words_hanging_from_the_root_are_framed_by_the_window_drawn_round_them() 
         .collect();
     assert_eq!(
         frames,
-        HashMap::from([("POWER".to_string(), frame), ("ATTACK".to_string(), 0)])
+        HashMap::from([
+            ("POWER".to_string(), frame),
+            ("ATTACK".to_string(), 0),
+            ("SPECIAL".to_string(), frame)
+        ])
     );
 }
 

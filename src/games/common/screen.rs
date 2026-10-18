@@ -793,7 +793,7 @@ impl ScreenTextReader {
     /// Picture -> what the game calls what it draws, as a piece where the picture is, for the
     /// pictures shown in layouts with words on screen: the Pokédex entry's type, drawn as an icon
     /// beside the word TYPE (spike 147; Orion, 2026-09-29), "Male TYPE Fire".
-    fn named_pictures(&self, roots: &[i64]) -> Result<IndexMap<i64, ScreenText>> {
+    fn named_pictures(&mut self, roots: &[i64]) -> Result<IndexMap<i64, ScreenText>> {
         let Some(pictures) = &self.pictures else {
             return Ok(IndexMap::new());
         };
@@ -871,14 +871,28 @@ impl ScreenTextReader {
                 );
             }
         }
-        // Counted under the words they hang from, then grouped as those words are.
+        // Counted under the words they hang from, then grouped as those words are, by the frame
+        // round them too: the move-forget screen's category icon, grouped with the stats, read
+        // them all as each move's details (or_tm-hm, 2026-10-18).
         let counted = side_by_side(&counted_stars(&out)?);
         let mut grouped: IndexMap<i64, ScreenText> = IndexMap::new();
         for (r#box, piece) in counted {
             let parent = self.group_of(piece.parent, false)?;
             grouped.insert(r#box, ScreenText { parent, ..piece });
         }
-        Ok(grouped)
+        let mut framed: IndexMap<i64, ScreenText> = IndexMap::new();
+        for (r#box, piece) in grouped {
+            let piece = if piece.parent == piece.root {
+                ScreenText {
+                    frame: self.frame_of(&piece)?,
+                    ..piece
+                }
+            } else {
+                piece
+            };
+            framed.insert(r#box, piece);
+        }
+        Ok(framed)
     }
 
     /// The pane what hangs from `parent` is grouped by: its parent, or where that is a

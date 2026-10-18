@@ -915,10 +915,10 @@ fn test_words_coming_back_to_a_menu_come_alone() {
 }
 
 #[test]
-fn test_words_a_menu_opened_with_coming_back_in_place_of_words_just_gone_are_its_own() {
-    // The Bag's party draws "UNABLE!" for an evolution stone in place of each level, and the
-    // levels coming back as the cursor moved on were read again, "L45, L48..." (movie31); the
-    // "UNABLE!" coming back to the stone is said.
+fn test_words_coming_to_a_menu_in_place_of_words_just_gone_are_its_own() {
+    // The Bag's party draws "ABLE!" or "UNABLE!" for a TM or a stone in place of each level,
+    // and the levels again as the cursor moves on, and both were read at every pocket (movie31,
+    // Khai, 2026-10-18). A question in their place is said.
     let mut screen = Screen::new();
     let stone = vec![piece(1, "Sun Stone", 77.0, 0.0, MENU)];
     let level = piece_kw(3, "L45", -91.0, 68.0, MENU, Kw { parent: 5, ..PLAIN });
@@ -944,11 +944,10 @@ fn test_words_a_menu_opened_with_coming_back_in_place_of_words_just_gone_are_its
             left: vec![level.clone()],
             ..args(&one(&unable), vec![], &cat(&[&stone, &one(&unable)]))
         }),
-        ["UNABLE!"]
+        NOTHING
     );
     let back = ScreenText {
         with_layout: false,
-        returned: true,
         ..level.clone()
     };
     assert_eq!(
@@ -958,16 +957,48 @@ fn test_words_a_menu_opened_with_coming_back_in_place_of_words_just_gone_are_its
         }),
         NOTHING
     );
-    let again = ScreenText {
-        returned: true,
-        ..unable.clone()
-    };
+    // A paralysed Pokémon's slot shows no level, and its "UNABLE!" comes as another's leaves.
+    let paralysed = piece_kw(
+        5,
+        "UNABLE!",
+        -91.0,
+        35.0,
+        MENU,
+        Kw {
+            parent: 6,
+            with_layout: false,
+            ..PLAIN
+        },
+    );
     assert_eq!(
         screen.say(Args {
-            left: vec![level.clone()],
-            ..args(&one(&again), vec![], &cat(&[&stone, &one(&again)]))
+            left: vec![back.clone()],
+            ..args(
+                &[unable.clone(), paralysed.clone()],
+                vec![],
+                &cat(&[&stone, &[unable.clone(), paralysed.clone()]])
+            )
         }),
-        ["UNABLE!"]
+        NOTHING
+    );
+    let asked = piece_kw(
+        4,
+        "Use it on which Pokémon now?",
+        -91.0,
+        68.0,
+        MENU,
+        Kw {
+            parent: 5,
+            with_layout: false,
+            ..PLAIN
+        },
+    );
+    assert_eq!(
+        screen.say(Args {
+            left: vec![unable.clone()],
+            ..args(&one(&asked), vec![], &cat(&[&stone, &one(&asked)]))
+        }),
+        [asked.text.as_str()]
     );
 }
 
@@ -1312,6 +1343,137 @@ fn test_a_moves_details_read_every_panel_its_moves_have_changed() {
         screen.on(&with_claws),
         ["Sharp claws. Category Power 40 Accuracy 100"]
     );
+}
+
+/// The Bag's panel: its pocket's name, the item's and its description, each a panel of its own.
+fn bag_panel(pocket: &str, name: &str, words: &str) -> Vec<ScreenText> {
+    vec![
+        ScreenText {
+            plain: true,
+            ..piece_kw(20, pocket, -20.0, 110.0, PANEL, Kw { panel: 20, ..PLAIN })
+        },
+        piece_kw(21, name, -28.0, 75.0, PANEL, Kw { panel: 21, ..PLAIN }),
+        piece_kw(22, words, -150.0, -15.0, PANEL, Kw { panel: 22, ..PLAIN }),
+    ]
+}
+
+/// The Bag's cursor moving to `item`, with `changed` rewritten, and what is said until the
+/// details settle.
+fn bag_move(
+    screen: &mut Screen,
+    item: &str,
+    now: &[ScreenText],
+    changed: &[ScreenText],
+) -> Vec<String> {
+    let cursor = vec![piece(1, item, 8.0, 90.0, MENU)];
+    let texts: Vec<ScreenText> = changed
+        .iter()
+        .map(|p| ScreenText {
+            changed: true,
+            with_layout: false,
+            ..p.clone()
+        })
+        .collect();
+    let on_screen = cat(&[&cursor, now]);
+    let mut said = screen.say(args(
+        &texts,
+        vec![CursorItem::new(0x0C, cursor.clone(), false)],
+        &on_screen,
+    ));
+    for _ in 0..DETAIL_POLLS {
+        said.extend(screen.on(&on_screen));
+    }
+    said
+}
+
+#[test]
+fn test_an_items_details_leave_out_the_item_and_a_title_said_already() {
+    // The Bag hangs its pocket's name, the item's and its description from one root, and every
+    // item's details began with both, "MEDICINE Full Heal" (or_tm-hm, Khai, 2026-10-18). The
+    // pocket is said again where the move changes it.
+    let mut screen = Screen::new();
+    let potion = vec![piece(1, "Potion", 8.0, 90.0, MENU)];
+    let shown = bag_panel("MEDICINE", "Potion", "A spray for wounds.");
+    assert_eq!(
+        screen.say(args(
+            &cat(&[&potion, &shown]),
+            vec![CursorItem::new(0x0C, potion.clone(), true)],
+            &cat(&[&potion, &shown]),
+        )),
+        ["Potion", "MEDICINE", "A spray for wounds."]
+    );
+    let heal = bag_panel("MEDICINE", "Full Heal", "Heals all status conditions.");
+    assert_eq!(
+        bag_move(&mut screen, "Full Heal", &heal, &heal[1..]),
+        ["Full Heal", "Heals all status conditions."]
+    );
+    let coin = bag_panel("ITEMS", "Amulet Coin", "Doubles prize money.");
+    assert_eq!(
+        bag_move(&mut screen, "Amulet Coin", &coin, &coin),
+        ["Amulet Coin", "ITEMS Doubles prize money."]
+    );
+    let tm = bag_panel("TMs & HMs", "TM04 Calm Mind", "Calms its spirit.");
+    assert_eq!(
+        bag_move(&mut screen, "Calm Mind", &tm, &tm),
+        ["Calm Mind", "TMs & HMs TM04 Calms its spirit."]
+    );
+}
+
+#[test]
+fn test_a_value_hung_under_its_label_is_read_with_it_when_it_has_not_changed() {
+    // The Bag's TM pocket hangs each number under its label, and moving from Calm Mind to Bulk
+    // Up read "TYPE Fighting POWER CATEGORY STATUS ACCURACY PP" (or_tm-hm, 2026-10-18).
+    let mut screen = Screen::new();
+    let under = |r#box: i64, text: &str, x: f64, y: f64, parent: i64| {
+        piece_kw(r#box, text, x, y, PANEL, Kw { parent, ..PLAIN })
+    };
+    let labels = vec![
+        under(30, "TYPE", -144.0, -70.0, 5),
+        under(31, "POWER", 18.0, -70.0, 5),
+        under(32, "ACCURACY", 18.0, -90.0, 5),
+    ];
+    let values = vec![
+        under(33, "—", 141.0, -70.0, 31),
+        under(34, "—", 141.0, -90.0, 32),
+    ];
+    let kind = |word: &str| ScreenText {
+        picture: true,
+        ..under(35, word, -54.0, -70.0, 5)
+    };
+    // The panel comes on screen as the cursor moves into the pocket, and only the type changes.
+    let shown: Vec<ScreenText> = cat(&[&labels, &values])
+        .into_iter()
+        .map(|p| ScreenText {
+            with_layout: false,
+            ..p
+        })
+        .collect();
+    let mut said = Vec::new();
+    for (item, word, came) in [
+        ("Calm Mind", "Psychic", shown),
+        ("Bulk Up", "Fighting", vec![]),
+    ] {
+        let cursor = vec![piece(1, item, 8.0, 90.0, MENU)];
+        let now = cat(&[&labels, &values, &one(&kind(word))]);
+        let on_screen = cat(&[&cursor, &now]);
+        let texts = cat(&[
+            &came,
+            &one(&ScreenText {
+                changed: true,
+                with_layout: false,
+                ..kind(word)
+            }),
+        ]);
+        said = screen.say(args(
+            &texts,
+            vec![CursorItem::new(0x0C, cursor.clone(), false)],
+            &on_screen,
+        ));
+        for _ in 0..DETAIL_POLLS {
+            said.extend(screen.on(&on_screen));
+        }
+    }
+    assert_eq!(said, ["Bulk Up", "TYPE Fighting POWER — ACCURACY —"]);
 }
 
 #[test]
