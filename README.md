@@ -36,7 +36,9 @@ the Game Boy games. Nothing here is taken from its code.
 - **Screen text**: labels, options and questions as they appear and when they change.
 - **Name entry**: the key under the cursor.
 - **Battles**: the battle text, and each side's Pokémon with its name, gender, level and HP. Your
-  HP is said exactly, the enemy's as a percentage, because a bar is all the game shows.
+  HP is said exactly, the enemy's as a percentage, because a bar is all the game shows. A move's
+  category, power, accuracy and description on the move info screen, where the four moves are
+  said by number, and when a move is to be forgotten.
 - **The PC Box, the party, the Bag and the Pokédex**, the habitat map included.
 - **Contests and the Pokéblock Kit**: each move with its appeal and jamming, each entrant's
   place, and your berries and blocks with how many you have.
