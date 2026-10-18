@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.4.0] - 2026-10-19
+
+### Added
+
+- pa3ds's own words, the names it gives and the scenes it describes are in your game's language:
+  German, English, Spanish, French, Italian, Japanese, Korean and Chinese. Omega Ruby, Alpha
+  Sapphire, X and Y take it from your save; in Sun and Moon, set `language` under `[pa3ds.ui]`.
+  The translations began as a machine's. The Languages page of the manual says how to correct a
+  word or translate pa3ds into another language.
+- Footsteps where Omega Ruby and Alpha Sapphire play none, as on streets, floors and in caves: the
+  game's own step sound, as loud as the game and Azahar would play it.
+- `[pa3ds.audio]` sets how loud pa3ds's own sounds are beside the game's: `tones` for the map's
+  cursor and touch mode, `footsteps` for the footsteps. 1 is as loud as the game, 0 none. If you
+  had turned the tones off, they stay off.
+- The battle's move info screen is read: each move's category, power, accuracy and description,
+  with the four moves said as "move 1" to "move 4". So is the move to forget after a level up.
+
+### Changed
+
+- The map's signs category is called interactables, in every language.
+- The tones follow Azahar's volume slider and its slider in Windows' mixer, as the footsteps do.
+- The manual is a short README, with pages for keys, settings and languages in the `manual`
+  folder.
+- The `data` folder holds only pa3ds's words, the files you translate. The rest is built into
+  pa3ds.
+
+### Fixed
+
+- The Bag says only what is new as you move: not the pocket and the item's name again before its
+  count and description, not the party's ABLE!, UNABLE! and levels at every TM, and not the whole
+  Bag as it comes back from teaching a move. The move to forget no longer reads the Pokémon's
+  number, name and stats with every move.
+- pa3ds no longer stops while you soar on Latios or Latias.
+- On Sharpedo, on Kyogre and under the water, pa3ds no longer says you are on the bike, and says
+  where a current that catches you will leave you.
+- Battles are said on the Chinese Omega Ruby translated by fans.
+- X and Y's Poké Mart says your money, each item's description and how many you are buying.
+- The moving truck at the start of Omega Ruby and Alpha Sapphire lists its way out to Littleroot
+  Town.
+- A comment in `config.toml` or `keys.toml` holding an unusual line break no longer breaks the
+  file when pa3ds adds a setting to it.
+- The manual names `U` as touch mode's tap key, not Enter.
+
 ## [0.3.0] - 2026-10-17
 
 ### Added
