@@ -74,6 +74,14 @@ texture-stage_icon = start
 # (or_move-learning, 2026-10-18).
 texture-waza_pos = {""}
 
+# Pokémon-Amie's decorate screen (`kawaigari_arrange`): `bgbutton_L` and `bgbutton_R` turn its
+# wallpaper in the top bar and its items' page beside the grid, `button_back` closes the items,
+# and `button_exit` leaves the screen (x_pokemon-me and or_pokemon-me, 2026-10-18).
+texture-bgbutton_L = previous
+texture-bgbutton_R = next
+texture-button_back = return
+texture-button_exit = exit
+
 ## The ◀ and ▶ in the top bar's corners, which turn the PlayNav's pages and the sub-screen
 ## tutorial's: both draw `button.bclim`, and only their side of the screen tells them apart
 ## (spike 198).

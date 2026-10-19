@@ -9,3 +9,8 @@ model-boy_right = Piel morena, pelo gris oscuro casi negro en media melena corta
 model-girl_left = Piel pálida, pelo largo rubio platino, ojos azul intenso, sonrisa abierta con labios rojos
 model-girl_middle = Piel clara, pelo largo ondulado rubio miel, ojos azul grisáceo, dulce sonrisa con la boca cerrada
 model-girl_right = Piel morena, pelo largo ondulado gris oscuro casi negro, ojos marrón ámbar, dulce sonrisa con la boca cerrada
+
+# The Pokémon-Amie menu's three buttons: Omega Ruby's words, its text file 123 lines 77 to 79.
+texture-kwg_button01 = Jugar
+texture-kwg_button02 = Decorar
+texture-kwg_button03 = Cambiar

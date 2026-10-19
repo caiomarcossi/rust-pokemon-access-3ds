@@ -42,6 +42,12 @@ texture-msg_win_c = cerrar
 texture-list_button = sacos de entrenamiento
 texture-stage_icon = empezar
 
+# Pokémon-Amie's decorate screen.
+texture-bgbutton_L = anterior
+texture-bgbutton_R = siguiente
+texture-button_back = volver
+texture-button_exit = salir
+
 ## The ◀ and ▶ in the top bar's corners
 
 top-bar-previous = anterior

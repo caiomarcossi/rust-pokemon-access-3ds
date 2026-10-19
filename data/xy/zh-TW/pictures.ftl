@@ -9,3 +9,8 @@ model-boy_right = 棕色的皮膚，深灰黑色短鮑伯頭，琥珀棕色眼�
 model-girl_left = 蒼白的皮膚，鉑金色長髮，明亮的藍色眼睛，紅唇張嘴的笑容
 model-girl_middle = 白皙的皮膚，蜂蜜金色的長捲髮，藍灰色眼睛，抿嘴的溫柔微笑
 model-girl_right = 棕色的皮膚，深灰黑色的長捲髮，琥珀棕色眼睛，抿嘴的溫柔微笑
+
+# The Pokémon-Amie menu's three buttons: machine translation, as above.
+texture-kwg_button01 = 玩耍
+texture-kwg_button02 = 裝飾
+texture-kwg_button03 = 交換

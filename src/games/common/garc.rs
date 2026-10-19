@@ -26,6 +26,8 @@ pub const FATO_MAGIC: &[u8] = b"OTAF";
 pub const FATB_MAGIC: &[u8] = b"BTAF";
 pub const FIRST_KEY: i64 = 0x7C89;
 pub const NEXT_KEY: i64 = 0x2983;
+/// The control choosing between a word's singular and plural endings (`singular`).
+pub const NUMBER_FORM: i64 = 0x1101;
 
 /// The files inside a GARC archive, in order, each entry's first copy. A RomError if it is not
 /// one.
@@ -196,6 +198,40 @@ pub fn plain(line: &[u8]) -> String {
         Err(error) if error.is(Kind::ValueError) => String::new(),
         Err(error) => panic!("{error:?}"),
     }
+}
+
+/// A line's words as `plain` gives them, in the singular. X's English names an interior item
+/// with its plural's ending after a number-form control, whose second argument counts the
+/// singular's letters in its low byte and the plural's after them in its high byte: "Leaf
+/// Cushion", the control, then "s" (spike B, x_pokemon-me).
+pub fn singular(line: &[u8]) -> String {
+    let parts = match tokens(line) {
+        Ok(parts) => parts,
+        Err(error) if error.is(Kind::ValueError) => return String::new(),
+        Err(error) => panic!("{error:?}"),
+    };
+    let mut words: Vec<String> = Vec::new();
+    let mut form: Option<(i64, i64)> = None;
+    for part in parts {
+        match part {
+            Token::Control(control) => {
+                if control.code == NUMBER_FORM && control.args.len() >= 2 {
+                    form = Some((control.args[1] & 0xFF, control.args[1] >> 8));
+                }
+            }
+            Token::Text(text) => {
+                let mut part = text;
+                if let Some((kept, dropped)) = form.take() {
+                    let chars: Vec<char> = part.chars().collect();
+                    let head: String = chars.iter().take(kept as usize).collect();
+                    let tail: String = chars.iter().skip((kept + dropped) as usize).collect();
+                    part = head + &tail;
+                }
+                words.push(part);
+            }
+        }
+    }
+    py::strip(&words.concat()).to_string()
 }
 
 /// A little-endian u32 out of bytes a `struct.unpack_from` already took, as an int.

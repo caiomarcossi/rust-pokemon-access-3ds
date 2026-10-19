@@ -9,3 +9,8 @@ model-boy_right = 褐色の肌、短いボブの濃い灰色がかった黒髪�
 model-girl_left = 青白い肌、長いプラチナブロンドの髪、明るい青い目、赤い唇の口を開けた笑顔
 model-girl_middle = 色白の肌、ウェーブのかかったハニーブロンドの長い髪、青みがかった灰色の目、口を閉じたやさしいほほえみ
 model-girl_right = 褐色の肌、ウェーブのかかった濃い灰色がかった黒の長い髪、琥珀がかった茶色の目、口を閉じたやさしいほほえみ
+
+# The Pokémon-Amie menu's three buttons: Omega Ruby's words, its text file 123 lines 77 to 79.
+texture-kwg_button01 = あそぶ
+texture-kwg_button02 = もようがえ
+texture-kwg_button03 = いれかえ

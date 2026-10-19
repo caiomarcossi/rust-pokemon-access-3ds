@@ -138,6 +138,12 @@ pub struct RomLayout {
     /// The text file of a Secret Base's decorations' names, a line a decoration by its number;
     /// None in a game without Secret Bases.
     pub decorations: Option<i64>,
+    /// The text file of the Poké Puffs' names, a line a puff by its kind, Sweet Poké Puff first
+    /// and Supreme Winter Poké Puff last; None where they are not read.
+    pub puffs: Option<i64>,
+    /// The text file of Pokémon-Amie's wallpapers' names and then its interior items', Normal
+    /// Wallpaper first and Wooden Bed last; None where they are not read.
+    pub goods: Option<i64>,
     /// The text file of the items' names and the Mach Bike's line in it, which a way up a
     /// sandy slope is said with; None in a game without sandy slopes.
     pub bike: Option<(i64, i64)>,
@@ -216,6 +222,8 @@ impl RomLayout {
             caught: HashSet::new(),
             map_panes: None,
             decorations: None,
+            puffs: None,
+            goods: None,
             bike: None,
             acro: None,
             items: None,

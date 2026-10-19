@@ -21,8 +21,9 @@
 //! 3. **the words of the button drawing the same picture beside words**: the shortcut bar under
 //!    the AreaNav draws the X menu's six icons alone, and the X menu draws each beside its word,
 //!    POKÉMON, POKÉDEX, BAG, the player's name, SAVE and OPTIONS, hidden until it opens;
-//! 4. **what it was called the last time it could be named**: the DexNav's button draws a
-//!    magnifier from another archive while a hidden Pokémon is near (spike 171);
+//! 4. **what it was called the last time it could be named**, while its button holds the same
+//!    panes: the DexNav's button draws a magnifier from another archive while a hidden Pokémon is
+//!    near (spike 171);
 //! 5. **where it is, as a slot** (`slots.slot`), as the Box's pointer says it: "BOX 1, row 1,
 //!    column 1, empty", "Party 2", a mark's "●, on" (movie22);
 //! 6. **the words of the picture's own name** (`pictures.words`), a bare "button" in the top bar's
@@ -190,7 +191,7 @@ pub struct TouchTargets {
     off: Option<Off>,
     chosen: Option<i64>,
     /// Touch area -> what it was last called (rule 4).
-    named: IndexMap<i64, String>,
+    named: IndexMap<i64, (String, HashSet<i64>)>,
     unnamed: HashSet<i64>,
     groups: IndexMap<i64, Vec<i64>>,
     /// A walk's buttons and panes' middles (None where not laid out), each found once: the Box's
@@ -576,10 +577,17 @@ impl TouchTargets {
                         names.insert(touch, alike);
                     }
                 }
+                let panes: HashSet<i64> = group.iter().copied().collect();
                 if let Some(name) = names.get(&touch) {
                     // Remembered only from the rules above: a picture's own words are a guess.
-                    self.named.insert(touch, name.clone());
-                } else if let Some(name) = self.named.get(&touch) {
+                    self.named.insert(touch, (name.clone(), panes));
+                } else if let Some((name, held)) = self.named.get(&touch)
+                    && *held == panes
+                {
+                    // And only while its button holds what it held: Amie's Interior Items move
+                    // each page's pictures under touch areas that stay put, and a slot empty on
+                    // the next page was still said by the item it had held (spike B,
+                    // or_pokemon_me2).
                     names.insert(touch, name.clone());
                 } else if let Some(slot) = {
                     let (x, y) = place(&layouts, touch)?;
@@ -674,10 +682,15 @@ impl TouchTargets {
                     screens.insert(touch);
                 }
             }
+            // And a screen's touch area whose middle is another's taps that other: the bar under
+            // Amie's decorate screen's two tabs, offered at its middle, opened Poké Puffs.
             let kept: Vec<Target> = found
                 .split_off(first)
                 .into_iter()
-                .filter(|target| !within_another(target.pane, &placed, &spoken, &screens))
+                .filter(|target| {
+                    !within_another(target.pane, &placed, &spoken, &screens)
+                        && !(screens.contains(&target.pane) && on_another(target.pane, &placed))
+                })
                 .collect();
             found.extend(kept);
         }
@@ -731,7 +744,11 @@ impl TouchTargets {
         // A `set[str]` in Python: only its size and its one member are read.
         let mut named: IndexMap<String, IndexSet<String>> = IndexMap::new();
         for (&touch, kind) in tree {
-            if kind != lyt::BOUNDING_CLASS {
+            // A touch area hanging straight from the root is the screen's, not a button beside
+            // words: Amie's decorate screen's bar under its two tabs named its exit by both tabs'
+            // words, "Interior Items Poké Puffs" (x_pokemon-me).
+            if kind != lyt::BOUNDING_CLASS || u32(&self.layouts.pane(touch)?, lyt::PARENT)? == root
+            {
                 continue;
             }
             let group = self.group(root, touch, tree)?;
@@ -916,6 +933,15 @@ pub(crate) fn within_another(
                 .get(&touch)
                 .unwrap_or(&none)
                 .is_subset(own.get(&other).unwrap_or(&none))
+    })
+}
+
+/// Does this touch area's middle, where a tap on it presses, lie within another of its
+/// layout's?
+pub(crate) fn on_another(touch: i64, placed: &IndexMap<i64, (i64, i64, f64, f64)>) -> bool {
+    let (x, y, _, _) = placed[&touch];
+    placed.iter().any(|(&other, &(ox, oy, w, h))| {
+        other != touch && (((x - ox).abs() * 2) as f64) < w && (((y - oy).abs() * 2) as f64) < h
     })
 }
 

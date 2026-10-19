@@ -42,6 +42,12 @@ texture-msg_win_c = 關閉
 texture-list_button = 沙袋
 texture-stage_icon = 開始
 
+# Pokémon-Amie's decorate screen.
+texture-bgbutton_L = 上一頁
+texture-bgbutton_R = 下一頁
+texture-button_back = 返回
+texture-button_exit = 退出
+
 ## The ◀ and ▶ in the top bar's corners
 
 top-bar-previous = 上一頁

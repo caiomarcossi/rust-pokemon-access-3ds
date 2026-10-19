@@ -38,6 +38,7 @@ use crate::games::common::field::things::{
 use crate::games::common::layout::Layouts;
 use crate::games::common::layout_file::{LayoutFile, LayoutFiles};
 use crate::games::common::pictures::CAUGHT;
+use crate::games::common::pictures::named as named_picture;
 use crate::games::common::scenes::{
     Described, Lines, Recall, Scenes, Word, load as load_scenes, shipped as scenes_shipped,
 };
@@ -59,7 +60,7 @@ use crate::games::gen6::game::{ConditionsReader, Game, OpeningReader, OwnApp, St
 use crate::games::gen6::rom::archives::GameText;
 use crate::games::gen6::rom::textures;
 use crate::games::gen6::rom::textures::Index;
-use crate::games::gen6::screens::amie::AmiePage;
+use crate::games::gen6::screens::amie::{AmiePage, Goods, Puffs};
 use crate::games::gen6::screens::battle::{BattleReader, Battlers, GAUGE_CLASSES, Gauges};
 use crate::games::gen6::screens::choices::{
     BOX_DEVICE_MANAGER, ChoiceReader, DEVICE_MANAGER_CLASS,
@@ -84,16 +85,17 @@ use crate::py::{self, Error, Log, PySet, Result};
 /// say whose buttons take taps (`buttons`), and the AreaNav's navigator, which says whose icon each
 /// picture of its Pokémon Distribution draws, and its views, which say which of its layouts it
 /// draws; the party and the icons the Bag draws it with; the Pokémon-Amie page, which says whose
-/// icon its Pokémon is; Super Training's, which says whose each party slot's is; and the balls of its
-/// Balloon Bots, which say when a shot is coming; and the save's trainer record, which says the
-/// game's language (`mystatus`). A game's own readers add what they find their objects
+/// icon its Pokémon is; the texture systems Amie's decorate screen draws its Poké Puffs and items
+/// from, and the layout helpers its item pages point at; Super Training's page, which says whose
+/// each party slot's is; and the balls of its Balloon Bots, which say when a shot is coming; and
+/// the save's trainer record, which says the game's language (`mystatus`). A game's own readers add what they find their objects
 /// by (`Gen6Profile.classes`): ORAS's DexNav, the player's work its hidden Pokémon's record is found
 /// through.
 ///
 /// Not TextBoxes or cursor windows: walking each layout's tree finds every one that can be placed on
 /// screen (spike 62). And the linear heap is not swept: the battle builds its layouts there, and its
 /// message window leads to their pool (spike 64).
-pub const HEAP_CLASSES: [&str; 29] = [
+pub const HEAP_CLASSES: [&str; 31] = [
     msgwin::CLASSES[0],
     msgwin::CLASSES[1],
     talk::CLASSES[0],
@@ -116,6 +118,8 @@ pub const HEAP_CLASSES: [&str; 29] = [
     townmap::VIEWS[3].0,
     townmap::VIEWS[4].0,
     amie::CLASS,
+    distribution::REPLACE_CLASS,
+    amie::G2D_CLASS,
     training::CLASS,
     training::MISSILE,
     pokemon::PARAM_CLASS,
@@ -207,6 +211,8 @@ pub struct Gen6Profile {
     pub distribution: Rc<RefCell<Distribution>>,
     pub views: RefCell<townmap::Views>,
     pub amie: Rc<RefCell<AmiePage>>,
+    pub puffs: Rc<RefCell<Puffs>>,
+    pub goods: Rc<RefCell<Goods>>,
     pub training: Rc<RefCell<TrainingPage>>,
     pub goals: Rc<Goals>,
     pub bags: Rc<Bags>,
@@ -495,10 +501,23 @@ impl Gen6Profile {
             Rc::new(move |r#box: i64| screen.borrow().text_of(r#box))
         };
         // The PlayNav's Pokémon-Amie page draws its Pokémon's icon, and says nothing of whose.
-        let amie = Rc::new(RefCell::new(AmiePage::new(
+        let amie = Rc::new(RefCell::new(AmiePage::with_number(
             memory.clone(),
             names.clone(),
             text.species.clone(),
+            game.amie,
+        )));
+        // Amie's decorate screen draws its Poké Puffs, and says nothing of which.
+        let puffs = Rc::new(RefCell::new(Puffs::new(
+            memory.clone(),
+            names.clone(),
+            text.puffs.clone(),
+        )));
+        // And its Interior Items, of which it says only how many.
+        let goods = Rc::new(RefCell::new(Goods::new(
+            memory.clone(),
+            names.clone(),
+            text.goods.clone(),
         )));
         // So does Super Training's, with the party; and its rounds' goals are on the top screen.
         let training = Rc::new(RefCell::new(TrainingPage::with_icons(
@@ -511,7 +530,7 @@ impl Gen6Profile {
         // The DexNav draws a Pokémon caught in colour, and only those are said so: "Ralts",
         // "Zigzagoon caught", with a comma under pauses (Orion, 2026-10-06).
         let caught = format!("{}{}", if ui.pauses { ", " } else { " " }, own(CAUGHT, &[]));
-        let images: IndexMap<String, String> = text
+        let mut images: IndexMap<String, String> = text
             .touch_words
             .iter()
             .map(|(image, words)| {
@@ -523,6 +542,15 @@ impl Gen6Profile {
                 (image.clone(), said)
             })
             .collect();
+        // Pictures of words the game's text has no line for are named by pa3ds's own (X's Amie
+        // menu), and keep to them as a button with the game's word does.
+        for image in &game.worded {
+            if let Some(said) = named_picture(image)
+                && !said.is_empty()
+            {
+                images.insert(image.clone(), said);
+            }
+        }
         // And the training bags in its page's list, pictures with no touch area of their own.
         let off: touch::Off = {
             let buttons = buttons.clone();
@@ -548,6 +576,7 @@ impl Gen6Profile {
                 training.clone(),
                 party_icons.clone(),
             );
+            let (puffs, goods) = (puffs.clone(), goods.clone());
             Rc::new(move |pane: i64| {
                 // The AreaNav is the field's: elsewhere its navigators are gone, and asking cost a
                 // touch walk 1,400 reads (movie22). On the field its icons are the DexNav's.
@@ -575,6 +604,14 @@ impl Gen6Profile {
                     {
                         return Ok(Some(name));
                     }
+                }
+                if running.as_deref() == Some(amie::ARRANGE) {
+                    if let Some(name) = puffs.borrow_mut().name(pane)?
+                        && !name.is_empty()
+                    {
+                        return Ok(Some(name));
+                    }
+                    return goods.borrow_mut().name(pane);
                 }
                 party_icons.borrow().name(pane)
             })
@@ -787,6 +824,8 @@ impl Gen6Profile {
             distribution,
             views: RefCell::new(views),
             amie,
+            puffs,
+            goods,
             training,
             goals,
             bags,
@@ -851,6 +890,8 @@ impl Gen6Profile {
             .track(found.of(&[distribution::CLASS]), adding);
         self.views.borrow_mut().track(&found.heap, adding)?;
         self.amie.borrow_mut().track(&found.heap, adding)?;
+        self.puffs.borrow_mut().track(&found.heap, adding)?;
+        self.goods.borrow_mut().track(&found.heap, adding)?;
         self.training.borrow_mut().track(&found.heap, adding)?;
         self.sparring.borrow_mut().track(&found.heap, adding)?;
         self.buttons.borrow_mut().track(

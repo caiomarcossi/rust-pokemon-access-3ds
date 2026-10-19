@@ -42,6 +42,12 @@ texture-msg_win_c = 閉じる
 texture-list_button = サンドバッグ
 texture-stage_icon = スタート
 
+# Pokémon-Amie's decorate screen.
+texture-bgbutton_L = 前へ
+texture-bgbutton_R = 次へ
+texture-button_back = もどる
+texture-button_exit = おわる
+
 ## The ◀ and ▶ in the top bar's corners
 
 top-bar-previous = 前へ

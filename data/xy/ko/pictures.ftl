@@ -9,3 +9,8 @@ model-boy_right = 갈색 피부, 짧은 단발의 짙은 회흑색 머리, 호�
 model-girl_left = 창백한 피부, 긴 플래티넘 블론드 머리, 밝은 파란 눈, 빨간 입술로 활짝 웃는 미소
 model-girl_middle = 하얀 피부, 길고 웨이브진 허니블론드 머리, 청회색 눈, 입을 다문 부드러운 미소
 model-girl_right = 갈색 피부, 길고 웨이브진 짙은 회흑색 머리, 호박빛 갈색 눈, 입을 다문 부드러운 미소
+
+# The Pokémon-Amie menu's three buttons: Omega Ruby's words, its text file 123 lines 77 to 79.
+texture-kwg_button01 = 논다
+texture-kwg_button02 = 모양바꾸기
+texture-kwg_button03 = 교체

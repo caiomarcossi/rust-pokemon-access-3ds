@@ -19,3 +19,12 @@ model-boy_right = Brown skin, dark grey-black hair in a short bob, amber-brown e
 model-girl_left = Pale skin, long platinum-blonde hair, bright blue eyes, open smile with red lips
 model-girl_middle = Fair skin, long wavy honey-blonde hair, blue-grey eyes, gentle closed smile
 model-girl_right = Brown skin, long wavy dark grey-black hair, amber-brown eyes, gentle closed smile
+
+# The Pokémon-Amie page's menu, opened by tapping its Pokémon. X draws its three buttons as
+# pictures of their words, `kwg_button01` PLAY in the middle, `02` DECORATE on the left and `03`
+# SWITCH on the right, and has no line of text for them. These are Omega Ruby's own words for the
+# same buttons, its text file 123 lines 77 to 79, in each language it carries (spike 228,
+# x_super_train3).
+texture-kwg_button01 = PLAY
+texture-kwg_button02 = DECORATE
+texture-kwg_button03 = SWITCH

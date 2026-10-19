@@ -135,6 +135,11 @@ pub fn characters() -> &'static IndexMap<i64, i64> {
 /// thing's or a Pokémon's. Mom's Rhyhorn by the house is `0x106`, sprite `0x1014` (spike 221).
 pub const MODELS: (i64, i64) = (0xAB, 0xF2);
 
+/// The Poké Puffs' names, line for line ORAS's file 81 (`oras.PUFF_NAMES`; spike B).
+pub const PUFF_NAMES: i64 = 67;
+/// Pokémon-Amie's wallpapers and interior items, line for line ORAS's file 110
+/// (`oras.GOODS_NAMES`), the English with a plural's ending after each (`garc.singular`).
+pub const GOODS_NAMES: i64 = 92;
 /// Super Training's bags in the list its page opens, as ORAS's (`oras.TRAINING_BAGS`): line N of
 /// text file 23 is the bag of `sand_bagNN.bclim`, HP Bag S at 1, Strength Bag at 19 (spike B).
 pub fn training_bags() -> &'static (i64, IndexMap<&'static str, i64>) {
@@ -145,6 +150,20 @@ pub fn training_bags() -> &'static (i64, IndexMap<&'static str, i64>) {
             (image, n)
         });
         (23, names.collect())
+    })
+}
+/// Super Training's regimens in its regimen menu, as ORAS's (`oras.TRAINING_REGIMENS`): line N-1 of
+/// text file 41 is the regimen of `stage_pokeNN.bclim`, line for line ORAS's file 44 but for X's own
+/// two, "Kick Out! Get the Dragalge Corps!" and "The Battle for the Best: Version X!". The tutorial's
+/// menu drew `stage_poke02`, "Get Spewpa with an Energy Shot!" (spike B, x_super_train2).
+pub fn training_regimens() -> &'static (i64, IndexMap<&'static str, i64>) {
+    static TRAINING_REGIMENS: OnceLock<(i64, IndexMap<&'static str, i64>)> = OnceLock::new();
+    TRAINING_REGIMENS.get_or_init(|| {
+        let names = (1..39).map(|n| {
+            let image: &'static str = Box::leak(format!("stage_poke{n:02}.bclim").into_boxed_str());
+            (image, n - 1)
+        });
+        (41, names.collect())
     })
 }
 /// The Super Training page's lower-left button, `spar_button.bclim`, which opens the regimen menu:
@@ -187,7 +206,9 @@ pub fn rom() -> &'static RomLayout {
         species: Some(80),
         pokemon_models: Some(("a/0/2/1".to_string(), MODELS.1)),
         battle_models: Some("a/0/0/7".to_string()),
-        touch_words: [training_bags(), training_button()]
+        puffs: Some(PUFF_NAMES),
+        goods: Some(GOODS_NAMES),
+        touch_words: [training_bags(), training_regimens(), training_button()]
             .into_iter()
             .map(|(file, lines)| {
                 (
@@ -316,6 +337,21 @@ pub fn warps() -> &'static IndexMap<i64, String> {
     })
 }
 
+/// The Pokémon-Amie menu's PLAY, DECORATE and SWITCH, pictures of their words that X's text has no
+/// line for: named by `pictures.ftl` and offered beside the menu's close, as ORAS's text names them.
+/// Named only by a picture's words, they were taken for part of close and left out (spike B,
+/// x_super_train3).
+///
+/// Python's is a frozenset of strings, which it iterates in an order of its own: an `IndexSet` here
+/// (`docs/porting.md`); it only adds to a dict looked up by image.
+pub const WORDED: [&str; 3] = [
+    "kwg_button01.bclim",
+    "kwg_button02.bclim",
+    "kwg_button03.bclim",
+];
+/// Where X's Pokémon-Amie page, `FM_Kawaigari`, keeps its Pokémon's number: 0x28 before ORAS's,
+/// as its Super Training page is, Frogadier's 657 (spike B, x_super_train2).
+pub const AMIE: i64 = 0x124;
 /// Where X's Super Training page, `FM_Training`, keeps its party's PokeIcon: 0x28 before ORAS's,
 /// and its records with it, Frogadier's at +0x124 (spike B).
 pub const TRAINING: i64 = 0xC8;
@@ -370,7 +406,9 @@ pub fn game() -> &'static Game {
         strands: STRAND,
         gates: true,
         training: TRAINING,
+        amie: AMIE,
         field_menu: FIELD_MENU,
+        worded: WORDED.iter().map(|texture| texture.to_string()).collect(),
         opening: Some(|memory, _language| Box::new(IntroReader::new(memory))),
         ..Game::new("X and Y", [X, Y], DATA, rom().clone(), DRAWN)
     })

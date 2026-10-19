@@ -1,5 +1,6 @@
 //! ORAS control-code tests. The byte layouts follow spike 11; the words are made up.
 
+use crate::games::common::garc::{plain, singular};
 use crate::games::common::text::{Control, Token, pages, tokens};
 use crate::py::Kind;
 
@@ -192,4 +193,27 @@ fn test_the_newline_after_a_page_break_is_not_a_line() {
 fn test_a_newline_inside_control_arguments_is_not_a_line_break() {
     let raw = [text("a"), code(0x1234, &[0x000A]), text("b")].concat();
     assert_eq!(pages(&raw).unwrap()[0].lines, [units(&raw)]);
+}
+
+#[test]
+fn test_singular_drops_the_plural_ending_after_a_number_form() {
+    // X's English interior items, as file 92 stores them: no letters singular, then "s" plural.
+    let raw = [
+        text("Leaf Cushion"),
+        code(0x1101, &[0x00FE, 0x0100]),
+        text("s"),
+    ]
+    .concat();
+    assert_eq!(
+        (
+            plain(&raw),
+            singular(&raw),
+            singular(&text("Mysterious Eggs"))
+        ),
+        (
+            "Leaf Cushions".to_string(),
+            "Leaf Cushion".to_string(),
+            "Mysterious Eggs".to_string()
+        )
+    );
 }

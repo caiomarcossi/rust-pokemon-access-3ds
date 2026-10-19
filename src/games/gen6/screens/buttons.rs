@@ -216,11 +216,12 @@ impl Buttons {
             .collect())
     }
 
-    /// (work, pane name) of every button switched off now: its layout's work and the name of
-    /// its touch area, or of its picture where it has none.
+    /// (work, pane name) of every touch area whose buttons are all switched off now: its
+    /// layout's work and its name, or its picture's where it has none.
     pub fn off(&self) -> Result<HashSet<(i64, String)>> {
         let read = |at: i64, size: i64| self.memory.read(at, size);
         let mut found: HashSet<(i64, String)> = HashSet::new();
+        let mut on: HashSet<(i64, String)> = HashSet::new();
         for (&manager, &vtable) in &self.managers {
             let head = read(manager, COUNT + 4)?;
             let (table, count) = (u32(&head, BUTTONS)?, u32(&head, COUNT)?);
@@ -243,15 +244,21 @@ impl Buttons {
             }
             for state in &states {
                 let handle = u32(state, HANDLE)?;
-                if state[ON as usize] == 0 && within(HEAP_SPAN, handle) {
-                    found.insert((
+                if within(HEAP_SPAN, handle) {
+                    let key = (
                         u32(&read(handle + WORK, 4)?, 0)?,
                         pane_name(u32(state, PANE)?),
-                    ));
+                    );
+                    if state[ON as usize] != 0 {
+                        on.insert(key);
+                    } else {
+                        found.insert(key);
+                    }
                 }
             }
         }
-        Ok(found)
+        // X's regimen menu keeps two buttons on its regimen's touch area, one of them off.
+        Ok(found.difference(&on).cloned().collect())
     }
 
     /// The works of the layouts a manager's buttons are in, read again when its list of

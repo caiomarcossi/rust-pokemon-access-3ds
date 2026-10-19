@@ -17,6 +17,8 @@ use crate::core::heaps::Block;
 pub const CLASS: &str = "N3gfl4heap10CTRExpHeapE";
 /// Where the SDK's head is in the heap object.
 pub const HEAD: i64 = 0x38;
+/// The game's header in a block, after the SDK's and before the object.
+pub const HEADER: i64 = 0x20;
 /// The heap's count of blocks in use: it moves when a block is freed and another taken where it
 /// was, which leaves the SDK's head as it was.
 pub const COUNT: i64 = 0x08;

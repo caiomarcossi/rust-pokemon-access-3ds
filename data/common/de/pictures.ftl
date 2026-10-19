@@ -42,6 +42,12 @@ texture-msg_win_c = schließen
 texture-list_button = Sandsäcke
 texture-stage_icon = Start
 
+# Pokémon-Amie's decorate screen.
+texture-bgbutton_L = zurück
+texture-bgbutton_R = weiter
+texture-button_back = zurück
+texture-button_exit = beenden
+
 ## The ◀ and ▶ in the top bar's corners
 
 top-bar-previous = zurück

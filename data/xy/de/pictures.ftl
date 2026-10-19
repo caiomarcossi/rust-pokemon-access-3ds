@@ -9,3 +9,8 @@ model-boy_right = Braune Haut, dunkelgrau-schwarze Haare in einem kurzen Bob, be
 model-girl_left = Blasse Haut, lange platinblonde Haare, leuchtend blaue Augen, offenes Lächeln mit roten Lippen
 model-girl_middle = Helle Haut, lange gewellte honigblonde Haare, blaugraue Augen, sanftes Lächeln mit geschlossenem Mund
 model-girl_right = Braune Haut, lange gewellte dunkelgrau-schwarze Haare, bernsteinbraune Augen, sanftes Lächeln mit geschlossenem Mund
+
+# The Pokémon-Amie menu's three buttons: Omega Ruby's words, its text file 123 lines 77 to 79.
+texture-kwg_button01 = Spielen
+texture-kwg_button02 = Deko
+texture-kwg_button03 = Wechseln

@@ -370,6 +370,12 @@ pub const CONDITIONS: (i64, i64) = (123, 50);
 /// A Secret Base's decorations by number, as the save numbers them: Small Desk 0, Small Chair 10,
 /// the Welcome Mats 0x13 to 0x17, Your Location 0xad (spike 154).
 pub const DECORATION_NAMES: i64 = 56;
+/// The Poké Puffs' names, a line a kind: Sweet Poké Puff 0 to Spice 4, then the Frosted, Fancy and
+/// Deluxe five, and the Supreme six, Wish 20 to Winter 25 (spike B, or_pokemon-me).
+pub const PUFF_NAMES: i64 = 81;
+/// Pokémon-Amie's 34 wallpapers, Normal Wallpaper 0 to Chic Wallpaper 33, then its 172 interior
+/// items by number, Cocoa Treat Cushion 34 to Wooden Bed 205 (spike B, or_pokemon-me2).
+pub const GOODS_NAMES: i64 = 110;
 /// The items' names, a line an item by its number: the Red Orb at 534 (spike 203). File 116
 /// holds the same lines.
 pub const ITEM_NAMES: i64 = 114;
@@ -462,6 +468,8 @@ pub fn rom() -> &'static RomLayout {
         bike: Some(MACH_BIKE),
         acro: Some(ACRO_BIKE),
         items: Some(ITEM_NAMES),
+        puffs: Some(PUFF_NAMES),
+        goods: Some(GOODS_NAMES),
         files: vec![sky::ARCHIVE.to_string()],
         touch_words: [
             touch_words(),

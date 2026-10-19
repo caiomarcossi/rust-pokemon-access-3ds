@@ -42,6 +42,12 @@ texture-msg_win_c = 닫기
 texture-list_button = 샌드백
 texture-stage_icon = 시작
 
+# Pokémon-Amie's decorate screen.
+texture-bgbutton_L = 이전
+texture-bgbutton_R = 다음
+texture-button_back = 돌아가기
+texture-button_exit = 끝내기
+
 ## The ◀ and ▶ in the top bar's corners
 
 top-bar-previous = 이전

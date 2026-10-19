@@ -15,6 +15,7 @@ use super::fake_memory::{CODE, FakeClasses, FakeMemory};
 use crate::core::rtti::ClassNames;
 use crate::games::common::layout::Layouts;
 use crate::games::common::lyt;
+use crate::games::common::screen::ScreenText;
 use crate::games::common::touch::{self, Options, Target, TouchTargets};
 
 fn dexnav() -> Target {
@@ -501,6 +502,121 @@ fn test_a_touch_area_is_named_by_the_picture_now_lying_in_it() {
             after[&240].as_str()
         ),
         ("Breloom", "Latios", "Sceptile")
+    );
+}
+
+/// Amie's Interior Items move a page's pictures out from under touch areas that stay put, and
+/// a slot empty on the next page was still said by the item it had held (or_pokemon_me2).
+#[test]
+fn test_a_touch_area_whose_picture_has_moved_away_is_not_said_by_it() {
+    let memory = FakeMemory::new();
+    let classes = FakeClasses::new(memory.clone());
+    let fake = FakeLayouts::new(&memory, &classes);
+    let (bounding, picture) = (
+        classes.add(lyt::BOUNDING_CLASS),
+        classes.add(lyt::PICTURE_CLASS),
+    );
+    let (_work, group) = fake.screen(0x08200000);
+    let parent = group + 0x1000;
+    let (area, item) = (parent + 0x200, parent + 0x400);
+    fake.pane(parent, group);
+    fake.pane_with_vtable(area, parent, Some(bounding));
+    fake.pane_with_vtable(item, parent, Some(picture));
+    for pane in [area, item] {
+        memory.write(pane + lyt::SCALE_X, &floats(&[1.0, 1.0]));
+        memory.write(pane + lyt::WIDTH, &floats(&[40.0, 40.0]));
+    }
+    fake.track().unwrap();
+    let mut targets = TouchTargets::new(
+        fake.layouts.clone(),
+        Rc::new(Vec::new),
+        Rc::new(|_box| Ok(String::new())),
+        Rc::new(|_pane| Ok(None)),
+        Rc::new(|_root| None),
+        Rc::new(|_line: &str| {}),
+        Options {
+            picture_name: Some(Rc::new(move |pane| {
+                Ok((pane == item).then(|| "Leaf Cushion".to_string()))
+            })),
+            ..Options::default()
+        },
+    );
+    let names = |targets: &mut TouchTargets| -> Vec<String> {
+        targets
+            .targets()
+            .unwrap()
+            .into_iter()
+            .map(|t| t.name)
+            .collect()
+    };
+    assert_eq!(names(&mut targets), ["Leaf Cushion"]);
+    memory.write(item + lyt::X, &floats(&[280.0]));
+    fake.layouts.refresh();
+    assert!(names(&mut targets).is_empty());
+}
+
+/// Amie's decorate screen: a bar hanging from the root under its two tabs and its exit named
+/// the exit by the tabs' words, and was offered at its middle, on a tab (x_pokemon-me).
+#[test]
+fn test_the_screens_bar_neither_names_a_button_nor_is_offered_over_one() {
+    let memory = FakeMemory::new();
+    let classes = FakeClasses::new(memory.clone());
+    let fake = FakeLayouts::new(&memory, &classes);
+    let (bounding, picture) = (
+        classes.add(lyt::BOUNDING_CLASS),
+        classes.add(lyt::PICTURE_CLASS),
+    );
+    let textbox = classes.add(lyt::TEXTBOX_CLASS);
+    let (_work, root) = fake.screen_with(0x08200000, false, false);
+    let (bar, tab, back) = (root + 0x1000, root + 0x2000, root + 0x3000);
+    let (tab_picture, tab_words, tab_touch, back_touch) =
+        (tab + 0x200, tab + 0x400, tab + 0x600, back + 0x200);
+    for (pane, parent, kind, x, size) in [
+        (bar, root, Some(bounding), 0.0f32, [320.0f32, 30.0]),
+        (tab, root, None, 0.0, [100.0, 25.0]),
+        (tab_picture, tab, Some(picture), 0.0, [100.0, 25.0]),
+        (tab_words, tab, Some(textbox), 0.0, [90.0, 20.0]),
+        (tab_touch, tab, Some(bounding), 0.0, [100.0, 25.0]),
+        (back, root, Some(picture), 145.0, [30.0, 30.0]),
+        (back_touch, back, Some(bounding), 145.0, [30.0, 30.0]),
+    ] {
+        match kind {
+            Some(kind) => fake.pane_with_vtable(pane, parent, Some(kind)),
+            None => fake.pane(pane, parent),
+        }
+        memory.write(pane + lyt::X, &floats(&[x]));
+        memory.write(pane + lyt::Y, &floats(&[-105.0]));
+        memory.write(pane + lyt::WIDTH, &floats(&size));
+    }
+    fake.track().unwrap();
+    let words = vec![ScreenText::new(tab_words, "Poké Puffs", false)];
+    let drawn: IndexMap<i64, String> = IndexMap::from([
+        (tab_picture, "button_system.bclim".to_string()),
+        (back, "button_back.bclim".to_string()),
+    ]);
+    let mut targets = TouchTargets::new(
+        fake.layouts.clone(),
+        Rc::new(move || words.clone()),
+        Rc::new(move |pane| {
+            Ok(if pane == tab_words {
+                "Poké Puffs".to_string()
+            } else {
+                String::new()
+            })
+        }),
+        Rc::new(move |pane| Ok(drawn.get(&pane).cloned())),
+        Rc::new(|_root| None),
+        Rc::new(|_line: &str| {}),
+        Options::default(),
+    );
+    assert_eq!(
+        targets
+            .targets()
+            .unwrap()
+            .iter()
+            .map(|t| (t.name.as_str(), t.x))
+            .collect::<Vec<_>>(),
+        [("Poké Puffs", 160), ("return", 305)]
     );
 }
 

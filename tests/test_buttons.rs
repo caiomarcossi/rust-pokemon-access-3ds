@@ -110,6 +110,21 @@ fn test_a_button_switched_off_is_said_by_its_layouts_work_and_its_panes_name() {
     assert_eq!(pane_name(0x111), "7l");
 }
 
+/// X's regimen menu keeps two buttons on its regimen's touch area "ca", 0x1ba, one of them
+/// off, and the regimen was left out (spike B, x_super_train2).
+#[test]
+fn test_a_touch_area_one_of_whose_buttons_is_on_is_not_off() {
+    let memory = FakeMemory::new();
+    manager(&memory, LIST, PARTY_WORK, false, 2);
+    for (button, on) in [(LIST + 0x300, 0u8), (LIST + 0x360, 1)] {
+        memory.u32(button + PANE, &[0x1BA]);
+        memory.write(button + ON, &[on]);
+    }
+    let mut buttons = Buttons::new(memory.clone());
+    buttons.track([LIST], [], [], false).unwrap();
+    assert_eq!(buttons.off().unwrap(), HashSet::new());
+}
+
 /// An app leaves its buttons off as it closes, and its layout's slot is taken by the next.
 #[test]
 fn test_a_manager_with_no_button_on_says_nothing_of_its_buttons() {

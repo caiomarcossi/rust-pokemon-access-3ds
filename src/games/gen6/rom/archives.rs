@@ -48,7 +48,7 @@ use unicode_general_category::{GeneralCategory, get_general_category};
 use crate::core::binary::{self, u16, u32};
 use crate::core::rom::{Rom, lz11};
 use crate::games::common::field::ground::{CUT, ROCK_SMASH, STRENGTH, SURF, WATERFALL};
-use crate::games::common::garc::{garc_files, message_lines, plain};
+use crate::games::common::garc::{garc_files, message_lines, plain, singular};
 use crate::games::gen6::field::zonedata;
 use crate::games::gen6::rom::doors::{door_facilities, town_rows};
 use crate::games::gen6::rom::layout::{RomLayout, TownFacilities, zone_table};
@@ -313,6 +313,11 @@ pub struct GameText {
     pub map_places: IndexMap<String, String>,
     /// What the game calls each Secret Base decoration, by its number (`RomLayout.decorations`).
     pub decorations: Vec<String>,
+    /// What the game calls each kind of Poké Puff, in order (`RomLayout.puffs`).
+    pub puffs: Vec<String>,
+    /// What the game calls each of Pokémon-Amie's wallpapers and then each interior item, in the
+    /// singular (`RomLayout.goods`).
+    pub goods: Vec<String>,
     /// What the game calls the Mach Bike (`RomLayout.bike`), or None.
     pub bike: Option<String>,
     /// What the game calls the Acro Bike (`RomLayout.acro`), or None.
@@ -419,6 +424,8 @@ impl Default for GameText {
             caught: HashSet::new(),
             map_places: IndexMap::new(),
             decorations: Vec::new(),
+            puffs: Vec::new(),
+            goods: Vec::new(),
             bike: None,
             acro: None,
             files: IndexMap::new(),
@@ -792,6 +799,14 @@ impl GameText {
                 Some(file) => lines_of_file(&files, file)?,
                 None => Vec::new(),
             },
+            puffs: match layout.puffs {
+                Some(file) => lines_of_file(&files, file)?,
+                None => Vec::new(),
+            },
+            goods: match layout.goods {
+                Some(file) => lines_of_file_read(&files, file, singular)?,
+                None => Vec::new(),
+            },
             bike: lines_from(layout.bike)?
                 .into_iter()
                 .next()
@@ -1122,11 +1137,20 @@ fn touch_words(files: &[Vec<u8>], layout: &RomLayout) -> Result<IndexMap<String,
 /// A text file's lines, or none where the archive has no such file or it is not text: a ROM
 /// laid out otherwise loses only what that file names.
 fn lines_of_file(files: &[Vec<u8>], file: i64) -> Result<Vec<String>> {
+    lines_of_file_read(files, file, plain)
+}
+
+/// `_lines_of_file` with its `read`: each line as `read` gives it.
+fn lines_of_file_read(
+    files: &[Vec<u8>],
+    file: i64,
+    read: fn(&[u8]) -> String,
+) -> Result<Vec<String>> {
     if !(file < files.len() as i64) || files[file as usize].is_empty() {
         return Ok(Vec::new());
     }
     match message_lines(&files[file as usize]) {
-        Ok(lines) => Ok(lines.iter().map(|line| plain(line)).collect()),
+        Ok(lines) => Ok(lines.iter().map(|line| read(line)).collect()),
         Err(error) if error.is(Kind::RomError) => Ok(Vec::new()),
         Err(error) => Err(error),
     }
