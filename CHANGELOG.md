@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.5.0] - 2026-10-20
+
+### Added
+
+- Touch mode reads Pokémon-Amie's decorate screen: its arrows, return and exit, each Poké Puff by
+  its kind and each Interior Item by name.
+- More scenes are described under `descriptions`: May's room before you meet her, the Beautifly
+  on Route 102, and the mural in Granite Cave, each version's own, then Steven leaving.
+
+### Fixed
+
+- In X and Y, the Pokémon-Amie page names your Pokémon and its menu offers PLAY, DECORATE and
+  SWITCH; the Super Training page names your party, so a tap changes Pokémon, and names its
+  training bags, its regimens and its Super Training button.
+- While a panel or a Yes and No is up in Super Training, touch mode leaves out the buttons behind
+  it that a tap no longer reaches, and the PlayNav's arrows and the X menu's icons while a page
+  has the input.
+- The PC's menus say only the row the cursor moves to, not the other rows as new.
+- X's language select says the language: "Play Pokémon X in English".
+- The Bag says "Nothing" at an empty pocket again.
+- A TM named for its move's type, as TM29 Psychic is, says its type among its details.
+- The Bag no longer stops with a reader error as it opens.
+
 ## [0.4.0] - 2026-10-19
 
 ### Added
