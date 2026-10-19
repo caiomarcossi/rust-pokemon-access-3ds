@@ -44,6 +44,38 @@ opening-handheld-3 = The handheld is set down, and the dark truck rumbles on.
 opening-truck-1 = The truck's back doors swing wide, and daylight pours in until everything is white.
 opening-truck-2 = The light fades. You stand in the back of the parked truck among cardboard boxes and furniture, with sunlight spilling in through the open doors.
 
+# May, before she says her name (movie1_opening, Omega Ruby): her mother's "She should be in her
+# room upstairs", then a demo of 9 s of her room, and the player arrives in it.
+may-room-1 = A bedroom upstairs: a map on the wall, a bed with red covers under the window, a desk by the wall. A girl stands at the desk with her back to you, her hands raised to the red and white bow in her hair.
+may-room-2 = Up close, she leafs through a notebook on the desk, then checks the pouch on her belt.
+may-room-3 = You stand at the top of the stairs, in a corner of her room.
+
+# "Pokémon fully restored, items all ready, and..."
+may-turns-1 = She turns round, starts at the sight of you, and walks over.
+
+# Route 102 (movie4_petalburg): "Look! Up there! Check 'em out, [name]!", 15 s before she names
+# what they saw.
+may-beautifly-1 = You and { TRAINER(4) } stand side by side in the tall grass, facing a line of pines. Three butterfly Pokémon flutter out of the trees on bright yellow and black wings.
+may-beautifly-2 = They flutter past the trees toward the red roofs of a town.
+may-beautifly-3 = They climb into the sky and drift away among the clouds.
+
+# Granite Cave's last room (scene_granite_cave_mural, in Alpha Sapphire and replayed in Omega
+# Ruby): a demo of 22 s as the player walks in toward the steps, before Steven's first line, then
+# the player is walked up to him. He is not named until he names himself, as a sighted player
+# does not know him yet. Each version paints a wall of its own; the rest is the same.
+or-granite-mural-1 = The screen goes dark. A circle of light moves slowly over pictures painted on rock: a great dark beast with a jagged, scaly back and its jaws open wide, then a row of smoking mountains.
+or-granite-mural-2 = The view pulls back. The pictures cover a whole wall of the cave: the beast rearing up among rings and curling plumes on the left, tiny figures under a streak of light on the right, and the smoking mountains below. A man stands alone at the top of a flight of stone steps beneath it, looking up.
+or-granite-mural-3 = Up close, the man has pale blue hair and a dark suit. He gazes up at the wall with a hand at his chin, then folds his arms, deep in thought.
+or-granite-mural-4 = You stand at the foot of the steps, and walk up them to his side.
+
+as-granite-mural-1 = The screen goes dark. A circle of light moves slowly over pictures painted on rock: jagged streaks, rows of curling spirals like waves, and a great dark shape marked with a ring.
+as-granite-mural-2 = The view pulls back. The pictures cover a whole wall of the cave: tiny figures under streaks of light on the left, swirling clouds and waves on the right, and the great shape between them. A man stands alone at the top of a flight of stone steps beneath it, looking up.
+as-granite-mural-3 = Up close, the man has pale blue hair and a dark suit. He gazes up at the wall with a hand at his chin, then folds his arms, deep in thought.
+as-granite-mural-4 = You stand at the foot of the steps, and walk up them to his side.
+
+# Steven's "Good luck to you. I must be going now."
+granite-steven-leaves-1 = { TRAINER(557) } walks down the steps and out of the room, leaving you alone before the painted wall.
+
 # Seafloor Cavern, zone 0x6f: Archie's "Augh... You...", after Maxie's battle and before Groudon
 # wakes, a demo of 65 s.
 or-groudon-wakes-1 = { TRAINER(235) } walks to the edge of the lava, where { POKEMON(383) } lies curled up, grey as stone.

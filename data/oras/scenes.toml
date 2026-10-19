@@ -19,8 +19,9 @@
 # Each scene was described from screenshots of a replay (spike 203, Omega Ruby's
 # movie40_groudon_awakens and movie41_cave_of_origin, and Alpha Sapphire's movie2_cave_of_origin;
 # spike 222, Omega Ruby's movies 48 to 53, Victory Road to the Delta Episode's opening, and Alpha
-# Sapphire's movie4_hall_of_fame and movie5_delta_episode_intro); the seconds are from the moment
-# its demo, line, arrival or trigger came there.
+# Sapphire's movie4_hall_of_fame and movie5_delta_episode_intro; Omega Ruby's movies 1 and 4 and
+# Alpha Sapphire's scene_granite_cave_mural, 2026-10-19); the seconds are from the moment its
+# demo, line, arrival or trigger came there.
 
 # The opening, before the player is anywhere, so in no zone: the professor's lines are the rest of
 # the game's text, file 118, and the stretches between them where he says nothing are described
@@ -90,6 +91,113 @@ id = "opening-truck-1"
 [[scene.beat]]
 zone = 0x18f
 id = "opening-truck-2"
+
+# May's lines and her mother's, from Omega Ruby's movie1_opening and movie4_petalburg
+# (2026-10-19): each line is hers alone, Brendan's are others, and no replay has shown his. The Birches' house, zone 0xe1: her mother's "She should be in her room upstairs",
+# then the player walks to the stairs and a demo of 9 s shows her room before the player
+# arrives in it, zone 0xe2.
+[[scene]]
+after = "story:253:24"
+zone = 0xe1
+
+[[scene.beat]]
+demo = true
+at = 1
+id = "may-room-1"
+
+[[scene.beat]]
+at = 5
+id = "may-room-2"
+
+[[scene.beat]]
+zone = 0xe2
+id = "may-room-3"
+
+# "Pokémon fully restored, items all ready, and...", before "Huh?!".
+[[scene]]
+after = "story:253:44"
+zone = 0xe2
+
+[[scene.beat]]
+at = 1
+id = "may-turns-1"
+
+# Route 102, zone 0x18: "Look! Up there! Check 'em out, [name]!", then 15 s without a word.
+[[scene]]
+after = "story:225:28"
+zone = 0x18
+
+[[scene.beat]]
+at = 2
+id = "may-beautifly-1"
+
+[[scene.beat]]
+at = 7
+id = "may-beautifly-2"
+
+[[scene.beat]]
+at = 11
+id = "may-beautifly-3"
+
+# Granite Cave's last room, zone 0x51, from Alpha Sapphire's scene_granite_cave_mural: walking in
+# from the south, the player crosses a trigger before the steps (trigger 0, row 20, armed while
+# work 0x407a holds 0, which meeting Steven makes 1 in both versions) and a demo of 22 s pans over
+# the painted wall, before Steven's first line. No line comes before it, so it is said on arriving
+# and waits for the demo: a later visit, with no demo, says nothing. Trigger 1 on the same cells
+# wants 2, which no save of Orion's holds, through the Delta Episode's opening. Each version paints
+# a wall of its own: Omega Ruby's was seen by replaying the same movie in Omega Ruby from its save
+# made Omega Ruby's (spike 212's `ruby`), and the demo and the lines after it came as in Alpha
+# Sapphire, to the second.
+[[scene]]
+zone = 0x51
+title = 0x000400000011C400
+
+[[scene.beat]]
+demo = true
+at = 1
+id = "or-granite-mural-1"
+
+[[scene.beat]]
+at = 7
+id = "or-granite-mural-2"
+
+[[scene.beat]]
+at = 15
+id = "or-granite-mural-3"
+
+[[scene.beat]]
+at = 23
+id = "or-granite-mural-4"
+
+[[scene]]
+zone = 0x51
+title = 0x000400000011C500
+
+[[scene.beat]]
+demo = true
+at = 1
+id = "as-granite-mural-1"
+
+[[scene.beat]]
+at = 7
+id = "as-granite-mural-2"
+
+[[scene.beat]]
+at = 15
+id = "as-granite-mural-3"
+
+[[scene.beat]]
+at = 23
+id = "as-granite-mural-4"
+
+# Steven's "Good luck to you. I must be going now."
+[[scene]]
+after = "story:434:23"
+zone = 0x51
+
+[[scene.beat]]
+at = 1
+id = "granite-steven-leaves-1"
 
 # Seafloor Cavern, zone 0x6f: Archie's "Augh... You...", after Maxie's battle and before Groudon
 # wakes, a demo of 65 s.
