@@ -48,7 +48,7 @@ use indexmap::{IndexMap, IndexSet};
 use crate::core::speech::{Category, Speech};
 use crate::games::common::cursors::shared::CursorPoll;
 use crate::games::common::screen::{
-    ScreenPoll, ScreenText, by_rows, distinct, in_rows, join, reading_order,
+    ScreenPoll, ScreenText, by_rows, distinct, in_rows, join, labels_value, reading_order,
 };
 use crate::py::{self, Log, Result};
 
@@ -867,7 +867,8 @@ impl ScreenAnnouncer {
             // Nor the item the cursor said, nor a title still saying what was last said of it:
             // the Bag's pocket and item were the first words of every item's details,
             // "MEDICINE Full Heal", then the count and the description (Khai, 2026-10-18). A
-            // name's letter is never the item, though its key was the cursor's (`letter`).
+            // name's letter is never the item, though its key was the cursor's (`letter`), nor
+            // a label's value (`valued`).
             let pieces: Vec<ScreenText> = on_screen
                 .iter()
                 .filter(|p| {
@@ -875,7 +876,7 @@ impl ScreenAnnouncer {
                         && !labels.contains(&p.text)
                         && !gathering.said.contains(&p.r#box)
                         && !cursored.contains(&p.r#box)
-                        && (p.text != gathering.item || letter(p))
+                        && (p.text != gathering.item || letter(p) || valued(p, on_screen))
                         && !self.heading(p, on_screen)
                 })
                 .map(|p| without(p, &gathering.item))
@@ -1384,6 +1385,19 @@ fn side_by_side(one: &ScreenText, other: &ScreenText) -> bool {
         return false;
     }
     (one.row - other.row).abs() < min_of(one.glyph, other.glyph) / 2.0
+}
+
+/// Is this a label's value, written after the label on its row? Never the cursor's item,
+/// whatever its words: TM29 Psychic's type is "Psychic", and its details said "TYPE POWER 90"
+/// (or_movie54, Orion, 2026-10-19, #13).
+fn valued(piece: &ScreenText, on_screen: &[ScreenText]) -> bool {
+    on_screen.iter().any(|other| {
+        other.root == piece.root
+            && other.r#box != piece.r#box
+            && other.left < piece.left
+            && side_by_side(other, piece)
+            && (other.label || labels_value(other, piece))
+    })
 }
 
 /// Each changed piece with what sits beside it in its group on its row, each row once.

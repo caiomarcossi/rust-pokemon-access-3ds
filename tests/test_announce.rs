@@ -1530,6 +1530,51 @@ fn test_an_items_details_leave_out_the_item_and_a_title_said_already() {
     );
 }
 
+/// TM29 Psychic's type is "Psychic", the cursor's item, and its details said "TYPE POWER 90"
+/// (or_movie54, Orion, 2026-10-19, #13). A value beside its label is never the item's name.
+#[test]
+fn test_a_labels_value_in_the_items_words_is_said() {
+    let mut screen = Screen::new();
+    let first = vec![piece(1, "Flamethrower", 8.0, 90.0, MENU)];
+    screen.say(args(
+        &first,
+        vec![CursorItem::new(0x0C, first.clone(), true)],
+        &first,
+    ));
+    let cursor = vec![piece(1, "Psychic", 8.0, 90.0, MENU)];
+    let in_panel = |parent: i64, panel: i64| Kw {
+        parent,
+        panel,
+        ..PLAIN
+    };
+    let now = vec![
+        piece_kw(21, "TM29 Psychic", -28.0, 75.0, PANEL, in_panel(0, 21)),
+        ScreenText {
+            label: true,
+            ..piece_kw(30, "TYPE", -144.0, -70.0, PANEL, in_panel(5, 5))
+        },
+        piece_kw(35, "Psychic", -54.0, -70.0, PANEL, in_panel(5, 5)),
+    ];
+    let texts: Vec<ScreenText> = now
+        .iter()
+        .map(|p| ScreenText {
+            changed: true,
+            with_layout: false,
+            ..p.clone()
+        })
+        .collect();
+    let on_screen = cat(&[&cursor, &now]);
+    let mut said = screen.say(args(
+        &texts,
+        vec![CursorItem::new(0x0C, cursor.clone(), false)],
+        &on_screen,
+    ));
+    for _ in 0..DETAIL_POLLS {
+        said.extend(screen.on(&on_screen));
+    }
+    assert_eq!(said, ["Psychic", "TM29, TYPE Psychic"]);
+}
+
 #[test]
 fn test_a_value_hung_under_its_label_is_read_with_it_when_it_has_not_changed() {
     // The Bag's TM pocket hangs each number under its label, and moving from Calm Mind to Bulk

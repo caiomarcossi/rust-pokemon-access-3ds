@@ -288,9 +288,9 @@ pub fn distinct(pieces: impl IntoIterator<Item = ScreenText>) -> Vec<ScreenText>
 ///
 /// Pieces drawn side by side on one row are joined as drawn ("L5", "19/19"). Others are separated
 /// by a space, or when asked for (the user, 2026-09-14) by a comma, or a colon after a label
-/// (`labels`): "OT: Raiden, ID No.: 16285" (Orion, 2026-09-30). A label with a colon of its own
-/// is followed by a space: "Badges: 0", not "Badges:, 0". A value is no label of what follows
-/// it: "ITEM: Potion, Sand Attack", "Name: Raiden, ID No.: 16285".
+/// (`labels_value`): "OT: Raiden, ID No.: 16285" (Orion, 2026-09-30). A label with a colon of its
+/// own is followed by a space: "Badges: 0", not "Badges:, 0". A value is no label of what
+/// follows it: "ITEM: Potion, Sand Attack", "Name: Raiden, ID No.: 16285".
 ///
 /// Words the game's text names a label (`ScreenText.label`) are one wherever they are drawn,
 /// touching their value or over it, and a title's or a button's (`ScreenText.plain`) never are:
@@ -324,7 +324,7 @@ pub fn join(pieces: &[ScreenText], pauses: bool) -> String {
                 labelled = !valued
                     && !before.plain
                     && !piece.label
-                    && (before.label || labels(before, piece));
+                    && (before.label || labels_value(before, piece));
                 out.push_str(if labelled { ": " } else { ", " });
                 out.push_str(&piece.text);
             }
@@ -352,7 +352,7 @@ pub const VALUE_BELOW: f64 = 2.5;
 /// Points' number does: the next row of a list starts under the one above it ("Ember", "Sand
 /// Attack"). A label's words are the screen's own, so words that changed are a value's, and a
 /// picture's words are what it draws, as a type's icon, "Fire", is (movie11, 2026-10-01).
-fn labels(first: &ScreenText, second: &ScreenText) -> bool {
+pub fn labels_value(first: &ScreenText, second: &ScreenText) -> bool {
     // ponytail: judged by place alone; a screen this gets wrong wants its label panes listed.
     let glyph = min_of(first.glyph, second.glyph);
     if glyph <= 0.0
