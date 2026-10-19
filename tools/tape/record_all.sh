@@ -1,19 +1,16 @@
 #!/usr/bin/env bash
-# Record each named replay as a tape, make its references by replaying it through the Python
-# runtime, then replay it through the Rust runtime. Stops at the first recording that fails, so a
-# rig left mid-swap is not reused (tools/tape/README.md).
+# Record each named replay as a tape through the Python checkout's spikes/tape_replay.py, verify it
+# against its recording, make its references by replaying it through the Python runtime under the
+# label `port`, then replay it through the Rust runtime against them (tools/tape/README.md).
+# Stops if a recording fails, so a rig left mid-swap is not reused.
 set -u
 here="$(cd "$(dirname "$0")/../.." && pwd)"
-py="${PA3DS_PYTHON:-$here/../pokemon-access-3ds}/.venv/Scripts/python.exe"
+python_repo="${PA3DS_PYTHON:-$here/../pokemon-access-3ds}"
 tapes="${LOCALAPPDATA}/pa3ds/tapes"
-mkdir -p "$tapes"
-for name in "$@"; do
-    if ! "$py" "$here/tools/tape/py.py" record "$name" "$tapes/$name.tape.gz" > "$tapes/$name.record.out" 2>&1; then
-        echo "FAILED to record $name:"; tail -20 "$tapes/$name.record.out"; exit 1
-    fi
-    tail -1 "$tapes/$name.record.out"
-    "$py" "$here/tools/tape/py.py" replay "$tapes/$name.tape.gz" "$tapes/$name.py.log" | tail -1
-    diff -q --strip-trailing-cr "$tapes/$name.tape.gz.log" "$tapes/$name.py.log" > /dev/null         || echo "$name: the Python replay logged otherwise than its recording"
-    diff -q --strip-trailing-cr "$tapes/$name.tape.gz.said" "$tapes/$name.py.said" > /dev/null         || echo "$name: the Python replay said otherwise than its recording"
-done
-"$here/target/release/tape.exe" $(for name in "$@"; do echo "$tapes/$name.tape.gz"; done)
+references="${LOCALAPPDATA}/pa3ds/captures/regress/port"
+if ! (cd "$python_repo" && uv run python spikes/tape_replay.py record "$@"); then
+    echo "FAILED to record"; exit 1
+fi
+(cd "$python_repo" && uv run python spikes/tape_replay.py verify "$@")
+(cd "$python_repo" && uv run python spikes/tape_replay.py replay port "$@")
+"$here/target/release/tape.exe" --against "$references" $(for name in "$@"; do echo "$tapes/$name.tape.gz"; done)

@@ -1,11 +1,13 @@
 //! Replay tapes through the Rust runtime and compare what it logged and said with what the
 //! Python runtime did on the same tape (`tools/tape/README.md`).
 //!
-//!     cargo run --release --bin tape -- <tape>...
+//!     cargo run --release --bin tape -- --against <folder> <tape>...
 //!
-//! Each `<name>.tape.gz` is compared with `<name>.py.log` and `<name>.py.said` beside it, the
-//! Python runtime's replay of the same tape (`tools/tape/py.py replay`), and the Rust runtime's
-//! own are written as `<name>.rust.log` and `<name>.rust.said`. Exits 1 if any tape differs.
+//! Each `<name>.tape.gz` is compared with `<folder>/<name>.log` and `<folder>/<name>.said`, the
+//! Python runtime's replay of the same tape as the Python checkout's
+//! `spikes/tape_replay.py replay <label>` writes it, under `captures\regress\<label>`; the log's
+//! seconds are left out. The Rust runtime's own are written beside the tape as `<name>.rust.log`
+//! and `<name>.rust.said`. Exits 1 if any tape differs.
 
 use std::cell::RefCell;
 use std::panic::{self, AssertUnwindSafe};
@@ -35,7 +37,7 @@ impl Backend for Heard {
 
 /// The settings `spikes/regress.py` gives a replay at real speed: the defaults, with the
 /// replays' own user folder, never the player's. A tape whose name ends in `DESCRIBED` was
-/// recorded with `descriptions` on, as `tools/tape/py.py` records it.
+/// recorded with `descriptions` on, as `spikes/tape_replay.py` records it.
 fn replay_settings(name: &str) -> Settings {
     let home = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
@@ -57,6 +59,17 @@ const DESCRIBED: &str = "_described";
 /// A file's lines, CRLF or LF.
 fn lines(text: &str) -> Vec<String> {
     text.lines().map(str::to_string).collect()
+}
+
+/// A log line without the seconds `tape_replay.py` writes before it, as `regress.untimed` takes
+/// them off.
+fn untimed(line: &str) -> String {
+    let chars: Vec<char> = line.chars().collect();
+    if chars.len() > 9 && chars[8] == ' ' {
+        chars[9..].iter().collect()
+    } else {
+        line.to_string()
+    }
 }
 
 /// Lines compared as the tape compares them: a reader's failure by its first line only, its
@@ -109,7 +122,7 @@ fn first_difference(python: &[String], rust: &[String]) -> Option<String> {
     }
 }
 
-fn replay(path: &Path) -> Result<bool, String> {
+fn replay(path: &Path, against: &Path) -> Result<bool, String> {
     let name = path
         .file_name()
         .and_then(|name| name.to_str())
@@ -150,11 +163,17 @@ fn replay(path: &Path) -> Result<bool, String> {
     write(".rust.log", &logged)?;
     write(".rust.said", &said)?;
     let read = |suffix: &str| -> Result<Vec<String>, String> {
-        std::fs::read_to_string(beside(suffix))
+        let reference = against.join(format!("{name}{suffix}"));
+        std::fs::read_to_string(&reference)
             .map(|text| lines(&text))
-            .map_err(|error| format!("{}: {error}", beside(suffix).display()))
+            .map_err(|error| format!("{}: {error}", reference.display()))
     };
-    let (python_log, python_said) = (read(".py.log")?, read(".py.said")?);
+    let python_log: Vec<String> = read(".log")?
+        .iter()
+        .map(|line| untimed(line))
+        .filter(|line| line != "done")
+        .collect();
+    let python_said = read(".said")?;
     let mut same = true;
     let mut report = format!(
         "{name}: {} records, {} lines, {} said",
@@ -182,14 +201,20 @@ fn replay(path: &Path) -> Result<bool, String> {
 }
 
 fn main() -> ExitCode {
-    let tapes: Vec<PathBuf> = std::env::args().skip(1).map(PathBuf::from).collect();
-    if tapes.is_empty() {
-        eprintln!("usage: tape <tape.gz>...");
-        return ExitCode::from(2);
-    }
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let (against, tapes) = match args.as_slice() {
+        [flag, folder, tapes @ ..] if flag == "--against" && !tapes.is_empty() => (
+            PathBuf::from(folder),
+            tapes.iter().map(PathBuf::from).collect::<Vec<_>>(),
+        ),
+        _ => {
+            eprintln!("usage: tape --against <folder> <tape.gz>...");
+            return ExitCode::from(2);
+        }
+    };
     let mut all = true;
     for tape in &tapes {
-        match replay(tape) {
+        match replay(tape, &against) {
             Ok(same) => all &= same,
             Err(error) => {
                 println!("{}: {error}", tape.display());

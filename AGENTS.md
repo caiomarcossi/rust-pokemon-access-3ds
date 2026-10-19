@@ -115,12 +115,14 @@ The Python checkout is `PA3DS_PYTHON`, or `../pokemon-access-3ds` beside this on
 2. `mirror` for the data files; rewrite this file, `README.md`, `manual/` or `CLAUDE.md` by hand where
    upstream's changed in a way that applies here.
 3. `cargo test --lib`, `cargo clippy --all-targets`, `sync.py tests`.
-4. With the upstream commit checked out there, record a tape of a movie that reaches the change
-   and replay it here, with the tapes already recorded (`tools/tape/record_all.sh <replay>`, then
-   `target\release\tape.exe %LOCALAPPDATA%\pa3ds\tapes\*.tape.gz`; `tools/tape/README.md`).
-   Every tape must say "identical to the Python runtime's". This is the proof; the tests alone
-   are not. Tapes recorded on an older upstream commit are re-referenced first by replaying them
-   through the new Python (`tools/tape/py.py replay`), since what the Python says has changed.
+4. With the upstream commit checked out there, replay every tape through it to make the
+   references (`uv run python spikes/tape_replay.py replay port-<short sha>` in that checkout),
+   then through this runtime against them (`target\release\tape.exe --against
+   %LOCALAPPDATA%\pa3ds\captures\regress\port-<short sha> %LOCALAPPDATA%\pa3ds\tapes\*.tape.gz`;
+   `tools/tape/README.md`). Every tape must say "identical to the Python runtime's". This is the
+   proof; the tests alone are not. A tape the Python replays as approximate reads what it never
+   recorded: record it again at that commit (`tools/tape/record_all.sh <replay>`), and record one
+   of a movie that reaches the change where none does.
 5. `mark`, in a commit of its own once every tape is identical. Each port commit reads
    `feat(port): <what upstream did> (upstream <short sha>)`.
 

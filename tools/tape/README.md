@@ -13,44 +13,45 @@ live comparison cannot prove a port line for line and a tape can.
 Tapes hold raw game RAM, which holds the player's save data (ADR-0029). They live under
 `%LOCALAPPDATA%\pa3ds\tapes`, never in the repository.
 
-## Recording
+## Recording, and the Python's references
 
-From this repository, with the Python checkout's interpreter (it has pa3ds and the rig):
+Tapes are recorded, checked and replayed through the Python runtime by the Python checkout's own
+`spikes/tape_replay.py`, from that checkout (`docs/runbooks/rig.md` there, "Before and after a
+change"):
 
 ```
-..\pokemon-access-3ds\.venv\Scripts\python.exe tools\tape\py.py record <replay> %LOCALAPPDATA%\pa3ds\tapes\<replay>.tape.gz
+uv run python spikes/tape_replay.py record <replay>...
+uv run python spikes/tape_replay.py verify <replay>...
+uv run python spikes/tape_replay.py replay <label> [<replay>...]
 ```
 
-`<replay>` is a `[[replay]]` in the Python checkout's `spikes/rig.toml`, played as
-`spikes/regress.py run` plays it. Beside the tape go `<tape>.log` (what the runtime logged,
-without times) and `<tape>.said` (what it said, `!` before a line that interrupts).
+`record` plays a `[[replay]]` of the Python checkout's `spikes/rig.toml` as `spikes/regress.py
+run` plays it, and writes `<replay>.tape.gz` with, beside it, what the runtime logged and said and
+the commit it ran. `verify` replays each tape strictly against its recording, and holds only at
+that commit. `replay` plays each tape through whatever Python is checked out and writes what it
+logged and said to `%LOCALAPPDATA%\pa3ds\captures\regress\<label>\<name>.log` and `.said`: these
+are the references the Rust runtime is held to. Its `summary.txt` says of each whether its reads
+were all exact; an approximate one read memory the tape never held, and only a tape recorded
+again at that commit can prove the port there.
 
 A replay plays with the default settings, where `[pa3ds.ui] descriptions` is off and no scene is
-described. Name it `<replay>_described` (`record_all.sh or_movie49_described`) to play `<replay>`
-with descriptions on: `py.py` and `tape.exe` both turn them on for a tape of that name.
+described. Name it `<replay>_described` to play `<replay>` with descriptions on: both runtimes
+turn them on for a tape of that name.
 
-A tape is checked by replaying it through the Python runtime itself, which must reproduce both
-files exactly:
-
-```
-..\pokemon-access-3ds\.venv\Scripts\python.exe tools\tape\py.py replay <tape> <out.log>
-```
-
-`tools/tape/record_all.sh <replay>...` does all three for each replay: records it, makes its
-references (`<name>.py.log`, `<name>.py.said`) by replaying it through the Python runtime, and
-replays it through the Rust runtime.
+`tools/tape/record_all.sh <replay>...` records each replay, makes its references under the label
+`port`, and replays it through the Rust runtime against them.
 
 ## Replaying through the Rust runtime
 
 ```
 cargo build --release
-target\release\tape.exe %LOCALAPPDATA%\pa3ds\tapes\*.tape.gz
+target\release\tape.exe --against %LOCALAPPDATA%\pa3ds\captures\regress\<label> %LOCALAPPDATA%\pa3ds\tapes\*.tape.gz
 ```
 
 writes `<name>.rust.log` and `<name>.rust.said` beside each tape and compares them with the
-Python replay's `<name>.py.log` and `<name>.py.said`, saying for each tape either "identical to the
-Python runtime's" or the first record the two runtimes asked differently, and the first line each
-logged or said differently.
+Python replay's `<name>.log`, its seconds left out, and `<name>.said` under the label, saying for
+each tape either "identical to the Python runtime's" or the first record the two runtimes asked
+differently, and the first line each logged or said differently.
 
 ## Live runs
 
