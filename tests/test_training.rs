@@ -42,11 +42,11 @@ fn floats(values: &[f32]) -> Vec<u8> {
         .collect()
 }
 
-fn page() -> training::TrainingPage {
+fn page(icons: i64) -> training::TrainingPage {
     let memory = FakeMemory::new();
     let classes = FakeClasses::new(memory.clone());
     memory.u32(PAGE, &[classes.add(training::CLASS)]);
-    memory.u32(PAGE + training::ICONS, &[ICON]);
+    memory.u32(PAGE + icons, &[ICON]);
     memory.u32(ICON, &[classes.add(d::ICON_CLASS)]);
     memory.u32(ICON + d::REPLACE, &[REPLACE]);
     memory.u32(REPLACE, &[classes.add(d::REPLACE_CLASS)]);
@@ -59,15 +59,9 @@ fn page() -> training::TrainingPage {
         memory.write(param + pokemon::RECORD_IN_PARAM, &record_of("", 0, species));
         // The records are rotated to start at the selected member, Sceptile (1): each holds its
         // member's party index, and the textures stay in party order.
-        let rotated = 1 - i;
-        memory.u32(
-            PAGE + training::PARAMS + training::PARAM_STRIDE * rotated,
-            &[param],
-        );
-        memory.u32(
-            PAGE + training::INDEX + training::PARAM_STRIDE * rotated,
-            &[i],
-        );
+        let record_at = PAGE + icons + training::PARAMS + training::PARAM_STRIDE * (1 - i);
+        memory.u32(record_at, &[param]);
+        memory.u32(record_at + training::INDEX, &[i]);
         memory.u32(TABLE + 4 * i, &[TEXTURES + 0x100 * i]);
         memory.u32(TEXTURES + 0x100 * i + d::IMAGE, &[IMAGE + 0x1000 * i]);
     }
@@ -80,10 +74,11 @@ fn page() -> training::TrainingPage {
         memory.u32(picture + lyt::PICTURE_MATERIAL, &[material]);
         memory.u32(material + lyt::MATERIAL_TEXTURE, &[image]);
     }
-    let mut found = training::TrainingPage::new(
+    let mut found = training::TrainingPage::with_icons(
         memory.clone(),
         Rc::new(ClassNames::new(memory.clone(), CODE)),
         species(),
+        icons,
     );
     found
         .track(
@@ -96,7 +91,16 @@ fn page() -> training::TrainingPage {
 
 #[test]
 fn test_a_party_slot_is_named_by_the_member_whose_icon_it_draws_however_the_records_rotate() {
-    let found = page();
+    let found = page(training::ICONS);
+    assert_eq!(
+        (found.name(FIRST).unwrap(), found.name(SECOND).unwrap()),
+        (Some("Breloom".to_string()), Some("Sceptile".to_string()))
+    );
+}
+
+#[test]
+fn test_xs_page_is_read_where_x_keeps_its_icons_and_records() {
+    let found = page(crate::games::xy::game().training);
     assert_eq!(
         (found.name(FIRST).unwrap(), found.name(SECOND).unwrap()),
         (Some("Breloom".to_string()), Some("Sceptile".to_string()))
@@ -105,7 +109,7 @@ fn test_a_party_slot_is_named_by_the_member_whose_icon_it_draws_however_the_reco
 
 #[test]
 fn test_a_picture_drawing_another_image_is_not_named() {
-    assert_eq!(page().name(OTHER).unwrap(), None);
+    assert_eq!(page(training::ICONS).name(OTHER).unwrap(), None);
 }
 
 #[test]
@@ -169,8 +173,9 @@ fn test_a_goal_shown_while_a_round_runs_is_offered_at_the_pixel_that_shoots_it()
 
 /// The Bags over a bottom-screen layout drawing a Strength Bag in view, another off the
 /// screen's left edge, and the bag beside the Pokémon: with those panes in order, and the root.
-/// With `idle` the layout's buttons are locked.
-fn bags(idle: bool) -> (training::Bags, Vec<i64>, i64) {
+/// With `idle` the layout's buttons are locked, and with `off` the Strength Bag's is switched
+/// off.
+fn bags(idle: bool, off: bool) -> (training::Bags, Vec<i64>, i64) {
     let memory = FakeMemory::new();
     let classes = FakeClasses::new(memory.clone());
     let picture = classes.add(lyt::PICTURE_CLASS);
@@ -181,8 +186,13 @@ fn bags(idle: bool) -> (training::Bags, Vec<i64>, i64) {
     memory.u32(group + lyt::CHILD_COUNT, &[3]);
     memory.write(root + lyt::X, &floats(&[-5.0]));
     let panes = vec![group + 0x100, group + 0x200, group + 0x300];
-    for (&pane, x) in panes.iter().zip([-145.0f32, -245.0, -145.0]) {
+    for ((&pane, x), name) in panes
+        .iter()
+        .zip([-145.0f32, -245.0, -145.0])
+        .zip([b"1d", b"1f", b"4e"])
+    {
         fake.pane_with_vtable(pane, group, Some(picture));
+        memory.write(pane + lyt::NAME, name);
         memory.write(pane + lyt::X, &floats(&[x]));
         memory.write(pane + lyt::Y, &floats(&[76.0]));
         memory.write(pane + lyt::HEIGHT, &floats(&[30.0]));
@@ -204,13 +214,20 @@ fn bags(idle: bool) -> (training::Bags, Vec<i64>, i64) {
                 HashSet::new()
             })
         })),
+        Some(Rc::new(move || {
+            Ok(if off {
+                HashSet::from([(work, "1d".to_string())])
+            } else {
+                HashSet::new()
+            })
+        })),
     );
     (offered, panes, root)
 }
 
 #[test]
 fn test_a_training_bag_is_offered_by_the_games_name_where_it_is_drawn_if_on_the_screen() {
-    let (offered, panes, root) = bags(false);
+    let (offered, panes, root) = bags(false, false);
     assert_eq!(
         offered.targets(Some(FIELD)).unwrap(),
         [Target {
@@ -224,7 +241,7 @@ fn test_a_training_bag_is_offered_by_the_games_name_where_it_is_drawn_if_on_the_
 #[test]
 fn test_training_bags_are_offered_only_on_the_field() {
     assert!(
-        bags(false)
+        bags(false, false)
             .0
             .targets(Some(training::SPARRING))
             .unwrap()
@@ -234,7 +251,13 @@ fn test_training_bags_are_offered_only_on_the_field() {
 
 #[test]
 fn test_a_training_bag_is_left_out_while_its_layouts_buttons_are_locked() {
-    assert!(bags(true).0.targets(Some(FIELD)).unwrap().is_empty());
+    assert!(bags(true, false).0.targets(Some(FIELD)).unwrap().is_empty());
+}
+
+/// Under the page's Yes and No a tap on a bag did nothing (spike B).
+#[test]
+fn test_a_training_bag_is_left_out_while_its_button_is_switched_off() {
+    assert!(bags(false, true).0.targets(Some(FIELD)).unwrap().is_empty());
 }
 
 /// Pictures of a text's characters 20 apart from `x`, "/" the score's slash.

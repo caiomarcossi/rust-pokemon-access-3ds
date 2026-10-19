@@ -50,7 +50,8 @@ Touch mode and the battle's keys work throughout.
 | `L` | The next thing to the south. |
 | `K` | The next thing to the west. |
 
-**Touch mode** walks the buttons on the bottom screen, in reading order.
+**Touch mode** walks the buttons on the bottom screen, in reading order. While a panel or a Yes
+and No is up, it leaves out the buttons behind it that a tap no longer reaches.
 
 | Key | What it does |
 |---|---|

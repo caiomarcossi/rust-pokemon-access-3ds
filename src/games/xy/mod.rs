@@ -135,6 +135,26 @@ pub fn characters() -> &'static IndexMap<i64, i64> {
 /// thing's or a Pokémon's. Mom's Rhyhorn by the house is `0x106`, sprite `0x1014` (spike 221).
 pub const MODELS: (i64, i64) = (0xAB, 0xF2);
 
+/// Super Training's bags in the list its page opens, as ORAS's (`oras.TRAINING_BAGS`): line N of
+/// text file 23 is the bag of `sand_bagNN.bclim`, HP Bag S at 1, Strength Bag at 19 (spike B).
+pub fn training_bags() -> &'static (i64, IndexMap<&'static str, i64>) {
+    static TRAINING_BAGS: OnceLock<(i64, IndexMap<&'static str, i64>)> = OnceLock::new();
+    TRAINING_BAGS.get_or_init(|| {
+        let names = (1..27).map(|n| {
+            let image: &'static str = Box::leak(format!("sand_bag{n:02}.bclim").into_boxed_str());
+            (image, n)
+        });
+        (23, names.collect())
+    })
+}
+/// The Super Training page's lower-left button, `spar_button.bclim`, which opens the regimen menu:
+/// "Super Training", line 178 of text file 55, the PSS questionnaire's answer, the one line of X's
+/// text that is that name alone; X has no PokéNav, whose app list names it in ORAS (spike B).
+pub fn training_button() -> &'static (i64, IndexMap<&'static str, i64>) {
+    static TRAINING_BUTTON: OnceLock<(i64, IndexMap<&'static str, i64>)> = OnceLock::new();
+    TRAINING_BUTTON.get_or_init(|| (55, IndexMap::from([("spar_button.bclim", 178)])))
+}
+
 /// Place names in file 72 ("Route 4" at the index Route 4's row holds), trainer classes 20 and
 /// names 21, the PC's lines 74 in the order ORAS has them; zone N's file is `a/0/1/2` file N and the
 /// zone table file 360; a trainer's class is a byte at +0x01 and its battle at +0x02 (spike 100).
@@ -167,6 +187,18 @@ pub fn rom() -> &'static RomLayout {
         species: Some(80),
         pokemon_models: Some(("a/0/2/1".to_string(), MODELS.1)),
         battle_models: Some("a/0/0/7".to_string()),
+        touch_words: [training_bags(), training_button()]
+            .into_iter()
+            .map(|(file, lines)| {
+                (
+                    *file,
+                    lines
+                        .iter()
+                        .map(|(image, &line)| (image.to_string(), line))
+                        .collect(),
+                )
+            })
+            .collect(),
         ..RomLayout::new(
             "X and Y",
             text_archives(),
@@ -284,6 +316,14 @@ pub fn warps() -> &'static IndexMap<i64, String> {
     })
 }
 
+/// Where X's Super Training page, `FM_Training`, keeps its party's PokeIcon: 0x28 before ORAS's,
+/// and its records with it, Frogadier's at +0x124 (spike B).
+pub const TRAINING: i64 = 0xC8;
+/// Where X's `field::subscreen::FieldMenu` keeps its button manager and the byte set while an app
+/// of the bottom screen has the input: ORAS's +0x7C and +0x9C, 0xC earlier (spike B). It read 0 on
+/// the PSS's page and Super Training's, and 1 from the bags list on.
+pub const FIELD_MENU: (i64, i64) = (0x70, 0x90);
+
 /// X and Y as the gen 6 readers read them.
 pub fn game() -> &'static Game {
     static GAME: OnceLock<Game> = OnceLock::new();
@@ -329,6 +369,8 @@ pub fn game() -> &'static Game {
         models: Some(MODELS),
         strands: STRAND,
         gates: true,
+        training: TRAINING,
+        field_menu: FIELD_MENU,
         opening: Some(|memory, _language| Box::new(IntroReader::new(memory))),
         ..Game::new("X and Y", [X, Y], DATA, rom().clone(), DRAWN)
     })

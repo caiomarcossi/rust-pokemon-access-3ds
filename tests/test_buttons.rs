@@ -1,15 +1,20 @@
-//! The game's button managers and touch bars: whose buttons take taps now (spike 189).
+//! The game's button managers, touch bars and field menu: whose buttons take taps now (spikes 189
+//! and B).
 
 use std::collections::HashSet;
 use std::rc::Rc;
 
 use super::fake_memory::FakeMemory;
 use crate::games::gen6::screens::buttons::{
-    BAR_MANAGER, BUTTONS, Buttons, HANDLE, INPUT, LISTENER, LOCKED, WORK,
+    BAR_MANAGER, BUTTONS, Buttons, HANDLE, INPUT, LISTENER, LOCKED, ON, PANE, WORK, pane_name,
 };
+use crate::games::oras;
 
 const MANAGER_VTABLE: i64 = 0x005DCFFC;
 const BAR_VTABLE: i64 = 0x00705B64;
+const MENU_VTABLE: i64 = 0x007FE07C;
+/// The field's menu round the PlayNav, as or_super_train found it (spike B).
+const MENU: i64 = 0x086039B0;
 /// The party's managers: its list's, its held items' corners', and its bottom bar's.
 const LIST: i64 = 0x082DFEFC;
 const CORNERS: i64 = 0x082E0348;
@@ -60,7 +65,7 @@ fn test_a_layout_whose_managers_are_all_locked_takes_no_tap() {
     let memory = party(false, true);
     let mut buttons = Buttons::new(memory.clone());
     buttons
-        .track([LIST, CORNERS, BAR], [TOUCH_BAR], false)
+        .track([LIST, CORNERS, BAR], [TOUCH_BAR], [], false)
         .unwrap();
     assert_eq!(buttons.idle().unwrap(), set(&[]));
     memory.write(LIST + LOCKED, b"\x01");
@@ -75,7 +80,7 @@ fn test_a_freed_manager_and_a_touch_bar_with_no_listener_say_nothing() {
     let memory = party(true, true);
     let mut buttons = Buttons::new(memory.clone());
     buttons
-        .track([LIST, CORNERS, BAR], [TOUCH_BAR], false)
+        .track([LIST, CORNERS, BAR], [TOUCH_BAR], [], false)
         .unwrap();
     assert_eq!(buttons.idle().unwrap(), set(&[PARTY_WORK]));
     memory.u32(LIST, &[0]);
@@ -84,4 +89,52 @@ fn test_a_freed_manager_and_a_touch_bar_with_no_listener_say_nothing() {
     memory.write(TOUCH_BAR + INPUT, b"\x00");
     memory.u32(TOUCH_BAR + LISTENER, &[0xE1A06001]);
     assert_eq!(buttons.idle().unwrap(), set(&[]));
+}
+
+/// Under Super Training's Yes and No the page's buttons read 0 at +0x35 and Yes, its touch
+/// area 0x125, pane "85", reads 1 (spike B).
+#[test]
+fn test_a_button_switched_off_is_said_by_its_layouts_work_and_its_panes_name() {
+    let memory = FakeMemory::new();
+    manager(&memory, LIST, PARTY_WORK, false, 2);
+    let (yes, party_slot) = (LIST + 0x300, LIST + 0x360);
+    memory.u32(yes + PANE, &[0x125]);
+    memory.write(yes + ON, b"\x01");
+    memory.u32(party_slot + PANE, &[0x62]);
+    let mut buttons = Buttons::new(memory.clone());
+    buttons.track([LIST], [], [], false).unwrap();
+    assert_eq!(
+        buttons.off().unwrap(),
+        HashSet::from([(PARTY_WORK, "2q".to_string())])
+    );
+    assert_eq!(pane_name(0x111), "7l");
+}
+
+/// An app leaves its buttons off as it closes, and its layout's slot is taken by the next.
+#[test]
+fn test_a_manager_with_no_button_on_says_nothing_of_its_buttons() {
+    let memory = FakeMemory::new();
+    manager(&memory, LIST, PARTY_WORK, false, 2);
+    memory.u32(LIST + 0x300 + PANE, &[0x24]);
+    let mut buttons = Buttons::new(memory.clone());
+    buttons.track([LIST], [], [], false).unwrap();
+    assert_eq!(buttons.off().unwrap(), HashSet::new());
+}
+
+/// The PlayNav's frame takes no tap from Super Training's bags list on, though its buttons
+/// read 1 (spike B); the menu is found by its other vtables too, and those hold no manager.
+#[test]
+fn test_the_field_menus_manager_is_locked_while_an_app_of_the_bottom_screen_has_the_input() {
+    let memory = party(false, true);
+    let (held, busy) = oras::game().field_menu;
+    memory.u32(MENU, &[MENU_VTABLE]);
+    memory.u32(MENU + held, &[BAR]);
+    memory.u32(MENU + 0x24, &[MENU_VTABLE]);
+    let mut buttons = Buttons::with_menu(memory.clone(), oras::game().field_menu);
+    buttons
+        .track([LIST, CORNERS, BAR], [], [MENU, MENU + 0x24], false)
+        .unwrap();
+    assert_eq!(buttons.idle().unwrap(), set(&[]));
+    memory.write(MENU + busy, b"\x01");
+    assert_eq!(buttons.idle().unwrap(), set(&[BAR_WORK]));
 }

@@ -27,6 +27,8 @@ use crate::games::gen6::field::features::{
 };
 use crate::games::gen6::rom::archives::GameText;
 use crate::games::gen6::rom::layout::RomLayout;
+use crate::games::gen6::screens::buttons::MENU;
+use crate::games::gen6::screens::training::ICONS;
 use crate::py::{Log, Result};
 
 /// An app only one game has, read by that game's own package: ORAS's soaring
@@ -274,6 +276,13 @@ pub struct Game {
     /// Where the player's move model says what they move as, on foot, on the bike or on a
     /// Pokémon (`mmodel.FORM`), or None where it was not read: X's.
     pub form: Option<i64>,
+    /// Where its Super Training page keeps the PokeIcon of its party's icons, its records following
+    /// (`screens.training`): ORAS's 0xF0, X's 0xC8 (spike B).
+    pub training: i64,
+    /// Where the field's menu round the bottom screen's apps keeps its button manager and the byte
+    /// set while an app has the input (`buttons`): ORAS's +0x7C and +0x9C, X's +0x70 and +0x90
+    /// (spike B).
+    pub field_menu: (i64, i64),
 }
 
 impl Game {
@@ -318,6 +327,8 @@ impl Game {
             strands: 0,
             gates: false,
             form: None,
+            training: ICONS,
+            field_menu: MENU,
         }
     }
 }

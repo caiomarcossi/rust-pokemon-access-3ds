@@ -17,6 +17,9 @@
 //! texture i    +0x0C   the image's physical address, as a picture's material keeps it
 //! ```
 //!
+//! X's page keeps the same four 0x28 earlier, its PokeIcon at +0xC8 (`Game.training`, spike B):
+//! read at +0xF0 there was a message window, and touch mode left the six slots out with no name.
+//!
 //! The page is a carousel: the selected member is shown big in the middle and the other five in a
 //! row that runs on from it in party order, wrapping. The textures stay in party order, but the
 //! records rotate to start at the selected member. With Latios (member 0) selected they were in
@@ -86,7 +89,7 @@ use crate::core::speech::Category;
 use crate::core::words::own;
 use crate::games::common::layout::Layouts;
 use crate::games::common::pictures::words as picture_words;
-use crate::games::common::touch::{HEIGHT, Idle, ImageOf, Target, WIDTH};
+use crate::games::common::touch::{HEIGHT, Idle, ImageOf, Off, Target, WIDTH};
 use crate::games::common::{lyt, pokemon};
 use crate::games::gen6::apps::FIELD;
 use crate::games::gen6::screens::distribution as d;
@@ -95,11 +98,13 @@ use crate::py::{self, Result};
 pub const CLASS: &str = "N5field9subscreen8training11FM_TrainingE";
 /// A round of Super Training, the app the goals are offered in.
 pub const SPARRING: &str = "N3app8sparring4ProcE";
+/// Where ORAS's page keeps its PokeIcon; X's keeps it at 0xC8 (`Game.training`).
 pub const ICONS: i64 = 0xF0;
-pub const PARAMS: i64 = 0x14C;
-/// Where a record holds its member's party index, in the same stride as `PARAMS`: the records
-/// rotate to start at the selected member, the icons' textures do not.
-pub const INDEX: i64 = 0x150;
+/// How far after the PokeIcon the records start, in ORAS and X alike (spike B).
+pub const PARAMS: i64 = 0x5C;
+/// Where a record holds its member's party index, after its PokemonParam: the records rotate to
+/// start at the selected member, the icons' textures do not.
+pub const INDEX: i64 = 0x04;
 pub const PARAM_STRIDE: i64 = 0x20;
 pub const SLOTS: i64 = 6;
 /// pa3ds's word for a goal: the game's dialogue speaks of "the white goals" and names none.
@@ -171,16 +176,28 @@ pub struct TrainingPage {
     memory: Rc<dyn Memory>,
     names: Rc<ClassNames>,
     species: Vec<String>,
+    /// Where the page keeps its PokeIcon, its records `PARAMS` after it.
+    icons: i64,
     /// Page object -> the vtable it was found with.
     pages: IndexMap<i64, i64>,
 }
 
 impl TrainingPage {
     pub fn new(memory: Rc<dyn Memory>, names: Rc<ClassNames>, species: Vec<String>) -> Self {
+        TrainingPage::with_icons(memory, names, species, ICONS)
+    }
+
+    pub fn with_icons(
+        memory: Rc<dyn Memory>,
+        names: Rc<ClassNames>,
+        species: Vec<String>,
+        icons: i64,
+    ) -> Self {
         TrainingPage {
             memory,
             names,
             species,
+            icons,
             pages: IndexMap::new(),
         }
     }
@@ -216,18 +233,19 @@ impl TrainingPage {
         if image == 0 {
             return Ok(None);
         }
+        let params = self.icons + PARAMS;
         for (&page, &vtable) in &self.pages {
-            let head = memory.read(page, PARAMS + PARAM_STRIDE * SLOTS)?;
+            let head = memory.read(page, params + PARAM_STRIDE * SLOTS)?;
             // A page freed and its memory taken by something else says nothing.
             if u32(&head, 0)? != vtable {
                 continue;
             }
-            let Some(slot) = self.slot(u32(&head, ICONS)?, image)? else {
+            let Some(slot) = self.slot(u32(&head, self.icons)?, image)? else {
                 continue;
             };
             let mut record = None;
             for r in 0..SLOTS {
-                if u32(&head, INDEX + PARAM_STRIDE * r)? == slot {
+                if u32(&head, params + PARAM_STRIDE * r + INDEX)? == slot {
                     record = Some(r);
                     break;
                 }
@@ -238,7 +256,7 @@ impl TrainingPage {
             let found = pokemon::read(
                 memory.as_ref(),
                 &self.names,
-                u32(&head, PARAMS + PARAM_STRIDE * record)?,
+                u32(&head, params + PARAM_STRIDE * record)?,
                 pokemon::SPECIES_MAX,
             )?;
             let Some(found) = found else {
@@ -380,6 +398,9 @@ pub struct Bags {
     words: IndexMap<String, String>,
     /// The works of the layouts whose buttons take no tap now (`Buttons.idle`).
     idle: Option<Idle>,
+    /// (work, pane name) of the buttons switched off now (`Buttons.off`): each bag is one, by
+    /// its picture, off under the page's Yes and No (spike B).
+    off: Option<Off>,
 }
 
 impl Bags {
@@ -388,12 +409,14 @@ impl Bags {
         image_of: ImageOf,
         words: IndexMap<String, String>,
         idle: Option<Idle>,
+        off: Option<Off>,
     ) -> Self {
         Bags {
             layouts,
             image_of,
             words,
             idle,
+            off,
         }
     }
 
@@ -408,6 +431,10 @@ impl Bags {
             Some(idle) => idle()?,
             None => Default::default(),
         };
+        let off = match &self.off {
+            Some(off) => off()?,
+            None => Default::default(),
+        };
         let works: IndexMap<i64, i64> = layouts
             .works()
             .into_iter()
@@ -417,7 +444,13 @@ impl Bags {
             image.starts_with(BAG_IMAGE)
         })? {
             // The list is a layout like any other: under a menu it takes no tap (`TouchTargets`).
-            if layouts.taken_off(root)? || works.get(&root).is_some_and(|work| idle.contains(work))
+            let work = works.get(&root).copied();
+            let raw = layouts.name(pane)?;
+            let end = raw.iter().position(|&byte| byte == 0).unwrap_or(raw.len());
+            let name = py::decode_ascii(&raw[..end]);
+            if layouts.taken_off(root)?
+                || work.is_some_and(|work| idle.contains(&work))
+                || work.is_some_and(|work| off.contains(&(work, name)))
             {
                 continue;
             }

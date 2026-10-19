@@ -80,11 +80,11 @@ use crate::py::{self, Error, Log, PySet, Result};
 /// holds, layout works through their DrawInfo, the battlers' names and HP gauges, the map's move
 /// models, the heaps themselves, whose blocks the runtime watches for what they allocate (`app`,
 /// ADR-0034), the camera whose heading the D-pad walks by on Lumiose's rails, the process manager
-/// that says which app is running, and the button managers and touch bars that say whose
-/// buttons take taps (`buttons`), and the AreaNav's navigator, which says whose icon each picture of
-/// its Pokémon Distribution draws, and its views, which say which of its layouts it draws; the
-/// party and the icons the Bag draws it with; the Pokémon-Amie page, which says whose icon its
-/// Pokémon is; Super Training's, which says whose each party slot's is; and the balls of its
+/// that says which app is running, and the button managers, touch bars and the field's menu that
+/// say whose buttons take taps (`buttons`), and the AreaNav's navigator, which says whose icon each
+/// picture of its Pokémon Distribution draws, and its views, which say which of its layouts it
+/// draws; the party and the icons the Bag draws it with; the Pokémon-Amie page, which says whose
+/// icon its Pokémon is; Super Training's, which says whose each party slot's is; and the balls of its
 /// Balloon Bots, which say when a shot is coming; and the save's trainer record, which says the
 /// game's language (`mystatus`). A game's own readers add what they find their objects
 /// by (`Gen6Profile.classes`): ORAS's DexNav, the player's work its hidden Pokémon's record is found
@@ -93,7 +93,7 @@ use crate::py::{self, Error, Log, PySet, Result};
 /// Not TextBoxes or cursor windows: walking each layout's tree finds every one that can be placed on
 /// screen (spike 62). And the linear heap is not swept: the battle builds its layouts there, and its
 /// message window leads to their pool (spike 64).
-pub const HEAP_CLASSES: [&str; 28] = [
+pub const HEAP_CLASSES: [&str; 29] = [
     msgwin::CLASSES[0],
     msgwin::CLASSES[1],
     talk::CLASSES[0],
@@ -122,6 +122,7 @@ pub const HEAP_CLASSES: [&str; 28] = [
     partyicons::ICON_CLASS,
     buttons::MANAGER_CLASS,
     buttons::BAR_CLASS,
+    buttons::MENU_CLASS,
     mystatus::CLASS,
 ];
 
@@ -458,7 +459,10 @@ impl Gen6Profile {
         // The AreaNav keeps the layouts of a screen it has left as they were; its views say.
         let views = townmap::Views::new(memory.clone(), names.clone());
         // The game's button managers say whose buttons take taps (spike 189).
-        let buttons = Rc::new(RefCell::new(buttons::Buttons::new(memory.clone())));
+        let buttons = Rc::new(RefCell::new(buttons::Buttons::with_menu(
+            memory.clone(),
+            game.field_menu,
+        )));
         // ORAS's contests' appeals draw who stands where as portraits, said on the keys that say
         // a battle's sides (Orion, 2026-10-09).
         let standings: Option<Rc<RefCell<dyn StandingsReader>>> = game.standings.map(|make| {
@@ -497,10 +501,11 @@ impl Gen6Profile {
             text.species.clone(),
         )));
         // So does Super Training's, with the party; and its rounds' goals are on the top screen.
-        let training = Rc::new(RefCell::new(TrainingPage::new(
+        let training = Rc::new(RefCell::new(TrainingPage::with_icons(
             memory.clone(),
             names.clone(),
             text.species.clone(),
+            game.training,
         )));
         let goals = Rc::new(Goals::new(layouts.clone(), image_of.clone()));
         // The DexNav draws a Pokémon caught in colour, and only those are said so: "Ralts",
@@ -519,6 +524,10 @@ impl Gen6Profile {
             })
             .collect();
         // And the training bags in its page's list, pictures with no touch area of their own.
+        let off: touch::Off = {
+            let buttons = buttons.clone();
+            Rc::new(move || buttons.borrow().off())
+        };
         let bags = Rc::new(Bags::new(
             layouts.clone(),
             image_of.clone(),
@@ -527,6 +536,7 @@ impl Gen6Profile {
                 let buttons = buttons.clone();
                 Rc::new(move || buttons.borrow_mut().idle()) as Idle
             }),
+            Some(off.clone()),
         ));
         // A round says its score, clock and banners, and warns of a Bot's shot.
         let sparring = Round::new(layouts.clone(), image_of.clone(), memory.clone(), None);
@@ -596,6 +606,7 @@ impl Gen6Profile {
                 picture_name: Some(picture_name),
                 lists: Some(lists_labels),
                 idle: Some(idle),
+                off: Some(off),
                 slide,
                 gestures: Some({
                     let (amie, goals, bags, apps) =
@@ -845,6 +856,7 @@ impl Gen6Profile {
         self.buttons.borrow_mut().track(
             found.of(&[buttons::MANAGER_CLASS]),
             found.of(&[buttons::BAR_CLASS]),
+            found.of(&[buttons::MENU_CLASS]),
             adding,
         )?;
         self.party_icons.borrow_mut().track(

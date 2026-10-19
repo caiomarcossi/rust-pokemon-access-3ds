@@ -135,6 +135,9 @@ pub type PictureName = Rc<dyn Fn(i64) -> Result<Option<String>>>;
 pub type Lists = Rc<dyn Fn() -> HashSet<String>>;
 /// `Callable[[], set[int]]`: the works of the layouts whose buttons take no tap. It reads memory.
 pub type Idle = Rc<dyn Fn() -> Result<HashSet<i64>>>;
+/// `Callable[[], set[tuple[int, str]]]`: (work, pane name) of the buttons switched off. It reads
+/// memory.
+pub type Off = Rc<dyn Fn() -> Result<HashSet<(i64, String)>>>;
 /// `Callable[[Sequence[tuple[int, int]], float], str | None]`: drag a press along a path.
 pub type Slide = Rc<dyn Fn(&[(i64, i64)], f64) -> Option<String>>;
 /// `Callable[[], list[Target]]`: targets no touch area draws. It reads memory.
@@ -153,6 +156,7 @@ pub struct Options {
     pub idle: Option<Idle>,
     pub slide: Option<Slide>,
     pub gestures: Option<Gestures>,
+    pub off: Option<Off>,
 }
 
 /// The bottom screen's touch targets, and the one touch mode is on.
@@ -182,6 +186,8 @@ pub struct TouchTargets {
     /// Targets a screen offers that no touch area draws, each a stroke: Pokémon-Amie's
     /// Pokémon, stroked by sliding over it (spike 200).
     gestures: Option<Gestures>,
+    /// (work, pane name) of the buttons switched off now, which take no tap (`Buttons.off`).
+    off: Option<Off>,
     chosen: Option<i64>,
     /// Touch area -> what it was last called (rule 4).
     named: IndexMap<i64, String>,
@@ -216,6 +222,7 @@ impl TouchTargets {
             idle,
             slide,
             gestures,
+            off,
         } = options;
         TouchTargets {
             layouts,
@@ -232,6 +239,7 @@ impl TouchTargets {
             idle,
             slide,
             gestures,
+            off,
             chosen: None,
             named: IndexMap::new(),
             unnamed: HashSet::new(),
@@ -348,6 +356,10 @@ impl TouchTargets {
             Some(idle) => idle()?,
             None => HashSet::new(),
         };
+        let off = match &self.off {
+            Some(off) => off()?,
+            None => HashSet::new(),
+        };
         let works: IndexMap<i64, i64> = layouts
             .works()
             .into_iter()
@@ -371,10 +383,18 @@ impl TouchTargets {
             }
             let tree = layouts.tree(root);
             let layer = layouts.layer(root)?;
+            // A button switched off takes no tap however it is drawn: Super Training's party
+            // under its Use panel (spike B).
             let mut touches: Vec<i64> = Vec::new();
             for (&pane, kind) in &tree {
                 if kind == lyt::BOUNDING_CLASS && shown(&layouts, pane)? {
-                    touches.push(pane);
+                    let name = self.name(pane)?;
+                    if !works
+                        .get(&root)
+                        .is_some_and(|&work| off.contains(&(work, name)))
+                    {
+                        touches.push(pane);
+                    }
                 }
             }
             if touches.is_empty() {

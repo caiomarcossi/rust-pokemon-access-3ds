@@ -304,6 +304,60 @@ fn test_a_bare_button_in_the_top_bars_corners_is_the_page_arrows() {
     );
 }
 
+/// Super Training's party under its Use panel: drawn as bright as ever, its buttons read 0,
+/// and a tap on Breloom did nothing (spike B).
+#[test]
+fn test_a_touch_area_whose_button_is_switched_off_is_left_out() {
+    let memory = FakeMemory::new();
+    let classes = FakeClasses::new(memory.clone());
+    let fake = FakeLayouts::new(&memory, &classes);
+    let (bounding, picture) = (
+        classes.add(lyt::BOUNDING_CLASS),
+        classes.add(lyt::PICTURE_CLASS),
+    );
+    let (work, group) = fake.screen(0x08200000);
+    for (i, (x, name)) in [(-140.0f32, b"2q"), (140.0, b"2r")].into_iter().enumerate() {
+        let button = group + 0x1000 * (i as i64 + 1);
+        fake.pane(button, group);
+        fake.pane_with_vtable(button + 0x200, button, Some(bounding));
+        fake.pane_with_vtable(button + 0x400, button, Some(picture));
+        memory.write(button + 0x200 + lyt::NAME, name);
+        memory.write(button + 0x200 + lyt::X, &x.to_le_bytes());
+        memory.write(
+            button + 0x200 + lyt::WIDTH,
+            &[40.0f32.to_le_bytes(), 30.0f32.to_le_bytes()].concat(),
+        );
+    }
+    fake.track().unwrap();
+    let mut targets = TouchTargets::new(
+        fake.layouts.clone(),
+        Rc::new(Vec::new),
+        Rc::new(|_box| Ok(String::new())),
+        Rc::new(|_pane| Ok(Some("slot.bclim".to_string()))),
+        Rc::new(|_root| None),
+        Rc::new(|_line: &str| {}),
+        Options {
+            images: Some(IndexMap::from([(
+                "slot.bclim".to_string(),
+                "slot".to_string(),
+            )])),
+            off: Some(Rc::new(move || {
+                Ok(HashSet::from([(work, "2q".to_string())]))
+            })),
+            ..Options::default()
+        },
+    );
+    assert_eq!(
+        targets
+            .targets()
+            .unwrap()
+            .iter()
+            .map(|t| (t.name.as_str(), t.x))
+            .collect::<Vec<_>>(),
+        [("slot", 300)]
+    );
+}
+
 /// The Pokémon-Amie page's PLAY is a picture of its word inside the touch area behind its
 /// menu, which closes it: the backdrop took PLAY's word, and PLAY was left out (spike 198).
 #[test]
