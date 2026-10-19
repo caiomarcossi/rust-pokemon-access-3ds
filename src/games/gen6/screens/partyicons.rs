@@ -166,7 +166,8 @@ impl PartyIcons {
                 continue;
             };
             let party = memory.read(party_at, COUNT + 4)?;
-            if slot >= u32(&party, COUNT)? {
+            // The list found in an earlier Bag may be another object's now, counting past six.
+            if slot >= std::cmp::min(u32(&party, COUNT)?, SLOTS) {
                 return Ok(None);
             }
             let found = pokemon::read(
