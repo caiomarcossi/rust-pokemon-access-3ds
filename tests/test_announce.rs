@@ -1052,6 +1052,67 @@ fn test_words_coming_to_a_menu_in_place_of_words_just_gone_are_its_own() {
     );
 }
 
+/// X's language select draws its question in a panel of its own where its list was,
+/// "English" where the list's "English" was, and the language went unsaid as the menu's own
+/// words come back: "Play Pokémon X in" (x_movie1_opening).
+#[test]
+fn test_words_coming_to_a_panel_no_words_left_are_said() {
+    let mut screen = Screen::new();
+    let rows: Vec<ScreenText> = ["English", "Spanish", "French"]
+        .iter()
+        .enumerate()
+        .map(|(at, language)| {
+            let at = at as i64;
+            piece_kw(
+                10 + at,
+                language,
+                -145.0,
+                (-10 - 30 * at) as f64,
+                MENU,
+                Kw {
+                    parent: 0x20 + at,
+                    panel: 0x10,
+                    ..PLAIN
+                },
+            )
+        })
+        .collect();
+    screen.say(args(
+        &rows,
+        vec![CursorItem::new(0x0C, vec![rows[0].clone()], true)],
+        &rows,
+    ));
+    let alone = |r#box: i64, text: &str, y: f64, parent: i64| {
+        piece_kw(
+            r#box,
+            text,
+            -145.0,
+            y,
+            MENU,
+            Kw {
+                parent,
+                with_layout: false,
+                panel: 0x40,
+            },
+        )
+    };
+    let question = alone(1, "Play Pokémon X in", 15.0, 0x30);
+    let language = alone(2, "English", -10.0, 0x40);
+    let begin = vec![alone(3, "Begin game", -55.0, 0x32)];
+    let shown = cat(&[&[question.clone(), language.clone()], &begin]);
+    assert_eq!(
+        screen.say(Args {
+            left: rows.clone(),
+            ..args(
+                &shown,
+                vec![CursorItem::new(0x0C, begin.clone(), false)],
+                &shown
+            )
+        }),
+        ["Begin game", "Play Pokémon X in English"]
+    );
+}
+
 #[test]
 fn test_a_place_revealed_after_its_entrant_is_said_with_it() {
     // The contest's results reveal each place a while after the entrants' names, and said alone

@@ -187,8 +187,8 @@ pub struct ScreenAnnouncer {
     /// Layout root -> the words that came on screen while more of the layout's words were still
     /// being written, each with the poll it came at.
     arriving: IndexMap<i64, Vec<(i64, ScreenText)>>,
-    /// Layout root -> the poll words last left it at, for `REPEAT_POLLS`.
-    left: IndexMap<i64, i64>,
+    /// (Layout root, panel) -> the poll words last left it at, for `REPEAT_POLLS`.
+    left: IndexMap<(i64, i64), i64>,
     /// The place's name the field said last, and the poll it was said at.
     placed: Option<(String, i64)>,
     /// TextBox -> its layout's root and the words last said of it, as screen text or details,
@@ -413,16 +413,19 @@ impl ScreenAnnouncer {
         // alone, what changes beside a menu's rows names it: the Pokéblock Case writes the chosen
         // block's name under its grid (movie30, spike 196). Not otherwise: the PC Box rewrites its
         // box's name as its menu's cursor moves, "BOX 1" each time (movie9).
-        // Words coming in place of words that have just left the menu are its own too: the Bag's
-        // party draws "ABLE!" or "UNABLE!" for a TM or a stone in place of each level, and the
-        // levels again after it, and both were read at every pocket (movie31, Khai,
+        // Words coming to a panel of the menu's layout that words have just left are its own too:
+        // the Bag's party draws "ABLE!" or "UNABLE!" for a TM or a stone in place of each level,
+        // and the levels again after it, and both were read at every pocket (movie31, Khai,
         // 2026-10-18); a paralysed Pokémon shows no level, and its "UNABLE!" came alone
-        // (hm_tm). A question is said.
+        // (hm_tm). A question is said. Not a panel no words left: X's language select draws its
+        // question in a panel of its own where its list was, "English" in the place of the
+        // list's own, and the language went unsaid, "Play Pokémon X in" (x_movie1_opening). The
+        // PC's rows, a panel each, are its cursor's (`MenuCursors.rows`).
         let polls = self.polls;
         self.left
-            .retain(|_root, &mut poll| polls - poll <= REPEAT_POLLS);
+            .retain(|_panel, &mut poll| polls - poll <= REPEAT_POLLS);
         for p in left {
-            self.left.insert(p.root, self.polls);
+            self.left.insert((p.root, p.panel), self.polls);
         }
         let counting = self
             .gathering
@@ -469,7 +472,9 @@ impl ScreenAnnouncer {
                         && ((p.changed && !news(p))
                             || p.with_layout
                             || p.scrolled
-                            || (!p.changed && !sentence(p) && self.left.contains_key(&p.root))))
+                            || (!p.changed
+                                && !sentence(p)
+                                && self.left.contains_key(&(p.root, p.panel)))))
             })
             .cloned()
             .collect();

@@ -26,7 +26,7 @@ use crate::games::common::cursors::shared::{
 use crate::games::common::layout::Layouts;
 use crate::games::common::lyt;
 use crate::games::common::screen::{ScreenText, distinct, in_rows};
-use crate::py::Result;
+use crate::py::{self, Result};
 
 /// Units a cursor's width or height may differ from the pane it sits on: the Bag's is 157 by 42
 /// on rows of 150 by 30, the Pokéblock Case's 52 by 52 on cells of 50 by 50 (spike 196).
@@ -98,7 +98,7 @@ impl MenuCursors {
             let mut rows: HashSet<(i64, i64)> = HashSet::new();
             for piece in &inside {
                 if piece.parent != piece.root {
-                    for row in self.panes.alike(piece.root, piece.parent, false)?.iter() {
+                    for row in self.rows_of(piece)?.iter() {
                         rows.insert((piece.root, row));
                     }
                 }
@@ -106,13 +106,33 @@ impl MenuCursors {
             self.rows.extend(
                 on_screen
                     .iter()
-                    .filter(|piece| rows.contains(&(piece.root, piece.parent)))
+                    .filter(|piece| {
+                        rows.contains(&(piece.root, piece.parent))
+                            || rows.contains(&(piece.root, piece.panel))
+                    })
                     .map(|piece| piece.r#box),
             );
             let at = place_of(&rect)?;
             self.said.report(cursor, inside, items, at, false);
         }
         Ok(())
+    }
+
+    /// The row a cursor is over and the rows drawn like it: its words' parent's, or, where
+    /// that pane stands alone, its panel's. Each row of the PC's menus is a panel of its own, its
+    /// words two panes below, and the rows the cursor was not on, "Log Out", "Organize Items",
+    /// were said as new (movie6).
+    ///
+    /// Python's `_rows`: `rows` is the field it adds to.
+    fn rows_of(&self, piece: &ScreenText) -> Result<py::PySet> {
+        let alike = self.panes.alike(piece.root, piece.parent, false)?;
+        if alike.len() == 1 && piece.panel != 0 && piece.panel != piece.parent {
+            let panels = self.panes.alike(piece.root, piece.panel, false)?;
+            if panels.len() > 1 {
+                return Ok(panels);
+            }
+        }
+        Ok(alike)
     }
 
     /// The words under the one pane the cursor sits on, centred where it is and of about its

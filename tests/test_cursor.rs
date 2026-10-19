@@ -385,6 +385,82 @@ fn test_a_menu_cursors_rows_are_the_row_it_is_over_and_the_rows_drawn_like_it() 
     );
 }
 
+/// Each row of the PC's menus is a panel of its own under the root, its words in a pane
+/// inside it, and the rows the cursor was not on, "Organize Items" and "Log Out", were said as
+/// new (movie6). A panel drawn like no other is no row.
+#[test]
+fn test_a_menu_cursors_rows_are_panels_where_its_words_stand_alone_in_theirs() {
+    let mut menu = Menu::new();
+    let (_work, root) = menu.fake.screen_with(0x08400000, false, false);
+    let panel = |menu: &Menu, pane: i64, y: f64, height: f64| -> i64 {
+        let inner = pane + 0x80;
+        menu.fake.pane(pane, root);
+        menu.fake.pane(inner, pane);
+        for (offset, value) in [
+            (lyt::X, -80.0),
+            (lyt::Y, y),
+            (lyt::WIDTH, 150.0),
+            (lyt::HEIGHT, height),
+        ] {
+            put(&menu.memory, pane + offset, &[value]);
+        }
+        for (offset, value) in [(lyt::WIDTH, 150.0), (lyt::HEIGHT, height)] {
+            put(&menu.memory, inner + offset, &[value]);
+        }
+        inner
+    };
+    let mut pieces: Vec<ScreenText> = Vec::new();
+    for (i, (text, y)) in [
+        ("Deposit Pokémon", 60.0),
+        ("Organize Items", 30.0),
+        ("Log Out", 0.0),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let pane = 0x08401000 + i as i64 * 0x100;
+        pieces.push(ScreenText {
+            root,
+            parent: panel(&menu, pane, y, 30.0),
+            panel: pane,
+            ..ScreenText::placed(
+                0x08402000 + i as i64 * 0x100,
+                text,
+                false,
+                -120.0,
+                -40.0,
+                y,
+                12.5,
+            )
+        });
+    }
+    let title = ScreenText {
+        root,
+        parent: panel(&menu, 0x08404000, 110.0, 50.0),
+        panel: 0x08404000,
+        ..ScreenText::placed(
+            0x08403000,
+            "Someone's PC",
+            false,
+            -120.0,
+            -40.0,
+            110.0,
+            12.5,
+        )
+    };
+    menu.fake.track().unwrap();
+    let mut all = pieces.clone();
+    all.push(title);
+    assert_eq!(menu.heard_with(&all), said(&[(&["Deposit Pokémon"], true)]));
+    assert_eq!(
+        menu.reader.last.rows.clone(),
+        pieces
+            .iter()
+            .map(|piece| piece.r#box)
+            .collect::<HashSet<i64>>()
+    );
+}
+
 /// The Pokéblock Case's cursor sits on a block's cell, its count just below its frame, over
 /// the Berry Blender's grid, whose cell sits off its middle with its count inside the frame:
 /// framed, the case said the blender's "16" for its own "5" (movie30, spike 196).
