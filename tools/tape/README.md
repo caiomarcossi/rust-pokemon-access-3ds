@@ -22,21 +22,27 @@ change"):
 ```
 uv run python spikes/tape_replay.py record <replay>...
 uv run python spikes/tape_replay.py verify <replay>...
-uv run python spikes/tape_replay.py replay <label> [<replay>...]
+uv run python spikes/tape_replay.py replay <label> [<replay>...] [--covers <tag>...]
 ```
 
-`record` plays a `[[replay]]` of the Python checkout's `spikes/rig.toml` as `spikes/regress.py
-run` plays it, and writes `<replay>.tape.gz` with, beside it, what the runtime logged and said and
-the commit it ran. `verify` replays each tape strictly against its recording, and holds only at
-that commit. `replay` plays each tape through whatever Python is checked out and writes what it
-logged and said to `%LOCALAPPDATA%\pa3ds\captures\regress\<label>\<name>.log` and `.said`: these
-are the references the Rust runtime is held to. Its `summary.txt` says of each whether its reads
-were all exact; an approximate one read memory the tape never held, and only a tape recorded
-again at that commit can prove the port there.
+`record` plays a replay as `spikes/regress.py run` plays it: one of the movies Orion and Khai
+share in `regression/replays.toml`, the `pa3ds/regression` checkout beside the two repositories
+(ADR-0041), or a `[[replay]]` of the Python checkout's `spikes/rig.toml` for a movie not shared
+yet. It writes `<replay>.tape.gz` with, beside it, what the runtime logged and said and the commit
+it ran. `--covers` takes every replay covering one of the tags of `regression/tags.toml`. `verify`
+replays each tape strictly against its recording, and holds only at that commit. `replay` plays
+each tape through whatever Python is checked out and writes what it logged and said to
+`%LOCALAPPDATA%\pa3ds\captures\regress\<label>\<name>.log` and `.said`: these are the references
+the Rust runtime is held to. Its `summary.txt` says of each whether its reads were all exact; an
+approximate one read memory the tape never held, and only a tape recorded again at that commit
+can prove the port there.
 
 A replay plays with the default settings, where `[pa3ds.ui] descriptions` is off and no scene is
-described. Name it `<replay>_described` to play `<replay>` with descriptions on: both runtimes
-turn them on for a tape of that name.
+described, but for `census`: both runtimes log touch mode's targets as they change, "touch
+targets: ...", since no movie presses the key that would say them (ADR-0041). A tape recorded
+before 6b42273c holds none of the reads that takes, and is recorded again. Name it
+`<replay>_described` to play `<replay>` with descriptions on: both runtimes turn them on for a
+tape of that name.
 
 `tools/tape/record_all.sh <replay>...` records each replay, makes its references under the label
 `port`, and replays it through the Rust runtime against them.

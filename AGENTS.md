@@ -1,10 +1,11 @@
 # pa3ds, in Rust
 
 pa3ds speaks 3DS Pokemon games to blind players: it reads Azahar's emulated memory and sends text
-to a screen reader. Two people work on it, Orion and Khai, each on a machine of their own, with
-their own movies and saves. Orion is blind and cannot check your work by looking at the game, and
-you cannot see the screen either: tests, snapshots, tapes and screenshots are the only shared
-evidence.
+to a screen reader. Two people work on it, Orion and Khai, each on a machine of their own, sharing
+the movies regression runs on in `regression/` beside the two checkouts (`pa3ds/regression`,
+ADR-0041); each records the tapes of those movies on their own machine. Orion is blind and cannot
+check your work by looking at the game, and you cannot see the screen either: tests, snapshots,
+tapes and screenshots are the only shared evidence.
 
 **This repository is a port.** The Python pa3ds (https://github.com/pa3ds/pokemon-access-3ds)
 is upstream: features are found and built there first, with its spikes and movie rig, and arrive
@@ -15,7 +16,10 @@ The Python checkout sits beside this one, at `../pokemon-access-3ds` (or `PA3DS_
 glossary and docs are this repository's too, and are not copied here: before the first change in
 a session, read its `GLOSSARY.md` in full — the vocabulary, which code and conversation both use
 — and the **ADRs** for the area you are working in (`docs/adr/README.md` there is grouped by
-area). An ADR is binding: contradict one only by saying so. A path such as `docs/runbooks/rig.md`
+area). Before changing a module, read every ADR its module doc lists under **Bound by**, copied
+from its Python docstring: a rule every screen goes through, as `common.touch` and
+`common.screen_announce` are, keeps decisions made for screens far from the one you are changing.
+An ADR is binding: contradict one only by saying so. A path such as `docs/runbooks/rig.md`
 in a comment or doc here means the Python checkout's. This repository's only doc is
 `docs/porting.md`.
 
