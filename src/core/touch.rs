@@ -50,6 +50,15 @@ pub const HEIGHT: i64 = 240;
 pub const HOLD: f64 = 0.1;
 /// How often the pad's state is sent while a client listens: twice a frame.
 pub const TICK: f64 = 1.0 / 120.0;
+/// How far the pad's counter climbs a second, by the clock. Azahar takes a state only when its
+/// counter is past every one it has taken since it opened, from any server (`Client::OnPadData`,
+/// `input_common/udp/client.cpp`): counting from one again, as each game read and each pa3ds
+/// started in another's place did, a server had every tap dropped for as long as the one before
+/// it had been sending (2026-10-20). Read off the clock, a server counts on from wherever any
+/// before it got to; twice the states sent a second (`TICK`), so it never runs ahead of the
+/// clock. The packet holds 32 bits of it, which wrap every 207 days: an Azahar open across that
+/// moment drops taps until it is opened again.
+pub const COUNTS: i64 = 240;
 /// How long a client is sent states after its last request; it asks every three seconds.
 pub const LISTENING: f64 = 6.0;
 
@@ -151,6 +160,14 @@ pub fn request(packet: &[u8]) -> Option<i64> {
     }
     let word: [u8; 4] = packet[16..20].try_into().expect("four bytes");
     Some(i64::from(u32::from_le_bytes(word)))
+}
+
+/// `time.time()`: seconds since the epoch, by the wall clock. `py::time` has no `time`; the
+/// touch server's thread is never replayed from a tape, so the real clock is the one asked.
+fn wall_clock() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |since| since.as_secs_f64())
 }
 
 /// What an `OSError` out of a socket says as `str(error)`: Windows' error and its text, the text
@@ -388,10 +405,11 @@ impl Inner {
             if held.clients.is_empty() {
                 return;
             }
-            held.counter += 1;
+            let clock = py::int(wall_clock() * COUNTS as f64).expect("a finite clock");
+            held.counter = (held.counter + 1).max(clock);
             let state = message(
                 PAD_DATA,
-                &pad_state(held.counter, held.touch).expect("in range"),
+                &pad_state(py::modulo(held.counter, 1 << 32), held.touch).expect("in range"),
                 self.id,
             )
             .expect("in range");

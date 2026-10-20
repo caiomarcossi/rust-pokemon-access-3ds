@@ -92,6 +92,47 @@ fn test_a_tap_presses_and_lets_go_for_a_client_that_asked() {
     server.close();
 }
 
+/// Azahar takes a pad's state only when its counter is past every one it has taken since it
+/// opened, from any server: one game read after another, or a pa3ds started in another's place,
+/// had its taps dropped while it counted up from one again (2026-10-20).
+#[test]
+fn test_a_server_counts_on_past_the_one_before_it() {
+    let mut ask = b"DSUC".to_vec();
+    ask.extend_from_slice(&1001u16.to_le_bytes());
+    ask.extend_from_slice(&12u16.to_le_bytes());
+    ask.extend_from_slice(&0u32.to_le_bytes());
+    ask.extend_from_slice(&1u32.to_le_bytes());
+    ask.extend_from_slice(&(touch::PAD_DATA as u32).to_le_bytes());
+    ask.extend_from_slice(&[0; 8]);
+
+    let counters = |seconds: f64| -> Vec<i64> {
+        let server = touch::TouchServer::new(Arc::new(|_line: &str| {}), 0).unwrap();
+        let client = UdpSocket::bind((touch::HOST, 0)).unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        client
+            .send_to(&ask, (touch::HOST, server.port().unwrap() as u16))
+            .unwrap();
+        let mut out: Vec<i64> = Vec::new();
+        let deadline = time::monotonic() + seconds;
+        let mut buffer = [0u8; 100];
+        while time::monotonic() < deadline {
+            let size = client.recv(&mut buffer).unwrap();
+            out.push(u32_at(&buffer[..size], 20 + 12));
+        }
+        server.close();
+        out
+    };
+
+    let (first, second) = (counters(0.5), counters(0.2));
+    let mut ordered = first.clone();
+    ordered.sort();
+    ordered.dedup();
+    assert_eq!(first, ordered);
+    assert!(second[0] > *first.last().unwrap());
+}
+
 fn tone(across: f64, down: f64) -> Vec<u8> {
     let mut voice = tones::Voice::new();
     voice.play(across, down);
