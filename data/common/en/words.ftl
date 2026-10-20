@@ -187,7 +187,8 @@ decorating-not-placeable = not placeable
 ## The Pokédex's habitat map (spike 152)
 
 # A place drawn as the Pokémon's, then how it is found there, by the icons the top screen draws
-# in colour (Orion's words, 2026-10-01).
+# in colour (Orion's words, 2026-10-01). The DexNav's icons say how they are met in the same
+# words: "Marill water" (2026-10-20).
 habitat-found = Found in { $place }
 habitat-grass = grass
 habitat-water = water

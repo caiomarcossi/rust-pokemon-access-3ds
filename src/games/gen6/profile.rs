@@ -532,7 +532,8 @@ impl Gen6Profile {
         let goals = Rc::new(Goals::new(layouts.clone(), image_of.clone()));
         // The DexNav draws a Pokémon caught in colour, and only those are said so: "Ralts",
         // "Zigzagoon caught", with a comma under pauses (Orion, 2026-10-06).
-        let caught = format!("{}{}", if ui.pauses { ", " } else { " " }, own(CAUGHT, &[]));
+        let gap = if ui.pauses { ", " } else { " " };
+        let caught = format!("{gap}{}", own(CAUGHT, &[]));
         let mut images: IndexMap<String, String> = text
             .touch_words
             .iter()
@@ -589,13 +590,19 @@ impl Gen6Profile {
                     if let Some(name) = distribution.borrow().name(pane)?
                         && !name.is_empty()
                     {
-                        let caught_here = running.as_deref() == Some(FIELD)
-                            && distribution.borrow().caught(pane)?;
-                        return Ok(Some(if caught_here {
-                            format!("{name}{caught}")
+                        if running.as_deref() != Some(FIELD) {
+                            return Ok(Some(name));
+                        }
+                        // How it is met, before "caught", which would join it as "caught fishing".
+                        let way = distribution.borrow().way(pane)?;
+                        let met =
+                            way.map_or(String::new(), |way| format!("{gap}{}", own(way, &[])));
+                        let caught_here = if distribution.borrow().caught(pane)? {
+                            caught.as_str()
                         } else {
-                            name
-                        }));
+                            ""
+                        };
+                        return Ok(Some(format!("{name}{met}{caught_here}")));
                     }
                     if let Some(name) = amie.borrow().name(pane)?
                         && !name.is_empty()

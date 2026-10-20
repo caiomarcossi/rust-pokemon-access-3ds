@@ -106,6 +106,30 @@ fn test_a_record_says_whether_its_species_is_caught() {
     assert!(!found.caught(picture(&memory, 0, GREY)).unwrap());
 }
 
+/// 0 grass, 1 water, 2 fishing, said as the habitat page's icons are; 3, the DexNav's search
+/// alone, not at all (movie27 on Route 102).
+#[test]
+fn test_a_record_says_how_its_species_is_met() {
+    let (memory, found) = route_101();
+    for (slot, way) in [1u8, 2, 3].into_iter().enumerate() {
+        memory.write(NAVI + d::RECORDS + slot as i64 * d::RECORD + d::WAY, &[way]);
+    }
+    let ways: Vec<Option<&str>> = (0..3)
+        .map(|i| {
+            found
+                .way(picture(&memory, i, 0x2077D480 + 0x1100 * i))
+                .unwrap()
+        })
+        .collect();
+    assert_eq!(ways, [Some("habitat-water"), Some("habitat-fishing"), None]);
+    memory.write(NAVI + d::RECORDS + d::WAY, &[0]);
+    assert_eq!(
+        found.way(picture(&memory, 0, 0x2077D480)).unwrap(),
+        Some("habitat-grass")
+    );
+    assert_eq!(found.way(picture(&memory, 0, GREY)).unwrap(), None);
+}
+
 #[test]
 fn test_the_grey_shape_and_an_image_of_no_texture_are_not_named() {
     let (memory, found) = route_101();

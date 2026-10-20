@@ -10,7 +10,8 @@
 //!
 //! ```text
 //! ZukanNavi +0x44     -> common::resource::PokeIcon
-//!           +0x48     a record of 0x14 bytes a species: the national number, a u16, first
+//!           +0x48     a record of 0x14 bytes a species: the national number, a u16, first;
+//!                     +0x0c caught 2 or seen 3 (`STATE`), +0x0d how it is met (`WAY`)
 //!           +0x1D8    how many records there are
 //! PokeIcon  +0x0C     -> app::tool::LytTexReplaceSystem
 //! LytTexReplaceSystem +0x04 -> its textures, a pointer each; +0x08 how many
@@ -46,6 +47,20 @@ pub const STATE: i64 = 0x0C;
 /// save's Pokédex has them caught). The byte after it is the way they are met: 0 in the grass, 1 on
 /// the water, 2 fishing, 3 the DexNav's alone.
 pub const CAUGHT: i64 = 2;
+pub const WAY: i64 = 0x0D;
+/// A record's byte `WAY` -> pa3ds's word for it, the one the Pokédex's habitat page says its icons
+/// by (`habitat.WAYS`): the DexNav draws a Pokémon met in the grass on the land of its picture of
+/// the area, one met surfing in a row along the top of the water and one fished for in a row below
+/// it (movie27 on Route 102: Marill, Azumarill, Surskit and Masquerain 1, Magikarp, Goldeen and
+/// Corphish 2). 3, met only by the DexNav's search, has no word: no such Pokémon seen has been
+/// drawn yet.
+///
+/// Python's `dict`, as (byte, message) pairs: it is only ever looked up.
+pub const WAYS: [(i64, &str); 3] = [
+    (0, "habitat-grass"),
+    (1, "habitat-water"),
+    (2, "habitat-fishing"),
+];
 pub const RECORD_COUNT: i64 = 0x1D8;
 /// Records the navigator has room for, from +0x48 to its count.
 pub const MAX_RECORDS: i64 = 20;
@@ -100,6 +115,19 @@ impl Distribution {
     pub fn caught(&self, picture: i64) -> Result<bool> {
         let record = self.record(picture)?;
         Ok(record.is_some_and(|record| record[STATE as usize] as i64 == CAUGHT))
+    }
+
+    /// The message saying how the species a picture draws the icon of is met (`WAYS`), or
+    /// None.
+    pub fn way(&self, picture: i64) -> Result<Option<&'static str>> {
+        let Some(record) = self.record(picture)? else {
+            return Ok(None);
+        };
+        let met = record[WAY as usize] as i64;
+        Ok(WAYS
+            .iter()
+            .find(|(way, _)| *way == met)
+            .map(|(_, word)| *word))
     }
 
     /// The navigator's record of the species a picture draws the icon of, or None.
