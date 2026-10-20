@@ -262,17 +262,23 @@ pub struct Failure {
 
 impl Failure {
     /// A raised exception: Python's `_fault` keys it by the traceback's last frame, which is where
-    /// `py::Error` records it was raised.
+    /// `py::Error` records it was raised. A short read was raised in `core::binary` for every
+    /// reader alike, so the line that called it is logged too, as Python's traceback names the
+    /// reader (#18): a player's two failures in the Bag said only `binary.rs`.
     pub fn of_error(error: &Error) -> Self {
+        let mut detail = format!(
+            "{}: {}\n  raised at {}:{}",
+            error.kind.name(),
+            error.message,
+            error.location.file(),
+            error.location.line()
+        );
+        if let Some(caller) = error.caller {
+            detail += &format!("\n  called from {}:{}", caller.file(), caller.line());
+        }
         Failure {
             fault: error.fault(),
-            detail: format!(
-                "{}: {}\n  raised at {}:{}",
-                error.kind.name(),
-                error.message,
-                error.location.file(),
-                error.location.line()
-            ),
+            detail,
         }
     }
 
@@ -1075,4 +1081,27 @@ fn start_hotkeys(settings: &Settings, log: &Log) -> Option<Hotkeys> {
         ));
     }
     Some(hotkeys)
+}
+
+#[cfg(test)]
+mod checks {
+    use super::*;
+
+    /// A short read is one fault for every reader, keyed by `core::binary`, and its log names the
+    /// line that read it (#18): a player's Bag said only `binary.rs:31`, twice.
+    #[test]
+    fn a_short_reads_detail_names_the_line_that_read_it() {
+        let error = crate::core::binary::u32(&[0; 2], 0).unwrap_err();
+        let failure = Failure::of_error(&error);
+        assert!(failure.fault.contains("binary.rs"), "{}", failure.fault);
+        let called = failure.detail.lines().last().unwrap_or_default();
+        assert!(
+            called.starts_with("  called from") && called.contains("app.rs"),
+            "{}",
+            failure.detail
+        );
+        let other = crate::core::binary::u16(&[0; 1], 0).unwrap_err();
+        assert_ne!(Failure::of_error(&other).detail, failure.detail);
+        assert!(Failure::of_error(&Error::value("x")).detail.lines().count() == 2);
+    }
 }

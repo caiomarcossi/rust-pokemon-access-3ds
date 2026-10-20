@@ -111,6 +111,10 @@ pub struct Error {
     pub kind: Kind,
     pub message: String,
     pub location: &'static Location<'static>,
+    /// For a short read, the line that called `core::binary`'s helper, which raised it: logged
+    /// beside where it was raised, as Python's traceback names the reader, and never keyed by
+    /// (#18).
+    pub caller: Option<&'static Location<'static>>,
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -122,7 +126,14 @@ impl Error {
             kind,
             message: message.into(),
             location: Location::caller(),
+            caller: None,
         }
+    }
+
+    /// This error, called for from `caller` unless an inner call already says where from.
+    pub fn called_from(mut self, caller: &'static Location<'static>) -> Self {
+        self.caller.get_or_insert(caller);
+        self
     }
 
     /// `isinstance(error, kind)`.

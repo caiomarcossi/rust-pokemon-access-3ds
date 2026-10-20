@@ -257,7 +257,10 @@ Kept here so the next porter, and anyone reading a tape that differs, knows what
   panics and the runtime takes it for a reader's failure ("Reader error") where Python would have
   read on with a big number. Only garbage reaches these sizes.
 - **A reader's failure is logged with where it was raised, not a traceback**, and a fault is
-  keyed by that line, always with a file and line where Python's could be a bare class name.
+  keyed by that line, always with a file and line where Python's could be a bare class name. A
+  short read is raised in `core::binary` for every reader alike, so its log adds the line that
+  called the helper, "called from" (#18), the frame Python's traceback would have named last
+  but one; the fault is still keyed by `core::binary`'s line.
 - **Tests adapted where Python patched code in place.** `test_app` reaches the runtime through
   `__main__::main_with` and `app::run_with`; `test_navigate`'s "P again finds no way" uses a
   `FakeField` hook; and `test_sm_zones`' "areas read file by file" lost its guard that the event

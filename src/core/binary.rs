@@ -1,9 +1,13 @@
 //! Little-endian numbers out of bytes read from the 3DS, which is little-endian throughout.
 
+use std::panic::Location;
+
 use crate::py::{Error, Result};
 
 // A short buffer is raised from here, as Python's `unpack_from` raised it inside each of these:
-// a fault is keyed by where it was raised, so every reader's short read is one fault.
+// a fault is keyed by where it was raised, so every reader's short read is one fault. The line
+// that called each is kept beside it for the log, as Python's traceback names the reader (#18):
+// each reads in a closure, which is no `#[track_caller]`, so `take` still says it was raised here.
 
 #[track_caller]
 pub(crate) fn take<const N: usize>(blob: &[u8], offset: i64) -> Result<[u8; N]> {
@@ -19,25 +23,48 @@ pub(crate) fn take<const N: usize>(blob: &[u8], offset: i64) -> Result<[u8; N]> 
     }
 }
 
+/// What `read` gives, or the error it raised with the line that called for it.
+fn called_from<T>(
+    caller: &'static Location<'static>,
+    read: impl FnOnce() -> Result<T>,
+) -> Result<T> {
+    read().map_err(|error| error.called_from(caller))
+}
+
+#[track_caller]
 pub fn u16(blob: &[u8], offset: i64) -> Result<i64> {
-    Ok(u16::from_le_bytes(take(blob, offset)?) as i64)
+    called_from(Location::caller(), || {
+        Ok(u16::from_le_bytes(take(blob, offset)?) as i64)
+    })
 }
 
+#[track_caller]
 pub fn s16(blob: &[u8], offset: i64) -> Result<i64> {
-    Ok(i16::from_le_bytes(take(blob, offset)?) as i64)
+    called_from(Location::caller(), || {
+        Ok(i16::from_le_bytes(take(blob, offset)?) as i64)
+    })
 }
 
+#[track_caller]
 pub fn u32(blob: &[u8], offset: i64) -> Result<i64> {
-    Ok(u32::from_le_bytes(take(blob, offset)?) as i64)
+    called_from(Location::caller(), || {
+        Ok(u32::from_le_bytes(take(blob, offset)?) as i64)
+    })
 }
 
 /// `struct.unpack_from("<i", blob, offset)`: the four bytes `u32` reads, as a signed number.
+#[track_caller]
 pub fn s32(blob: &[u8], offset: i64) -> Result<i64> {
-    Ok(i32::from_le_bytes(take(blob, offset)?) as i64)
+    called_from(Location::caller(), || {
+        Ok(i32::from_le_bytes(take(blob, offset)?) as i64)
+    })
 }
 
+#[track_caller]
 pub fn f32(blob: &[u8], offset: i64) -> Result<f64> {
-    Ok(f32::from_le_bytes(take(blob, offset)?) as f64)
+    called_from(Location::caller(), || {
+        Ok(f32::from_le_bytes(take(blob, offset)?) as f64)
+    })
 }
 
 #[cfg(test)]
