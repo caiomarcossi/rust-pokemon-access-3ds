@@ -541,8 +541,8 @@ impl Gen6Profile {
             game.training,
         )));
         let goals = Rc::new(Goals::new(layouts.clone(), image_of.clone()));
-        // The DexNav draws a Pokémon caught in colour, and only those are said so: "Ralts",
-        // "Zigzagoon caught", with a comma under pauses (Orion, 2026-10-06).
+        // The DexNav draws a Pokémon caught in colour, and only those are said so: "Ralts grass",
+        // "Zigzagoon grass caught", with commas under pauses (ADR-0037, `Distribution.said`).
         let gap = if ui.pauses { ", " } else { " " };
         let caught = format!("{gap}{}", own(CAUGHT, &[]));
         let mut images: IndexMap<String, String> = text
@@ -652,22 +652,15 @@ impl Gen6Profile {
                     .as_deref()
                     .is_none_or(|running| running == FIELD || running == townmap::APP)
                 {
-                    if let Some(name) = distribution.borrow().name(pane)?
+                    let said = if running.as_deref() == Some(FIELD) {
+                        distribution.borrow().said(pane, gap)?
+                    } else {
+                        distribution.borrow().name(pane)?
+                    };
+                    if let Some(name) = said
                         && !name.is_empty()
                     {
-                        if running.as_deref() != Some(FIELD) {
-                            return Ok(Some(name));
-                        }
-                        // How it is met, before "caught", which would join it as "caught fishing".
-                        let way = distribution.borrow().way(pane)?;
-                        let met =
-                            way.map_or(String::new(), |way| format!("{gap}{}", own(way, &[])));
-                        let caught_here = if distribution.borrow().caught(pane)? {
-                            caught.as_str()
-                        } else {
-                            ""
-                        };
-                        return Ok(Some(format!("{name}{met}{caught_here}")));
+                        return Ok(Some(name));
                     }
                     if let Some(name) = amie.borrow().name(pane)?
                         && !name.is_empty()

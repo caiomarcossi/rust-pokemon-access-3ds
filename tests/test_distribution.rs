@@ -89,45 +89,63 @@ fn test_a_picture_is_named_by_the_record_of_the_texture_it_draws() {
     );
 }
 
-/// 2 caught, 3 seen, as the save's Pokédex had Zigzagoon and Ralts (spike 195, movie27).
+/// ADR-0037: "caught" after a species caught, 2, and nothing after one only seen, 3, never
+/// "not caught", as the save's Pokédex had Zigzagoon and Ralts (spike 195, movie27).
 #[test]
-fn test_a_record_says_whether_its_species_is_caught() {
+fn test_only_a_species_caught_is_said_so() {
     let (memory, found) = route_101();
     memory.write(NAVI + d::RECORDS + d::STATE, &[3]);
     memory.write(NAVI + d::RECORDS + d::RECORD + d::STATE, &[d::CAUGHT as u8]);
-    let caught: Vec<bool> = (0..3)
+    let said: Vec<Option<String>> = (0..3)
         .map(|i| {
             found
-                .caught(picture(&memory, i, 0x2077D480 + 0x1100 * i))
+                .said(picture(&memory, i, 0x2077D480 + 0x1100 * i), " ")
                 .unwrap()
         })
         .collect();
-    assert_eq!(caught, [false, true, false]);
-    assert!(!found.caught(picture(&memory, 0, GREY)).unwrap());
+    assert_eq!(
+        said,
+        [
+            Some("Wurmple grass".to_string()),
+            Some("Zigzagoon grass caught".to_string()),
+            Some("Poochyena grass".to_string())
+        ]
+    );
+    assert_eq!(found.said(picture(&memory, 0, GREY), " ").unwrap(), None);
 }
 
-/// 0 grass, 1 water, 2 fishing, said as the habitat page's icons are; 3, the DexNav's search
-/// alone, not at all (movie27 on Route 102).
+/// ADR-0037: 0 grass, 1 water, 2 fishing, in the habitat page's words, before "caught", which
+/// would join it as "caught fishing"; 3, the DexNav's search alone, says none (movie27 on Route
+/// 102). A comma between each under `pauses`.
 #[test]
-fn test_a_record_says_how_its_species_is_met() {
+fn test_each_species_says_how_it_is_met_before_caught() {
     let (memory, found) = route_101();
     for (slot, way) in [1u8, 2, 3].into_iter().enumerate() {
         memory.write(NAVI + d::RECORDS + slot as i64 * d::RECORD + d::WAY, &[way]);
     }
-    let ways: Vec<Option<&str>> = (0..3)
+    memory.write(NAVI + d::RECORDS + d::RECORD + d::STATE, &[d::CAUGHT as u8]);
+    let said: Vec<Option<String>> = (0..3)
         .map(|i| {
             found
-                .way(picture(&memory, i, 0x2077D480 + 0x1100 * i))
+                .said(picture(&memory, i, 0x2077D480 + 0x1100 * i), " ")
                 .unwrap()
         })
         .collect();
-    assert_eq!(ways, [Some("habitat-water"), Some("habitat-fishing"), None]);
-    memory.write(NAVI + d::RECORDS + d::WAY, &[0]);
     assert_eq!(
-        found.way(picture(&memory, 0, 0x2077D480)).unwrap(),
-        Some("habitat-grass")
+        said,
+        [
+            Some("Wurmple water".to_string()),
+            Some("Zigzagoon fishing caught".to_string()),
+            Some("Poochyena".to_string())
+        ]
     );
-    assert_eq!(found.way(picture(&memory, 0, GREY)).unwrap(), None);
+    assert_eq!(
+        found
+            .said(picture(&memory, 1, 0x2077D480 + 0x1100), ", ")
+            .unwrap()
+            .as_deref(),
+        Some("Zigzagoon, fishing, caught")
+    );
 }
 
 #[test]

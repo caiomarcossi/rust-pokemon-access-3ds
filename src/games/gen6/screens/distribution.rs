@@ -28,7 +28,8 @@ use std::rc::Rc;
 use crate::core::binary::{u16, u32};
 use crate::core::memory::Memory;
 use crate::core::rtti::ClassNames;
-use crate::games::common::lyt;
+use crate::core::words::own;
+use crate::games::common::{lyt, pictures};
 use crate::py::{PySet, Result};
 
 pub const CLASS: &str = "N3app4tool9ZukanNaviE";
@@ -101,34 +102,54 @@ impl Distribution {
         } else {
             self.record(picture)?
         };
-        let Some(record) = record else {
-            return Ok(None);
-        };
-        let number = u16(&record, 0)?;
-        if !(0 < number && number < self.species.len() as i64) {
-            return Ok(None);
+        match record {
+            None => Ok(None),
+            Some(record) => self.species_of(&record),
         }
-        Ok(Some(self.species[number as usize].clone()).filter(|name| !name.is_empty()))
     }
 
-    /// Whether the species a picture draws the icon of is caught: the DexNav draws it in
-    /// colour, and its silhouette while it is only seen (`STATE`).
-    pub fn caught(&self, picture: i64) -> Result<bool> {
-        let record = self.record(picture)?;
-        Ok(record.is_some_and(|record| record[STATE as usize] as i64 == CAUGHT))
-    }
-
-    /// The message saying how the species a picture draws the icon of is met (`WAYS`), or
-    /// None.
-    pub fn way(&self, picture: i64) -> Result<Option<&'static str>> {
-        let Some(record) = self.record(picture)? else {
+    /// What touch mode calls a picture of the DexNav's list (ADR-0037): the species, how it is
+    /// met and "caught" where the DexNav draws it in colour, joined by `gap`, ", " under
+    /// `[pa3ds.ui] pauses`. "Magikarp fishing caught", "Ralts grass": never "not caught", a
+    /// silhouette being the game's way of saying so, and the way before "caught", which would join
+    /// it as "caught fishing".
+    ///
+    /// Python's `gap` defaults to " ".
+    pub fn said(&self, picture: i64, gap: &str) -> Result<Option<String>> {
+        let record = if self.species.is_empty() {
+            None
+        } else {
+            self.record(picture)?
+        };
+        let species = match &record {
+            None => None,
+            Some(record) => self.species_of(record)?,
+        };
+        let (Some(record), Some(species)) = (record, species) else {
             return Ok(None);
         };
         let met = record[WAY as usize] as i64;
-        Ok(WAYS
+        let way = WAYS
             .iter()
             .find(|(way, _)| *way == met)
-            .map(|(_, word)| *word))
+            .map(|(_, word)| *word);
+        let mut words = vec![species];
+        if let Some(way) = way {
+            words.push(own(way, &[]));
+        }
+        if record[STATE as usize] as i64 == CAUGHT {
+            words.push(own(pictures::CAUGHT, &[]));
+        }
+        Ok(Some(words.join(gap)))
+    }
+
+    fn species_of(&self, record: &[u8]) -> Result<Option<String>> {
+        let number = u16(record, 0)?;
+        Ok(if 0 < number && number < self.species.len() as i64 {
+            Some(self.species[number as usize].clone()).filter(|name| !name.is_empty())
+        } else {
+            None
+        })
     }
 
     /// The navigator's record of the species a picture draws the icon of, or None.
