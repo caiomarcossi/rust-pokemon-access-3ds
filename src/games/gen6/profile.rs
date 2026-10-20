@@ -403,15 +403,6 @@ impl Gen6Profile {
             text.plain.clone(),
         )));
         let files = Rc::new(LayoutFiles::new(memory.clone()));
-        // Omega Ruby's boy and girl are portraits the game never names, said in pa3ds's words
-        // (`pictures.named`).
-        let cursors = CursorReader::with(
-            layouts.clone(),
-            names.clone(),
-            Some(files.clone()),
-            false,
-            named_by_image,
-        );
         let battlers = Rc::new(Battlers::new(memory.clone(), names.clone()));
         let gauges = Rc::new(Gauges::new(memory.clone(), names.clone()));
         let battle = BattleReader::new(layouts.clone(), battlers.clone(), gauges.clone());
@@ -575,6 +566,56 @@ impl Gen6Profile {
                 images.insert(image.clone(), said);
             }
         }
+
+        // Omega Ruby's boy and girl are portraits the game never names, said in pa3ds's words
+        // (`pictures.named`).
+        // A cursor over pictures alone says what the game calls them, by the image or by the
+        // game's word for the texture, as touch mode does: the AreaNav's tabs, Places to
+        // Berries, which left and right walk (or_area_nav2). Made here, after the words it looks
+        // pictures up in, where Python makes it before them and reaches them as it runs; in a
+        // block of its own, since its `game_word` would hide the module's.
+        let cursors = {
+            // The game's word for a picture, by the image it draws or its layout file's texture.
+            let game_word: Pictures = {
+                let (layouts, file_of, image_of) =
+                    (layouts.clone(), file_of.clone(), image_of.clone());
+                let images = images.clone();
+                Rc::new(move |pane: i64| {
+                    let placement = layouts.placement(pane)?;
+                    let file = placement.and_then(|placement| file_of(placement.root));
+                    let raw = layouts.name(pane)?;
+                    let end = raw.iter().position(|&byte| byte == 0).unwrap_or(raw.len());
+                    let name = py::decode_ascii(&raw[..end]);
+                    let filed: Vec<String> = file
+                        .and_then(|file| file.textures.get(&name).cloned())
+                        .unwrap_or_default();
+                    let mut drawn: Vec<String> = image_of(pane)?.into_iter().collect();
+                    drawn.extend(filed);
+                    Ok(drawn
+                        .iter()
+                        .find(|image| !image.is_empty() && images.contains_key(*image))
+                        .map(|image| images[image].clone()))
+                })
+            };
+            let cursor_named: Pictures = Rc::new(move |pane: i64| {
+                let by_image = match &named_by_image {
+                    Some(named) => named(pane)?,
+                    None => None,
+                };
+                // Python's `or`: a name of "" or None goes on to the game's word.
+                match by_image {
+                    Some(name) if !name.is_empty() => Ok(Some(name)),
+                    _ => game_word(pane),
+                }
+            });
+            CursorReader::with(
+                layouts.clone(),
+                names.clone(),
+                Some(files.clone()),
+                false,
+                Some(cursor_named),
+            )
+        };
         // And the training bags in its page's list, pictures with no touch area of their own.
         let off: touch::Off = {
             let buttons = buttons.clone();
