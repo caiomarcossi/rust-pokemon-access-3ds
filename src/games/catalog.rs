@@ -1,5 +1,9 @@
 //! Which game is running, by its title id: the game packages pa3ds has, what each keeps where the
 //! others do not (`games.gen6.game`), and which engine's package puts it together (`start`).
+//!
+//! Bound by:
+//! - ADR-0006: imports go one way: the core, then common, then gen6 and sm, then oras and xy, and
+//!   catalog and app above them.
 
 use std::rc::Rc;
 

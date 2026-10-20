@@ -40,6 +40,12 @@
 //! ("door, 1 north"). A player who steps off the path is given a new one from where they stand,
 //! said when it turns them and taken quietly when it goes on the way they are walking; a warp ends
 //! the guiding, since the path's cells belong to the map the player has left.
+//!
+//! Bound by:
+//! - ADR-0024: nearest first by category, all a category, and direction mode a half-box 10 cells
+//!   deep.
+//! - ADR-0037: a search's find is guided to, and the detector's only with the DexNav open in touch
+//!   mode.
 
 use std::rc::Rc;
 

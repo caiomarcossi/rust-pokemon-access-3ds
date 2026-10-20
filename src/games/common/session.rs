@@ -5,6 +5,9 @@
 //! the classes a sweep looks for, and how the heaps are watched and a new block is swept — built by
 //! that engine's `start` (`gen6.session`, `sm.session`) from a `Setup`. So the runtime names no
 //! game's module, and a game with its own way of reading its heaps brings it with it.
+//!
+//! Bound by:
+//! - ADR-0006: each engine puts its game together, one start an engine and not one a game.
 
 use std::cell::RefCell;
 use std::path::PathBuf;

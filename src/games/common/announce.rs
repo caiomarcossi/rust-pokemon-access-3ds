@@ -4,6 +4,10 @@
 //!
 //! `Announcements` says what the other readers report: dialogue pages and text written over a
 //! window, the option under a list's or a choice box's cursor, and each side of a battle.
+//!
+//! Bound by:
+//! - ADR-0013: within a poll, the item under a cursor, then the rows changed, then what came on
+//!   screen.
 
 use std::collections::HashSet;
 use std::rc::Rc;

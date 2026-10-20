@@ -18,6 +18,10 @@
 //! "19" as five — so `join` puts pieces drawn side by side back together, from where the pane
 //! says its words are: its global place, width and scale, its anchor, and the TextBox's glyph
 //! width and text position (spike 33).
+//!
+//! Bound by:
+//! - ADR-0013: words a screen draws are heard as they come on screen and as they change; no commas
+//!   but under `pauses`.
 
 use std::collections::{BTreeSet, HashSet};
 use std::rc::Rc;

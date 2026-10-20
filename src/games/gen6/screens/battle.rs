@@ -44,6 +44,12 @@
 //! Holding for a poll was not enough on its own: a Potion's count from 3 to 19 was said at 9
 //! (battles2.ctm). The gauge keeps the HP it shows and the HP it is counting towards side by side
 //! (spike 67).
+//!
+//! Bound by:
+//! - ADR-0015: HP comes from the battle's own records, never from the bar, and the enemy's is a
+//!   percentage.
+//! - ADR-0016: the HP box is the battle reader's alone: screen text leaves its pieces out while a
+//!   battle is up.
 
 use std::cell::RefCell;
 use std::collections::HashSet;

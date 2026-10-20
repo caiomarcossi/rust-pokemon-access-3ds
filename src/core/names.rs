@@ -41,6 +41,10 @@
 //!
 //! Nothing here ever raises at a player: a names file that is missing, unreadable or malformed reads
 //! as no names at all. Being told the wrong name is a nuisance; a reader that stops mid-game is not.
+//!
+//! Bound by:
+//! - ADR-0023: a name of pa3ds's own never replaces the game's, lives in a data file, and the
+//!   player's always wins.
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};

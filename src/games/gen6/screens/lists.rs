@@ -16,6 +16,9 @@
 //! seeing one. The drawer's item states do: every item 0 while hidden, 2 on the item under the cursor
 //! while the prompt is up, 6 on the item chosen (spike 20). A list is shown while its cursor's item
 //! reads 2.
+//!
+//! Bound by:
+//! - ADR-0012: a list window says the item under its cursor as it opens, then each moved to.
 
 use std::collections::HashSet;
 use std::rc::Rc;

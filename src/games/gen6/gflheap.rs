@@ -11,6 +11,9 @@
 //! starts right after the game's header, at its block's +0x30. What sits deeper is in a block holding
 //! several: the move models' pool of 88 KB, the talk windows' pool, the camera's block, and name
 //! buffers up to 0x1348 into a block of 256 KB.
+//!
+//! Bound by:
+//! - ADR-0034: a new block is swept as it appears and 0.5 s and 2 s on, up to 128 KiB of it.
 
 use crate::core::heaps::Block;
 

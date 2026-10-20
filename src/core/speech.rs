@@ -12,6 +12,14 @@
 //! conversation with the same person — a sighted player sees them again, so they are heard again.
 //! This reverses an earlier "identical text is never repeated" rule, which silenced exactly that
 //! (the user, 2026-09-13).
+//!
+//! Bound by:
+//! - ADR-0010: nothing interrupts by default: a key's answer and a warning do, and menus under
+//!   `interrupt`.
+//! - ADR-0020: speech goes to the player's own screen reader through Prism; braille takes the raw
+//!   string.
+//! - ADR-0021: the game's lines are dropped while another window is in front; pa3ds's own and a
+//!   key's answer are said anywhere.
 
 use std::collections::HashSet;
 use std::rc::Rc;

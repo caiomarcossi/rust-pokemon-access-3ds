@@ -34,6 +34,9 @@
 //! the last walk found and every one allocated since, less any a newer block has been taken over
 //! (`SmallBlocks`): a small block freed and its memory taken again, as part of a large block that may
 //! be the GPU's, is out of bounds the look it is taken.
+//!
+//! Bound by:
+//! - ADR-0035: in Sun only small allocations are read, a block of 4 KB or less, and to the byte.
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;

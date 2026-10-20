@@ -11,6 +11,9 @@
 //!
 //! Whose star it is: the summary points at the Pokémon it shows; the Pokéblock Case at the party,
 //! and draws the star of the one under its cursor, named there.
+//!
+//! Bound by:
+//! - ADR-0017: a Pokémon's conditions are an Extra and ship off.
 
 use std::cell::RefCell;
 use std::collections::HashMap;

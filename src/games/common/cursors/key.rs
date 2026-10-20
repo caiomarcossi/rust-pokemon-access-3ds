@@ -2,6 +2,10 @@
 //! and an `nw::lyt::Bounding` touch area, and the cursor is a picture the game moves into the chosen
 //! key's touch area. The item is the key's words, or, for a key drawn without any — the one that
 //! confirms the name — the words of its picture's texture, as a battle button's are.
+//!
+//! Bound by:
+//! - ADR-0014: the key under the cursor, a capital as "Cap O", and the letters left after one is
+//!   deleted.
 
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;

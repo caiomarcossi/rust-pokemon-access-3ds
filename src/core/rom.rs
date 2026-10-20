@@ -27,6 +27,10 @@
 //!
 //! The level offsets in the IVFC header describe the hash tree, not where the files are; that cost
 //! spike 74 an hour.
+//!
+//! Bound by:
+//! - ADR-0008: the player's own ROM, found among Azahar's recent files by the running title; an
+//!   encrypted one is refused.
 
 use std::collections::HashSet;
 use std::fs::File;

@@ -11,6 +11,12 @@
 //!
 //! What pa3ds says of a picture rather than what it is, "empty", "on", "third place", "2 stars", is a
 //! message too, by the id here (`EMPTY`, `ON`, `PLACES`): a reader says `own(EMPTY)`.
+//!
+//! Bound by:
+//! - ADR-0036: a picture's words are a message of `pictures.ftl`, made from its texture's name only
+//!   where none has it.
+//! - ADR-0037: the DexNav's pictures in words: stars counted, the red mark after what it marks,
+//!   crowns by colour.
 
 use std::sync::OnceLock;
 

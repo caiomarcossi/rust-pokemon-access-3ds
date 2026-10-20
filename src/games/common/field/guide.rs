@@ -1,5 +1,9 @@
 //! P: the way on foot to whatever the navigation keys are on, said as its legs, and guiding,
 //! the player followed along it (GLOSSARY: Pathfinding, Guiding).
+//!
+//! Bound by:
+//! - ADR-0024: P's way is said as legs and guided turn by turn; a player who leaves it is given a
+//!   new one quietly.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};

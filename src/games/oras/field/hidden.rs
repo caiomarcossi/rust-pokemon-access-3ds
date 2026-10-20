@@ -46,6 +46,10 @@
 //! The species is said in the log and not aloud: the game shows a tail, and the DexNav names the
 //! Pokémon only once the species is registered, so a name would be an Extra (ADR-0017), and the
 //! names are in the ROM's text in any case (names later, the user, 2026-09-21).
+//!
+//! Bound by:
+//! - ADR-0037: a hidden Pokémon is up while its state is below 0xd, and +0xc9 says a search's find
+//!   from the detector's.
 
 use std::cell::{Cell as Slot, RefCell};
 use std::collections::HashSet;

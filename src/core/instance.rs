@@ -16,6 +16,10 @@
 //! process and the moment that process started, so a file left by a pa3ds that died never ends a
 //! program that has its number since. It is deleted as pa3ds closes, and not when pa3ds is
 //! replaced.
+//!
+//! Bound by:
+//! - ADR-0039: one pa3ds at a time, hidden while Azahar is open and closed with it; a `--silent`
+//!   run takes no part.
 
 use std::cell::Cell;
 use std::path::Path;

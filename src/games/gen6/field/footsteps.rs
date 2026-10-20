@@ -27,6 +27,9 @@
 //! The port builds each game's table in (pa3ds/rust-pokemon-access-3ds#16): a player has no
 //! reason to edit it, and only the translations ship as files. `shipped` is the table, and
 //! `load` reads a table's text where the Python reads its file.
+//!
+//! Bound by:
+//! - ADR-0025: pa3ds's footstep only where the game plays none, at the game's own moment.
 
 use std::collections::HashSet;
 use std::path::Path;

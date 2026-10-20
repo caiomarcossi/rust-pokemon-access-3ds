@@ -22,6 +22,9 @@
 //! no picture for a species the player has not seen, so a species named is one the game shows; and
 //! while a place's icons load, every picture draws the grey shape of the last texture, past the
 //! records, which names none.
+//!
+//! Bound by:
+//! - ADR-0037: only "caught" is said, never "not caught", and each icon says how it is met.
 
 use std::rc::Rc;
 

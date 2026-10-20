@@ -17,6 +17,9 @@
 //! shown plus the cursor row (0x003583a8). The box is allocated when A is pressed on the question,
 //! reaches state 3 within half a second as it appears, and is freed half a second after the answer.
 //! movie3 built it at the same address for three prompts in a row (spike 26).
+//!
+//! Bound by:
+//! - ADR-0012: a choice box says the option under its cursor as it opens, then each moved to.
 
 use std::collections::HashSet;
 use std::rc::Rc;

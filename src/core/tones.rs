@@ -20,6 +20,9 @@
 //! never the only way something is told, only where it is. One `Voice`, written a fiftieth of a
 //! second at a time to Windows' own waveOut by a thread of its own, so a tone changes without
 //! stopping.
+//!
+//! Bound by:
+//! - ADR-0025: a tone is said beside a word, never instead of one.
 
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread::JoinHandle;

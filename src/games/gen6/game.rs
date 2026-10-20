@@ -4,6 +4,9 @@
 //! same move models and zone files (spike 100). What differs is a handful of numbers — where the ROM
 //! keeps each kind of file, and one offset in a move model — and what one game has alone, as ORAS's
 //! DexNav; a game package says its own in a `Game`. Everything else is shared.
+//!
+//! Bound by:
+//! - ADR-0006: gen 6 never names a game's own thing; what one game has alone is said in its Game.
 
 use std::cell::RefCell;
 use std::collections::HashSet;

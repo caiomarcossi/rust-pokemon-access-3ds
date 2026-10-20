@@ -20,6 +20,10 @@
 //! The Rust runtime builds the index on a thread, not in a process: Python used a process only to
 //! get out from under its interpreter lock. What is logged, when the index is ready and the file
 //! written are the same.
+//!
+//! Bound by:
+//! - ADR-0036: a picture is named by its image, indexed from the player's own ROM, and no image
+//!   over 4 KB is read.
 
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};

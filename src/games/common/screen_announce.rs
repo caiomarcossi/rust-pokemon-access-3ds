@@ -39,6 +39,11 @@
 //!   screen. Nothing interrupts unless the speech policy says so.
 //!
 //! List and choice box labels belong to their own readers and are left out everywhere.
+//!
+//! Bound by:
+//! - ADR-0010: a cursor's details are one line, after its item, and never interrupt.
+//! - ADR-0013: each clause of screen text is from live play: replay the tapes before and after
+//!   changing one.
 
 use std::collections::HashSet;
 use std::rc::Rc;

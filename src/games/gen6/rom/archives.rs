@@ -37,6 +37,10 @@
 //! kinds of file under other numbers, with a Town Map where ORAS has the AreaNav; a `RomLayout` says
 //! where one game keeps each, and each game's package has its own (`games.oras.ROM`, `games.xy.ROM`;
 //! spikes 100 and 101).
+//!
+//! Bound by:
+//! - ADR-0008: the game's own words come from the player's ROM, never a table of ours; without one
+//!   pa3ds carries on and logs it.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};

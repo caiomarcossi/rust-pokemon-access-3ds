@@ -17,6 +17,9 @@
 //! always ask for the full page: packet count is the cost, not bytes. `read_many` pipelines a
 //! whole batch and matches replies by the header id, which is roughly three times faster per read
 //! than waiting for each reply in turn.
+//!
+//! Bound by:
+//! - ADR-0001: the game is read over Azahar's RPC, and nothing patches the ROM.
 
 use std::cell::{Cell, RefCell};
 use std::net::{SocketAddr, UdpSocket};

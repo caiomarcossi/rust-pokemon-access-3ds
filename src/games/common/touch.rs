@@ -36,6 +36,11 @@
 //! chooses it, the top screen saying its name and what it is like, and each is offered by the
 //! place the ROM names it (`places`), under every other button the AreaNav draws over the map
 //! (or_area_nav).
+//!
+//! Bound by:
+//! - ADR-0009: a tap only on the player's key, and only on the target just named.
+//! - ADR-0037: the DexNav's icons are offered and said caught or not, though the game switches off
+//!   those not caught.
 
 use std::collections::HashSet;
 use std::rc::Rc;

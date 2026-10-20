@@ -14,6 +14,9 @@
 //! no more (`FACE`). A ledge is jumped down, one way only, and never climbed; a shore is jumped
 //! either way (`over`). A step can carry a toll on top of its price, as going onto water to surf
 //! does, and a leg a word to say it by: "Surf 12 south".
+//!
+//! Bound by:
+//! - ADR-0024: a turn costs as much as a step.
 
 use std::cell::{Cell as Slot, RefCell};
 use std::cmp::{Ordering, Reverse};

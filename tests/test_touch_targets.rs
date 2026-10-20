@@ -124,8 +124,8 @@ fn test_targets_are_walked_row_by_row_from_the_top() {
     assert_eq!(screen.press(touch::ITEM_READ), "POKÉMON");
 }
 
-/// With nothing chosen, and once the chosen target has left the screen, the tap key only names
-/// the first: the player has not heard what it would touch.
+/// ADR-0009: with nothing chosen, and once the chosen target has left the screen, the tap key
+/// only names the first: the player has not heard what it would touch.
 #[test]
 fn test_a_tap_reaches_only_the_target_just_named() {
     let mut screen = Screen::new([vec![dexnav()], bar()].concat());

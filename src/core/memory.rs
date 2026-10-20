@@ -1,4 +1,8 @@
 //! Reading memory by address, whether from the running emulator or from a test.
+//!
+//! Bound by:
+//! - ADR-0004: a poll reads in a phase of whole pages, pipelined, starting from the pages it read
+//!   last time.
 
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};

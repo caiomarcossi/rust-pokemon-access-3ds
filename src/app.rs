@@ -3,6 +3,12 @@
 //! This is the schedule: when to measure the heaps, sweep them and poll the readers. What to look
 //! for, what the readers are and how the heaps are read is the game's, handed over as a session by
 //! its engine's package (`games.catalog.start`); finding objects is `discovery`'s.
+//!
+//! Bound by:
+//! - ADR-0004: the poll runs at 60 Hz and nothing holds it up for long: a sweep reads a chunk at a
+//!   time, polling between.
+//! - ADR-0019: a reader that throws is logged with a snapshot, and says "Reader error" once a bug a
+//!   minute.
 
 use std::any::Any;
 use std::cell::{Cell, RefCell};

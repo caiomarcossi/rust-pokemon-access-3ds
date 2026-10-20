@@ -16,6 +16,9 @@
 //! Whoever spoke last is remembered, because that is who a player wants to name: they have just
 //! heard a line from somebody the game does not name, and the key is pressed after the line, not
 //! during it.
+//!
+//! Bound by:
+//! - ADR-0023: a speaker is said when it changes, and a work object is whoever it was filled with.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;

@@ -16,6 +16,12 @@
 //!
 //! Nothing here knows the game. What to look for, and what to do with what was found, is the
 //! profile's.
+//!
+//! Bound by:
+//! - ADR-0003: objects are found by their class and checked by a validator, never at an address
+//!   written down.
+//! - ADR-0034: a sweep may be partial: a reader adds what it finds and forgets nothing for its
+//!   absence.
 
 use std::rc::Rc;
 

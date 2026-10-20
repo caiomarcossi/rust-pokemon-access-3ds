@@ -41,6 +41,10 @@
 //! Measured over sun_1.ctm from 340 s, as the player got out of bed and walked to the desk, and
 //! over sun_3.ctm, standing still; the items over sun_4.ctm on Route 1. What a trainer keeps is not
 //! measured. Walls are the ROM's meshes (`walls`).
+//!
+//! Bound by:
+//! - ADR-0035: a pointer is followed only into a small block the last walk found, and no further
+//!   than its end.
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;

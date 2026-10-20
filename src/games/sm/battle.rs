@@ -33,6 +33,12 @@
 //! over a full one: the fill is 5.8 + 99 x HP/max wide, a sliver at 0 HP, so 12 of 20 HP drew 65.2
 //! and read 62%. The gender sign is the Pokémon record's, since the game draws it as a picture: the
 //! record decodes in Sun as in ORAS, with species up to 802.
+//!
+//! Bound by:
+//! - ADR-0015: HP comes from the battle's own records, never from the bar, and the enemy's is a
+//!   percentage.
+//! - ADR-0016: the HP box is the battle reader's alone: screen text leaves its pieces out while a
+//!   battle is up.
 
 use std::rc::Rc;
 

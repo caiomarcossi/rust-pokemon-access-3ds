@@ -24,6 +24,9 @@
 //! Pokémon-Amie is stroked so, and answers it with its hand on the Pokémon (spike 200). A tap is a
 //! slide that stays on one point. ADR-0009 allows pa3ds a tap alone; the slide is an exploration
 //! Khai asked for (2026-10-08), for Orion to keep or take back.
+//!
+//! Bound by:
+//! - ADR-0009: a tap, a press and a release, is the one input pa3ds ever sends the game.
 
 use std::io;
 use std::net::{SocketAddr, UdpSocket};

@@ -56,6 +56,14 @@
 //! Nothing here raises at a player. A keys file that is missing or malformed reads as the
 //! defaults, and a config that cannot be patched is said and left alone. A keys file that will not
 //! parse is left alone and said, interrupting.
+//!
+//! Bound by:
+//! - ADR-0022: `keys.toml` is the player's: a key gained is added at its table's end, commented out
+//!   where it conflicts.
+//! - ADR-0026: Azahar's settings are written only while it is closed, a portable Azahar's through
+//!   `azahar_folder`.
+//! - ADR-0032: everything the player owns is under `<pa3ds>/user`, which `PA3DS_HOME` moves; never
+//!   `%APPDATA%`.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};

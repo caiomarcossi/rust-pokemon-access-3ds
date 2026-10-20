@@ -5,3 +5,4 @@ upstream = "bc8e423d003c036854658b6822da2e6b90e73dd2"
 
 # Python tests with no Rust counterpart, each with the reason. Key: "<test file>::<test name>".
 [untestable]
+"test_adr_links::test_each_adr_and_the_modules_it_binds_name_each_other" = "It checks upstream's ADRs' Code lines against upstream's Python docstrings, neither of which is in this repository; the port's module docs copy their Bound by lists from those docstrings."

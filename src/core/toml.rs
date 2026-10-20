@@ -13,6 +13,10 @@
 //! The keys file and the settings file are **filled in** as pa3ds gains keys and settings: a line
 //! is added at the end of its table, and nothing else in the file changes (`offered`, `append`). A
 //! line the player has commented out counts as there, which is how they turn one off.
+//!
+//! Bound by:
+//! - ADR-0031: TOML for every file a person writes, comments kept; escaping is the one thing it
+//!   must not get wrong.
 
 use std::ffi::OsString;
 use std::path::{Component, Path};

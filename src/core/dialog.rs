@@ -21,6 +21,10 @@
 //! keeps running, and a player who opens it mid-battle should not lose the battle text. The answer
 //! comes back the way a keypress does, through a queue the runtime drains at the next poll. One at a
 //! time: a second ask while one is open is refused rather than stacking boxes over the game.
+//!
+//! Bound by:
+//! - ADR-0023: a rename is a native box on a thread of its own, and the new name is said back as
+//!   stored.
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};

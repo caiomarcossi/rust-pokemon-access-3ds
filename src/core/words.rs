@@ -15,6 +15,10 @@
 //! pa3ds holds the words of one game at a time, as it reads one game at a time: a session puts its
 //! own in place as it starts (`use`), and every reader asks through `own`. Before then, and in a test
 //! that puts none in place, the words are English, every game's alike.
+//!
+//! Bound by:
+//! - ADR-0040: code asks for a message by id, and its words are in `data/`, the player's language
+//!   before English.
 
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};

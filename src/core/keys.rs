@@ -15,6 +15,10 @@
 //! A name may carry modifiers — `shift+k` — because one key is not enough for both reading a thing
 //! and renaming it. Which keys pa3ds is given, and which buttons the emulator is left, is
 //! `pa3ds.core.keyfile`'s; this module only turns a key press into the name that was bound.
+//!
+//! Bound by:
+//! - ADR-0022: pa3ds's keys are taken only while the game's window is in front, and none while the
+//!   screen reader's modifier is held.
 
 use std::collections::HashSet;
 

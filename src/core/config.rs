@@ -30,6 +30,13 @@
 //! the wrong kind or an unknown name is logged and left at its default. A file that will not parse
 //! is left alone and read as the defaults too, and said, interrupting: a player who edited it would
 //! otherwise wonder why nothing they did took (Orion, 2026-10-17).
+//!
+//! Bound by:
+//! - ADR-0017: an Extra, anything the game does not show, is a toggle of its own under
+//!   `[pa3ds.extras]` and ships off.
+//! - ADR-0026: a setting works the same in every game or is not one; `config.toml` is filled in,
+//!   never rewritten.
+//! - ADR-0028: `[azahar]` never sets what changes emulated timing, or every movie desyncs.
 
 use std::path::{Path, PathBuf};
 

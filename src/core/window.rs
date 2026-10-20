@@ -18,6 +18,10 @@
 //! Asking **which process a window belongs to** lives here too, because two things want it: this, to
 //! find Azahar's window among everybody's, and `pa3ds.core.keys`, to answer a key only while Azahar's
 //! window is in front. It was written twice before it was written once.
+//!
+//! Bound by:
+//! - ADR-0021: "in front" is a window showing the game, known by its title.
+//! - ADR-0031: the game's name is the emulator's window title: pa3ds keeps no table of game names.
 
 use crate::py;
 

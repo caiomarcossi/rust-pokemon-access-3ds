@@ -12,6 +12,9 @@
 //! with: 1 Japanese, 2 English, 3 French, 4 Italian, 5 German, 7 Spanish, 8 Korean, and in Sun, whose
 //! record pa3ds cannot reach, 9 and 10 Chinese. A fan translation keeps another language's number:
 //! the Chinese Omega Ruby says Japanese, whose text it replaced.
+//!
+//! Bound by:
+//! - ADR-0040: the language is the save's.
 
 use crate::core::discovery::Found;
 

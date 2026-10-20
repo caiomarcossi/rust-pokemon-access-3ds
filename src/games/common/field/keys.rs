@@ -1,5 +1,8 @@
 //! The navigation keys: the modes, the actions, and which key does which in each mode, as the
 //! keys file says (`<pa3ds>\user\keys.toml`, ADR-0022).
+//!
+//! Bound by:
+//! - ADR-0022: the navigation keys by mode, list, direction and touch, rebindable in `keys.toml`.
 
 use std::collections::HashSet;
 use std::sync::LazyLock;

@@ -41,6 +41,10 @@
 //! The port builds each game's `scenes.toml` in (pa3ds/rust-pokemon-access-3ds#16): it is no
 //! translation, and only the translations ship as files, the `scenes.ftl` among them. `shipped`
 //! is the table, and `load` reads a table's text where the Python reads its file.
+//!
+//! Bound by:
+//! - ADR-0038: a scene's beats are Narration's, after the line, demo, arrival or trigger they
+//!   follow; off unless asked for.
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;

@@ -20,6 +20,9 @@
 //! Everything the game shows is heard, every time it shows it. Talking to the same person twice
 //! puts identical words in the same buffer, and the second conversation is as audible as the first
 //! (decided 2026-09-13, reversing "identical text is never repeated").
+//!
+//! Bound by:
+//! - ADR-0011: a message is said a page at a time, as the page starts to type.
 
 use std::cell::RefCell;
 use std::rc::Rc;

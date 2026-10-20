@@ -22,6 +22,9 @@
 //! The objects are smaller than ORAS's, and every read of one stops at its end, since the block
 //! after it may be the GPU's (ADR-0035): a Pane or a Bounding is 0xa4 bytes, the smallest pane, and
 //! a TextBox 0x100, each 0x20 bytes into a heap block of its own.
+//!
+//! Bound by:
+//! - ADR-0035: a pane is read only as far as the smallest pane goes, and only inside a small block.
 
 use crate::games::common::lyt::PaneShape;
 

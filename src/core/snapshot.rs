@@ -13,6 +13,9 @@
 //!
 //! Raw snapshots hold the player's save data. They belong under `capture_dir()`, outside the
 //! checkout, and never in the repo; only scrubbed snapshots are committed.
+//!
+//! Bound by:
+//! - ADR-0029: raw captures hold the player's save and go outside the checkout.
 
 use std::collections::BTreeSet;
 use std::fs;

@@ -33,6 +33,9 @@
 //! PC back per instruction, and `ARM_Dynarmic::HasSingleInstructionBreakAccuracy` says so. It lands in
 //! the right function, which is already enough to replace a scan. For the exact instruction, run the
 //! emulator with `use_cpu_jit=false`, where the interpreter is accurate.
+//!
+//! Bound by:
+//! - ADR-0002: a tool for finding things out; nothing a player runs may use it.
 
 use std::collections::VecDeque;
 use std::io::{Read, Write};

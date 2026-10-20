@@ -11,6 +11,10 @@
 //! check, owned by whoever knows what the object is for.
 //!
 //! This is the Itanium C++ ABI layout, which ARMCC follows. Nothing here is specific to Pokemon.
+//!
+//! Bound by:
+//! - ADR-0003: a class name is an anchor, and says what an object was built as, not that it is
+//!   still alive.
 
 use std::cell::RefCell;
 use std::rc::Rc;

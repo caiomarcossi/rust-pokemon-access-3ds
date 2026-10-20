@@ -18,6 +18,9 @@
 //!
 //! Python's `Memories` keeps what a sweep found in plain attributes; here they are in `Cell` and
 //! `RefCell`, so the profile can hold it in an `Rc` beside the scenes that ask it.
+//!
+//! Bound by:
+//! - ADR-0038: the credits' Pokémon are the save's, read as each beat is said.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;

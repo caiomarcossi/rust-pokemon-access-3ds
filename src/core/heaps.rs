@@ -34,6 +34,9 @@
 //! one takes the emulator down (ADR-0035), so a game can have its large blocks told apart by their
 //! headers alone, keep a heap's own blocks unwalked while watching the heaps inside it, and watch
 //! only the heaps under the ones it adopts rather than their siblings too (spike 123).
+//!
+//! Bound by:
+//! - ADR-0034: the heaps are watched, and only what they have just allocated is swept.
 
 use std::cell::RefCell;
 use std::collections::HashSet;

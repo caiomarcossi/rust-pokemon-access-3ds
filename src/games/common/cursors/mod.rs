@@ -5,6 +5,9 @@
 //! cursor (`key`), the main menu's frame (`frame`), the opening's choice frame (`choice`), the
 //! Pokédex's plate (`plate`), a cursor named by its texture (`named`), Wally's pointer (`pointer`)
 //! and Sun's cursor pane (`pane`); what they share is in `shared`.
+//!
+//! Bound by:
+//! - ADR-0012: a menu says the item under its cursor, never its whole list and no position.
 
 pub mod choice;
 pub mod frame;
