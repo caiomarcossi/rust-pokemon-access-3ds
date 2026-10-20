@@ -66,7 +66,7 @@ use crate::games::gen6::screens::battle::{BattleReader, Battlers, GAUGE_CLASSES,
 use crate::games::gen6::screens::choices::{
     BOX_DEVICE_MANAGER, ChoiceReader, DEVICE_MANAGER_CLASS,
 };
-use crate::games::gen6::screens::distribution::Distribution;
+use crate::games::gen6::screens::distribution::{Distribution, DistributionReader};
 use crate::games::gen6::screens::habitat::HabitatReader;
 use crate::games::gen6::screens::lists::{CONTROLLER_CLASS, ListReader};
 use crate::games::gen6::screens::mapcursor::MapCursor;
@@ -255,6 +255,8 @@ pub struct Gen6Profile {
     pub scenes: Option<RefCell<Scenes>>,
     /// The Pokédex's habitat map draws the Pokémon's places and never names them (spike 152).
     pub habitat: RefCell<HabitatReader>,
+    /// And the AreaNav's Pokémon Distribution draws a place's Pokémon and names none.
+    pub distribution_reader: RefCell<DistributionReader>,
     /// An Extra: the conditions the game draws as a star, said as numbers (ADR-0017).
     pub conditions: Option<RefCell<Box<dyn ConditionsReader>>>,
     /// X's opening draws its boy or girl and their looks as models, with no word (spike 216).
@@ -361,7 +363,7 @@ impl Gen6Profile {
         // The Bag's party draws each member as an icon beside its level, or, for an evolution
         // stone, beside "ABLE!" or "UNABLE!": "Metagross UNABLE!" (movie31). The AreaNav's
         // Pokémon Distribution draws the place's Pokémon as icons whose buttons take no tap, so
-        // they are said with the place's name (or_area_nav).
+        // they are named here for its reader to say whole (or_area_nav, spike 232).
         let on_screen_named: Pictures = {
             let (named_by_image, party_icons) = (named_by_image.clone(), party_icons.clone());
             let (apps, distribution) = (apps.clone(), distribution.clone());
@@ -541,8 +543,8 @@ impl Gen6Profile {
             game.training,
         )));
         let goals = Rc::new(Goals::new(layouts.clone(), image_of.clone()));
-        // The DexNav draws a Pokémon caught in colour, and only those are said so: "Ralts grass",
-        // "Zigzagoon grass caught", with commas under pauses (ADR-0037, `Distribution.said`).
+        // The DexNav draws a Pokémon caught in colour, and only those are said so: "Ralts",
+        // "Magikarp fishing caught", with commas under pauses (ADR-0037, `Distribution.said`).
         let gap = if ui.pauses { ", " } else { " " };
         let caught = format!("{gap}{}", own(CAUGHT, &[]));
         let mut images: IndexMap<String, String> = text
@@ -864,6 +866,8 @@ impl Gen6Profile {
             log.clone(),
             ui.pauses,
         );
+        // And the AreaNav's Pokémon Distribution draws a place's Pokémon and names none.
+        let distribution_reader = DistributionReader::new(distribution.clone(), ui.pauses);
         // An Extra: the conditions the game draws as a star, said as numbers (ADR-0017).
         let conditions = match game.conditions {
             Some(make) if extras.unwrap_or_default().conditions && text.loaded() => {
@@ -946,6 +950,7 @@ impl Gen6Profile {
             screen_announcer: RefCell::new(screen_announcer),
             scenes,
             habitat: RefCell::new(habitat),
+            distribution_reader: RefCell::new(distribution_reader),
             conditions,
             opening,
             archived: RefCell::new(HashSet::new()),
@@ -1248,7 +1253,7 @@ impl Gen6Profile {
     /// `poll_screen(hold, with_choices)`. Named apart from `poll_screen` because the runtime's
     /// `Profile::poll_screen` takes neither.
     pub fn poll_screen_with(&self, hold: bool, with_choices: bool) -> Result<()> {
-        let (screen, sides, cursors, round_lines) = phase(&*self.memory, "screen", || {
+        let (screen, sides, listed, cursors, round_lines) = phase(&*self.memory, "screen", || {
             // The field's layouts come back where they were when a menu screen closes, and a
             // layout found before it was built is taken in once it is.
             let revived = self.layouts.revive()?;
@@ -1274,6 +1279,11 @@ impl Gen6Profile {
             // The HP box is the battle reader's to say, whole and once it holds still.
             let sides = self.battle.borrow_mut().poll(on_screen)?;
             self.habitat.borrow_mut().poll(on_screen)?;
+            let in_townmap = self.apps.borrow().running.as_deref() == Some(townmap::APP);
+            let listed = self
+                .distribution_reader
+                .borrow_mut()
+                .poll(on_screen, in_townmap)?;
             if let Some(standings) = &self.standings {
                 standings.borrow_mut().poll(on_screen)?;
             }
@@ -1281,7 +1291,7 @@ impl Gen6Profile {
             let running = self.apps.borrow().running.clone();
             let round_lines = self.sparring.borrow_mut().poll(running.as_deref())?;
             let cursors = self.cursors.borrow_mut().poll(on_screen)?;
-            Ok((screen, sides, cursors, round_lines))
+            Ok((screen, sides, listed, cursors, round_lines))
         })?;
         for (line, category) in &round_lines {
             (self.log)(&format!("round: {line}"));
@@ -1294,10 +1304,21 @@ impl Gen6Profile {
         }
         let mut texts: Vec<ScreenText> = Vec::new();
         for text in &screen.texts {
-            if !self.battle.borrow().owns(text)? && !self.habitat.borrow().owns(text) {
+            if !self.battle.borrow().owns(text)?
+                && !self.habitat.borrow().owns(text)
+                && !self.distribution_reader.borrow().owns(text)
+            {
                 texts.push(text.clone());
             }
         }
+        // The Distribution's icons are not gathered with the rest of their screen either: a
+        // rewrite reads again the groups it has met.
+        let heard: Vec<ScreenText> = screen
+            .on_screen
+            .iter()
+            .filter(|piece| !self.distribution_reader.borrow().owns(piece))
+            .cloned()
+            .collect();
         // A layout built again where it was is the one that was there, and a menu stays a menu:
         // the battle's move list, forgotten while it was gone, was read out whole the moment it
         // showed.
@@ -1307,6 +1328,7 @@ impl Gen6Profile {
         self.screen_announcer.borrow_mut().say(
             &ScreenPoll {
                 texts,
+                on_screen: heard,
                 ..screen.clone()
             },
             &cursors,
@@ -1314,6 +1336,11 @@ impl Gen6Profile {
             Some(&roots),
             Some(&subject),
         )?;
+        // After the screen's words, which name the place first.
+        for line in &listed {
+            (self.log)(&format!("distribution: {line}"));
+            self.speech.say(line, Category::Screen);
+        }
         if let Some(conditions) = &self.conditions {
             // After the screen's words, and once a cursor's details are said, so they come last.
             let under: Vec<String> = cursors

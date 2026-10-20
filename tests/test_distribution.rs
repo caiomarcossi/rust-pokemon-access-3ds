@@ -1,10 +1,12 @@
 //! The AreaNav's Pokémon Distribution names each picture by the species whose icon it draws.
 
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use super::fake_memory::{CODE, FakeClasses, FakeMemory};
 use crate::core::rtti::ClassNames;
 use crate::games::common::lyt;
+use crate::games::common::screen::ScreenText;
 use crate::games::gen6::screens::distribution as d;
 
 const NAVI: i64 = 0x08200000;
@@ -106,17 +108,18 @@ fn test_only_a_species_caught_is_said_so() {
     assert_eq!(
         said,
         [
-            Some("Wurmple grass".to_string()),
-            Some("Zigzagoon grass caught".to_string()),
-            Some("Poochyena grass".to_string())
+            Some("Wurmple".to_string()),
+            Some("Zigzagoon caught".to_string()),
+            Some("Poochyena".to_string())
         ]
     );
     assert_eq!(found.said(picture(&memory, 0, GREY), " ").unwrap(), None);
 }
 
-/// ADR-0037: 0 grass, 1 water, 2 fishing, in the habitat page's words, before "caught", which
-/// would join it as "caught fishing"; 3, the DexNav's search alone, says none (movie27 on Route
-/// 102). A comma between each under `pauses`.
+/// ADR-0037: 1 water, 2 fishing, in the habitat page's words, before "caught", which would join it
+/// as "caught fishing" (movie27 on Route 102); 0, walking in the grass or on a cave's floor, says
+/// none (Orion, 2026-10-20), as the test above has it, and 3, the DexNav's search alone, none. A
+/// comma between each under `pauses`.
 #[test]
 fn test_each_species_says_how_it_is_met_before_caught() {
     let (memory, found) = route_101();
@@ -146,6 +149,108 @@ fn test_each_species_says_how_it_is_met_before_caught() {
             .as_deref(),
         Some("Zigzagoon, fishing, caught")
     );
+}
+
+/// Route 101's records met each its (way, state).
+fn seen(memory: &FakeMemory, records: &[(u8, u8)]) {
+    for (slot, (way, state)) in records.iter().enumerate() {
+        memory.write(
+            NAVI + d::RECORDS + slot as i64 * d::RECORD + d::WAY,
+            &[*way],
+        );
+        memory.write(
+            NAVI + d::RECORDS + slot as i64 * d::RECORD + d::STATE,
+            &[*state],
+        );
+    }
+}
+
+fn utf16(text: &str) -> Vec<u8> {
+    text.encode_utf16()
+        .flat_map(|unit| unit.to_le_bytes())
+        .collect()
+}
+
+fn lines(said: &[&str]) -> Vec<String> {
+    said.iter().map(|line| line.to_string()).collect()
+}
+
+/// ADR-0037 (spike 232): in the navigator's order, those met walking first and each way said once
+/// before its own, the grey shape of an icon loading ignored; nothing while a species seen is still
+/// to be drawn, or a species not seen is drawn, as the last place's pictures are a moment after the
+/// place changes.
+#[test]
+fn test_the_areanav_says_its_distribution_by_way_once_all_is_drawn() {
+    let (memory, found) = route_101();
+    memory.write(NAVI + d::PLACE, &utf16("Route 101\0"));
+    let (caught, shown) = (d::CAUGHT as u8, d::SEEN as u8);
+    seen(&memory, &[(2, caught), (0, shown), (1, shown)]);
+    let icons: Vec<i64> = (0..3)
+        .map(|i| picture(&memory, i, 0x2077D480 + 0x1100 * i))
+        .collect();
+    assert_eq!(found.listed(icons[..2].to_vec(), false).unwrap(), None);
+    let loading = [
+        vec![picture(&memory, 3, GREY)],
+        icons.iter().rev().copied().collect(),
+    ]
+    .concat();
+    assert_eq!(
+        found.listed(loading, false).unwrap(),
+        Some((
+            "Route 101".to_string(),
+            lines(&["Zigzagoon", "water Poochyena", "fishing Wurmple caught"])
+        ))
+    );
+    assert_eq!(
+        found.listed(icons.clone(), true).unwrap(),
+        Some((
+            "Route 101".to_string(),
+            lines(&["Zigzagoon", "water: Poochyena", "fishing: Wurmple caught"])
+        ))
+    );
+    seen(&memory, &[(2, caught), (0, shown), (3, 1)]);
+    assert_eq!(found.listed(icons, false).unwrap(), None);
+}
+
+/// Spike 232: the icons can all be drawn before the top screen titles their place, and are said
+/// once the title has read the same two polls, as screen text reports it; or, titled otherwise,
+/// after `TITLE_POLLS`.
+#[test]
+fn test_the_reader_says_a_place_once_titled_and_keeps_its_icons_from_screen_text() {
+    let (memory, found) = route_101();
+    memory.write(NAVI + d::PLACE, &utf16("Route 101\0"));
+    let shown = d::SEEN as u8;
+    seen(&memory, &[(0, shown), (0, shown), (0, shown)]);
+    let icons: Vec<ScreenText> = (0..3)
+        .map(|i| ScreenText {
+            picture: true,
+            ..ScreenText::new(picture(&memory, i, 0x2077D480 + 0x1100 * i), "", false)
+        })
+        .collect();
+    let titled = [
+        vec![ScreenText {
+            top: true,
+            ..ScreenText::new(1, "Route 101", false)
+        }],
+        icons.clone(),
+    ]
+    .concat();
+    let mut reader = d::DistributionReader::new(Rc::new(RefCell::new(found)), false);
+    let said = lines(&["Wurmple Zigzagoon Poochyena"]);
+    assert_eq!(reader.poll(&icons, true).unwrap(), Vec::<String>::new());
+    assert_eq!(reader.poll(&titled, true).unwrap(), Vec::<String>::new());
+    assert_eq!(reader.poll(&titled, true).unwrap(), said);
+    assert_eq!(reader.poll(&titled, true).unwrap(), Vec::<String>::new());
+    assert!(icons.iter().all(|piece| reader.owns(piece)));
+    reader.poll(&titled[..2], true).unwrap();
+    assert_eq!(reader.poll(&titled, true).unwrap(), said);
+    reader.poll(&icons[..1], true).unwrap();
+    let polled: Vec<Vec<String>> = (0..d::TITLE_POLLS)
+        .map(|_| reader.poll(&icons, true).unwrap())
+        .collect();
+    assert!(polled.last() == Some(&said) && polled[..polled.len() - 1].iter().all(Vec::is_empty));
+    reader.poll(&icons, false).unwrap();
+    assert!(!icons.iter().any(|piece| reader.owns(piece)));
 }
 
 #[test]
