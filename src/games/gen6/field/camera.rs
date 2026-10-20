@@ -15,12 +15,13 @@
 //!                         +0xebc f32 the camera's heading on a rail, the same way
 //! ```
 //!
-//! Found in seven snapshots taken while the player walked up, each a different way, where +0xebc was
-//! the way they walked to a tenth of a degree (spike 105). The block is the upper screen camera's and
-//! is there on the grid too, where +0xebc reads 0 and +0xc30 is where the camera looks: pi in Parfum
-//! Palace and on Route 7, -1.22 through the palace's back door into its garden, where up walked Khai
-//! west, swinging round to -pi as he walked north up it (spike A, x_route-6-4.ctm, 2026-10-20). The
-//! way from where it is to what it looks at turns with it, to the tenth of a degree.
+//! Found in seven snapshots taken while the player walked up, each a different way, where +0xebc
+//! was the way they walked to a tenth of a degree (spike 105). The block is the upper screen
+//! camera's and is there on the grid too, where +0xebc reads 0 and +0xc30 is where the camera
+//! looks: pi in Parfum Palace and on Route 7, -1.22 through the palace's back door into its garden,
+//! where up walked Khai west, swinging round to -pi as he walked north up it (spike 230,
+//! x_route-6-4.ctm, 2026-10-20). The way from where it is to what it looks at turns with it, to the
+//! tenth of a degree.
 
 use std::f64::consts::PI;
 

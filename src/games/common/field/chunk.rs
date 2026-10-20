@@ -63,7 +63,7 @@ pub const KIND_SHIFT: i64 = 24;
 /// 225).
 pub const SILENT: i64 = 0;
 
-/// Where ORAS's cell word keeps its footstep: bits 12 to 16. X's are bits 11 to 15 (spike B).
+/// Where ORAS's cell word keeps its footstep: bits 12 to 16. X's are bits 11 to 15 (spike 231).
 pub const FOOTSTEP_SHIFT: i64 = 12;
 
 /// `footstep(word)`, at ORAS's `FOOTSTEP_SHIFT`.

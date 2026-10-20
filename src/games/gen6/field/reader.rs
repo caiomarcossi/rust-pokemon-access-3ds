@@ -668,7 +668,7 @@ impl FieldReader {
 
     /// The quarters clockwise from north the pad's up walks the player, as the last poll
     /// found them: where the camera looks (`Rails.turn`), and north on a rail, where the keys
-    /// walk the corridor or a street's lanes and the camera's own heading reads 0 (spike A).
+    /// walk the corridor or a street's lanes and the camera's own heading reads 0 (spike 230).
     pub fn turn(&self, current: i64) -> Result<i64> {
         if self.on_rail.get() {
             Ok(0)

@@ -283,7 +283,7 @@ pub struct Game {
     /// Pokémon (`mmodel.FORM`), or None where it was not read: X's.
     pub form: Option<i64>,
     /// Where its move model keeps a step's moment and which ground it plays no footstep on
-    /// (`footsteps.Steps`): ORAS's, or X's (spike B).
+    /// (`footsteps.Steps`): ORAS's, or X's (spike 231).
     pub steps: Steps,
     /// Where its Super Training page keeps the PokeIcon of its party's icons, its records following
     /// (`screens.training`): ORAS's 0xF0, X's 0xC8 (spike B).

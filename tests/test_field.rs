@@ -4384,7 +4384,7 @@ fn test_on_the_rails_up_walks_the_way_the_camera_looks_not_the_way_the_player_fa
     Ok(())
 }
 
-/// Spike A: Parfum Palace's garden, where the camera looks west, a little south, and up
+/// Spike 230: Parfum Palace's garden, where the camera looks west, a little south, and up
 /// walked Khai west; it swings round to north as he walks up the garden, past the edge of a
 /// quarter only (`pad.HYSTERESIS`).
 #[test]

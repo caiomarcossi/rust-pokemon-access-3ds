@@ -1,10 +1,11 @@
 //! Which way the pad walks the player where the camera is turned, from the camera's own angle.
 //!
 //! Up on the pad walks the player the way the camera looks, whichever that is, in Sun (spike 119)
-//! and in X off Lumiose's rails (spike A): in Parfum Palace's garden the camera looks west, a little
-//! south, and up walked Khai west, where pa3ds had said the stairs back "1 south" (x_route-6-4.ctm,
-//! 2026-10-20). Each game keeps the angle in an object of its own (`sm.camera`, `gen6.field.camera`),
-//! in the way a model's world facing is: up walks the world's (sin a, cos a), x east and z south.
+//! and in X off Lumiose's rails (spike 230): in Parfum Palace's garden the camera looks west, a
+//! little south, and up walked Khai west, where pa3ds had said the stairs back "1 south"
+//! (x_route-6-4.ctm, 2026-10-20). Each game keeps the angle in an object of its own (`sm.camera`,
+//! `gen6.field.camera`), in the way a model's world facing is: up walks the world's (sin a, cos a),
+//! x east and z south.
 
 use crate::py::{self, Result};
 

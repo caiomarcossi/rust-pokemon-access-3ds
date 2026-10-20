@@ -189,7 +189,7 @@ fn test_running_plays_the_run() {
     );
 }
 
-/// Spike B: X's animation at the model's +0x97c, its id at +0x4e and frame at +0x18; its
+/// Spike 231: X's animation at the model's +0x97c, its id at +0x4e and frame at +0x18; its
 /// walk 0x5c and run 0x5d; its footstep bits 11 to 15, silent at 0, 1, 14 and 15. Its paths'
 /// word is ORAS's street, 0x20; 0x6828, Santalune Gym's strand, has footstep 13, which plays.
 #[test]

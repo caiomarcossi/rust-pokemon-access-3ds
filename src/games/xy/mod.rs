@@ -175,7 +175,7 @@ pub fn training_button() -> &'static (i64, IndexMap<&'static str, i64>) {
     TRAINING_BUTTON.get_or_init(|| (55, IndexMap::from([("spar_button.bclim", 178)])))
 }
 
-/// Where X keeps a step's moment (spike B): the footstep check at `0x00719af8` looks the model's
+/// Where X keeps a step's moment (spike 231): the footstep check at `0x00719af8` looks the model's
 /// animation up in 23 movements of three ids (`0x007933b0`), walking 0x04, 0x5c and 0x6f, running
 /// 0x05, 0x5d and 0x70, and plays at the frames of `0x0079443c`, 6 and 13 walking, 0 and 8
 /// running. The model keeps its animation at +0x97c, which holds its frame at +0x18 and its id at
@@ -198,7 +198,7 @@ pub const STEPS: Steps = Steps {
     shift: 11,
     silent: &[0, 1, 14, 15],
 };
-/// Every sound the game plays, named, its footsteps by Omega Ruby's names (spike B).
+/// Every sound the game plays, named, its footsteps by Omega Ruby's names (spike 231).
 pub const SOUND_ARCHIVE: &str = "sound/xy_sound.bcsar";
 
 /// Place names in file 72 ("Route 4" at the index Route 4's row holds), trainer classes 20 and

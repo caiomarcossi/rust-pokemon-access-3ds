@@ -21,7 +21,7 @@
 //! the zone is (spike 227).
 //!
 //! Measured in Omega Ruby and Alpha Sapphire, and in X, whose model keeps the same things a little
-//! otherwise, its run another animation and its silent ground other footsteps (`Steps`, spike B).
+//! otherwise, its run another animation and its silent ground other footsteps (`Steps`, spike 231).
 //! Sun's is another engine's.
 //!
 //! The port builds each game's table in (pa3ds/rust-pokemon-access-3ds#16): a player has no
