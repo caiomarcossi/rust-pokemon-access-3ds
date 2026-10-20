@@ -46,7 +46,8 @@ the Game Boy games. Nothing here is taken from its code.
 - **The map**: exits, interactables (signs and the like), people, items, berry spots, obstacles
   and more, each with its direction and distance, and the way to any of them on foot.
 - **The touch screen**: the buttons on the bottom screen, which touch mode can tap for you, the
-  PokéNav's and PlayNav's apps among them.
+  PokéNav's and PlayNav's apps and the AreaNav's places among them.
+- **The AreaNav**: each place, and the Pokémon seen there.
 - **The DexNav**: the area's Pokémon, how each is met (grass, water or fishing) and which you
   have caught, searching, and a hidden Pokémon's details. A Pokémon met in seaweed under water
   is said to be met in grass, here and in the Pokédex, because the game itself shows it that way.

@@ -687,6 +687,101 @@ fn test_the_screens_bar_neither_names_a_button_nor_is_offered_over_one() {
     );
 }
 
+/// In the AreaNav a tap on a place on its map chooses it; its bar, drawn at the map's layer,
+/// takes a tap on a place under it, and a place off the screen is none (or_area_nav). On the
+/// field, where the map is a window, no place is offered.
+#[test]
+fn test_the_areanavs_places_are_offered_by_name_where_a_tap_reaches_them() {
+    let memory = FakeMemory::new();
+    let classes = FakeClasses::new(memory.clone());
+    let fake = FakeLayouts::new(&memory, &classes);
+    let (bounding, picture) = (
+        classes.add(lyt::BOUNDING_CLASS),
+        classes.add(lyt::PICTURE_CLASS),
+    );
+    let (_work, root) = fake.screen_with(0x08200000, false, false);
+    let (_bar_work, bar) = fake.screen_with(0x08300000, false, false);
+    let land = root + 0x1000;
+    fake.pane_with_vtable(land, root, Some(picture));
+    for (pane, parent, kind, name, x, y, size) in [
+        (
+            land + 0x200,
+            land,
+            bounding,
+            &b"m"[..],
+            -100.0f32,
+            -25.0f32,
+            [11.0f32, 11.0],
+        ),
+        (
+            land + 0x400,
+            land,
+            bounding,
+            b"1p",
+            -20.0,
+            -105.0,
+            [22.0, 11.0],
+        ),
+        (
+            land + 0x600,
+            land,
+            bounding,
+            b"zz",
+            200.0,
+            0.0,
+            [11.0, 11.0],
+        ),
+        (
+            bar + 0x1000,
+            bar,
+            bounding,
+            b"5x",
+            0.0,
+            -105.0,
+            [320.0, 30.0],
+        ),
+    ] {
+        fake.pane_with_vtable(pane, parent, Some(kind));
+        memory.write(pane + lyt::NAME, name);
+        memory.write(pane + lyt::X, &floats(&[x]));
+        memory.write(pane + lyt::Y, &floats(&[y]));
+        memory.write(pane + lyt::WIDTH, &floats(&size));
+    }
+    fake.track().unwrap();
+    let places: IndexMap<String, String> =
+        [("m", "Route 101"), ("1p", "Route 102"), ("zz", "Route 103")]
+            .into_iter()
+            .map(|(pane, place)| (pane.to_string(), place.to_string()))
+            .collect();
+    let shown: Rc<RefCell<IndexMap<String, String>>> = Rc::new(RefCell::new(IndexMap::new()));
+    let mut targets = TouchTargets::new(
+        fake.layouts.clone(),
+        Rc::new(Vec::new),
+        Rc::new(|_box| Ok(String::new())),
+        Rc::new(move |pane| Ok((pane == land).then(|| touch::MAP.to_string()))),
+        Rc::new(|_root| None),
+        Rc::new(|_line: &str| {}),
+        Options {
+            places: Some({
+                let shown = shown.clone();
+                Rc::new(move || Ok(Rc::new(shown.borrow().clone())))
+            }),
+            ..Options::default()
+        },
+    );
+    assert_eq!(targets.targets().unwrap(), []);
+    shown.borrow_mut().extend(places);
+    assert_eq!(
+        targets
+            .targets()
+            .unwrap()
+            .iter()
+            .map(|t| (t.name.as_str(), t.x, t.y))
+            .collect::<Vec<_>>(),
+        [("Route 101", 60, 145)]
+    );
+}
+
 /// The Pokémon-Amie menu's backdrop, a touch area over the whole page, hangs from a pane
 /// holding no picture of a Pokémon, and was said "Sceptile" by the one lying within it from
 /// another pane, rather than "close" (omega_ruby_bottom-screen2: `68` in `f`, the Pokémon's

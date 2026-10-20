@@ -30,10 +30,12 @@
 //!    corners being the page arrows, previous and next.
 //!
 //! A touch area none of these names is left out, and the log says so once. So is the AreaNav's
-//! map, whose every place is a touch area (spike 152): on the field it is drawn zoomed in and cut
+//! map, whose every place is a touch area (spike 152), on the field: it is drawn zoomed in and cut
 //! to a window, and its places beyond the window are touch areas on screen all the same, 65 of
-//! them over the DexNav's button and the shortcut bar. Its places are the AreaNav's reader's to
-//! offer.
+//! them over the DexNav's button and the shortcut bar. In the AreaNav itself a tap on a place
+//! chooses it, the top screen saying its name and what it is like, and each is offered by the
+//! place the ROM names it (`places`), under every other button the AreaNav draws over the map
+//! (or_area_nav).
 
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -142,6 +144,9 @@ pub type Off = Rc<dyn Fn() -> Result<HashSet<(i64, String)>>>;
 /// `Callable[[int], bool]`: whether a picture's button is offered though switched off. It reads
 /// memory.
 pub type SaidOff = Rc<dyn Fn(i64) -> Result<bool>>;
+/// `Callable[[], Mapping[str, str]]`: the AreaNav's map's touch areas by pane name -> the place
+/// each is. It reads memory.
+pub type Places = Rc<dyn Fn() -> Result<Rc<IndexMap<String, String>>>>;
 /// `Callable[[Sequence[tuple[int, int]], float], str | None]`: drag a press along a path.
 pub type Slide = Rc<dyn Fn(&[(i64, i64)], f64) -> Option<String>>;
 /// `Callable[[], list[Target]]`: targets no touch area draws. It reads memory.
@@ -162,6 +167,7 @@ pub struct Options {
     pub gestures: Option<Gestures>,
     pub off: Option<Off>,
     pub said_off: Option<SaidOff>,
+    pub places: Option<Places>,
 }
 
 /// The bottom screen's touch targets, and the one touch mode is on.
@@ -197,6 +203,9 @@ pub struct TouchTargets {
     /// icon of a species not caught, which it cannot search for, and the species is said all the
     /// same (ADR-0037).
     said_off: Option<SaidOff>,
+    /// The AreaNav's map's touch areas by pane name -> the place each is, while the map is the
+    /// screen's and not the field's window onto it; none otherwise.
+    places: Option<Places>,
     chosen: Option<i64>,
     /// Touch area -> what it was last called (rule 4).
     named: IndexMap<i64, (String, HashSet<i64>)>,
@@ -233,6 +242,7 @@ impl TouchTargets {
             gestures,
             off,
             said_off,
+            places,
         } = options;
         TouchTargets {
             layouts,
@@ -251,6 +261,7 @@ impl TouchTargets {
             gestures,
             off,
             said_off,
+            places,
             chosen: None,
             named: IndexMap::new(),
             unnamed: HashSet::new(),
@@ -425,6 +436,7 @@ impl TouchTargets {
                 }
             }
             if drawn.values().any(|image| image.as_deref() == Some(MAP)) {
+                found.extend(self.map_places(root, &touches, layer, root_x, root_y)?);
                 continue;
             }
             let mut names: IndexMap<i64, String> = IndexMap::new();
@@ -558,8 +570,7 @@ impl TouchTargets {
             for &touch in &touches {
                 let group = &groups[&touch];
                 let pane = layouts.pane(touch)?;
-                let x = py::round(WIDTH as f64 / 2.0 + f32(&pane, shape.x)? - root_x)?;
-                let y = py::round(HEIGHT as f64 / 2.0 - (f32(&pane, shape.y)? - root_y))?;
+                let (x, y) = pixel(&pane, &shape, root_x, root_y)?;
                 // A button with words of its own is named by them or not at all: the Bag's rows
                 // all draw `bar1.bclim`, and an empty row was said by the one row's item
                 // (movie21).
@@ -724,6 +735,47 @@ impl TouchTargets {
             .flatten()
             .map(|i| found[i].clone())
             .collect())
+    }
+
+    /// The AreaNav's map's places on screen, each a layer under the layout it is in: the
+    /// AreaNav draws its every layout at one layer, and its bar, its zoom and Trainer's Eye's rows
+    /// lie over the map, taking a tap on a place under them (or_area_nav).
+    fn map_places(
+        &self,
+        root: i64,
+        touches: &[i64],
+        layer: i64,
+        root_x: f64,
+        root_y: f64,
+    ) -> Result<Vec<Target>> {
+        let places = match &self.places {
+            Some(places) => places()?,
+            None => Rc::new(IndexMap::new()),
+        };
+        let shape = self.layouts.shape;
+        let mut found: Vec<Target> = Vec::new();
+        for &touch in touches {
+            let Some(place) = places.get(&self.name(touch)?) else {
+                continue;
+            };
+            let pane = self.layouts.pane(touch)?;
+            let (x, y) = pixel(&pane, &shape, root_x, root_y)?;
+            if (0..WIDTH).contains(&x) && (0..HEIGHT).contains(&y) {
+                found.push(Target {
+                    pane: touch,
+                    name: place.clone(),
+                    x,
+                    y,
+                    row: f32(&pane, shape.y)? - root_y,
+                    height: f32(&pane, shape.height)?,
+                    layer: layer - 1,
+                    root,
+                    path: Vec::new(),
+                    seconds: 0.0,
+                });
+            }
+        }
+        Ok(found)
     }
 
     /// `(drawn.get(p), *textures.get(self._name(p), ()))`, the images a pane draws now or its
@@ -893,6 +945,14 @@ impl TouchTargets {
         let end = raw.iter().position(|&byte| byte == 0).unwrap_or(raw.len());
         Ok(py::decode_ascii(&raw[..end]))
     }
+}
+
+/// The touch screen's pixel a pane's place is, from its root's middle, y down.
+fn pixel(head: &[u8], shape: &lyt::PaneShape, root_x: f64, root_y: f64) -> Result<(i64, i64)> {
+    Ok((
+        py::round(WIDTH as f64 / 2.0 + f32(head, shape.x)? - root_x)?,
+        py::round(HEIGHT as f64 / 2.0 - (f32(head, shape.y)? - root_y))?,
+    ))
 }
 
 /// Where a pane's middle is across and up its screen, from its place and its anchor.

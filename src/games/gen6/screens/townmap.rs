@@ -28,6 +28,8 @@ use crate::core::memory::Memory;
 use crate::core::rtti::ClassNames;
 use crate::py::Result;
 
+/// The AreaNav as an app of its own, opened from the PokéNav's window or the Bag's Town Map.
+pub const APP: &str = "N3app7townmap4ProcE";
 /// Each view class whose draw is skipped while a byte of it is 0, by where that byte is.
 pub const VIEWS: [(&str, i64); 5] = [
     ("N3app7townmap8NutsViewE", 0xAC),
@@ -77,24 +79,19 @@ impl Views {
         Ok(())
     }
 
+    /// Whether the AreaNav draws one of these views over its map now: the Pokémon
+    /// Distribution, Trainer's Eye's rows, the berry list. Then a tap on the map reaches the view's
+    /// own buttons, not a place (or_area_nav).
+    pub fn drawing(&self) -> Result<bool> {
+        Ok(self.read()?.iter().any(|&(drawn, _util)| drawn))
+    }
+
     /// The works of the layouts of every view the AreaNav is not drawing now.
     pub fn put_away(&self) -> Result<HashSet<i64>> {
         let memory = &self.memory;
         let mut works: HashSet<i64> = HashSet::new();
-        for (&view, &(vtable, drawn_at)) in &self.views {
-            let head = memory.read(view, drawn_at.max(UTIL) + 4)?;
-            // A view freed and its memory taken by something else says nothing.
-            if u32(&head, 0)? != vtable || head[drawn_at as usize] != 0 {
-                continue;
-            }
-            let util = u32(&head, UTIL)?;
-            if util == 0
-                || self
-                    .names
-                    .of_vtable(u32(&memory.read(util, 4)?, 0)?)?
-                    .as_deref()
-                    != Some(UTIL_CLASS)
-            {
+        for (drawn, util) in self.read()? {
+            if drawn {
                 continue;
             }
             let listed = memory.read(util + LAYOUTS, 8)?;
@@ -114,5 +111,29 @@ impl Views {
             }
         }
         Ok(works)
+    }
+
+    /// Each view still one, whether it is drawn and its `G2DUtil`.
+    fn read(&self) -> Result<Vec<(bool, i64)>> {
+        let memory = &self.memory;
+        let mut read: Vec<(bool, i64)> = Vec::new();
+        for (&view, &(vtable, drawn_at)) in &self.views {
+            let head = memory.read(view, drawn_at.max(UTIL) + 4)?;
+            // A view freed and its memory taken by something else says nothing.
+            if u32(&head, 0)? != vtable {
+                continue;
+            }
+            let util = u32(&head, UTIL)?;
+            if util != 0
+                && self
+                    .names
+                    .of_vtable(u32(&memory.read(util, 4)?, 0)?)?
+                    .as_deref()
+                    == Some(UTIL_CLASS)
+            {
+                read.push((head[drawn_at as usize] != 0, util));
+            }
+        }
+        Ok(read)
     }
 }

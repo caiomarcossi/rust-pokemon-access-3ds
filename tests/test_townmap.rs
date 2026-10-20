@@ -54,4 +54,12 @@ fn test_a_view_whose_memory_is_taken_says_nothing() {
     let (memory, views) = berry_list(0);
     memory.u32(VIEW, &[0]);
     assert_eq!(views.put_away().unwrap(), HashSet::new());
+    assert!(!views.drawing().unwrap());
+}
+
+/// The map's places are offered only while no view is drawn over it (or_area_nav).
+#[test]
+fn test_a_view_drawn_is_drawn_over_the_map() {
+    assert!(berry_list(1).1.drawing().unwrap());
+    assert!(!berry_list(0).1.drawing().unwrap());
 }

@@ -61,6 +61,8 @@ and No is up, it leaves out the buttons behind it that a tap no longer reaches.
 | `K` | The chosen button again. |
 | `U` | Tap the chosen button. |
 
+In the AreaNav, touch mode offers each place on the map by name, and a tap chooses it.
+
 In Pokémon-Amie, touch mode offers to stroke your Pokémon, and the tap key strokes it. This is an
 experiment. In a Super Training regimen, touch mode offers each goal the Balloon Bot puts up:
 the tap key's first press says the goal, and each press after that shoots at it, wherever it has

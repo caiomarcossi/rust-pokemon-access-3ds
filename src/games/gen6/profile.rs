@@ -210,7 +210,7 @@ pub struct Gen6Profile {
     /// readers find their objects by.
     pub classes: Vec<String>,
     pub distribution: Rc<RefCell<Distribution>>,
-    pub views: RefCell<townmap::Views>,
+    pub views: Rc<RefCell<townmap::Views>>,
     pub amie: Rc<RefCell<AmiePage>>,
     pub puffs: Rc<RefCell<Puffs>>,
     pub goods: Rc<RefCell<Goods>>,
@@ -350,19 +350,42 @@ impl Gen6Profile {
                 Rc::new(move || apps.borrow().running.clone())
             },
         )));
+        // The AreaNav's Pokémon Distribution draws each Pokémon's icon, which no file names. Made
+        // here, before the screen text reader that asks it, where Python makes it later and
+        // reaches it through `self`; making it reads nothing.
+        let distribution = Rc::new(RefCell::new(Distribution::new(
+            memory.clone(),
+            names.clone(),
+            species,
+        )));
         // The Bag's party draws each member as an icon beside its level, or, for an evolution
-        // stone, beside "ABLE!" or "UNABLE!": "Metagross UNABLE!" (movie31).
+        // stone, beside "ABLE!" or "UNABLE!": "Metagross UNABLE!" (movie31). The AreaNav's
+        // Pokémon Distribution draws the place's Pokémon as icons whose buttons take no tap, so
+        // they are said with the place's name (or_area_nav).
         let on_screen_named: Pictures = {
             let (named_by_image, party_icons) = (named_by_image.clone(), party_icons.clone());
+            let (apps, distribution) = (apps.clone(), distribution.clone());
             Rc::new(move |pane: i64| {
                 let by_image = match &named_by_image {
                     Some(named) => named(pane)?,
                     None => None,
                 };
-                // Python's `or`: a name of "" or None goes on to the party's icons.
-                match by_image {
-                    Some(name) if !name.is_empty() => Ok(Some(name)),
-                    _ => party_icons.borrow().name(pane),
+                // Python's `or`: a name of "" or None goes on to the party's icons, and then to
+                // the Distribution's.
+                if let Some(name) = by_image
+                    && !name.is_empty()
+                {
+                    return Ok(Some(name));
+                }
+                if let Some(name) = party_icons.borrow().name(pane)?
+                    && !name.is_empty()
+                {
+                    return Ok(Some(name));
+                }
+                if apps.borrow().running.as_deref() == Some(townmap::APP) {
+                    distribution.borrow().name(pane)
+                } else {
+                    Ok(None)
                 }
             })
         };
@@ -459,14 +482,11 @@ impl Gen6Profile {
             })
         };
 
-        // The AreaNav's Pokémon Distribution draws each Pokémon's icon, which no file names.
-        let distribution = Rc::new(RefCell::new(Distribution::new(
+        // The AreaNav keeps the layouts of a screen it has left as they were; its views say.
+        let views = Rc::new(RefCell::new(townmap::Views::new(
             memory.clone(),
             names.clone(),
-            species,
         )));
-        // The AreaNav keeps the layouts of a screen it has left as they were; its views say.
-        let views = townmap::Views::new(memory.clone(), names.clone());
         // The game's button managers say whose buttons take taps (spike 189).
         let buttons = Rc::new(RefCell::new(buttons::Buttons::with_menu(
             memory.clone(),
@@ -582,11 +602,15 @@ impl Gen6Profile {
             );
             let (puffs, goods) = (puffs.clone(), goods.clone());
             Rc::new(move |pane: i64| {
-                // The AreaNav is the field's: elsewhere its navigators are gone, and asking cost a
-                // touch walk 1,400 reads (movie22). On the field its icons are the DexNav's.
+                // The AreaNav's navigators are the field's and its own app's: elsewhere they are
+                // gone, and asking cost a touch walk 1,400 reads (movie22). On the field its icons
+                // are the DexNav's; in the AreaNav, its Pokémon Distribution's (or_area_nav).
                 // A name of "" or None goes on to the party's icons.
                 let running = apps.borrow().running.clone();
-                if running.as_deref().is_none_or(|running| running == FIELD) {
+                if running
+                    .as_deref()
+                    .is_none_or(|running| running == FIELD || running == townmap::APP)
+                {
                     if let Some(name) = distribution.borrow().name(pane)?
                         && !name.is_empty()
                     {
@@ -661,6 +685,23 @@ impl Gen6Profile {
                         let running = apps.borrow().running.clone();
                         Ok(running.as_deref().is_none_or(|running| running == FIELD)
                             && distribution.borrow().name(pane)?.is_some())
+                    })
+                }),
+                places: Some({
+                    let (apps, views) = (apps.clone(), views.clone());
+                    let map_places = Rc::new(text.map_places.clone());
+                    let none = Rc::new(IndexMap::new());
+                    Rc::new(move || {
+                        let running = apps.borrow().running.clone();
+                        Ok(
+                            if running.as_deref() == Some(townmap::APP)
+                                && !views.borrow().drawing()?
+                            {
+                                map_places.clone()
+                            } else {
+                                none.clone()
+                            },
+                        )
                     })
                 }),
                 gestures: Some({
@@ -842,7 +883,7 @@ impl Gen6Profile {
             memories,
             classes: classes.into_iter().collect(),
             distribution,
-            views: RefCell::new(views),
+            views,
             amie,
             puffs,
             goods,
