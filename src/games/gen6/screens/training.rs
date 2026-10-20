@@ -17,7 +17,7 @@
 //! texture i    +0x0C   the image's physical address, as a picture's material keeps it
 //! ```
 //!
-//! X's page keeps the same four 0x28 earlier, its PokeIcon at +0xC8 (`Game.training`, spike B):
+//! X's page keeps the same four 0x28 earlier, its PokeIcon at +0xC8 (`Game.training`, spike 228):
 //! read at +0xF0 there was a message window, and touch mode left the six slots out with no name.
 //!
 //! The page is a carousel: the selected member is shown big in the middle and the other five in a
@@ -100,7 +100,7 @@ pub const CLASS: &str = "N5field9subscreen8training11FM_TrainingE";
 pub const SPARRING: &str = "N3app8sparring4ProcE";
 /// Where ORAS's page keeps its PokeIcon; X's keeps it at 0xC8 (`Game.training`).
 pub const ICONS: i64 = 0xF0;
-/// How far after the PokeIcon the records start, in ORAS and X alike (spike B).
+/// How far after the PokeIcon the records start, in ORAS and X alike (spike 228).
 pub const PARAMS: i64 = 0x5C;
 /// Where a record holds its member's party index, after its PokemonParam: the records rotate to
 /// start at the selected member, the icons' textures do not.
@@ -399,7 +399,7 @@ pub struct Bags {
     /// The works of the layouts whose buttons take no tap now (`Buttons.idle`).
     idle: Option<Idle>,
     /// (work, pane name) of the buttons switched off now (`Buttons.off`): each bag is one, by
-    /// its picture, off under the page's Yes and No (spike B).
+    /// its picture, off under the page's Yes and No (spike 228).
     off: Option<Off>,
 }
 

@@ -203,7 +203,7 @@ pub fn plain(line: &[u8]) -> String {
 /// A line's words as `plain` gives them, in the singular. X's English names an interior item
 /// with its plural's ending after a number-form control, whose second argument counts the
 /// singular's letters in its low byte and the plural's after them in its high byte: "Leaf
-/// Cushion", the control, then "s" (spike B, x_pokemon-me).
+/// Cushion", the control, then "s" (spike 228, x_pokemon-me).
 pub fn singular(line: &[u8]) -> String {
     let parts = match tokens(line) {
         Ok(parts) => parts,

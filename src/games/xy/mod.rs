@@ -136,13 +136,13 @@ pub fn characters() -> &'static IndexMap<i64, i64> {
 /// thing's or a Pokémon's. Mom's Rhyhorn by the house is `0x106`, sprite `0x1014` (spike 221).
 pub const MODELS: (i64, i64) = (0xAB, 0xF2);
 
-/// The Poké Puffs' names, line for line ORAS's file 81 (`oras.PUFF_NAMES`; spike B).
+/// The Poké Puffs' names, line for line ORAS's file 81 (`oras.PUFF_NAMES`; spike 228).
 pub const PUFF_NAMES: i64 = 67;
 /// Pokémon-Amie's wallpapers and interior items, line for line ORAS's file 110
 /// (`oras.GOODS_NAMES`), the English with a plural's ending after each (`garc.singular`).
 pub const GOODS_NAMES: i64 = 92;
 /// Super Training's bags in the list its page opens, as ORAS's (`oras.TRAINING_BAGS`): line N of
-/// text file 23 is the bag of `sand_bagNN.bclim`, HP Bag S at 1, Strength Bag at 19 (spike B).
+/// text file 23 is the bag of `sand_bagNN.bclim`, HP Bag S at 1, Strength Bag at 19 (spike 228).
 pub fn training_bags() -> &'static (i64, IndexMap<&'static str, i64>) {
     static TRAINING_BAGS: OnceLock<(i64, IndexMap<&'static str, i64>)> = OnceLock::new();
     TRAINING_BAGS.get_or_init(|| {
@@ -156,7 +156,7 @@ pub fn training_bags() -> &'static (i64, IndexMap<&'static str, i64>) {
 /// Super Training's regimens in its regimen menu, as ORAS's (`oras.TRAINING_REGIMENS`): line N-1 of
 /// text file 41 is the regimen of `stage_pokeNN.bclim`, line for line ORAS's file 44 but for X's own
 /// two, "Kick Out! Get the Dragalge Corps!" and "The Battle for the Best: Version X!". The tutorial's
-/// menu drew `stage_poke02`, "Get Spewpa with an Energy Shot!" (spike B, x_super_train2).
+/// menu drew `stage_poke02`, "Get Spewpa with an Energy Shot!" (spike 228, x_super_train2).
 pub fn training_regimens() -> &'static (i64, IndexMap<&'static str, i64>) {
     static TRAINING_REGIMENS: OnceLock<(i64, IndexMap<&'static str, i64>)> = OnceLock::new();
     TRAINING_REGIMENS.get_or_init(|| {
@@ -169,7 +169,7 @@ pub fn training_regimens() -> &'static (i64, IndexMap<&'static str, i64>) {
 }
 /// The Super Training page's lower-left button, `spar_button.bclim`, which opens the regimen menu:
 /// "Super Training", line 178 of text file 55, the PSS questionnaire's answer, the one line of X's
-/// text that is that name alone; X has no PokéNav, whose app list names it in ORAS (spike B).
+/// text that is that name alone; X has no PokéNav, whose app list names it in ORAS (spike 228).
 pub fn training_button() -> &'static (i64, IndexMap<&'static str, i64>) {
     static TRAINING_BUTTON: OnceLock<(i64, IndexMap<&'static str, i64>)> = OnceLock::new();
     TRAINING_BUTTON.get_or_init(|| (55, IndexMap::from([("spar_button.bclim", 178)])))
@@ -371,7 +371,7 @@ pub fn warps() -> &'static IndexMap<i64, String> {
 
 /// The Pokémon-Amie menu's PLAY, DECORATE and SWITCH, pictures of their words that X's text has no
 /// line for: named by `pictures.ftl` and offered beside the menu's close, as ORAS's text names them.
-/// Named only by a picture's words, they were taken for part of close and left out (spike B,
+/// Named only by a picture's words, they were taken for part of close and left out (spike 228,
 /// x_super_train3).
 ///
 /// Python's is a frozenset of strings, which it iterates in an order of its own: an `IndexSet` here
@@ -382,14 +382,14 @@ pub const WORDED: [&str; 3] = [
     "kwg_button03.bclim",
 ];
 /// Where X's Pokémon-Amie page, `FM_Kawaigari`, keeps its Pokémon's number: 0x28 before ORAS's,
-/// as its Super Training page is, Frogadier's 657 (spike B, x_super_train2).
+/// as its Super Training page is, Frogadier's 657 (spike 228, x_super_train2).
 pub const AMIE: i64 = 0x124;
 /// Where X's Super Training page, `FM_Training`, keeps its party's PokeIcon: 0x28 before ORAS's,
-/// and its records with it, Frogadier's at +0x124 (spike B).
+/// and its records with it, Frogadier's at +0x124 (spike 228).
 pub const TRAINING: i64 = 0xC8;
 /// Where X's `field::subscreen::FieldMenu` keeps its button manager and the byte set while an app
-/// of the bottom screen has the input: ORAS's +0x7C and +0x9C, 0xC earlier (spike B). It read 0 on
-/// the PSS's page and Super Training's, and 1 from the bags list on.
+/// of the bottom screen has the input: ORAS's +0x7C and +0x9C, 0xC earlier (spike 228). It read 0
+/// on the PSS's page and Super Training's, and 1 from the bags list on.
 pub const FIELD_MENU: (i64, i64) = (0x70, 0x90);
 
 /// X and Y as the gen 6 readers read them.

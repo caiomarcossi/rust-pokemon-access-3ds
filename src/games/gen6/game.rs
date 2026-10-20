@@ -289,18 +289,18 @@ pub struct Game {
     /// (`footsteps.Steps`): ORAS's, or X's (spike 231).
     pub steps: Steps,
     /// Where its Super Training page keeps the PokeIcon of its party's icons, its records following
-    /// (`screens.training`): ORAS's 0xF0, X's 0xC8 (spike B).
+    /// (`screens.training`): ORAS's 0xF0, X's 0xC8 (spike 228).
     pub training: i64,
     /// Where its Pokémon-Amie page keeps its Pokémon's number, its icon's holder following
-    /// (`screens.amie`): ORAS's 0x14C, X's 0x124 (spike B).
+    /// (`screens.amie`): ORAS's 0x14C, X's 0x124 (spike 228).
     pub amie: i64,
     /// Textures a game draws as a button's words with no line of its text to name them, named
     /// instead by pa3ds's own words for the picture (`pictures.named`) and offered as a button of
-    /// their own, as the game's word would be: X's Pokémon-Amie menu (spike B).
+    /// their own, as the game's word would be: X's Pokémon-Amie menu (spike 228).
     pub worded: IndexSet<String>,
     /// Where the field's menu round the bottom screen's apps keeps its button manager and the byte
     /// set while an app has the input (`buttons`): ORAS's +0x7C and +0x9C, X's +0x70 and +0x90
-    /// (spike B).
+    /// (spike 228).
     pub field_menu: (i64, i64),
 }
 

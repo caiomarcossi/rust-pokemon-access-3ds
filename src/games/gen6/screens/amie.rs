@@ -337,7 +337,7 @@ impl Replaced {
 /// `LytTexReplaceSystem` that holds a texture for every kind, in the order the game's text names
 /// them: Sweet Poké Puff's first, Supreme Winter Poké Puff's twenty-sixth. A picture drawing its
 /// texture i's image is a puff of kind i. Read off or_pokemon-me's grid, enlarged: Sweet, Mint,
-/// Citrus, Mocha and Spice, then Frosted Sweet and Fancy Sweet, textures 0 to 5 and 10 (spike B).
+/// Citrus, Mocha and Spice, then Frosted Sweet and Fancy Sweet, textures 0 to 5 and 10 (spike 228).
 /// Its other replace systems hold fewer textures, the Interior Items' only those owned, and none
 /// as many as there are kinds.
 pub struct Puffs {
@@ -372,7 +372,7 @@ impl Puffs {
 ///
 /// The grid has three pages, the player's cushions, objects and furniture, each drawn with fifteen
 /// pictures and a `LytTexReplaceSystem` of fifteen textures, texture i the page's slot i, and the
-/// next page's slides in as the arrows are tapped (spike B, live from or_pokemon_me2's end). A
+/// next page's slides in as the arrows are tapped (spike 228, live from or_pokemon_me2's end). A
 /// plain block of the screen's, the object of a heap block, says what the pages hold:
 ///
 /// ```text

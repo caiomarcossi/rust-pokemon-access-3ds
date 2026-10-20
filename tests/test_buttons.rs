@@ -13,7 +13,7 @@ use crate::games::oras;
 const MANAGER_VTABLE: i64 = 0x005DCFFC;
 const BAR_VTABLE: i64 = 0x00705B64;
 const MENU_VTABLE: i64 = 0x007FE07C;
-/// The field's menu round the PlayNav, as or_super_train found it (spike B).
+/// The field's menu round the PlayNav, as or_super_train found it (spike 228).
 const MENU: i64 = 0x086039B0;
 /// The party's managers: its list's, its held items' corners', and its bottom bar's.
 const LIST: i64 = 0x082DFEFC;
@@ -92,7 +92,7 @@ fn test_a_freed_manager_and_a_touch_bar_with_no_listener_say_nothing() {
 }
 
 /// Under Super Training's Yes and No the page's buttons read 0 at +0x35 and Yes, its touch
-/// area 0x125, pane "85", reads 1 (spike B).
+/// area 0x125, pane "85", reads 1 (spike 228).
 #[test]
 fn test_a_button_switched_off_is_said_by_its_layouts_work_and_its_panes_name() {
     let memory = FakeMemory::new();
@@ -111,7 +111,7 @@ fn test_a_button_switched_off_is_said_by_its_layouts_work_and_its_panes_name() {
 }
 
 /// X's regimen menu keeps two buttons on its regimen's touch area "ca", 0x1ba, one of them
-/// off, and the regimen was left out (spike B, x_super_train2).
+/// off, and the regimen was left out (spike 228, x_super_train2).
 #[test]
 fn test_a_touch_area_one_of_whose_buttons_is_on_is_not_off() {
     let memory = FakeMemory::new();
@@ -137,7 +137,7 @@ fn test_a_manager_with_no_button_on_says_nothing_of_its_buttons() {
 }
 
 /// The PlayNav's frame takes no tap from Super Training's bags list on, though its buttons
-/// read 1 (spike B); the menu is found by its other vtables too, and those hold no manager.
+/// read 1 (spike 228); the menu is found by its other vtables too, and those hold no manager.
 #[test]
 fn test_the_field_menus_manager_is_locked_while_an_app_of_the_bottom_screen_has_the_input() {
     let memory = party(false, true);

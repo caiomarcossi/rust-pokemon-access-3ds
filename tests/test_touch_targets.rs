@@ -306,7 +306,7 @@ fn test_a_bare_button_in_the_top_bars_corners_is_the_page_arrows() {
 }
 
 /// Super Training's party under its Use panel: drawn as bright as ever, its buttons read 0,
-/// and a tap on Breloom did nothing (spike B).
+/// and a tap on Breloom did nothing (spike 228).
 #[test]
 fn test_a_touch_area_whose_button_is_switched_off_is_left_out() {
     let memory = FakeMemory::new();

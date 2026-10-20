@@ -26,12 +26,12 @@
 //!            +0x9c  an app of the bottom screen has the input (X's +0x90)
 //! ```
 //!
-//! Super Training's page locks no manager (spike B, or_super_train): it switches its buttons off one
-//! by one. Under its Use panel the party, the training-bags button and Super Training read 0 at +0x35
-//! and the bags 1, and a tap on a bag chose it while a tap on a party member did nothing; under its
-//! Yes and No only those two and the bag chosen read 1, and taps on the bag chosen, a party member
-//! and POKÉMON did nothing. A button switched off is left out, as a layout no button of which takes
-//! taps is.
+//! Super Training's page locks no manager (spike 228, or_super_train): it switches its buttons off
+//! one by one. Under its Use panel the party, the training-bags button and Super Training read 0 at
+//! +0x35 and the bags 1, and a tap on a bag chose it while a tap on a party member did nothing;
+//! under its Yes and No only those two and the bag chosen read 1, and taps on the bag chosen, a
+//! party member and POKÉMON did nothing. A button switched off is left out, as a layout no button
+//! of which takes taps is.
 //!
 //! The frame round the PlayNav's pages, its arrows and the X menu's icons along the bottom, is the
 //! field's `field::subscreen::FieldMenu`'s, whose manager's buttons read 1 throughout: the menu sets

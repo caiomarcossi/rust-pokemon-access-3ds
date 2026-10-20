@@ -254,7 +254,7 @@ fn test_a_training_bag_is_left_out_while_its_layouts_buttons_are_locked() {
     assert!(bags(true, false).0.targets(Some(FIELD)).unwrap().is_empty());
 }
 
-/// Under the page's Yes and No a tap on a bag did nothing (spike B).
+/// Under the page's Yes and No a tap on a bag did nothing (spike 228).
 #[test]
 fn test_a_training_bag_is_left_out_while_its_button_is_switched_off() {
     assert!(bags(false, true).0.targets(Some(FIELD)).unwrap().is_empty());

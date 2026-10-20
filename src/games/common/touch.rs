@@ -614,7 +614,7 @@ impl TouchTargets {
                 {
                     // And only while its button holds what it held: Amie's Interior Items move
                     // each page's pictures under touch areas that stay put, and a slot empty on
-                    // the next page was still said by the item it had held (spike B,
+                    // the next page was still said by the item it had held (spike 228,
                     // or_pokemon_me2).
                     names.insert(touch, name.clone());
                 } else if let Some(slot) = {

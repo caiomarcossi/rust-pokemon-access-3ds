@@ -77,7 +77,7 @@ fn test_xs_page_is_read_where_x_keeps_its_pokemon() {
 }
 
 /// X's text has no line for PLAY, DECORATE and SWITCH; a picture with no word in the data was
-/// taken for part of the menu's close (spike B, x_super_train3).
+/// taken for part of the menu's close (spike 228, x_super_train3).
 #[test]
 fn test_xs_menu_buttons_have_a_word_in_every_language_x_is_played_in() {
     let game = data_path().unwrap().join("xy");
@@ -193,7 +193,7 @@ fn test_a_puff_is_named_by_the_texture_of_the_replace_system_holding_every_kind(
 /// The grid's slot i draws texture i of its page's system of fifteen, and the pages' block,
 /// found a heap block back from the G2DUtil it points at, lists each page's items by number:
 /// or_pokemon_me2's cushions page held the Leaf Cushion first, its objects page the Pink Star
-/// Cloud (spike B).
+/// Cloud (spike 228).
 #[test]
 fn test_an_interior_item_is_named_by_its_slot_on_the_page_shown() {
     let memory = FakeMemory::new();
