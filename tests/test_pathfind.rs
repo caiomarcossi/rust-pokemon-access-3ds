@@ -8,7 +8,7 @@ use indexmap::IndexMap;
 
 use crate::core::pathfind::{
     Box, Cell, EAST, Leg, NORTH, Options, Reach, SOUTH, WEST, cover, facing, find, legs, nearest,
-    off, reached, spoken, towards, turned,
+    off, reached, spoken, towards, turned, walked, way,
 };
 use crate::py::Result;
 
@@ -680,4 +680,20 @@ fn test_thin_ice_is_crossed_over_every_tile_once_and_left_by_an_exit() {
         ),
         None
     );
+}
+
+/// Where up walks west, as in Parfum Palace's garden (spike 230), the world's north is right's
+/// way, said "east", and its west up's.
+#[test]
+fn test_a_way_of_the_compass_is_said_as_the_key_that_walks_it() {
+    walked(3);
+    // Python's `finally`: the compass is turned back before anything is asserted.
+    let said = (
+        spoken(&[Leg::new("north", 39, 39), Leg::new("west", 6, 45)]),
+        way("south-west"),
+    );
+    walked(0);
+    assert_eq!(said.0, "39 east, 6 north");
+    assert_eq!(said.1, "north-west");
+    assert_eq!(way("north"), "north");
 }
