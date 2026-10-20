@@ -4162,6 +4162,8 @@ fn test_under_a_streets_own_camera_the_player_is_on_the_grid() -> Result<()> {
         .map(|item| item.kind)
         .collect();
     assert_eq!(kinds, ["door", "door", "edge"]);
+    // Its lanes say each step by its key, and the camera's own heading reads 0 on a rail.
+    assert_eq!(town.reader.turn(3)?, 0);
     Ok(())
 }
 
