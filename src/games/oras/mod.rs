@@ -209,6 +209,23 @@ pub fn touch_words() -> &'static (i64, IndexMap<&'static str, i64>) {
         )
     })
 }
+/// The icons along the top of the PokéNav's AreaNav window, news of the AreaNav's views, by the
+/// line of the AreaNav's text naming the view each opens: a trainer, Trainer's Eye at 13; a berry,
+/// Berry Trees at 15, tapped live from or_area_nav's end; and the icon between, met only on a
+/// Secret Base's route (spike 198), Secret Bases at 14, the text's order and the icons' agreeing.
+pub fn areanav_news() -> &'static (i64, IndexMap<&'static str, i64>) {
+    static AREANAV_NEWS: OnceLock<(i64, IndexMap<&'static str, i64>)> = OnceLock::new();
+    AREANAV_NEWS.get_or_init(|| {
+        (
+            FACILITY_NAMES,
+            IndexMap::from([
+                ("mapnews_icon_01.bclim", 13),
+                ("mapnews_icon_02.bclim", 14),
+                ("mapnews_icon_03.bclim", 15),
+            ]),
+        )
+    })
+}
 /// The DexNav's red magnifier over the middle of its map, 120 by 120, while a hidden Pokémon is
 /// up: drawn as a picture alone, and tapped to show that Pokémon's box, so named by its title there,
 /// line 12 of text file 84, "Hidden Pokémon". It covers the icons under it, which a tap cannot reach
@@ -473,6 +490,7 @@ pub fn rom() -> &'static RomLayout {
         files: vec![sky::ARCHIVE.to_string()],
         touch_words: [
             touch_words(),
+            areanav_news(),
             bag_pockets(),
             dexnav_words(),
             training_bags(),
