@@ -3,16 +3,17 @@
 //! A scene has no name to look it up by, so it is found by the line of the game's text it follows,
 //! in the zone it is said in: a line is a file and a number in the ROM, the same in every language,
 //! and the zone tells one scene from another where both say the same words, as "Gotcha! Groudon was
-//! caught!" says what every capture does (spike 203). What follows the line is said a **beat** at a
-//! time, each when what it waits for comes: at once, a scene of the game's own starting
-//! (`app::field_demo::Proc`, which keeps nothing saying which), or the player arriving in a zone;
-//! then `at` seconds on. A scene waiting for a demo or a zone is let go when the player arrives
-//! anywhere else, as after losing a battle in it. A scene with no line is said each time the player
-//! arrives in its zone: a room whose way on nothing shows but the room itself. A line with no zone
-//! is said before the player has arrived anywhere: the opening's. A scene of one of a zone's
-//! triggers is said as the player first steps onto the trigger's cells after arriving: each of the
-//! Pokémon League's corridors plays its scene as the player walks across the trigger halfway along
-//! it, with no line before or after (Orion, 2026-10-16).
+//! caught!" says what every capture does (spike 203); a scene may follow any one of several, as
+//! Kyogre caught or knocked out plays the same one (Orion, 2026-10-20). What follows the line is
+//! said a **beat** at a time, each when what it waits for comes: at once, a scene of the game's own
+//! starting (`app::field_demo::Proc`, which keeps nothing saying which), or the player arriving in
+//! a zone; then `at` seconds on. A scene waiting for a demo or a zone is let go when the player
+//! arrives anywhere else, as after losing a battle in it. A scene with no line is said each time
+//! the player arrives in its zone: a room whose way on nothing shows but the room itself. A line
+//! with no zone is said before the player has arrived anywhere: the opening's. A scene of one of a
+//! zone's triggers is said as the player first steps onto the trigger's cells after arriving: each
+//! of the Pokémon League's corridors plays its scene as the player walks across the trigger halfway
+//! along it, with no line before or after (Orion, 2026-10-16).
 //!
 //! Omega Ruby and Alpha Sapphire play their own scenes in rooms of their own, twin zones of one
 //! layout (Seafloor Cavern's 0x6f and 0x6e), but some lines are said in a zone both share, as
@@ -119,15 +120,14 @@ pub struct Beat {
     pub at: f64,
 }
 
-/// A description and the line it follows: the last page of the line's message, by its index and
-/// a pattern of its words, or None for a scene said on arriving or as a demo starts; the zone it
-/// is said in; the number of the demo it is said over; or the zone's trigger, by its place in the
-/// zone's table of them, that starts it.
+/// A description and the lines it follows, any one of them: the last page of each line's message,
+/// by its index and a pattern of its words, none for a scene said on arriving or as a demo starts;
+/// the zone it is said in; the number of the demo it is said over; or the zone's trigger, by its
+/// place in the zone's table of them, that starts it.
 #[derive(Debug, Clone)]
 pub struct Scene {
-    pub page: Option<i64>,
-    /// Python's pattern, `fullmatch`ed: here anchored at both ends, `\A(?:...)\z`.
-    pub words: Option<Regex>,
+    /// Python's patterns, `fullmatch`ed: here anchored at both ends, `\A(?:...)\z`.
+    pub lines: Vec<(i64, Regex)>,
     pub zone: Option<i64>,
     pub beats: Vec<Beat>,
     pub demo: Option<i64>,
@@ -189,11 +189,12 @@ pub type Word = Rc<dyn Fn(&str, i64) -> Option<String>>;
 /// are there (`Described.known`). A line is `story:402:30`, the story text's file 402 and its
 /// line 30, or
 /// `text:147:67` out of the rest of the game's text, in its zone or, with none, before the player
-/// is anywhere; a scene with no line is said on arriving in its zone, as the player steps onto
-/// one of its triggers, `trigger = 0`, or as its demo starts, `demo = 6`, where the game numbers
-/// them. A scene whose line or names the ROM does not have is
-/// left out, and logged. A scene with a `title` is the running `title`'s alone: one version's,
-/// said at a line in a zone the other version shares.
+/// is anywhere; `after` may list several, `["text:147:67", "text:148:1"]`, and any one of them
+/// starts the scene, as a legendary caught or knocked out plays the same one. A scene with no
+/// line is said on arriving in its zone, as the player steps onto one of its triggers,
+/// `trigger = 0`, or as its demo starts, `demo = 6`, where the game numbers them. A scene whose
+/// lines or names the ROM does not have is left out, and logged. A scene with a `title` is the
+/// running `title`'s alone: one version's, said at a line in a zone the other version shares.
 pub fn load(
     text: &str,
     line: Line,
@@ -207,8 +208,18 @@ pub fn load(
         if title.is_some_and(|title| int_of(table.get("title")).is_some_and(|only| only != title)) {
             continue;
         }
-        let after = str_of(table.get("after"));
+        // `[after] if isinstance(after, str) else after if isinstance(after, list) else []`.
+        let after: Vec<Value> = match table.get("after") {
+            Some(Value::String(text)) => vec![Value::String(text.clone())],
+            Some(Value::Array(items)) => items.clone(),
+            _ => Vec::new(),
+        };
         let zone = int_of(table.get("zone"));
+        let afters: Vec<String> = after
+            .iter()
+            .filter(|one| truth(Some(one)))
+            .map(|one| str_of(Some(one)))
+            .collect();
         // `isinstance(demo, int) and not isinstance(demo, bool)`.
         let demo = match table.get("demo") {
             Some(Value::Integer(number)) => Some(*number),
@@ -218,17 +229,10 @@ pub fn load(
             Some(Value::Integer(number)) => Some(*number),
             _ => None,
         };
-        let (archive, at) = partition(&after);
-        let (file, number) = partition(at);
-        let raw = if py::isdigit(file) && py::isdigit(number) {
-            line(archive, py::int_base10(file)?, py::int_base10(number)?)?
-        } else {
-            None
-        };
-        let page = match raw {
-            None => None,
-            Some(raw) => last_page(&raw)?,
-        };
+        let pages: Vec<Option<(i64, Regex)>> = afters
+            .iter()
+            .map(|one| followed(one, line))
+            .collect::<Result<_>>()?;
         let beats: Vec<Option<Beat>> = tables(table.get("beat")).iter().map(beat).collect();
         let kept: Vec<Beat> = beats
             .iter()
@@ -236,21 +240,16 @@ pub fn load(
             .filter(|beat| known(&beat.message))
             .cloned()
             .collect();
-        if (!after.is_empty() && page.is_none())
-            || (demo.is_none() && after.is_empty() && zone.is_none())
+        if pages.iter().any(Option::is_none)
+            || (demo.is_none() && afters.is_empty() && zone.is_none())
             || kept.is_empty()
             || kept.len() < beats.len()
         {
-            log_left_out(log, &after, demo, trigger);
+            log_left_out(log, &afters.join(" or "), demo, trigger);
             continue;
         }
-        let (page, words) = match page {
-            Some((page, words)) => (Some(page), Some(words)),
-            None => (None, None),
-        };
         scenes.push(Scene {
-            page,
-            words,
+            lines: pages.into_iter().flatten().collect(),
             zone,
             beats: kept,
             demo,
@@ -272,6 +271,21 @@ fn log_left_out(log: &Log, after: &str, demo: Option<i64>, trigger: Option<i64>)
     ));
 }
 
+/// The last page of a line a scene follows, `story:402:30`, or None where the ROM has none.
+fn followed(after: &str, line: Line) -> Result<Option<(i64, Regex)>> {
+    let (archive, at) = partition(after);
+    let (file, number) = partition(at);
+    let raw = if py::isdigit(file) && py::isdigit(number) {
+        line(archive, py::int_base10(file)?, py::int_base10(number)?)?
+    } else {
+        None
+    };
+    match raw {
+        None => Ok(None),
+        Some(raw) => last_page(&raw),
+    }
+}
+
 /// `text.partition(":")`'s head and tail.
 fn partition(text: &str) -> (&str, &str) {
     match text.split_once(':') {
@@ -280,9 +294,9 @@ fn partition(text: &str) -> (&str, &str) {
     }
 }
 
-/// `str(table.get(key, ""))`, for what a scenes file holds: a string as it is, a number or a
-/// truth value as Python writes it. Anything else, an array or a table, is written as TOML
-/// writes it where Python would write its repr; no file of ours holds one there.
+/// `str(one)` of a line a scene's `after` lists: a string as it is, a number or a truth value as
+/// Python writes it. Anything else, an array or a table, is written as TOML writes it where Python
+/// would write its repr; no file of ours holds one there.
 fn str_of(value: Option<&Value>) -> String {
     match value {
         None => String::new(),
@@ -544,11 +558,10 @@ impl Scenes {
     pub fn heard(&mut self, page: i64, text: &str, zone: Option<i64>, say: Say) -> Result<()> {
         let found = self.scenes.iter().position(|scene| {
             scene.zone == zone
-                && scene.page == Some(page)
                 && scene
-                    .words
-                    .as_ref()
-                    .is_some_and(|words| words.is_match(text))
+                    .lines
+                    .iter()
+                    .any(|(at, words)| *at == page && words.is_match(text))
         });
         if let Some(found) = found {
             self.start(found, say)?;
@@ -585,7 +598,7 @@ impl Scenes {
             self.scene = None;
         }
         let found = self.scenes.iter().position(|scene| {
-            scene.words.is_none()
+            scene.lines.is_empty()
                 && scene.demo.is_none()
                 && scene.trigger.is_none()
                 && scene.zone == Some(zone)

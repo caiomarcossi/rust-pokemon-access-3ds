@@ -4,8 +4,8 @@
 #
 # A scene follows a line of the game's text in a zone, or in none before the player has arrived
 # anywhere, as in the opening: `story:402:30` is the story text's file 402, line 30, the same line
-# in every language, and `text:147:67` the rest of the game's text (`games.common.scenes`). A scene
-# with no line is said as the player arrives in its zone, or with `trigger` as they first step
+# in every language, and `text:147:67` the rest of the game's text (`games.common.scenes`); a list
+# of lines, `["text:147:67", "text:148:1"]`, is any one of them. A scene with no line is said as the player arrives in its zone, or with `trigger` as they first step
 # onto that trigger of the zone's. Its beats are said one after another: a beat with `demo` waits
 # for a scene of the game's own to start (a demo, the Hall of Fame, the credits), one with `zone`
 # for the player to arrive there, then `at` seconds. A beat's `id` is a label, not a place: one put
@@ -352,10 +352,11 @@ id = "or-groudon-faced-3"
 at = 40
 id = "or-groudon-faced-4"
 
-# "Gotcha! Groudon was caught!", then a demo of 40 s and the field across Hoenn's towns, to
+# "Gotcha! Groudon was caught!", or "The wild Groudon fainted!" as Kyogre's is (Alpha
+# Sapphire's test_kyogre_scene), then a demo of 40 s and the field across Hoenn's towns, to
 # Sootopolis.
 [[scene]]
-after = "text:147:67"
+after = ["text:147:67", "text:148:1"]
 zone = 0x7a
 
 [[scene.beat]]
@@ -540,10 +541,10 @@ id = "as-kyogre-faced-3"
 at = 40
 id = "as-kyogre-faced-4"
 
-# "Gotcha! Kyogre was caught!", then a demo of 40 s and the field across Hoenn's towns, to
-# Sootopolis.
+# "Gotcha! Kyogre was caught!", or "The wild Kyogre fainted!" (test_kyogre_scene), then a demo
+# of 40 s and the field across Hoenn's towns, to Sootopolis.
 [[scene]]
-after = "text:147:67"
+after = ["text:147:67", "text:148:1"]
 zone = 0x79
 
 [[scene.beat]]

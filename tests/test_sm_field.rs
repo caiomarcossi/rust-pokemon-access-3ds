@@ -1181,8 +1181,7 @@ fn test_walking_into_another_zone_of_the_area_is_not_a_warp() {
 fn test_a_beat_waiting_for_a_zone_comes_as_the_field_arrives_there() {
     let bedroom = Bedroom::new();
     let scene = Scene {
-        page: None,
-        words: None,
+        lines: Vec::new(),
         zone: None,
         beats: vec![Beat {
             message: "field-1".to_string(),

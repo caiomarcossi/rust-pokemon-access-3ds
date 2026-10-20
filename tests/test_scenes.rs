@@ -266,6 +266,69 @@ missing-1 = { ITEM(9999) } is nowhere.
     Ok(())
 }
 
+/// Kyogre caught or knocked out plays the same scene (test_kyogre_scene): either line in zone 0x79
+/// starts it, and a scene one of whose lines the ROM lacks is left out.
+#[test]
+fn test_a_scene_after_several_lines_follows_any_one_of_them() -> Result<()> {
+    let tmp_path = TmpDir::new();
+    let (log, logged) = logging();
+    let (scenes, words) = described(
+        tmp_path.path(),
+        r#"
+[[scene]]
+after = ["text:147:67", "text:148:1"]
+zone = 0x79
+[[scene.beat]]
+id = "clears-1"
+
+[[scene]]
+after = ["text:147:67", "text:148:9"]
+zone = 0x79
+[[scene.beat]]
+id = "clears-1"
+"#,
+        "clears-1 = The rain is gone.\n",
+        &[
+            (
+                ("text", 147, 67),
+                line(&[
+                    Part::Text("Gotcha! "),
+                    Part::Control(&[0x0101, 0]),
+                    Part::Text(" was caught!"),
+                ]),
+            ),
+            (
+                ("text", 148, 1),
+                line(&[
+                    Part::Text("The wild "),
+                    Part::Control(&[0x0101, 0]),
+                    Part::Text(" fainted!"),
+                ]),
+            ),
+        ],
+        &[],
+        None,
+        &log,
+        None,
+    )?;
+    assert!(
+        scenes.len() == 1
+            && *logged.borrow()
+                == [
+                    "scene after text:147:67 or text:148:9: left out, the ROM does not have its \
+                     line or its names"
+                ]
+    );
+    let said: RefCell<Vec<String>> = RefCell::new(Vec::new());
+    let mut reader = Scenes::with_monotonic(scenes, said_of(&words));
+    let mut say = |text: &str| said.borrow_mut().push(text.to_string());
+    reader.heard(0, "The wild Kyogre fainted!", Some(0x79), &mut say)?;
+    reader.heard(0, "Gotcha! Kyogre was caught!", Some(0x79), &mut say)?;
+    reader.heard(0, "The wild Zubat fainted!", Some(0x70), &mut say)?;
+    assert_eq!(*said.borrow(), ["The rain is gone.", "The rain is gone."]);
+    Ok(())
+}
+
 /// The timing names a beat no `scenes.ftl` has: said as its id, it would be gibberish.
 #[test]
 fn test_a_beat_with_no_words_in_any_language_leaves_its_scene_out() -> Result<()> {
