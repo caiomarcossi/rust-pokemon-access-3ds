@@ -1,0 +1,18 @@
+# pa3ds's own footsteps in X and Y, under [pa3ds.audio] footsteps: what it plays at each step,
+# walking and running, by the ground under the player (ADR-0025, `games.gen6.field.footsteps`).
+# This file is every language's.
+#
+# A ground is `silent`, every ground the game plays no footstep on, or a kind of cell, the top
+# byte of its word in hex: "0x00" streets and floors. A kind wins over `silent`, and plays where
+# the game plays a footstep of its own too, over it. What is played is one sound or several at
+# once: the game's own by its name in the ROM's sound archive, "SEQ_SE_FT_03", read out of the
+# player's ROM, or a WAV of pa3ds's own in data/sounds, which every game shares, "seaweed.wav",
+# 16-bit; each as it is, or as { sound = "water.wav", volume = 0.5 }, half as loud.
+#
+# The same sounds as Omega Ruby's: X's archive has them by the same names.
+
+[walk]
+silent = ["SEQ_SE_FT_03"]
+
+[run]
+silent = ["SEQ_SE_RU_03"]

@@ -55,7 +55,7 @@ the Game Boy games. Nothing here is taken from its code.
   the Trainer Passport's photos in Sun and Moon, described in pa3ds's own words.
 - **Scenes without words**, described when the `descriptions` setting is on: many in Omega Ruby
   and Alpha Sapphire, and one in Sun so far.
-- **Footsteps** where Omega Ruby and Alpha Sapphire play none, as on streets, floors and in
+- **Footsteps** where Omega Ruby, Alpha Sapphire, X and Y play none, as on streets, floors and in
   caves: the game's own step sound, as loud as the game and Azahar would play it.
 
 pa3ds says only what the game shows. Hidden information such as IVs or the enemy's exact HP is

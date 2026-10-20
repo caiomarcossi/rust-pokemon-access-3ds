@@ -20,8 +20,9 @@
 //! while the model says so (`mmodel.surfing`), whichever Pokémon it is, and is under the sea while
 //! the zone is (spike 227).
 //!
-//! Measured in Omega Ruby and Alpha Sapphire: X's move model is eight bytes shorter (spike 100),
-//! and Sun's is another engine's.
+//! Measured in Omega Ruby and Alpha Sapphire, and in X, whose model keeps the same things a little
+//! otherwise, its run another animation and its silent ground other footsteps (`Steps`, spike B).
+//! Sun's is another engine's.
 //!
 //! The port builds each game's table in (pa3ds/rust-pokemon-access-3ds#16): a player has no
 //! reason to edit it, and only the translations ship as files. `shipped` is the table, and
@@ -40,7 +41,7 @@ use crate::core::config::repr_of;
 use crate::core::memory::Memory;
 use crate::core::rom::Rom;
 use crate::core::toml;
-use crate::games::common::field::chunk::{KIND_SHIFT, SILENT, footstep};
+use crate::games::common::field::chunk::{FOOTSTEP_SHIFT, KIND_SHIFT, SILENT, footstep_at};
 use crate::games::gen6::field::mmodel;
 use crate::py::{self, Error, Kind, Log, Result};
 
@@ -63,9 +64,16 @@ pub const MOVEMENTS: [(i64, &str); 6] = [
     (0x6B, RUN),
     (0x7A, RUN),
 ];
-/// The frames a foot comes down on (`0x007e5eb8`), by movement: Python's `FALLS[movement]`.
+/// The frames a foot comes down on (`0x007e5eb8`).
+pub const FALLS: [(&str, &[i64]); 2] = [(WALK, &[6, 13]), (RUN, &[7, 15])];
+
+/// `FALLS[movement]`.
 pub fn falls(movement: &str) -> &'static [i64] {
-    if movement == RUN { &[7, 15] } else { &[6, 13] }
+    if movement == RUN {
+        FALLS[1].1
+    } else {
+        FALLS[0].1
+    }
 }
 pub const SURF: &str = "surf";
 pub const DIVE: &str = "dive";
@@ -85,9 +93,53 @@ pub const EVERY_KEY: &str = "every";
 pub fn shipped(data: &Path) -> &'static str {
     match data.file_name().and_then(|name| name.to_str()) {
         Some("oras") => include_str!("../../../../data/oras/footsteps.toml"),
+        Some("xy") => include_str!("../../../../data/xy/footsteps.toml"),
         _ => "",
     }
 }
+
+/// Where a game keeps a step's moment and which ground it is silent on: Omega Ruby's by
+/// default (`Game.steps`).
+///
+/// Python's `movements` and `falls` are mappings and `silent` a frozenset, each only looked up.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Steps {
+    pub animation: i64,
+    pub animation_id: i64,
+    pub frame: i64,
+    pub movements: &'static [(i64, &'static str)],
+    pub falls: &'static [(&'static str, &'static [i64])],
+    /// Where the cell's word keeps its footstep, five bits (`chunk.footstep`).
+    pub shift: i64,
+    /// The footsteps whose walk and run play nothing.
+    pub silent: &'static [i64],
+}
+
+impl Steps {
+    /// Whether the game plays no footstep on the cell whose word this is.
+    pub fn is_silent(&self, word: i64) -> bool {
+        self.silent.contains(&footstep_at(word, self.shift))
+    }
+
+    /// `falls[movement]`, which raises where the movement has none.
+    #[track_caller]
+    fn falls_of(&self, movement: &str) -> Result<&'static [i64]> {
+        match self.falls.iter().find(|&&(known, _)| known == movement) {
+            Some(&(_, falls)) => Ok(falls),
+            None => Err(Error::key(py::repr(movement))),
+        }
+    }
+}
+
+pub const ORAS: Steps = Steps {
+    animation: ANIMATION,
+    animation_id: ANIMATION_ID,
+    frame: FRAME,
+    movements: &MOVEMENTS,
+    falls: &FALLS,
+    shift: FOOTSTEP_SHIFT,
+    silent: &[SILENT],
+};
 
 #[derive(Debug, Clone)]
 struct Ride {
@@ -106,6 +158,8 @@ pub type Underwater = Rc<dyn Fn(i64) -> Result<bool>>;
 
 /// The player's footfalls, followed a tick at a time, and their swimming.
 pub struct Footsteps {
+    steps: Steps,
+    form: Option<i64>,
     memory: Rc<dyn Memory>,
     play: Play,
     grounds: HashSet<String>,
@@ -129,15 +183,38 @@ impl Footsteps {
         )
     }
 
-    /// `grounds` names the clips there are, `walk silent` or `dive 0x42` (`clip_name`);
-    /// `every` the cells between sounds surfing and diving; `underwater` whether a zone is
-    /// under the sea.
+    /// `Footsteps(memory, play, grounds, every, underwater)`: ORAS's `steps`, and the form read
+    /// where ORAS keeps it.
     pub fn with(
         memory: Rc<dyn Memory>,
         play: Play,
         grounds: HashSet<String>,
         every: &IndexMap<String, f64>,
         underwater: Underwater,
+    ) -> Self {
+        Footsteps::with_steps(
+            memory,
+            play,
+            grounds,
+            every,
+            underwater,
+            ORAS,
+            Some(mmodel::FORM),
+        )
+    }
+
+    /// `grounds` names the clips there are, `walk silent` or `dive 0x42` (`clip_name`);
+    /// `every` the cells between sounds surfing and diving; `underwater` whether a zone is
+    /// under the sea; `steps` where the game keeps a step; `form` where the model says what
+    /// the player rides, None where it is not read (`Game.form`).
+    pub fn with_steps(
+        memory: Rc<dyn Memory>,
+        play: Play,
+        grounds: HashSet<String>,
+        every: &IndexMap<String, f64>,
+        underwater: Underwater,
+        steps: Steps,
+        form: Option<i64>,
     ) -> Self {
         let mut merged: IndexMap<String, f64> = EVERY
             .iter()
@@ -149,6 +226,8 @@ impl Footsteps {
                 .map(|(movement, &cells)| (movement.clone(), cells)),
         );
         Footsteps {
+            steps,
+            form,
             memory,
             play,
             grounds,
@@ -168,34 +247,36 @@ impl Footsteps {
             (self.seen, self.ride) = (None, None);
             return Ok(());
         }
-        if byte(&head, mmodel::RIDING)? & mmodel::BIKE != 0
-            && mmodel::surfing(
-                &head,
-                Some(byte(&self.memory.read(model + mmodel::FORM, 1)?, 0)?),
-            )?
-        {
+        let form = match self.form {
+            None => None,
+            Some(at) => Some(byte(&self.memory.read(model + at, 1)?, 0)?),
+        };
+        if byte(&head, mmodel::RIDING)? & mmodel::BIKE != 0 && mmodel::surfing(&head, form)? {
             self.seen = None;
             return self.swim(&head);
         }
         self.ride = None;
-        let animation = u32(&self.memory.read(model + ANIMATION, 4)?, 0)?;
+        let steps = self.steps;
+        let animation = u32(&self.memory.read(model + steps.animation, 4)?, 0)?;
         if animation == 0 {
             self.seen = None;
             return Ok(());
         }
-        let body = self.memory.read(animation, ANIMATION_ID + 2)?;
-        let which = u16(&body, ANIMATION_ID)?;
-        let frame = f32(&body, FRAME)?;
-        let Some(&(_, movement)) = MOVEMENTS.iter().find(|&&(id, _)| id == which) else {
+        let body = self.memory.read(animation, steps.animation_id + 2)?;
+        let which = u16(&body, steps.animation_id)?;
+        let frame = f32(&body, steps.frame)?;
+        let Some(&(_, movement)) = steps.movements.iter().find(|&&(id, _)| id == which) else {
             self.seen = None;
             return Ok(());
         };
         let seen = self.seen.replace((which, frame));
         // The game looks only at the frames an animation passes as it plays, never at where a new
         // one starts: a walk begun or turned mid-stride passes no footfall on its first tick.
-        match seen {
-            Some((before, then)) if before == which && came_down(falls(movement), then, frame) => {}
-            _ => return Ok(()),
+        let Some((before, then)) = seen else {
+            return Ok(());
+        };
+        if before != which || !came_down(steps.falls_of(movement)?, then, frame) {
+            return Ok(());
         }
         if let Some(clip) = self.clip(movement, u32(&head, GROUND)?) {
             (self.play)(&clip)?;
@@ -257,7 +338,7 @@ impl Footsteps {
     /// or None where it has neither.
     fn clip(&self, movement: &str, word: i64) -> Option<String> {
         let mut name = clip_name(movement, Some(word >> KIND_SHIFT));
-        if !self.grounds.contains(&name) && footstep(word) == SILENT {
+        if !self.grounds.contains(&name) && self.steps.is_silent(word) {
             name = clip_name(movement, None);
         }
         self.grounds.contains(&name).then_some(name)

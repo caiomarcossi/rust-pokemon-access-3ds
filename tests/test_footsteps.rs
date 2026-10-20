@@ -15,8 +15,9 @@ use crate::core::bcsar::Sound;
 use crate::core::clips::mix;
 use crate::core::loudness::azahar_volume;
 use crate::games::common::field::chunk::footstep;
-use crate::games::gen6::field::footsteps::{self, Footsteps, came_down, load};
+use crate::games::gen6::field::footsteps::{self, Footsteps, Steps, came_down, load};
 use crate::games::gen6::field::mmodel;
+use crate::games::xy;
 use crate::py::Log;
 
 const MODEL: i64 = 0x08D209B8;
@@ -59,6 +60,7 @@ fn test_a_foot_comes_down_once_as_the_frame_passes_it() {
 
 struct Walk {
     memory: Rc<FakeMemory>,
+    layout: Steps,
     played: Rc<RefCell<Vec<String>>>,
     steps: Footsteps,
 }
@@ -68,13 +70,22 @@ impl Walk {
         Walk::with(grounds, None)
     }
 
+    /// `Walk(grounds, layout)`: where a game other than ORAS keeps a step.
+    fn laid(grounds: HashSet<String>, layout: Steps) -> Walk {
+        Walk::built(grounds, None, layout)
+    }
+
     /// `Walk(grounds)`, or with `swim` the `Swim(grounds, every)` built on it: a zone `BELOW`
     /// under the sea.
     fn with(grounds: HashSet<String>, swim: Option<IndexMap<String, f64>>) -> Walk {
+        Walk::built(grounds, swim, footsteps::ORAS)
+    }
+
+    fn built(grounds: HashSet<String>, swim: Option<IndexMap<String, f64>>, layout: Steps) -> Walk {
         let memory = FakeMemory::new();
         memory.u32(MODEL + mmodel::IN_USE, &[1]);
         memory.u32(MODEL + mmodel::ZONE, &[0x00170000 | mmodel::PLAYER_INDEX]);
-        memory.u32(MODEL + footsteps::ANIMATION, &[ANIMATION]);
+        memory.u32(MODEL + layout.animation, &[ANIMATION]);
         let played: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
         let play: footsteps::Play = {
             let played = played.clone();
@@ -84,7 +95,19 @@ impl Walk {
             })
         };
         let steps = match swim {
-            None => Footsteps::new(memory.clone(), play, grounds),
+            None => Footsteps::with_steps(
+                memory.clone(),
+                play,
+                grounds,
+                &IndexMap::new(),
+                Rc::new(|_zone: i64| Ok(false)),
+                layout,
+                if layout != footsteps::ORAS {
+                    None
+                } else {
+                    Some(mmodel::FORM)
+                },
+            ),
             Some(every) => Footsteps::with(
                 memory.clone(),
                 play,
@@ -95,6 +118,7 @@ impl Walk {
         };
         Walk {
             memory,
+            layout,
             played,
             steps,
         }
@@ -107,9 +131,9 @@ impl Walk {
     fn frame(&mut self, animation: i64, frame: f64, ground: i64) {
         self.memory.u32(MODEL + footsteps::GROUND, &[ground]);
         self.memory
-            .u16(ANIMATION + footsteps::ANIMATION_ID, animation);
+            .u16(ANIMATION + self.layout.animation_id, animation);
         self.memory
-            .write(ANIMATION + footsteps::FRAME, &(frame as f32).to_le_bytes());
+            .write(ANIMATION + self.layout.frame, &(frame as f32).to_le_bytes());
         self.steps.poll(MODEL).unwrap();
     }
 
@@ -163,6 +187,25 @@ fn test_running_plays_the_run() {
         walk.played(),
         names(&["walk silent", "walk silent", "run silent", "run silent"])
     );
+}
+
+/// Spike B: X's animation at the model's +0x97c, its id at +0x4e and frame at +0x18; its
+/// walk 0x5c and run 0x5d; its footstep bits 11 to 15, silent at 0, 1, 14 and 15. Its paths'
+/// word is ORAS's street, 0x20; 0x6828, Santalune Gym's strand, has footstep 13, which plays.
+#[test]
+fn test_x_keeps_its_step_where_its_code_does_and_its_own_silent_ground() {
+    let mut walk = Walk::laid(silent(), xy::STEPS);
+    walk.cycle(0x5C, STREET);
+    walk.cycle(WALKING, 0x00006828);
+    // footstep 14
+    walk.cycle(WALKING, 0x00007020);
+    for frame in 0..16 {
+        walk.frame(0x5D, frame as f64, STREET);
+    }
+    // The strand plays the game's own; the run's first tick passes no footfall, then 8 does.
+    let mut played = times("walk silent", 4);
+    played.push("run silent".to_string());
+    assert_eq!(walk.played(), played);
 }
 
 #[test]

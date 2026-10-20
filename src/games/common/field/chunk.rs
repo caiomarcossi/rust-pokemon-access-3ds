@@ -63,13 +63,21 @@ pub const KIND_SHIFT: i64 = 24;
 /// 225).
 pub const SILENT: i64 = 0;
 
-/// Which footstep the game plays on a cell, as it reads the word (`0x00402fcc`): bits 12 to
-/// 16, and `SILENT` for an all-ones word or one of kind `0xff` (spike 225).
+/// Where ORAS's cell word keeps its footstep: bits 12 to 16. X's are bits 11 to 15 (spike B).
+pub const FOOTSTEP_SHIFT: i64 = 12;
+
+/// `footstep(word)`, at ORAS's `FOOTSTEP_SHIFT`.
 pub fn footstep(word: i64) -> i64 {
+    footstep_at(word, FOOTSTEP_SHIFT)
+}
+
+/// Which footstep the game plays on a cell, as it reads the word (`0x00402fcc`): five bits
+/// from `shift`, and `SILENT` for an all-ones word or one of kind `0xff` (spike 225).
+pub fn footstep_at(word: i64, shift: i64) -> i64 {
     if word == 0xFFFFFFFF || word >> KIND_SHIFT == 0xFF {
         return SILENT;
     }
-    (word >> 12) & 0x1F
+    (word >> shift) & 0x1F
 }
 
 /// The floor a cell of a chunk with one floor is on, and one with floors where which is not

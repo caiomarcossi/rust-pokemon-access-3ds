@@ -677,12 +677,14 @@ impl Gen6Profile {
         let footsteps = clips.map(|clips| {
             let reader = field.borrow().clone();
             let grounds = clips.names();
-            RefCell::new(Footsteps::with(
+            RefCell::new(Footsteps::with_steps(
                 memory.clone(),
                 Rc::new(move |name: &str| clips.play(name)),
                 grounds,
                 &swims.unwrap_or_default(),
                 Rc::new(move |zone: i64| reader.zones.underwater(zone)),
+                game.steps,
+                game.form,
             ))
         });
         let navigator = Navigator::new(

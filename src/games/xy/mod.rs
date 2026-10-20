@@ -15,6 +15,7 @@ use indexmap::IndexMap;
 
 use crate::core::keyfile::data_path;
 use crate::games::common::field::ground::{CUT, ROCK_SMASH, STRENGTH};
+use crate::games::gen6::field::footsteps::{RUN, Steps, WALK};
 use crate::games::gen6::game::{Data, FurnitureKind, Game};
 use crate::games::gen6::rom::layout::{RomLayout, TownFacilities, owned};
 use crate::games::xy::intro::IntroReader;
@@ -174,6 +175,32 @@ pub fn training_button() -> &'static (i64, IndexMap<&'static str, i64>) {
     TRAINING_BUTTON.get_or_init(|| (55, IndexMap::from([("spar_button.bclim", 178)])))
 }
 
+/// Where X keeps a step's moment (spike B): the footstep check at `0x00719af8` looks the model's
+/// animation up in 23 movements of three ids (`0x007933b0`), walking 0x04, 0x5c and 0x6f, running
+/// 0x05, 0x5d and 0x70, and plays at the frames of `0x0079443c`, 6 and 13 walking, 0 and 8
+/// running. The model keeps its animation at +0x97c, which holds its frame at +0x18 and its id at
+/// +0x4e, four on from ORAS's; the ground word at +0x148 as ORAS. The footstep is bits 11 to 15 of
+/// the word (`0x003e0a34`), and the labels' table (`0x00793804`, 17 footsteps of 23 movements of
+/// two feet) has no walk or run for 0, 1, 14 and 15.
+pub const STEPS: Steps = Steps {
+    animation: 0x97C,
+    animation_id: 0x4E,
+    frame: 0x18,
+    movements: &[
+        (0x04, WALK),
+        (0x5C, WALK),
+        (0x6F, WALK),
+        (0x05, RUN),
+        (0x5D, RUN),
+        (0x70, RUN),
+    ],
+    falls: &[(WALK, &[6, 13]), (RUN, &[0, 8])],
+    shift: 11,
+    silent: &[0, 1, 14, 15],
+};
+/// Every sound the game plays, named, its footsteps by Omega Ruby's names (spike B).
+pub const SOUND_ARCHIVE: &str = "sound/xy_sound.bcsar";
+
 /// Place names in file 72 ("Route 4" at the index Route 4's row holds), trainer classes 20 and
 /// names 21, the PC's lines 74 in the order ORAS has them; zone N's file is `a/0/1/2` file N and the
 /// zone table file 360; a trainer's class is a byte at +0x01 and its battle at +0x02 (spike 100).
@@ -208,6 +235,7 @@ pub fn rom() -> &'static RomLayout {
         battle_models: Some("a/0/0/7".to_string()),
         puffs: Some(PUFF_NAMES),
         goods: Some(GOODS_NAMES),
+        sounds: Some(SOUND_ARCHIVE.to_string()),
         touch_words: [training_bags(), training_regimens(), training_button()]
             .into_iter()
             .map(|(file, lines)| {
@@ -410,6 +438,7 @@ pub fn game() -> &'static Game {
         models: Some(MODELS),
         strands: STRAND,
         gates: true,
+        steps: STEPS,
         training: TRAINING,
         amie: AMIE,
         field_menu: FIELD_MENU,

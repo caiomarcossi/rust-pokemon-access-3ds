@@ -25,6 +25,7 @@ use crate::games::gen6::apps::RunningApp;
 use crate::games::gen6::field::features::{
     DoorReader, Feature, HiddenReader, IceReader, SecretBaseReader,
 };
+use crate::games::gen6::field::footsteps::{ORAS, Steps};
 use crate::games::gen6::rom::archives::GameText;
 use crate::games::gen6::rom::layout::RomLayout;
 use crate::games::gen6::screens::amie::NUMBER;
@@ -281,6 +282,9 @@ pub struct Game {
     /// Where the player's move model says what they move as, on foot, on the bike or on a
     /// Pokémon (`mmodel.FORM`), or None where it was not read: X's.
     pub form: Option<i64>,
+    /// Where its move model keeps a step's moment and which ground it plays no footstep on
+    /// (`footsteps.Steps`): ORAS's, or X's (spike B).
+    pub steps: Steps,
     /// Where its Super Training page keeps the PokeIcon of its party's icons, its records following
     /// (`screens.training`): ORAS's 0xF0, X's 0xC8 (spike B).
     pub training: i64,
@@ -340,6 +344,7 @@ impl Game {
             strands: 0,
             gates: false,
             form: None,
+            steps: ORAS,
             training: ICONS,
             amie: NUMBER,
             worded: IndexSet::new(),
