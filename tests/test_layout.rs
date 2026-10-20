@@ -4,7 +4,7 @@ use indexmap::{IndexMap, IndexSet};
 
 use super::fake_layouts::FakeLayouts;
 use super::fake_memory::{FakeClasses, FakeMemory};
-use crate::games::common::layout::SETTLE_WALKS;
+use crate::games::common::layout::{BUILT_POLLS, SETTLE_WALKS};
 use crate::games::common::lyt;
 
 const POOL: i64 = 0x14A9F008;
@@ -229,15 +229,38 @@ fn test_a_layout_taken_off_the_list_of_layouts_to_draw_is_drawn_no_more() {
 
     let drawn = || -> bool {
         fake.layouts.refresh();
+        fake.layouts.revive().unwrap();
         let placement = fake.layouts.placement(root).unwrap();
         placement.is_some_and(|placement| placement.drawn) && !fake.layouts.taken_off(root).unwrap()
     };
 
-    assert!(drawn());
+    for _ in 0..BUILT_POLLS {
+        assert!(drawn());
+    }
     memory.write(work + lyt::WORK_LISTED, &[1]);
     assert!(drawn());
     memory.write(work + lyt::WORK_LISTED, &[0]);
     assert!(!drawn());
     memory.write(work + lyt::WORK_LISTED, &[1]);
     assert!(drawn());
+}
+
+/// The AreaNav draws its layouts itself, and one of its works read listed once as it was built
+/// and never again: taken off the list from then on, its bar's tabs and return were left out of
+/// touch mode until pa3ds closed (or_area_nav).
+#[test]
+fn test_a_layout_read_listed_as_it_is_built_is_not_taken_off() {
+    let memory = FakeMemory::new();
+    let fake = FakeLayouts::new(&memory, &FakeClasses::new(memory.clone()));
+    let (work, root) = fake.screen_with(0x14B00000, false, false);
+    memory.write(work + lyt::WORK_LISTED, &[1]);
+    fake.track().unwrap();
+    fake.layouts.refresh();
+    fake.layouts.placement(root).unwrap();
+    memory.write(work + lyt::WORK_LISTED, &[0]);
+    for _ in 0..BUILT_POLLS + 1 {
+        fake.layouts.refresh();
+        fake.layouts.revive().unwrap();
+        assert!(!fake.layouts.taken_off(root).unwrap());
+    }
 }

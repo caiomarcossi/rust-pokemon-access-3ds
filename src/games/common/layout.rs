@@ -45,6 +45,12 @@ pub const PENDING_LOOKS: i64 = 300;
 /// allocated, Sun's save prompt's cursor had no panes yet, its tree was walked empty and never
 /// again, and the prompt's Yes and No were read out whole (sun_3.ctm, spike 123).
 pub const SETTLE_WALKS: i64 = 5;
+/// Screen polls a layout just taken in is not taken for listed (`lyt.WORK_LISTED`): the AreaNav
+/// draws its layouts itself, and one of its works read listed once, 0.17 s after it started, and
+/// never again (or_area_nav). Taken for listed, a layout is taken off the list for good once it
+/// reads 0, and the AreaNav's bar, its tabs and return, was left out of touch mode until pa3ds
+/// closed.
+pub const BUILT_POLLS: i64 = 5;
 /// Works waiting for their layout, at most; the oldest is let go.
 pub const PENDING_KEPT: i64 = 128;
 /// Between the bottom screen's 320 and the top screen's 400, for a work's projection width.
@@ -137,6 +143,9 @@ pub struct Layouts {
     /// (work, root) of every layout seen on the system's list of layouts to draw: one taken off it
     /// is no longer drawn (`lyt.WORK_LISTED`).
     listed: RefCell<HashSet<(i64, i64)>>,
+    /// Root -> screen polls left before its layout, just taken in, is taken for listed
+    /// (`BUILT_POLLS`).
+    built: RefCell<IndexMap<i64, i64>>,
     /// Root -> every pane under it, with its class name, as last walked.
     contents: RefCell<IndexMap<i64, IndexMap<i64, String>>>,
     /// Root -> the names of the panes under it, in the order walked.
@@ -174,6 +183,7 @@ impl Layouts {
             climbs: RefCell::new(IndexMap::new()),
             put_away: RefCell::new(HashSet::new()),
             listed: RefCell::new(HashSet::new()),
+            built: RefCell::new(IndexMap::new()),
             contents: RefCell::new(IndexMap::new()),
             pane_names: RefCell::new(IndexMap::new()),
             children: RefCell::new(IndexMap::new()),
@@ -235,6 +245,7 @@ impl Layouts {
             if changed || stale {
                 if changed {
                     self.settling.borrow_mut().insert(root, SETTLE_WALKS);
+                    self.built.borrow_mut().insert(root, BUILT_POLLS);
                 }
                 self.walk(root)?;
             }
@@ -274,6 +285,14 @@ impl Layouts {
     /// in their pools.
     pub fn revive(&self) -> Result<bool> {
         let mut back = false;
+        let built: IndexMap<i64, i64> = self
+            .built
+            .borrow()
+            .iter()
+            .filter(|&(_, &left)| left > 1)
+            .map(|(&root, &left)| (root, left - 1))
+            .collect();
+        *self.built.borrow_mut() = built;
         let settling: Vec<(i64, i64)> = self
             .settling
             .borrow()
@@ -332,6 +351,7 @@ impl Layouts {
                 .insert(root, Layout { work, top, layout });
             self.walk(root)?;
             self.settling.borrow_mut().insert(root, SETTLE_WALKS);
+            self.built.borrow_mut().insert(root, BUILT_POLLS);
             self.watch_pool_of(work)?;
             back = true;
         }
@@ -352,6 +372,7 @@ impl Layouts {
                 .insert(root, Layout { work, top, layout });
             self.walk(root)?;
             self.settling.borrow_mut().insert(root, SETTLE_WALKS);
+            self.built.borrow_mut().insert(root, BUILT_POLLS);
             back = true;
         }
         Ok(back)
@@ -428,6 +449,7 @@ impl Layouts {
                     .borrow_mut()
                     .insert(root, Layout { work, top, layout });
                 self.walk(root)?;
+                self.built.borrow_mut().insert(root, BUILT_POLLS);
                 known.insert(work);
                 taken = true;
             }
@@ -599,7 +621,7 @@ impl Layouts {
         };
         let state = self.state(layout.work)?;
         let alive = byte(&state, lyt::WORK_ALIVE)? == 1;
-        if byte(&state, lyt::WORK_LISTED)? == 1 {
+        if byte(&state, lyt::WORK_LISTED)? == 1 && !self.built.borrow().contains_key(&root) {
             self.listed.borrow_mut().insert((layout.work, root));
         }
         let drawn = alive
