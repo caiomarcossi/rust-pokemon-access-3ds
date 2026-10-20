@@ -139,6 +139,9 @@ pub type Idle = Rc<dyn Fn() -> Result<HashSet<i64>>>;
 /// `Callable[[], set[tuple[int, str]]]`: (work, pane name) of the buttons switched off. It reads
 /// memory.
 pub type Off = Rc<dyn Fn() -> Result<HashSet<(i64, String)>>>;
+/// `Callable[[int], bool]`: whether a picture's button is offered though switched off. It reads
+/// memory.
+pub type SaidOff = Rc<dyn Fn(i64) -> Result<bool>>;
 /// `Callable[[Sequence[tuple[int, int]], float], str | None]`: drag a press along a path.
 pub type Slide = Rc<dyn Fn(&[(i64, i64)], f64) -> Option<String>>;
 /// `Callable[[], list[Target]]`: targets no touch area draws. It reads memory.
@@ -158,6 +161,7 @@ pub struct Options {
     pub slide: Option<Slide>,
     pub gestures: Option<Gestures>,
     pub off: Option<Off>,
+    pub said_off: Option<SaidOff>,
 }
 
 /// The bottom screen's touch targets, and the one touch mode is on.
@@ -189,6 +193,10 @@ pub struct TouchTargets {
     gestures: Option<Gestures>,
     /// (work, pane name) of the buttons switched off now, which take no tap (`Buttons.off`).
     off: Option<Off>,
+    /// Whether a picture's button is offered though switched off: the DexNav switches off the
+    /// icon of a species not caught, which it cannot search for, and the species is said all the
+    /// same (ADR-0037).
+    said_off: Option<SaidOff>,
     chosen: Option<i64>,
     /// Touch area -> what it was last called (rule 4).
     named: IndexMap<i64, (String, HashSet<i64>)>,
@@ -224,6 +232,7 @@ impl TouchTargets {
             slide,
             gestures,
             off,
+            said_off,
         } = options;
         TouchTargets {
             layouts,
@@ -241,6 +250,7 @@ impl TouchTargets {
             slide,
             gestures,
             off,
+            said_off,
             chosen: None,
             named: IndexMap::new(),
             unnamed: HashSet::new(),
@@ -385,7 +395,8 @@ impl TouchTargets {
             let tree = layouts.tree(root);
             let layer = layouts.layer(root)?;
             // A button switched off takes no tap however it is drawn: Super Training's party
-            // under its Use panel (spike B).
+            // under its Use panel (spike 228). But for a picture said all the same: the DexNav's
+            // Pokémon not caught were left out with it.
             let mut touches: Vec<i64> = Vec::new();
             for (&pane, kind) in &tree {
                 if kind == lyt::BOUNDING_CLASS && shown(&layouts, pane)? {
@@ -393,6 +404,7 @@ impl TouchTargets {
                     if !works
                         .get(&root)
                         .is_some_and(|&work| off.contains(&(work, name)))
+                        || self.said_though_off(root, pane, &tree)?
                     {
                         touches.push(pane);
                     }
@@ -787,6 +799,24 @@ impl TouchTargets {
             }
         }
         Ok(said.join(" "))
+    }
+
+    /// Does the touch area's button draw a picture offered though the button is off?
+    fn said_though_off(
+        &mut self,
+        root: i64,
+        touch: i64,
+        tree: &IndexMap<i64, String>,
+    ) -> Result<bool> {
+        let Some(said_off) = self.said_off.clone() else {
+            return Ok(false);
+        };
+        for p in self.group(root, touch, tree)? {
+            if tree.get(&p).map(String::as_str) == Some(lyt::PICTURE_CLASS) && said_off(p)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     /// The touch area's button: the pane it hangs from and everything under it that lies within

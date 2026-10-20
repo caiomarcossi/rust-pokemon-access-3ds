@@ -648,6 +648,14 @@ impl Gen6Profile {
                 idle: Some(idle),
                 off: Some(off),
                 slide,
+                said_off: Some({
+                    let (apps, distribution) = (apps.clone(), distribution.clone());
+                    Rc::new(move |pane: i64| {
+                        let running = apps.borrow().running.clone();
+                        Ok(running.as_deref().is_none_or(|running| running == FIELD)
+                            && distribution.borrow().name(pane)?.is_some())
+                    })
+                }),
                 gestures: Some({
                     let (amie, goals, bags, apps) =
                         (amie.clone(), goals.clone(), bags.clone(), apps.clone());
