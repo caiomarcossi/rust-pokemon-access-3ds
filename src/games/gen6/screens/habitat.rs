@@ -38,8 +38,9 @@ use crate::py::{self, Error, Log, Result};
 /// a place and one drawn (spike 152).
 pub const POINT: &str = "poke_point.bclim";
 /// The top screen's icons for how a Pokémon is found, by the image each draws in colour, and
-/// pa3ds's word for each (Orion's, 2026-10-01): the game draws them and never names them. Only grass
-/// has been seen in colour (spike 153).
+/// pa3ds's word for each (Orion's, 2026-10-01): the game draws them and never names them. Grass
+/// was seen in colour first (spike 153), fishing on Route 111 (Orion, 2026-10-20); a Pokémon met
+/// in seaweed under water lights grass, as the game shows it.
 ///
 /// Python's `dict`, as (image, word) pairs: it is only ever looked up.
 pub const WAYS: [(&str, &str); 3] = [

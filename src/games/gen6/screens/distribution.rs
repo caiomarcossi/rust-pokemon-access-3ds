@@ -53,7 +53,8 @@ pub const WAY: i64 = 0x0D;
 /// the area, one met surfing in a row along the top of the water and one fished for in a row below
 /// it (movie27 on Route 102: Marill, Azumarill, Surskit and Masquerain 1, Magikarp, Goldeen and
 /// Corphish 2). 3, met only by the DexNav's search, has no word: no such Pokémon seen has been
-/// drawn yet.
+/// drawn yet. A Pokémon met in seaweed under water is grass, as the game shows it here and on the
+/// habitat page (Orion, 2026-10-20): not a bug.
 ///
 /// Python's `dict`, as (byte, message) pairs: it is only ever looked up.
 pub const WAYS: [(i64, &str); 3] = [

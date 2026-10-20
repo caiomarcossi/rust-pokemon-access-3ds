@@ -48,7 +48,8 @@ the Game Boy games. Nothing here is taken from its code.
 - **The touch screen**: the buttons on the bottom screen, which touch mode can tap for you, the
   PokéNav's and PlayNav's apps among them.
 - **The DexNav**: the area's Pokémon, how each is met (grass, water or fishing) and which you
-  have caught, searching, and a hidden Pokémon's details.
+  have caught, searching, and a hidden Pokémon's details. A Pokémon met in seaweed under water
+  is said to be met in grass, here and in the Pokédex, because the game itself shows it that way.
 - **The Dowsing Machine**, **soaring** on Latios or Latias, and **Secret Bases**, decorating
   them included.
 - **Pictures the game never names**: the boy and the girl to choose from as a game begins, and
