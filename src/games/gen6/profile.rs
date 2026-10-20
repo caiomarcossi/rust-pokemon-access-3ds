@@ -5,6 +5,9 @@
 //! which reader each object found belongs to, and in what order the readers are polled and their news
 //! said. It reads ORAS and Pokémon X and Y, one engine, each game told apart by its `Game`: its
 //! numbers, and what it alone has (spike 100).
+//!
+//! Bound by:
+//! - ADR-0041: a replay logs touch mode's targets as they change, so a tape holds them.
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
@@ -158,6 +161,7 @@ pub struct Options {
     /// None is `{}`.
     pub swims: Option<IndexMap<String, f64>>,
     pub title: Option<i64>,
+    pub census: bool,
 }
 
 /// The gen 6 readers, and what each sweep and poll does with them, for ORAS or for X and Y.
@@ -169,6 +173,8 @@ pub struct Options {
 pub struct Gen6Profile {
     memory: Rc<dyn Cache>,
     names: Rc<ClassNames>,
+    /// Touch mode's targets as last logged, or None where they are not (`census`).
+    census: RefCell<Option<String>>,
     /// The game's own words out of the player's ROM, or `NO_TEXT` when it could not be read.
     text: Rc<GameText>,
     /// The place-name index of the zone the player was last polled in.
@@ -324,6 +330,7 @@ impl Gen6Profile {
             clips,
             swims,
             title,
+            census,
         } = options;
         let cache = memory;
         let memory: Rc<dyn Memory> = cache.clone();
@@ -903,6 +910,7 @@ impl Gen6Profile {
         Gen6Profile {
             memory: cache,
             names: names.clone(),
+            census: RefCell::new(census.then(String::new)),
             text,
             place: Cell::new(None),
             layouts,
@@ -1356,7 +1364,38 @@ impl Gen6Profile {
         }
         self.announcements.borrow_mut().battlers(&sides);
         self.announcements.borrow_mut().screen_polled();
-        self.read_archives()
+        self.read_archives()?;
+        self.census()
+    }
+
+    /// Log touch mode's targets whenever they have changed, where `census` asked for it: a replay
+    /// presses no key of pa3ds's, so nothing touch mode offers was on any tape, and the DexNav's
+    /// Pokémon not caught went missing with every tape the same (ADR-0041).
+    pub fn census(&self) -> Result<()> {
+        if self.census.borrow().is_none() {
+            return Ok(());
+        }
+        let listed = phase(&*self.memory, "census", || {
+            let mut navigator = self.navigator.borrow_mut();
+            let touch = navigator
+                .touch
+                .as_mut()
+                .expect("the gen 6 navigator is given touch targets");
+            let names: Vec<String> = touch
+                .targets()?
+                .into_iter()
+                .map(|target| target.name)
+                .collect();
+            Ok(names.join(" | "))
+        })?;
+        if self.census.borrow().as_deref() != Some(listed.as_str()) {
+            *self.census.borrow_mut() = Some(listed.clone());
+            (self.log)(&format!(
+                "touch targets: {}",
+                if listed.is_empty() { "none" } else { &listed }
+            ));
+        }
+        Ok(())
     }
 
     /// Answer a navigation key, by name.

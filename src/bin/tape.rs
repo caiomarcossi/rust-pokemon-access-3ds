@@ -35,9 +35,12 @@ impl Backend for Heard {
     fn braille(&self, _text: &str) {}
 }
 
-/// The settings `spikes/regress.py` gives a replay at real speed: the defaults, with the
-/// replays' own user folder, never the player's. A tape whose name ends in `DESCRIBED` was
-/// recorded with `descriptions` on, as `spikes/tape_replay.py` records it.
+/// The settings `spikes/regress.py` gives a replay at real speed (`settings_at`): the defaults,
+/// with the replays' own user folder, never the player's, and touch mode's targets logged as they
+/// change (`census`), as no key of pa3ds's is pressed in a replay to hear them (ADR-0041): every
+/// tape, so the "touch targets" lines the Python's replay logs are logged here too. A tape whose
+/// name ends in `DESCRIBED` was recorded with `descriptions` on, as `spikes/tape_replay.py`
+/// records it.
 fn replay_settings(name: &str) -> Settings {
     let home = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
@@ -45,6 +48,7 @@ fn replay_settings(name: &str) -> Settings {
     let defaults = Settings::default();
     Settings {
         names_home: home,
+        census: true,
         ui: Ui {
             descriptions: name.ends_with(DESCRIBED),
             ..defaults.ui.clone()

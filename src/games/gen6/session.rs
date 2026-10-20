@@ -117,6 +117,7 @@ pub fn start(
             clips,
             swims: Some(swims),
             title: Some(setup.process.title_id),
+            census: setup.census,
         },
     ));
     // What the game allocates is found where it was allocated, the look after (spike 110).

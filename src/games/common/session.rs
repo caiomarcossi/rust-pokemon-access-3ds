@@ -97,8 +97,8 @@ pub struct Session {
 /// and the settings its readers read by (`app.Settings`).
 ///
 /// Python's defaults are `DEFAULT_BINDINGS`, `Ui()`, `Navigation()`, `Extras()`, `"en"`, no
-/// `names_home`, no `rom`, no `emulator`, a `sweep_chunk` of 512, and no `tap`, `tones` or
-/// `clips`:
+/// `names_home`, no `census`, no `rom`, no `emulator`, a `sweep_chunk` of 512, and no `tap`,
+/// `tones` or `clips`:
 /// [`Setup::new`] has them, and the rest is set with `Setup { language, ..Setup::new(process, log) }`.
 #[derive(Clone)]
 pub struct Setup {
@@ -110,6 +110,8 @@ pub struct Setup {
     pub extras: Extras,
     pub language: String,
     pub names_home: Option<PathBuf>,
+    /// Log touch mode's targets as they change (`app.Settings.census`).
+    pub census: bool,
     pub rom: Option<PathBuf>,
     /// Azahar's `qt-config.ini`, where `rom_path` finds the ROMs it opened; None is AppData's.
     pub emulator: Option<PathBuf>,
@@ -138,6 +140,7 @@ impl Setup {
             extras: Extras::default(),
             language: "en".to_string(),
             names_home: None,
+            census: false,
             rom: None,
             emulator: None,
             sweep_chunk: 512,

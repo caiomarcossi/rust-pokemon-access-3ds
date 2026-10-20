@@ -9,6 +9,8 @@
 //!   time, polling between.
 //! - ADR-0019: a reader that throws is logged with a snapshot, and says "Reader error" once a bug a
 //!   minute.
+//! - ADR-0041: a replay logs touch mode's targets as they change (`Settings.census`), a player's
+//!   run never.
 
 use std::any::Any;
 use std::cell::{Cell, RefCell};
@@ -114,6 +116,10 @@ pub struct Settings {
     /// Azahar's `qt-config.ini`, where it lists the ROMs it has opened (`config.Config.emulator`).
     /// None is the one in AppData.
     pub emulator: Option<PathBuf>,
+    /// Log touch mode's targets as they change, every screen poll: a replay presses no key of
+    /// pa3ds's, so without it nothing touch mode offers is on a tape (ADR-0041). On for replays,
+    /// never for a player.
+    pub census: bool,
 }
 
 impl Default for Settings {
@@ -138,6 +144,7 @@ impl Default for Settings {
             captures: None,
             restarted: false,
             emulator: None,
+            census: false,
         }
     }
 }
@@ -648,6 +655,7 @@ fn session(
             extras: settings.extras.clone(),
             language: language.to_string(),
             names_home: settings.names_home.clone(),
+            census: settings.census,
             rom: settings.rom.clone(),
             emulator: settings.emulator.clone(),
             sweep_chunk: settings.sweep_chunk,

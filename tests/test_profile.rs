@@ -17,6 +17,7 @@ use crate::core::rtti::ClassNames;
 use crate::core::speech::Speech;
 use crate::games::common::field::keys::{ITEM_NEXT, MODE_TOGGLE, PATHFIND};
 use crate::games::common::field::things::WARP_SOURCE;
+use crate::games::common::touch::Target;
 use crate::games::gen6::apps::{BATTLE, DEMO, FIELD};
 use crate::games::gen6::field::mapblock;
 use crate::games::gen6::field::mmodel::PLAYER_INDEX;
@@ -360,6 +361,74 @@ fn test_the_pc_is_listed_by_the_roms_word_for_it() {
     let signs = made.field().interactables(&r#where).unwrap().of("signs");
     let kinds: Vec<&str> = signs.iter().map(|item| item.kind.as_str()).collect();
     assert_eq!(kinds, ["パソコン", "sign", "object"]);
+}
+
+/// ADR-0041: no key of pa3ds's is pressed in a replay, so touch mode's targets are logged for a
+/// tape to hold them, once each time they change, and "none" when they go.
+#[test]
+fn test_a_replay_logs_touch_modes_targets_as_they_change_and_a_players_run_never() {
+    let town = Town::new();
+    let offered: Rc<RefCell<Vec<&str>>> = Rc::new(RefCell::new(vec![
+        "Marill water",
+        "Magikarp fishing caught",
+    ]));
+    let made = |census: bool| {
+        let logged: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
+        let log: Log = {
+            let logged = logged.clone();
+            Rc::new(move |line: &str| logged.borrow_mut().push(line.to_string()))
+        };
+        let profile = Gen6Profile::new(
+            Phased::new(town.memory.clone()),
+            Rc::new(ClassNames::new(town.memory.clone(), CODE)),
+            Rc::new(Speech::plain(Recorder::new())),
+            log,
+            oras::game(),
+            Options {
+                census,
+                ..Options::default()
+            },
+        );
+        // Python's test puts its own `touch` in; here the navigator's is given the targets.
+        let offering = offered.clone();
+        profile
+            .navigator
+            .borrow_mut()
+            .touch
+            .as_mut()
+            .expect("touch targets")
+            .given = Some(Rc::new(move || {
+            offering
+                .borrow()
+                .iter()
+                .map(|name| Target::new(0, name, 0, 0, 0.0, 0.0))
+                .collect()
+        }));
+        (profile, logged)
+    };
+    let touched = |logged: &Rc<RefCell<Vec<String>>>| -> Vec<String> {
+        logged
+            .borrow()
+            .iter()
+            .filter(|line| line.starts_with("touch"))
+            .cloned()
+            .collect()
+    };
+    let (replay, logged) = made(true);
+    replay.census().unwrap();
+    replay.census().unwrap();
+    offered.borrow_mut().clear();
+    replay.census().unwrap();
+    assert_eq!(
+        touched(&logged),
+        [
+            "touch targets: Marill water | Magikarp fishing caught",
+            "touch targets: none"
+        ]
+    );
+    let (player, logged) = made(false);
+    player.census().unwrap();
+    assert!(touched(&logged).is_empty());
 }
 
 /// The runtime watches every heap a sweep finds (ADR-0034), and until 2026-09-28 the heap's

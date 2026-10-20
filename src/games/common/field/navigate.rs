@@ -274,7 +274,10 @@ pub struct Navigator {
     pub(crate) field: Rc<dyn FieldSource>,
     categories: Vec<String>,
     /// The bottom screen's touch targets, in a game where they are read.
-    touch: Option<TouchTargets>,
+    ///
+    /// The gen 6 profile's `census` walks them too, where the Python's holds the same object as
+    /// `self.touch`.
+    pub(crate) touch: Option<TouchTargets>,
     /// How an item and the way to it are said (`config.toml`'s `[pa3ds.navigation]`).
     wording: Navigation,
     speech: Rc<Speech>,
