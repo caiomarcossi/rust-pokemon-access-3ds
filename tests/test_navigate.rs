@@ -2729,6 +2729,49 @@ fn test_a_person_in_the_one_way_is_walked_up_to_and_said() {
     );
 }
 
+/// Route 7: the way west went through Shauna, standing in the open, on its way to the
+/// Snorlax filling the road, and P said she was in the way (2026-10-19). The way goes round
+/// whoever it can, and says who it cannot.
+#[test]
+fn test_somebody_the_way_goes_round_is_not_in_the_way() {
+    let ring: Vec<Cell> = (98..103)
+        .flat_map(|x| (178..183).map(move |z| (x, z)))
+        .filter(|&(x, z)| (x - 100i64).abs().max((z - 180i64).abs()) == 2 && (x, z) != (98, 180))
+        .collect();
+    let guard = Interactable {
+        source: 0x08D1F000,
+        move_model: true,
+        ..Interactable::new("people", "Snorlax", (98, 180))
+    };
+    let shauna = Interactable {
+        source: 0x08D1FAB0,
+        move_model: true,
+        ..Interactable::new("people", "Shauna", (94, 180))
+    };
+    let here = street();
+    let mut interactables = here.interactables.clone();
+    interactables.extend([guard, shauna]);
+    let street = Field {
+        interactables,
+        ..here
+    };
+    let mut walls = house_front();
+    walls.extend(ring);
+    let mut rig = navigator(Want {
+        blocked: walls,
+        ..on(street)
+    });
+    rig.press(CATEGORY_PREVIOUS);
+    rig.press(ITEM_NEXT);
+    rig.press(ITEM_NEXT);
+    rig.press(PATHFIND);
+    let said = last(&rig.backend);
+    assert!(
+        said.ends_with("then can't continue, Snorlax in the way"),
+        "{said}"
+    );
+}
+
 /// Spike 161: Fortree Gym's doors stand across its ways, and are walked through by walking into
 /// an arm, which turns the door. A wall with one gap, a door's arm standing across it.
 #[test]

@@ -56,6 +56,7 @@ use crate::core::heaps::ReadEach;
 use crate::core::memory::Memory;
 use crate::core::rtti::ClassNames;
 use crate::games::common::field::ground::{Ground, Of};
+use crate::games::common::field::pad::quarter;
 use crate::games::common::field::things::{
     FURNITURE_SOURCE, Field, Interactable, WARP_SOURCE, place_source,
 };
@@ -636,7 +637,7 @@ impl SunFieldReader {
             if u32(&head, camera::SET)? == 0 {
                 return Ok(current);
             }
-            return camera::quarter(f32(&head, camera::ANGLE)?, Some(current));
+            return quarter(f32(&head, camera::ANGLE)?, Some(current));
         }
         Ok(0)
     }

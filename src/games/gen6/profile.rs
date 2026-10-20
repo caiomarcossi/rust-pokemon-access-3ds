@@ -18,6 +18,7 @@ use crate::core::config::{Extras, Navigation, Ui};
 use crate::core::discovery::{Discovery, Found, HEAP_SPAN, LINEAR_SPAN, within};
 use crate::core::memory::{Cache, Memory, phase};
 use crate::core::names::{FURNITURE, GamePlace, GameSprite, Names, TILES};
+use crate::core::pathfind::{COMPASS, walked};
 use crate::core::rtti::{ClassNames, demangle};
 use crate::core::speech::{Category, Speech};
 use crate::core::tones::Tones;
@@ -243,6 +244,8 @@ pub struct Gen6Profile {
     hidden_words: RefCell<Option<String>>,
     /// Whether the player was riding the bike at the last field poll, to log each change.
     on_bike: Cell<bool>,
+    /// The quarters from north up walks the player, as the compass was last turned.
+    turn: Cell<i64>,
     /// The language the save says the game is in, as the last whole sweep read it.
     pub save_language: RefCell<Option<String>>,
     pub announcements: Rc<RefCell<Announcements>>,
@@ -845,6 +848,7 @@ impl Gen6Profile {
             hiding: Cell::new(None),
             hidden_words: RefCell::new(None),
             on_bike: Cell::new(false),
+            turn: Cell::new(0),
             save_language: RefCell::new(None),
             announcements,
             screen_announcer: RefCell::new(screen_announcer),
@@ -1317,6 +1321,14 @@ impl Gen6Profile {
                     "field: {} the bike",
                     if at.on_bike { "on" } else { "off" }
                 ));
+            }
+            // Off the rails the compass turns with the camera. On Lumiose's rails a way is said
+            // from the camera already, and a cell is the corridor's, not the world's.
+            let turn = field.turn(self.turn.get())?;
+            if turn != self.turn.get() {
+                self.turn.set(turn);
+                walked(turn);
+                (self.log)(&format!("field: up walks {}", COMPASS[turn as usize]));
             }
             self.navigator.borrow_mut().swept(&at)?;
             self.arrive(at.zone)?;

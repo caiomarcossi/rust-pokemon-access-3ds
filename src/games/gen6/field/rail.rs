@@ -48,12 +48,14 @@ use std::cell::{Cell as Slot, RefCell};
 use std::collections::VecDeque;
 use std::rc::Rc;
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 
 use crate::core::binary::{f32, s16, u16, u32};
 use crate::core::discovery::{ALLOCATION, Found, HEAP_SPAN, LINEAR_SPAN, within};
 use crate::core::memory::Memory;
 use crate::core::pathfind::{Box, Cell};
+use crate::games::common::field::ground::Lanes;
+use crate::games::common::field::pad::quarter;
 use crate::games::gen6::field::{camera, mmodel, zonedata};
 use crate::py::{self, Error, Result};
 
@@ -82,6 +84,7 @@ pub const LINES: i64 = 0;
 pub const POINTS: i64 = 1;
 pub const TRACKS: i64 = 2;
 pub const JOINTS: i64 = 3;
+pub const CAMERAS: i64 = 4;
 pub const POINT_PLACE: i64 = 0x10;
 pub const JOINT_PLACE: i64 = 0x28;
 /// World units a map chunk is across: 40 cells of 18.
@@ -185,6 +188,11 @@ impl Line {
 pub struct Network {
     pub lines: IndexMap<i64, Line>,
     pub places: IndexMap<i64, (f64, f64)>,
+    /// How many cameras its sections place: none in Lumiose, whose camera follows the player
+    /// along a street, and some on Route 7 (2) and Parfum Palace's grounds (4), whose camera stays
+    /// looking north while the keys walk the player the street's way nearest the one pressed (the
+    /// tape of x_route-6-2.ctm, 2026-10-20).
+    pub cameras: i64,
 }
 
 /// One cell's step in the corridor, a way of the compass: north is (0, -1).
@@ -194,6 +202,36 @@ pub const NORTH: Step = (0, -1);
 /// The step a quarter turn left of `step`: west of north.
 fn left(step: Step) -> Step {
     (step.1, -step.0)
+}
+
+pub const NORTH_KEYS: [(&str, Step); 2] = [("north", (0, -1)), ("south", (0, 1))];
+/// The pad's two pairs of keys, each with the way on the screen it points.
+pub const EAST_KEYS: [(&str, Step); 2] = [("east", (1, 0)), ("west", (-1, 0))];
+
+/// Which of a pair of keys points nearer the way (dx, dz).
+fn key(dx: f64, dz: f64, keys: &[(&'static str, Step); 2]) -> &'static str {
+    // `max` keeps the first of two that tie.
+    let toward = |step: Step| dx * step.0 as f64 + dz * step.1 as f64;
+    if toward(keys[1].1) > toward(keys[0].1) {
+        keys[1].0
+    } else {
+        keys[0].0
+    }
+}
+
+/// The step to one of the eight cells round a cell nearest the way (dx, dz) points.
+fn nearest_step(dx: f64, dz: f64) -> Result<Step> {
+    let eighth = py::modulo(py::round(dz.atan2(dx) / (std::f64::consts::PI / 4.0))?, 8);
+    Ok([
+        (1, 0),
+        (1, 1),
+        (0, 1),
+        (-1, 1),
+        (-1, 0),
+        (-1, -1),
+        (0, -1),
+        (1, -1),
+    ][eighth as usize])
 }
 
 /// `step` turned clockwise by `quarters` quarter turns.
@@ -228,6 +266,44 @@ impl Laid {
         let (dx, dz) = (cell.0 - self.origin.0, cell.1 - self.origin.1);
         let ((ax, az), (lx, lz)) = (self.ahead, left(self.ahead));
         (dx * ax + dz * az, dx * lx + dz * lz)
+    }
+}
+
+/// A line as the world has it: where its start is in world units, and the unit step along
+/// it, its offsets rising to its left as in the corridor (`_left`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct World {
+    start: (f64, f64),
+    ahead: (f64, f64),
+}
+
+impl World {
+    /// The grid's cell a row and an offset of the line are in.
+    fn cell(&self, row: f64, offset: f64) -> Result<Cell> {
+        let ((ax, az), (sx, sz)) = (self.ahead, self.start);
+        let cell = zonedata::CELL as f64;
+        let (x, z) = (
+            sx + (row * ax + offset * az) * cell,
+            sz + (row * az - offset * ax) * cell,
+        );
+        Ok((
+            py::round((x - cell / 2.0) / cell)?,
+            py::round((z - cell / 2.0) / cell)?,
+        ))
+    }
+
+    /// The row and the offset of the line a grid cell's middle is nearest.
+    fn place(&self, at: Cell) -> Result<(i64, i64)> {
+        let ((ax, az), (sx, sz)) = (self.ahead, self.start);
+        let cell = zonedata::CELL as f64;
+        let (dx, dz) = (
+            at.0 as f64 * cell + cell / 2.0 - sx,
+            at.1 as f64 * cell + cell / 2.0 - sz,
+        );
+        Ok((
+            py::round((dx * ax + dz * az) / cell)?,
+            py::round((dx * az - dz * ax) / cell)?,
+        ))
     }
 }
 
@@ -573,8 +649,10 @@ pub fn section_streets(section: &[u8]) -> Result<Network> {
     }
     let mut counts = Vec::new();
     let mut tables = Vec::new();
-    for kind in 0..=JOINTS {
+    for kind in 0..=CAMERAS {
         counts.push(u16(section, SECTION_COUNTS + 2 * kind)?);
+    }
+    for kind in 0..=JOINTS {
         tables.push(u32(section, SECTION_TABLES + 4 * kind)?);
     }
     let chunk = u32(section, 0)?;
@@ -627,7 +705,11 @@ pub fn section_streets(section: &[u8]) -> Result<Network> {
             }
         }
     }
-    Ok(Network { lines, places })
+    Ok(Network {
+        lines,
+        places,
+        cameras: counts[CAMERAS as usize],
+    })
 }
 
 fn sized(head: &[u8]) -> Result<bool> {
@@ -788,6 +870,11 @@ pub struct Rails {
     /// one line onto the next; laid afresh from the player's own line otherwise. Which way it
     /// runs does not matter: a way there is said from the way the player faces.
     anchor: Slot<Option<i64>>,
+    /// The chunk files the streets' open cells were laid on the grid for, and the cells
+    /// with their steps and keys (`lanes`).
+    lanes: RefCell<(Vec<i64>, Rc<Lanes>)>,
+    /// How many cameras the map's streets place (`Network.cameras`).
+    cameras: Slot<i64>,
 }
 
 impl Rails {
@@ -803,6 +890,8 @@ impl Rails {
             corridor: RefCell::new(None),
             camera: Slot::new(None),
             anchor: Slot::new(None),
+            lanes: RefCell::new((Vec::new(), Rc::new(IndexMap::new()))),
+            cameras: Slot::new(0),
         }
     }
 
@@ -821,6 +910,19 @@ impl Rails {
             ));
         }
         Ok(())
+    }
+
+    /// The quarters clockwise from north the pad's up walks the player off the rails: where
+    /// the camera looks (`camera.looks`), `current` while no camera has been found.
+    pub fn turn(&self, current: i64) -> Result<i64> {
+        let looks = match self.camera.get() {
+            None => None,
+            Some(block) => camera::looks(&*self.memory, block)?,
+        };
+        match looks {
+            None => Ok(current),
+            Some(looks) => quarter(looks, Some(current)),
+        }
     }
 
     /// Where the player's model `head` is in the corridor of the streets joined to its line, and
@@ -897,6 +999,134 @@ impl Rails {
         Ok(lay_out(&self.lines.borrow(), line, Some(&self.places.borrow()))?.map(Rc::new))
     }
 
+    /// Where a record placed on a rail is on the grid, as the cells it covers, for a
+    /// player walking the cells beside the streets: Route 7's way onto Route 6 is on a short
+    /// street of its own, which the player walks onto from the grid, and no exit led to Route 6
+    /// until they had (x_route-7and6.ctm, 2026-10-19). It is placed from where the world has its
+    /// line's two ends, its offsets rising to the line's left as in the corridor; None for a
+    /// record on the grid, or on a line whose ends the ROM does not place. `files` are the map's
+    /// chunk files, as the field map lists them.
+    pub fn on_grid(&self, record: &[u8], files: &[i64]) -> Result<Option<Vec<Cell>>> {
+        if u16(record, zonedata::PLACEMENT)? != zonedata::ON_RAIL {
+            return Ok(None);
+        }
+        self.read_streets(files)?;
+        let (number, a, x, width, height) = placed(record)?;
+        let line = self.lines.borrow().get(&number).cloned();
+        let world = line.as_ref().and_then(|line| self.in_world(line));
+        let (Some(line), Some(world)) = (line, world) else {
+            return Ok(None);
+        };
+        // Python's is a set of tuples, visited in its own order where none of the cells round
+        // them is the warp's; in the order the record spans them here.
+        let mut wanted: IndexSet<(i64, i64)> = IndexSet::new();
+        for along in span(a, width) {
+            for across in span(x, height) {
+                let (row, offset) = line.upright(along as f64, across as f64);
+                wanted.insert((py::round(row)?, py::round(offset)?));
+            }
+        }
+        // Each grid cell is the row and offset its middle is nearest, as `lanes` lays them, so
+        // none of the warp's is a cell of the street the player stands in.
+        let mut around: Vec<Cell> = Vec::new();
+        for &(row, offset) in &wanted {
+            around.push(world.cell(row as f64, offset as f64)?);
+        }
+        let r#box = Box::around(around.iter().copied(), 1)?;
+        let mut out: Vec<Cell> = Vec::new();
+        for cz in r#box.north..=r#box.south {
+            for cx in r#box.west..=r#box.east {
+                if wanted.contains(&world.place((cx, cz))?) {
+                    out.push((cx, cz));
+                }
+            }
+        }
+        Ok(Some(if out.is_empty() { around } else { out }))
+    }
+
+    /// Whether a player on `line` walks it under a camera of the map's own that stays put, as
+    /// on Route 7's and Parfum Palace's streets, rather than one that follows them as Lumiose's
+    /// does (`Network.cameras`): the keys walk the player the street's way nearest the one
+    /// pressed on the screen, so the street is ground of the grid's, walked by the compass. Not
+    /// a line whose two ends the world has in one place, which the grid cannot lay out. `files`
+    /// are the map's chunk files, as the field map lists them.
+    pub fn fixed(&self, files: &[i64], line: i64) -> Result<bool> {
+        self.read_streets(files)?;
+        let on = self.lines.borrow().get(&line).cloned();
+        Ok(self.cameras.get() > 0 && on.is_some_and(|on| self.in_world(&on).is_some()))
+    }
+
+    /// The cells of the map's streets the player can stand in, laid on the grid where the
+    /// world has them, each with the steps the street's ways let the player take from it, the
+    /// nearest of the eight to along the street and across it, and the key that takes each:
+    /// up and down along a line measured north or south and left and right across it, each the
+    /// way nearer its own, and the other way round on a line measured east or west. The chunks
+    /// under a street mark every cell a wall, so from the grid beside Route 7's street onto
+    /// Route 6 P found nothing at all to walk to, "no path" (2026-10-19); and up walks Route 7's
+    /// street north-west and Parfum Palace's north-east, left across Route 7's south-west, never
+    /// straight north or west, and P said "7 north-west" for up (the tapes of x_route-6-2.ctm
+    /// and x_route-6-3.ctm, 2026-10-20). A cell is open where the cell of a line it is in, row
+    /// and offset, is.
+    pub fn lanes(&self, files: &[i64]) -> Result<Rc<Lanes>> {
+        self.read_streets(files)?;
+        if self.lanes.borrow().0 != files {
+            let mut lanes: Lanes = IndexMap::new();
+            for line in self.lines.borrow().values() {
+                let Some(world) = self.in_world(line) else {
+                    continue;
+                };
+                let (ax, az) = world.ahead;
+                let (along, across) = if line.way == WAY_NORTH || line.way == WAY_SOUTH {
+                    (&NORTH_KEYS, &EAST_KEYS)
+                } else {
+                    (&EAST_KEYS, &NORTH_KEYS)
+                };
+                let mut ways: IndexMap<Step, &'static str> = IndexMap::new();
+                for ((dx, dz), keys) in [
+                    ((ax, az), along),
+                    ((-ax, -az), along),
+                    ((az, -ax), across),
+                    ((-az, ax), across),
+                ] {
+                    ways.insert(nearest_step(dx, dz)?, key(dx, dz, keys));
+                }
+                let mut corners: Vec<Cell> = Vec::new();
+                for row in [0, line.along] {
+                    for offset in [-line.across, line.across] {
+                        corners.push(world.cell(row as f64, offset as f64)?);
+                    }
+                }
+                let r#box = Box::around(corners, 0)?;
+                for cx in r#box.west..=r#box.east {
+                    for cz in r#box.north..=r#box.south {
+                        let (row, offset) = world.place((cx, cz))?;
+                        if line.open(row, offset + py::floordiv(line.across, 2)) {
+                            lanes.entry((cx, cz)).or_default().extend(ways.clone());
+                        }
+                    }
+                }
+            }
+            *self.lanes.borrow_mut() = (files.to_vec(), Rc::new(lanes));
+        }
+        Ok(self.lanes.borrow().1.clone())
+    }
+
+    /// Where the world has `line`, or None where the ROM does not place both its ends.
+    fn in_world(&self, line: &Line) -> Option<World> {
+        let places = self.places.borrow();
+        let (Some(&start), Some(&end)) = (places.get(&line.start), places.get(&line.end)) else {
+            return None;
+        };
+        if start == end {
+            return None;
+        }
+        let length = py::hypot(start.0 - end.0, start.1 - end.1);
+        Some(World {
+            start,
+            ahead: ((end.0 - start.0) / length, (end.1 - start.1) / length),
+        })
+    }
+
     /// Take in every line of the map's streets from the ROM, once a map: the game loads a line
     /// only with the chunks round the player, and a door on a line further on was nowhere, the
     /// Pokémon Lab's among them (spike 106). A map numbers its lines and points afresh, the same
@@ -909,11 +1139,13 @@ impl Rails {
         *self.lines.borrow_mut() = IndexMap::new();
         *self.places.borrow_mut() = IndexMap::new();
         self.anchor.set(None);
+        self.cameras.set(0);
         if let Some(streets) = &self.streets {
             let wanted: Vec<i64> = files.iter().copied().filter(|&file| file != 0).collect();
             let network = streets(&wanted)?;
             self.lines.borrow_mut().extend(network.lines);
             self.places.borrow_mut().extend(network.places);
+            self.cameras.set(network.cameras);
         }
         Ok(())
     }

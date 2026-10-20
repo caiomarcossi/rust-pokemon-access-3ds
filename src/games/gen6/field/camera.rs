@@ -8,13 +8,19 @@
 //! ```text
 //! xy_system::CCameraULCD  +0x64 ptr a block of the heap's own, tagged and sized as every
 //!                         block is (`discovery.ALLOCATION`, `BLOCK_SIZE`)
-//! that block              +0xebc f32 the camera's heading in the world, in radians, the way a
-//!                         model's world facing is: x over z, 0 along z
+//! that block              +0xc0c f32 x3 where the camera is in the world, +0xc18 x3 what it
+//!                         looks at, +0xc24 x3 the unit way from one to the other
+//!                         +0xc30 f32 the camera's own heading, in radians, the way a model's
+//!                         world facing is: up on the pad walks the world's (sin, cos) of it
+//!                         +0xebc f32 the camera's heading on a rail, the same way
 //! ```
 //!
-//! Found in seven snapshots taken while the player walked up, each a different way, where it was the
-//! way they walked to a tenth of a degree (spike 105). The block is the upper screen camera's and is
-//! there on the grid too; only the rails need it.
+//! Found in seven snapshots taken while the player walked up, each a different way, where +0xebc was
+//! the way they walked to a tenth of a degree (spike 105). The block is the upper screen camera's and
+//! is there on the grid too, where +0xebc reads 0 and +0xc30 is where the camera looks: pi in Parfum
+//! Palace and on Route 7, -1.22 through the palace's back door into its garden, where up walked Khai
+//! west, swinging round to -pi as he walked north up it (spike A, x_route-6-4.ctm, 2026-10-20). The
+//! way from where it is to what it looks at turns with it, to the tenth of a degree.
 
 use std::f64::consts::PI;
 
@@ -27,6 +33,7 @@ pub const CLASS: &str = "N9xy_system11CCameraULCDE";
 /// Where the camera object points at the block holding its heading.
 pub const BLOCK: i64 = 0x64;
 pub const BLOCK_SIZE: i64 = 0x1468;
+pub const LOOKS: i64 = 0xC30;
 pub const YAW: i64 = 0xEBC;
 
 /// The block holding the camera's heading, through whichever camera object points at one;
@@ -55,9 +62,25 @@ pub fn heading(memory: &dyn Memory, block: i64) -> Result<Option<f64>> {
     if !is_block(memory, block)? {
         return Ok(None);
     }
-    let yaw = f32(&memory.read(block + YAW, 4)?, 0)?;
-    if !yaw.is_finite() || yaw.abs() > PI + 0.01 {
-        return Ok(None);
+    let yaw = angle(memory, block, YAW)?;
+    Ok(yaw.map(f64::to_degrees))
+}
+
+/// Where the camera looks, in radians the way a model faces (`LOOKS`), or None when the block
+/// is not the camera's any more or holds no angle: the way up walks the player off the rails.
+pub fn looks(memory: &dyn Memory, block: i64) -> Result<Option<f64>> {
+    if is_block(memory, block)? {
+        angle(memory, block, LOOKS)
+    } else {
+        Ok(None)
     }
-    Ok(Some(yaw.to_degrees()))
+}
+
+fn angle(memory: &dyn Memory, block: i64, at: i64) -> Result<Option<f64>> {
+    let angle = f32(&memory.read(block + at, 4)?, 0)?;
+    Ok(if angle.is_finite() && angle.abs() <= PI + 0.01 {
+        Some(angle)
+    } else {
+        None
+    })
 }

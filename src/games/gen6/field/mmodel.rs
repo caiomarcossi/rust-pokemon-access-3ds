@@ -101,6 +101,12 @@ pub const WORK_OBJECTS: Range<i64> = 0x7A..0x8A;
 pub const NONDRAW: i64 = 0x0;
 /// The character of a Poké Ball lying on the ground, seen on Route 102 (spike 78).
 pub const ITEM_BALL: i64 = 0x2000;
+/// The characters of an item ball: `MONSBALL` and `MONSBALL_RARE`, which runs item balls'
+/// scripts among `MONSBALL`'s in both games, 26 in X and 39 in ORAS, and on Route 6 was an
+/// "object" (spikes 155 and 220, 2026-10-19).
+///
+/// Python's is a frozenset, only tested.
+pub const ITEM_BALLS: [i64; 2] = [ITEM_BALL, 0x2001];
 /// Model codes from here up to `PROP_MODEL` are Pokémon: the movers' Machoke `0x103f`.
 pub const POKEMON_MODEL: i64 = 0x1000;
 /// Model codes from here up are things, not people: a doll in the bedroom, a Poké Ball.

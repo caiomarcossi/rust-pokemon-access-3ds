@@ -226,6 +226,10 @@ pub struct Game {
     /// The reader of its rooms of thin ice, or None in a game with none: ORAS's, in Sootopolis
     /// Gym (`games.oras.field.ice`).
     pub ice: Option<IceFactory>,
+    /// The sprites of the spots a wild Pokémon leaps out of as the player walks near, listed
+    /// under pokémon rather than as a thing to use: X's grass on Routes 6 and 18, `TOBI_KUSA`
+    /// (2026-10-19).
+    pub ambushes: HashSet<i64>,
     /// The sprites of its invisible blockers, move models drawn as nothing that stand in the way:
     /// listed as nobody, and solid but where they stand in for a rotating door's arm. Not where a
     /// sprite is a barrier (`barriers`).
@@ -320,6 +324,7 @@ impl Game {
             features: Vec::new(),
             doors: None,
             ice: None,
+            ambushes: HashSet::new(),
             blockers: HashSet::new(),
             elevators: HashSet::new(),
             player_looks: HashSet::new(),

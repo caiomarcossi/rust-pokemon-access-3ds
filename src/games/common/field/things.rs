@@ -218,6 +218,10 @@ pub struct Interactable {
     /// is a cave mouth over the water, walked into north, and P took the player to the ground over
     /// it, 45 higher, "passage, 1 south" (movie45, spike 213). None for anything else.
     pub way_in: Option<&'static str>,
+    /// The cells it covers where they are not the whole of its box: a warp across a diagonal
+    /// street, a row of cells the box round it holds a square of, and a way to it ended a step to
+    /// one side (x_route-6-2.ctm, 2026-10-20). Empty for the box.
+    pub shape: Vec<Cell>,
 }
 
 impl Interactable {
@@ -240,6 +244,7 @@ impl Interactable {
             start: None,
             pushes: None,
             way_in: None,
+            shape: Vec::new(),
         }
     }
 
@@ -280,7 +285,7 @@ impl Interactable {
     /// game names the species itself once the DexNav has registered it — so a name here would be
     /// a key that never matches again and would replace something the game says.
     pub fn naming(&self, zone: i64) -> Option<Naming> {
-        if self.category == POKEMON {
+        if self.category == POKEMON && !self.move_model {
             return None;
         }
         // A move model's source has its record's index where a place's has its kind, so it is
@@ -317,6 +322,14 @@ impl Interactable {
 
     /// The cell of this that is closest to `origin`: an exit can be several cells wide.
     pub fn nearest(&self, origin: (i64, i64)) -> (i64, i64) {
+        if let Some(&first) = self.shape.iter().min_by_key(|cell| {
+            (
+                (cell.0 - origin.0).abs() + (cell.1 - origin.1).abs(),
+                **cell,
+            )
+        }) {
+            return first;
+        }
         let x = origin.0.max(self.cell.0).min(self.cell.0 + self.size.0 - 1);
         let z = origin.1.max(self.cell.1).min(self.cell.1 + self.size.1 - 1);
         (x, z)
@@ -324,6 +337,9 @@ impl Interactable {
 
     /// Every cell this covers.
     pub fn cells(&self) -> Vec<Cell> {
+        if !self.shape.is_empty() {
+            return self.shape.clone();
+        }
         let mut out = Vec::new();
         for dz in 0..self.size.1 {
             for dx in 0..self.size.0 {
@@ -515,7 +531,7 @@ fn detail(item: &Interactable, place: Option<&str>) -> String {
                 Some(place) => format!(" ({place})"),
             };
     }
-    if item.category == "pokémon" {
+    if item.category == POKEMON && !item.move_model {
         return format!(" species {}", item.code);
     }
     String::new()

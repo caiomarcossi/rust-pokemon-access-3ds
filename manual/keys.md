@@ -9,7 +9,8 @@ When one of them is also bound to an Azahar button, pa3ds says so as it starts.
 pa3ds lists what is on the map in categories: all, exits, interactables, obstacles, people, items,
 berries, ash, bike, currents and pokémon, and while soaring, towns, routes, landmarks and mirage
 spots. A category with nothing in it is skipped. Each thing is said with where it is from you:
-"door, 1 of 3, 3 east 2 north".
+"door, 1 of 3, 3 east 2 north". North is the way up walks you: where the camera is turned, as in
+Parfum Palace's garden in X, the directions turn with it.
 
 The list has three **modes**, and the apostrophe steps through them. During a battle or a scene
 the map's keys say "no map", and the thing you had chosen is kept for when the map comes back.

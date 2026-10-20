@@ -264,6 +264,10 @@ pub const CRACKED_WALL: i64 = 0x2034;
 /// The invisible blocker, `STOPPER`, ORAS's id and model: six in Shalour City and four in the Team
 /// Flare Secret HQ, each running shared script 0x7d0, which shows nothing (spikes 218 and 219).
 pub const STOPPER: i64 = 0x8A;
+/// Grass a wild Pokémon leaps out of as the player walks near, rustling till it does: three on
+/// Route 6 and three on Route 18, with no script; "Whoa! A wild Audino leaped out of the tall
+/// grass!" (text 124:261, x_route-6.ctm, 2026-10-19).
+pub const TOBI_KUSA: i64 = 0x2002;
 
 /// The bit of a cell's word on a strand of Santalune Gym's web (zone 0x38, chunk file 344 of
 /// `a/0/4/1`): the floor is open cells along strands, many running diagonally, two cells touching
@@ -371,6 +375,7 @@ pub fn game() -> &'static Game {
             (CRACKED_WALL, ROCK_SMASH),
         ]),
         blockers: HashSet::from([STOPPER]),
+        ambushes: HashSet::from([TOBI_KUSA]),
         elevators: ELEVATORS.collect(),
         warps: warps().clone(),
         triggers: IndexMap::from([

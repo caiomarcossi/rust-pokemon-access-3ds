@@ -3,7 +3,8 @@
 use std::collections::HashSet;
 use std::f64::consts::PI;
 
-use crate::games::sm::camera::{quarter, turned, turned_box, unturned};
+use crate::games::common::field::pad::quarter;
+use crate::games::sm::camera::{turned, turned_box, unturned};
 
 /// The pad translator's angle over sun_5.ctm: pi in the living room, -1.934 on the porch,
 /// where up walked the player west-north-west to the door; about -2.9 on Route 1.

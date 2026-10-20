@@ -20,4 +20,5 @@ pub mod ground;
 pub mod guide;
 pub mod keys;
 pub mod navigate;
+pub mod pad;
 pub mod things;

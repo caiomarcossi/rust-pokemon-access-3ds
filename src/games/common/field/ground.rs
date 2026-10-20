@@ -443,7 +443,20 @@ pub struct Ground {
     /// The bit of a cell's word that marks a strand the player walks diagonally between
     /// (`slants`); 0 in a game without one. X's Santalune Gym has a floor of them (spike 223).
     pub strands: i64,
+    /// The cells of streets laid on the grid, each with the steps its street's ways allow, as
+    /// (dx, dz), a diagonal among them, and the key that takes each (`rail.Rails.lanes`).
+    pub lanes: Rc<Lanes>,
+    /// Cells people stand in on a ground that leaves them out of `standing`, a step into one
+    /// costing as much as a boulder's (`SHOVE`): the way as if nobody stood anywhere still goes
+    /// round whoever it can, so who it meets first is somebody in the way (`Guide._up_to`).
+    ///
+    /// A `frozenset` is a `HashSet`: it is only tested.
+    pub crowd: HashSet<Cell>,
 }
+
+/// `Ground.lanes`: each cell of a street laid on the grid, with each step its ways allow and the
+/// key that takes it.
+pub type Lanes = IndexMap<Cell, IndexMap<(i64, i64), &'static str>>;
 
 impl Default for Ground {
     fn default() -> Self {
@@ -474,6 +487,8 @@ impl Default for Ground {
             heights: IndexMap::new(),
             decks: Vec::new(),
             strands: 0,
+            lanes: Rc::new(IndexMap::new()),
+            crowd: HashSet::new(),
         }
     }
 }
@@ -507,6 +522,8 @@ impl fmt::Debug for Ground {
             .field("heights", &self.heights)
             .field("decks", &self.decks)
             .field("strands", &self.strands)
+            .field("lanes", &self.lanes)
+            .field("crowd", &self.crowd)
             .finish()
     }
 }
@@ -866,10 +883,15 @@ impl Ground {
 
     /// What a move from `cell` to `step` costs on top of its steps: going onto water,
     /// through what a move clears, up a waterfall, or up a slope from the foot of it on foot,
-    /// where the player gets on the bike first; through a big boulder, `SHOVE`.
+    /// where the player gets on the bike first; through a big boulder or somebody of `crowd`,
+    /// `SHOVE`; and along a street a way it does not run, which the keys never walk and a way
+    /// takes only where the cells laid on the grid leave it no other (`lanes`).
     pub fn toll(&self, cell: Cell, step: Cell) -> Result<i64> {
-        if self.cleared.get(&step) == Some(&STRENGTH) {
+        if self.cleared.get(&step) == Some(&STRENGTH) || self.crowd.contains(&step) {
             return Ok(SHOVE);
+        }
+        if self.off_lane(cell, step) {
+            return Ok(2 * pathfind::TURN);
         }
         if self.cleared.contains_key(&step) || (self.water(step)? && !self.water(cell)?) {
             return Ok(BOARD);
@@ -989,8 +1011,12 @@ impl Ground {
     /// the chunks' own tables, not merely somebody's. The Gym's floor is a spider web of open
     /// cells whose diagonal strands the player walked in one move each, (17, 65) to (18, 66)
     /// and (17, 63) to (18, 62) to (17, 61); across X's ROM 111 corner joins carry the bit on
-    /// both cells, and the 177 without it are the corners of ordinary walls (spike 223).
+    /// both cells, and the 177 without it are the corners of ordinary walls (spike 223). And
+    /// along or across a street that runs so, where both cells are its (`lanes`).
     pub fn slants(&self, cell: Cell, step: Cell) -> Result<bool> {
+        if self.lanes.contains_key(&cell) && self.lanes.contains_key(&step) {
+            return Ok(!self.off_lane(cell, step));
+        }
         if self.strands == 0 || self.corridor.is_some() {
             return Ok(false);
         }
@@ -1041,6 +1067,21 @@ impl Ground {
         let ways = self.shoves.get(&step);
         !self.cliffs.contains(&(cell, step))
             && ways.is_none_or(|ways| ways.contains(pathfind::towards(cell, step)))
+    }
+
+    /// The key that walks a step along or across a street, where it is one: up walks Route
+    /// 7's north-west (`lanes`). None off the streets, where a way is walked by the compass.
+    pub fn key(&self, cell: Cell, step: Cell) -> Option<&'static str> {
+        let lane = self.lanes.get(&cell)?;
+        lane.get(&(step.0 - cell.0, step.1 - cell.1)).copied()
+    }
+
+    /// Whether a step between two cells of a street goes none of its ways.
+    fn off_lane(&self, cell: Cell, step: Cell) -> bool {
+        self.lanes.get(&cell).is_some_and(|lane| {
+            self.lanes.contains_key(&step)
+                && !lane.contains_key(&(step.0 - cell.0, step.1 - cell.1))
+        })
     }
 
     /// How far each door stands turned now, in `doors`' order: where a search starts.
@@ -1163,6 +1204,19 @@ impl Ground {
                         if !cells.contains(&across) && self.passable(across)? {
                             beside.insert(across, Some(direction));
                         }
+                    }
+                }
+                // On a diagonal street the thing is walked into across a corner, its way.
+                for (direction, (dx, dz)) in pathfind::DIAGONALS {
+                    let near = (cell.0 - dx * out, cell.1 - dz * out);
+                    if self
+                        .lanes
+                        .get(&near)
+                        .is_some_and(|lane| lane.contains_key(&(dx, dz)))
+                        && !cells.contains(&near)
+                        && self.passable_at(near, item.height)?
+                    {
+                        beside.insert(near, Some(direction));
                     }
                 }
             }

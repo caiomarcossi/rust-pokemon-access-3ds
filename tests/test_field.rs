@@ -38,7 +38,7 @@ use crate::games::gen6::field::zonedata::{
     ENTITY_HEADER, FURNITURE, NPC, WARP, WARP_DOOR, npc_trainers, zone_header,
 };
 use crate::games::gen6::field::zonetable::{
-    INFO_KIND, INFO_MATRIX, INFO_NAME, INFO_PARENT, INFO_SIZE, UNDERWATER,
+    INFO_KIND, INFO_MATRIX, INFO_NAME, INFO_PARENT, INFO_SETTING, INFO_SIZE, UNDERWATER,
 };
 use crate::games::gen6::game::{FeatureFactory, FurnitureKind, Game, SecretBaseFactory};
 use crate::games::gen6::rom::archives::GameText;
@@ -1089,29 +1089,30 @@ fn test_a_door_or_a_mat_out_walked_into_any_way_is_a_door_or_a_way_out() -> Resu
     Ok(())
 }
 
-/// Lumiose's streets are zones joined by warps of a door's kind, which every replay along
-/// them said "warp" or "door" (spike 220): all 52 that join two zones with records on streets are
-/// the way from one street onto the next, whichever way they face. A door into a building off
-/// a street is still a door.
+/// A warp of a door's kind from one zone of the open air into another is the way through,
+/// whichever way it faces: Lumiose's streets onto each other (spike 220), and Route 7 onto Route
+/// 6 and into its berry field, which were said "door" (x_route-7and6.ctm, 2026-10-19). The zone
+/// table's setting says which zones are the open air, Route 20's woods among them; a house
+/// entered by a door of the same kind is not, nor are the S.S. Tidal's cabins.
 #[test]
-fn test_a_door_between_two_of_lumioses_streets_is_a_path() -> Result<()> {
-    let avenue = 0x44;
+fn test_a_door_between_two_zones_of_the_open_air_is_a_path() -> Result<()> {
     let mut town = Town::new();
+    let mut table = town.memory.read(TABLE, (BEDROOM + 1) * INFO_SIZE)?;
+    for (zone, setting) in [(TOWN, 1), (ROUTE, 6), (BEDROOM, 2)] {
+        table[(zone * INFO_SIZE + INFO_SETTING) as usize] = setting;
+    }
     town.reader = field_reader(
         town.memory.clone(),
         Given {
-            street_records: IndexMap::from([
-                (TOWN, (Vec::new(), Vec::new())),
-                (avenue, (Vec::new(), Vec::new())),
-            ]),
+            zone_table: table,
             ..Given::default()
         },
         game(),
     );
     let data = zone_file(&ZoneSpec {
         warps: &[
-            (avenue, 0x0302, 94, 171, None, None),
-            (avenue, 0x0301, 98, 171, None, None),
+            (ROUTE, 0x0302, 94, 171, None, None),
+            (ROUTE, 0x0301, 98, 171, None, None),
             (BEDROOM, 0x0302, 102, 171, None, None),
         ],
         info: &town_info(),
@@ -2629,6 +2630,39 @@ fn test_the_invisible_blocker_is_nobody_and_stands_in_the_way() -> Result<()> {
     Ok(())
 }
 
+/// Route 6 (x_route-6.ctm, 2026-10-19): `MONSBALL_RARE` and the grass a wild Pokémon leaps
+/// out of were each listed under interactables as an object, which nothing answered. The
+/// grass is called by its sprite, as any thing is.
+#[test]
+fn test_a_rare_ball_is_an_item_ball_and_grass_a_pokemon_leaps_out_of_is_pokemon() -> Result<()> {
+    let mut town = Town::new();
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given::default(),
+        Game {
+            ambushes: HashSet::from([xy::TOBI_KUSA]),
+            ..game()
+        },
+    );
+    town.model(2, TOWN, 1, 0x2001, (100, 180));
+    town.model(3, TOWN, 2, xy::TOBI_KUSA, (110, 170));
+    let r#where = town.r#where()?;
+    let items: Vec<(String, (i64, i64))> = r#where
+        .of("items")
+        .into_iter()
+        .map(|item| (item.kind, item.cell))
+        .collect();
+    assert_eq!(items, [("item ball".to_string(), (100, 180))]);
+    let grass: Vec<_> = r#where
+        .of("pokémon")
+        .iter()
+        .map(|item| (item.cell, item.naming(TOWN)))
+        .collect();
+    assert_eq!(grass, [((110, 170), Some(("sprite", xy::TOBI_KUSA, 0)))]);
+    assert!(!r#where.of("signs").iter().any(|item| item.move_model));
+    Ok(())
+}
+
 /// Spike 203: deep in the Cave of Origin three models drawn as nothing stand in a row in front
 /// of Groudon, which stands in the magma, with its script; in Sootopolis City one stands on each
 /// locked door. Each was listed as a nameless person, and so was the player in the Magma Suit,
@@ -4002,6 +4036,175 @@ fn test_a_sign_or_a_warp_on_a_rail_is_not_listed_and_keeps_its_slot() -> Result<
     Ok(())
 }
 
+/// The town's reader given the ROM's streets as `line` alone, its ends where the world has
+/// `start` and `end`, and a map of chunk files 700 and 701 with no chunks to read.
+fn on_one_line(
+    town: &mut Town,
+    line: &rail::Line,
+    start: (f64, f64),
+    end: (f64, f64),
+    cameras: i64,
+) {
+    let network = rail::Network {
+        lines: IndexMap::from([(line.id, line.clone())]),
+        places: IndexMap::from([(1, start), (2, end)]),
+        cameras,
+    };
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given {
+            streets: Some(Rc::new(move |_chunks: &[i64]| Ok(network.clone()))),
+            far: Some(Rc::new(|_file| Ok(None))),
+            ..Given::default()
+        },
+        game(),
+    );
+    town.memory
+        .write(MAP + MAP_CHUNK_FILES, &le16(&[0, 700, 701]));
+}
+
+/// Route 7's way onto Route 6 is placed on a short street of its own, which the player walks
+/// onto from the grid, and no exit led to Route 6 until they had (x_route-7and6.ctm,
+/// 2026-10-19). Off the rails it is placed from where the ROM has its line's two ends: on a line
+/// running south, an offset across rises to the east.
+#[test]
+fn test_a_warp_on_a_rail_is_listed_off_the_rails_where_the_world_has_its_line() -> Result<()> {
+    let line = rail::Line::new(0x8001, 1, 2, 4, 3, vec![0; 15]);
+    let start = ((100 * 18 + 9) as f64, (160 * 18 + 9) as f64);
+    let mut town = Town::new();
+    on_one_line(
+        &mut town,
+        &line,
+        start,
+        (start.0, start.1 + (4 * 18) as f64),
+        0,
+    );
+    let mut data = zone_file(&ZoneSpec {
+        warps: &[(ROUTE, WARP_DOOR, 0, 0, None, None)],
+        info: &town_info(),
+        ..ZoneSpec::default()
+    });
+    let first = zone_header(5) + INFO_SIZE + ENTITY_HEADER;
+    put(
+        &mut data,
+        first + 6,
+        &[le16(&[1]), le32(&[line.id]), le16(&[2, -1, 1, 3])].concat(),
+    );
+    town.memory.write(FILE, &data);
+    town.memory
+        .u32(HOLDER + 8, &[0x11 | (data.len() as i64) << 8]);
+    let doors: Vec<((i64, i64), (i64, i64))> = town
+        .r#where()?
+        .of("exits")
+        .iter()
+        .filter(|item| item.kind == "door")
+        .map(|item| (item.cell, item.size))
+        .collect();
+    assert_eq!(doors, [((99, 162), (3, 1))]);
+    Ok(())
+}
+
+/// The chunks under Route 7's street onto Route 6 mark every cell a wall, and from the grid
+/// P found nothing to walk to, "no path to path" (2026-10-19). Off the rails the street's open
+/// cells are open ground, its walls still walls: here its row 1.
+#[test]
+fn test_a_street_beside_the_grid_is_walked_where_the_world_has_it() -> Result<()> {
+    let walls: Vec<i64> = [vec![0; 3], vec![1; 3], vec![0; 9]].concat();
+    let line = rail::Line::new(0x8001, 1, 2, 4, 3, walls);
+    let start = ((100 * 18 + 9) as f64, (160 * 18 + 9) as f64);
+    let mut town = Town::new();
+    on_one_line(
+        &mut town,
+        &line,
+        start,
+        (start.0, start.1 + (4 * 18) as f64),
+        0,
+    );
+    let walled: Vec<(i64, i64)> = (97..104)
+        .flat_map(|x| (158..166).map(move |z| (x, z)))
+        .collect();
+    town.block(TOWN_BLOCK, TOWN_CHUNK, (80, 160), &walled);
+    let ground = town.reader.ground(&town.r#where()?, None)?;
+    for x in [99, 100, 101] {
+        for z in [160, 162, 163, 164] {
+            assert!(ground.open((x, z))?, "({x}, {z})");
+        }
+        assert!(!ground.open((x, 161))?, "({x}, 161)");
+    }
+    assert!(!ground.open((98, 162))? && !ground.open((102, 162))?);
+    Ok(())
+}
+
+/// Route 7's street onto Route 6 is shown by a camera of its own that stays put, and up
+/// walks the street's way nearest north; laid out as one of Lumiose's, P said "camera angled,
+/// hold left, hold right, 10 back" over and over, and only the street was listed
+/// (x_route-6-2.ctm, 2026-10-20). Where the map's streets place cameras, a player on one is
+/// where the world has them, on the grid, with the whole zone round them.
+#[test]
+fn test_under_a_streets_own_camera_the_player_is_on_the_grid() -> Result<()> {
+    let line = rail::Line::new(0x8001, 1, 2, 4, 3, vec![0; 15]);
+    let start = ((100 * 18 + 9) as f64, (160 * 18 + 9) as f64);
+    let mut town = Town::new();
+    on_one_line(
+        &mut town,
+        &line,
+        start,
+        (start.0, start.1 + (4 * 18) as f64),
+        1,
+    );
+    town.memory.u32(POOL + mmodel::CELL_X, &[line.id]);
+    town.memory.write(POOL + mmodel::PLACE_X, &f32s(&[0.0]));
+    let r#where = town.r#where()?;
+    assert!(!r#where.on_rail && r#where.cell == (94, 172));
+    let kinds: Vec<String> = r#where
+        .of("exits")
+        .into_iter()
+        .map(|item| item.kind)
+        .collect();
+    assert_eq!(kinds, ["door", "door", "edge"]);
+    Ok(())
+}
+
+/// Up walks Route 7's street north-west, a cell of the street at a time, never straight
+/// north or west, and P's "7 north-west" was walked by holding north (the tapes of
+/// x_route-6-2.ctm and x_route-6-3.ctm, 2026-10-20). Laid on the grid, a street's cells let the
+/// player step the street's ways, a diagonal among them, and a way along it is one leg, said by
+/// its key: up and down along a line measured north or south.
+#[test]
+fn test_a_diagonal_street_is_one_leg_said_by_the_key_that_walks_it() -> Result<()> {
+    let line = rail::Line::new(0x8001, 1, 2, 6, 3, vec![0; 21]);
+    let start = ((100 * 18 + 9) as f64, (170 * 18 + 9) as f64);
+    let end = (
+        start.0 - (6 * 18) as f64 / 2f64.sqrt(),
+        start.1 - (6 * 18) as f64 / 2f64.sqrt(),
+    );
+    let mut town = Town::new();
+    on_one_line(&mut town, &line, start, end, 1);
+    town.model(0, TOWN, mmodel::PLAYER_INDEX, 0xAC, (100, 170));
+    let r#where = town.r#where()?;
+    let ground = town.reader.ground(&r#where, None)?;
+    let path = ground.find(
+        (100, 170),
+        &IndexMap::from([((96, 166), None)]),
+        "",
+        None,
+        false,
+        None,
+    )?;
+    let path = path.expect("a way along the street");
+    assert_eq!(
+        pathfind::spoken(&pathfind::legs(&path, None)?),
+        "4 north-west"
+    );
+    let key = |cell, step| ground.key(cell, step);
+    assert_eq!(
+        pathfind::spoken(&pathfind::legs_with(&path, None, Some(&key))?),
+        "4 north"
+    );
+    assert_eq!(ground.key((100, 170), (101, 169)), Some("east"));
+    Ok(())
+}
+
 /// Spike 102: on a rail +0xec is 0, where on the grid it is the world's x; the chunks there
 /// mark every cell a wall, so the border is listed whole rather than narrowed away.
 #[test]
@@ -4179,6 +4382,40 @@ fn test_on_the_rails_up_walks_the_way_the_camera_looks_not_the_way_the_player_fa
     Ok(())
 }
 
+/// Spike A: Parfum Palace's garden, where the camera looks west, a little south, and up
+/// walked Khai west; it swings round to north as he walks up the garden, past the edge of a
+/// quarter only (`pad.HYSTERESIS`).
+#[test]
+fn test_off_the_rails_up_walks_the_way_the_camera_looks() -> Result<()> {
+    let town = Town::new();
+    town.model(0, TOWN, mmodel::PLAYER_INDEX, 0xAC, (94, 172));
+    let (block, holder) = (0x08277140, 0x0827855C);
+    town.memory.u32(block, &[ALLOCATION, camera::BLOCK_SIZE]);
+    town.memory.u32(
+        holder,
+        &[FakeClasses::new(town.memory.clone()).add(camera::CLASS)],
+    );
+    town.memory.u32(holder + camera::BLOCK, &[block]);
+    let found = town.found();
+    let mut heap = found.heap.clone();
+    heap.insert(holder, camera::CLASS.to_string());
+    town.reader.track(&Found {
+        pages: found.pages.clone(),
+        heap,
+        partial: false,
+    })?;
+    let mut turn = 0;
+    for (looks, quarter) in [(-70.0f64, 3), (-130.0, 3), (-166.8, 0), (180.0, 0)] {
+        town.memory
+            .write(block + camera::LOOKS, &f32s(&[looks.to_radians()]));
+        turn = town.reader.turn(turn)?;
+        assert_eq!(turn, quarter, "{looks}");
+    }
+    town.memory.u32(block, &[0, 0]);
+    assert_eq!(town.reader.turn(3)?, 3);
+    Ok(())
+}
+
 /// The game moves the table's entries about as lines load, and a read now and then misses
 /// one: the corridor was laid out afresh from the player's own line, every cell moved under the
 /// way being walked, and the door on the missed line went from the list (spike 105).
@@ -4246,6 +4483,7 @@ fn test_a_door_on_a_line_the_game_has_not_loaded_is_listed_from_the_rom() -> Res
                 IndexMap::new()
             },
             places: IndexMap::new(),
+            cameras: 0,
         })
     };
     town.reader = field_reader(

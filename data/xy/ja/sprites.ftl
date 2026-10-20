@@ -343,6 +343,8 @@ sprite-0x203d = キラキラ
 sprite-0x2042 = キラキラ
 # en cone: CONE, model com_bm_skatecone: two across a Lumiose street, "There is a fence blocking the road." (story 317:18), and seven in Lysandre Labs
 sprite-0x203e = コーン
+# en shaking grass: TOBI_KUSA, no script: three on Route 6 and three on Route 18, rustling till a wild Pokémon "leaped out of the tall grass" (text 124:261)
+sprite-0x2002 = 揺れる草むら
 
 ## tiles
 # What each kind of use tile is: a cell of the map the player faces and presses A at, with no

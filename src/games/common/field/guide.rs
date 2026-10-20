@@ -1093,7 +1093,8 @@ impl Guide {
             }
             Ok(String::new())
         };
-        let legs = pathfind::legs(&path, Some(&how))?;
+        let key = |cell: Cell, step: Cell| ground.key(cell, step);
+        let legs = pathfind::legs_with(&path, Some(&how), Some(&key))?;
         let visit = self.field.visit();
         let along: HashMap<Cell, i64> = path
             .iter()
@@ -1191,8 +1192,21 @@ impl Guide {
         }
         let heading = pathfind::towards(was, r#where.cell);
         let mut at = guidance.borrow().at(r#where.cell)?;
-        if at.is_none() && self.slack != 0 {
-            at = near(&guidance.borrow().path, r#where.cell, self.slack);
+        // A step along a diagonal street lands up to a cell off the diagonal the way was laid on
+        // the grid by (the tape of x_route-6-2.ctm, 2026-10-20).
+        let slack = if self.slack != 0 {
+            self.slack
+        } else {
+            i64::from(
+                guidance
+                    .borrow()
+                    .path
+                    .windows(2)
+                    .any(|pair| pair[0].0 != pair[1].0 && pair[0].1 != pair[1].1),
+            )
+        };
+        if at.is_none() && slack != 0 {
+            at = near(&guidance.borrow().path, r#where.cell, slack);
         }
         let Some(at) = at else {
             return self.again(r#where, &guidance, heading);
@@ -1314,14 +1328,6 @@ impl Guide {
         Ok(())
     }
 
-    /// Where somebody stands in the way: the way there as if nobody stood anywhere, as far
-    /// as the first who does, with its ground, goals, path, the height its decks are walked at,
-    /// and who it is; or None where nobody is what stops it. In Fortree City the invisible
-    /// Kecleon stands in the one way to the Gym until the Devon Scope shows it, and the way as
-    /// near as the player could get as the crow flies ended behind a wall from the Gym, on a
-    /// walkway 7 cells south of its door (spike 160). What stands unlisted stays: Sootopolis
-    /// Gym's invisible blockers shut the corridors up to Wallace, and cleared away, the Lass
-    /// pacing the lower floor was said to be in the way up to him (spike 167).
     /// Within a cell of the way, tell a player who has stopped off the next leg's line, where
     /// a corner would catch them on it, which way to step, "a little west"; and once they come
     /// within `LINED_UP` of it, moving or not, "lined up" (Orion, 2026-10-11, who lined up by
@@ -1372,6 +1378,16 @@ impl Guide {
         Ok(())
     }
 
+    /// Where somebody stands in the way: the way there as if nobody stood anywhere, as far
+    /// as the first who does, with its ground, goals, path, the height its decks are walked at,
+    /// and who it is; or None where nobody is what stops it. In Fortree City the invisible
+    /// Kecleon stands in the one way to the Gym until the Devon Scope shows it, and the way as
+    /// near as the player could get as the crow flies ended behind a wall from the Gym, on a
+    /// walkway 7 cells south of its door (spike 160). What stands unlisted stays: Sootopolis
+    /// Gym's invisible blockers shut the corridors up to Wallace, and cleared away, the Lass
+    /// pacing the lower floor was said to be in the way up to him (spike 167). Whoever can be
+    /// walked round is: on Route 7 the way west went through Shauna, standing in the open, on
+    /// its way to the Snorlax filling the road, and she was said to be in the way (2026-10-19).
     fn up_to(
         &self,
         r#where: &Field,
@@ -1390,15 +1406,23 @@ impl Guide {
             .collect();
         for &level in levels {
             let ground = self.ground(r#where, hm, level)?;
+            // A boulder a push will not move that way is in the way too (movie46, spike 213).
+            let crowd: HashSet<Cell> = ground
+                .standing
+                .iter()
+                .filter(|cell| listed.contains(cell) && !own.contains(cell))
+                .copied()
+                .collect();
             let mut clear = ground.clone();
+            // `standing - crowd`, in `standing`'s order.
             clear.standing = ground
                 .standing
                 .iter()
-                .filter(|cell| own.contains(cell) || !listed.contains(cell))
+                .filter(|cell| !crowd.contains(cell))
                 .copied()
                 .collect();
-            // A boulder a push will not move that way is in the way too (movie46, spike 213).
             clear.shoves = IndexMap::new();
+            clear.crowd = crowd;
             let goals = aimed(clear.goals(item)?, sides);
             let way = clear.find(r#where.cell, &goals, heading, Some(item), false, None)?;
             let Some(way) = way else {

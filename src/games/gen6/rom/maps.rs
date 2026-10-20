@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 
 use crate::core::binary::{u16, u32};
 use crate::core::rom::{Rom, lz11};
@@ -116,7 +116,10 @@ impl Streets {
         }
         let mut lines: IndexMap<i64, rail::Line> = IndexMap::new();
         let mut places: IndexMap<i64, (f64, f64)> = IndexMap::new();
-        for chunk in chunks {
+        let mut cameras = 0;
+        // `dict.fromkeys(chunks)`: each chunk once, in the order first named.
+        let once: IndexSet<i64> = chunks.iter().copied().collect();
+        for chunk in &once {
             let network = self
                 .read
                 .borrow()
@@ -129,8 +132,13 @@ impl Streets {
             for (&point, &place) in &network.places {
                 places.entry(point).or_insert(place);
             }
+            cameras += network.cameras;
         }
-        Ok(rail::Network { lines, places })
+        Ok(rail::Network {
+            lines,
+            places,
+            cameras,
+        })
     }
 
     fn files(&self) -> Result<Vec<Vec<u8>>> {

@@ -15,7 +15,7 @@
 //! either way (`over`). A step can carry a toll on top of its price, as going onto water to surf
 //! does, and a leg a word to say it by: "Surf 12 south".
 
-use std::cell::RefCell;
+use std::cell::{Cell as Slot, RefCell};
 use std::cmp::{Ordering, Reverse};
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::fmt;
@@ -881,12 +881,28 @@ fn back(came: &HashMap<State, State>, state: &State) -> Vec<Cell> {
     cells
 }
 
-/// A path's straight runs, in order. `how` says what each step is walked with, and a run
-/// ends where that changes as well as where the path turns: "3 south, Surf 12 south".
+/// `legs(path, how)`, with no step walked by a key other than its way's.
 pub fn legs(path: &[Cell], how: Option<&dyn Fn(Cell, Cell) -> Result<String>>) -> Result<Vec<Leg>> {
+    legs_with(path, how, None)
+}
+
+/// A path's straight runs, in order. `how` says what each step is walked with, and a run
+/// ends where that changes as well as where the path turns: "3 south, Surf 12 south". `key` is
+/// the key that walks a step where that is not its way, as up walks a street north-west.
+pub fn legs_with(
+    path: &[Cell],
+    how: Option<&dyn Fn(Cell, Cell) -> Result<String>>,
+    key: Option<&dyn Fn(Cell, Cell) -> Option<&'static str>>,
+) -> Result<Vec<Leg>> {
     let mut out: Vec<Leg> = Vec::new();
     for i in 1..path.len() {
-        let mut direction = towards(path[i - 1], path[i]);
+        let mut direction = match key {
+            Some(key) => key(path[i - 1], path[i]).unwrap_or(""),
+            None => "",
+        };
+        if direction.is_empty() {
+            direction = towards(path[i - 1], path[i]);
+        }
         if direction.is_empty() {
             direction = slant((path[i].0 - path[i - 1].0, path[i].1 - path[i - 1].1)).unwrap_or("");
         }
@@ -914,9 +930,44 @@ pub fn legs(path: &[Cell], how: Option<&dyn Fn(Cell, Cell) -> Result<String>>) -
     Ok(out)
 }
 
+/// The compass's eight ways, clockwise.
+pub const EIGHTHS: [&str; 8] = [
+    NORTH,
+    "north-east",
+    EAST,
+    "south-east",
+    SOUTH,
+    "south-west",
+    WEST,
+    "north-west",
+];
+
+thread_local! {
+    /// Quarters clockwise from the way the pad's up walks to north (`walked`).
+    ///
+    /// Python's `_turn`, renamed since `TURN` is taken, and the module's own where this is a
+    /// thread's, as `core::words`' words are, so tests running side by side do not turn each
+    /// other's compass. The runtime has one thread.
+    static TURNED: Slot<i64> = const { Slot::new(0) };
+}
+
+/// Say every way of the compass from here on as the pad key that walks it, where up walks the
+/// player `turn` quarters clockwise from north: in Parfum Palace's garden right walked Khai
+/// north and up west, 3 (x_route-6-4.ctm, 2026-10-20). North is the way up walks, as in Sun.
+pub fn walked(turn: i64) {
+    TURNED.with(|held| held.set(py::modulo(turn, 4)));
+}
+
 /// A way of the compass, `north` or `north-east`, or of a player's own frame, `ahead`, as
-/// it is said.
+/// it is said: a way of the compass as the key that walks it (`walked`).
 pub fn way(direction: &str) -> String {
+    let turn = TURNED.with(Slot::get);
+    let mut direction = direction;
+    if turn != 0
+        && let Some(at) = EIGHTHS.iter().position(|&known| known == direction)
+    {
+        direction = EIGHTHS[py::modulo(at as i64 - 2 * turn, EIGHTHS.len() as i64) as usize];
+    }
     own(&format!("way-{direction}"), &[])
 }
 

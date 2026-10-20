@@ -42,6 +42,14 @@ pub const INFO_KIND: i64 = 0x08;
 /// into (spike 165).
 pub const UNDERWATER: i64 = 0xC2;
 
+/// What kind of place a zone is, a byte: 1 the open air, every town and route of both games and
+/// Frost Cavern's and the Poké Ball Factory's grounds, and 6 X's two woods; 2 to 5 under a roof, as
+/// houses, caves, the S.S. Tidal, Pokémon Centers and X's gates are (2026-10-19).
+pub const INFO_SETTING: i64 = 0x20;
+
+/// Python's is a frozenset, only tested.
+pub const OPEN_AIR: [u8; 2] = [1, 6];
+
 pub const INFO_PARENT: i64 = 0x1A;
 
 pub const INFO_NAME: i64 = 0x1C;
@@ -236,6 +244,19 @@ impl ZoneTable {
         Ok(match self.row(zone)? {
             None => false,
             Some(row) => u16(&row, INFO_KIND)? == UNDERWATER,
+        })
+    }
+
+    /// Whether a zone is the open air (`INFO_SETTING`): read out of the ROM's table, or the
+    /// game's where there is no ROM; False with neither.
+    pub fn open_air(&self, zone: i64) -> Result<bool> {
+        let at = zone * INFO_SIZE + INFO_SETTING;
+        if self.rom.len() as i64 > at {
+            return Ok(OPEN_AIR.contains(&self.rom[at as usize]));
+        }
+        Ok(match self.row(zone)? {
+            None => false,
+            Some(row) => OPEN_AIR.contains(&row[INFO_SETTING as usize]),
         })
     }
 

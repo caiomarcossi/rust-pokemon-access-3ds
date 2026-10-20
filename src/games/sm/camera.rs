@@ -21,7 +21,8 @@
 //! a quarter's edge would turn the whole compass back and forth with it, so the compass keeps its
 //! quarter until the camera looks `HYSTERESIS` degrees past the edge (2026-09-27).
 
-use crate::py::{self, Result};
+use crate::games::common::field::pad::QUARTERS;
+use crate::py;
 
 pub type Cell = (i64, i64);
 
@@ -34,26 +35,6 @@ pub const ANGLE: i64 = 0x08;
 /// (sun_5.ctm).
 pub const SET: i64 = 0x14;
 pub const HEAD: i64 = SET + 4;
-pub const QUARTERS: i64 = 4;
-/// Degrees past a quarter's edge (45 from its centre) the camera looks before the compass turns.
-pub const HYSTERESIS: f64 = 10.0;
-
-/// The quarter turns clockwise from north of the way up walks, nearest: 0 north, 1 east, 2
-/// south, 3 west. With `current`, the quarter last taken, that one until the camera looks
-/// `HYSTERESIS` past its edge. North for an angle that is not a number, or `current`.
-pub fn quarter(angle: f64, current: Option<i64>) -> Result<i64> {
-    if !angle.is_finite() {
-        return Ok(current.unwrap_or(0));
-    }
-    let bearing = angle.sin().atan2(-angle.cos()).to_degrees();
-    if let Some(current) = current {
-        let off = py::modulo_f(bearing - (current * 90) as f64 + 180.0, 360.0) - 180.0;
-        if off.abs() <= 45.0 + HYSTERESIS {
-            return Ok(current);
-        }
-    }
-    Ok(py::modulo(py::round(bearing / 90.0)?, QUARTERS))
-}
 
 /// A cell of the world as the pad walks it: north the way up walks when the camera looks
 /// `turn` quarters clockwise from north. Every cell is one cell still, and its neighbours its

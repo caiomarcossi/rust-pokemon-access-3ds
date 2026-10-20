@@ -41,8 +41,8 @@ use crate::games::common::field::ground::{
 };
 use crate::games::common::field::things::{
     BIKE, BIKE_SOURCE, CURRENT_SOURCE, CURRENTS_CATEGORY, DECORATION_SOURCE, DIVE_SOURCE,
-    EDGE_SOURCE, FURNITURE_SOURCE, Field, Interactable, OBSTACLES, STAIRS_SOURCE, TILE_SOURCE,
-    TRIGGER_SOURCE, WARP_SOURCE, kind_said, place_source,
+    EDGE_SOURCE, FURNITURE_SOURCE, Field, Interactable, OBSTACLES, POKEMON, STAIRS_SOURCE,
+    TILE_SOURCE, TRIGGER_SOURCE, WARP_SOURCE, kind_said, place_source,
 };
 use crate::games::gen6::field::features::{
     DoorReader, Feature, HiddenReader, Hiding, IceReader, SecretBaseReader, Tracked,
@@ -300,6 +300,8 @@ pub struct FieldReader {
     triggers: IndexMap<(i64, i64), (String, String, Option<i64>)>,
     /// Sprite -> the move that clears the thing drawn as it (`Game.clears`).
     clears: IndexMap<i64, i64>,
+    /// The sprites of the spots a wild Pokémon leaps out of (`Game.ambushes`).
+    ambushes: HashSet<i64>,
     /// The matrix out of the ROM, which never touches RAM.
     pub terrain: Terrain,
     /// Underwater zone -> its `Ground.surfaces`, once found.
@@ -338,6 +340,8 @@ pub struct FieldReader {
     shared: IndexMap<(i64, i64), i64>,
     models: RefCell<Vec<i64>>,
     player: Slot<Option<i64>>,
+    /// Whether the player's model was on a rail at the last poll.
+    on_rail: Slot<bool>,
     holder: RefCell<Option<Holder>>,
     map: Slot<Option<i64>>,
     /// The field map's grid as last read: a sweep ago, or when the player's model changed.
@@ -451,6 +455,7 @@ impl FieldReader {
             barriers: game.barriers.clone(),
             triggers: game.triggers.clone(),
             clears: game.clears.clone(),
+            ambushes: game.ambushes.clone(),
             terrain,
             surfaces_of: RefCell::new(HashMap::new()),
             trigger_boxes: RefCell::new(HashMap::new()),
@@ -468,6 +473,7 @@ impl FieldReader {
             shared: text.shared.clone(),
             models: RefCell::new(Vec::new()),
             player: Slot::new(None),
+            on_rail: Slot::new(false),
             holder: RefCell::new(None),
             map: Slot::new(None),
             grid: RefCell::new(None),
@@ -621,7 +627,13 @@ impl FieldReader {
             ),
         };
         let bike = mmodel::on_bike(&head, form)?;
-        if !mmodel::on_rail(&head)? {
+        self.on_rail.set(mmodel::on_rail(&head)?);
+        // Under a street's own camera the keys walk the world's ways, so its streets are the
+        // grid's ground (`Rails.fixed`).
+        if !mmodel::on_rail(&head)? || {
+            let files = self.terrain.files.borrow().1.clone();
+            self.rails.fixed(&files, mmodel::rail(&head)?.0)?
+        } {
             *self.rails.corridor.borrow_mut() = None;
             return Ok(Some(Field {
                 on_bike: bike,
@@ -652,6 +664,17 @@ impl FieldReader {
             height: self.height.get(),
             ..Field::new(zone, at)
         }))
+    }
+
+    /// The quarters clockwise from north the pad's up walks the player, as the last poll
+    /// found them: where the camera looks (`Rails.turn`), and north on a rail, where the keys
+    /// walk the corridor or a street's lanes and the camera's own heading reads 0 (spike A).
+    pub fn turn(&self, current: i64) -> Result<i64> {
+        if self.on_rail.get() {
+            Ok(0)
+        } else {
+            self.rails.turn(current)
+        }
     }
 
     /// The player's model and the zone it was built in, as the last poll read them.
@@ -706,7 +729,10 @@ impl FieldReader {
                 }
             }
         }
-        let covered = self.covered(r#where.zone)?;
+        let files = self.terrain.files.borrow().1.clone();
+        let lanes = self.rails.lanes(&files)?;
+        let mut covered = self.covered(r#where.zone)?;
+        covered.extend(lanes.keys().copied());
         let mut solid: IndexMap<Cell, Option<f64>> = IndexMap::new();
         if let Some(bases) = bases
             && bases.zones().contains(&r#where.zone)
@@ -762,9 +788,13 @@ impl FieldReader {
             .me
             .upgrade()
             .expect("a reader is made in an Rc, which its holders keep");
+        let far_covered = covered.clone();
         let far: Far = Rc::new(move |column, row| match me.terrain.far(column, row)? {
             None => Ok(None),
-            Some(chunk) => Ok(Some(laid(&me.terrain, &chunk, stacked, level)?)),
+            Some(chunk) => Ok(Some(opened(
+                laid(&me.terrain, &chunk, stacked, level)?,
+                &far_covered,
+            ))),
         });
         let grid = if trusted {
             self.grid.borrow().clone()
@@ -785,6 +815,7 @@ impl FieldReader {
             ice,
             filled,
             strands: self.strands,
+            lanes,
             ..Ground::of(
                 r#where,
                 Of {
@@ -998,14 +1029,22 @@ impl FieldReader {
             items.extend(joined(furniture, &|item| Some(self.furniture_key(item))));
             let warps = read_records(&*self.memory, data, WARP)?;
             for (i, record) in warps.iter().enumerate() {
-                if !on_rail(record)? {
-                    let warp = self.warp(i as i64, record, None, home)?;
-                    items.push(Interactable {
-                        home,
-                        arrival: arrival(record, home, &warps)?,
-                        ..warp
-                    });
+                let files = self.terrain.files.borrow().1.clone();
+                let shape = self.rails.on_grid(record, &files)?;
+                if shape.is_none() && on_rail(record)? {
+                    continue;
                 }
+                let at = match &shape {
+                    None => None,
+                    Some(shape) => Some(rail::spread(shape.iter().copied())?),
+                };
+                let warp = self.warp(i as i64, record, at, home)?;
+                items.push(Interactable {
+                    home,
+                    arrival: arrival(record, home, &warps)?,
+                    shape: shape.unwrap_or_default(),
+                    ..warp
+                });
             }
         }
         items.extend(self.boulders(people, r#where.zone, data.as_ref(), home)?);
@@ -1581,7 +1620,7 @@ impl FieldReader {
 
     /// A warp as what the player walks through: a door, the mat out, stairs or an opening
     /// between rooms, or the path between two outdoor matrices, told by the kind and whether the
-    /// zone it goes to is outdoors; and what the game's table of kinds says of the rest, as a
+    /// zones it joins are outdoors; and what the game's table of kinds says of the rest, as a
     /// ladder or a teleporter pad (`Game.warps`). The place it arrives in is said by the
     /// navigator, which has the game's words (`Navigator.destination`).
     fn warp(
@@ -1596,12 +1635,15 @@ impl FieldReader {
             None => warp_box(record)?,
             Some(at) => at,
         };
-        let streets = &self.rails.records;
         let what: String = if kind >> 8 == WARP_DOOR >> 8
-            && home.is_some_and(|home| streets.contains_key(&home))
-            && streets.contains_key(&to)
+            && match home {
+                None => false,
+                Some(home) => self.zones.open_air(home)?,
+            }
+            && self.zones.open_air(to)?
         {
-            // A door's kind between two of Lumiose's streets is the way onto the next (spike 220).
+            // A door's kind between two of the open air is the way through: one of Lumiose's
+            // streets onto the next (spike 220), Route 7 onto Route 6 (2026-10-19).
             "path".to_string()
         } else if kind == WARP_DOOR || (kind >> 8 == WARP_STREET && !self.outdoors.contains(&to)) {
             "door".to_string()
@@ -1933,8 +1975,10 @@ impl FieldReader {
             None => mmodel::drawn_as(&*self.memory, model, head, self.drawn, self.model_starts)?,
         };
         let source = u32(head, mmodel::ZONE)? << 32 | model;
-        let (category, kind) = if code == mmodel::ITEM_BALL {
+        let (category, kind) = if mmodel::ITEM_BALLS.contains(&code) {
             ("items", "item ball")
+        } else if self.ambushes.contains(&code) {
+            (POKEMON, PROP)
         } else if self.clears.contains_key(&code) {
             (OBSTACLES, PROP)
         } else if code >= mmodel::PROP_MODEL {
