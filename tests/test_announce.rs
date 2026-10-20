@@ -1742,6 +1742,38 @@ fn test_a_panel_framed_beside_a_menus_buttons_is_the_screens_and_its_items_detai
     );
 }
 
+/// The AreaNav's tabs are pictures in its bar's layout, and the bar's View Details, coming
+/// back with it, went unheard once the tabs' cursor had been over them (or_area_nav).
+#[test]
+fn test_a_cursor_over_pictures_alone_leaves_the_rest_of_their_layout_to_the_screen() {
+    let mut screen = Screen::new();
+    let tab = ScreenText {
+        picture: true,
+        glyph: 0.0,
+        ..piece_kw(
+            1,
+            "Trainers",
+            -60.0,
+            -110.0,
+            MENU,
+            Kw { parent: 9, ..PLAIN },
+        )
+    };
+    screen.say(args(&[], vec![CursorItem::new(0x0C, vec![tab], true)], &[]));
+    let details = [piece_kw(
+        2,
+        "View Details",
+        80.0,
+        -110.0,
+        MENU,
+        Kw { parent: 8, ..PLAIN },
+    )];
+    assert_eq!(
+        screen.say(args(&details, vec![], &details)),
+        ["View Details"]
+    );
+}
+
 #[test]
 fn test_a_panel_one_layouts_moves_changed_is_not_read_for_another_layouts_items() {
     // The battle's move to forget stays on screen as the cursor goes back to "return" in the

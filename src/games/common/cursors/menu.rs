@@ -282,6 +282,7 @@ impl MenuCursors {
                         top: rect.top,
                         root,
                         parent: self.panes.parent(pane)?,
+                        picture: true,
                         ..ScreenText::new(pane, words.clone(), false)
                     };
                     said.insert(words, piece);

@@ -3542,7 +3542,8 @@ fn test_a_named_cursor_parked_off_its_screen_is_no_cursor() {
 }
 
 /// The Pokédex's OTHER LANGUAGES tabs: two pictures a tab, whose textures the game swaps as it
-/// runs, named by the image each draws (spike 147).
+/// runs, named by the image each draws (spike 147). Its words are a picture's, which own no more
+/// of their layout (or_area_nav).
 #[test]
 fn test_a_cursor_over_pictures_alone_says_what_the_game_calls_them() {
     let mut menu = Menu::new();
@@ -3577,7 +3578,19 @@ fn test_a_cursor_over_pictures_alone_says_what_the_game_calls_them() {
     )
     .into();
     menu.reader.track([menu.window]).unwrap();
-    assert_eq!(menu.heard_with(&[]), said(&[(&["French"], true)]));
+    menu.fake.layouts.refresh();
+    let items = menu.reader.poll(&[]).unwrap().items;
+    let [item] = items.as_slice() else {
+        panic!("one item, not {}", items.len());
+    };
+    assert!(
+        item.pieces
+            .iter()
+            .map(|p| (p.text.as_str(), p.picture))
+            .collect::<Vec<_>>()
+            == [("French", true)]
+            && item.opened
+    );
     menu.r#move(60.0, 60.0);
     assert_eq!(menu.heard_with(&[]), said(&[]));
 }

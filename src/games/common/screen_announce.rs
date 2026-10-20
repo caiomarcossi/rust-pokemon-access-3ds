@@ -268,7 +268,9 @@ impl ScreenAnnouncer {
     /// A cursor that knows its list owns the list and no more of its layout. The Poké Mart draws
     /// its list, the money, the count in the bag and the chosen item's description in one
     /// layout, and left to the cursor as a menu's layout is, the description was never heard as
-    /// the Mart opened, nor the count as it changed (shop.ctm, 2026-09-24).
+    /// the Mart opened, nor the count as it changed (shop.ctm, 2026-09-24). A cursor over
+    /// pictures alone owns those pictures: the AreaNav's tabs are drawn in its bar's layout, and
+    /// left to them its View Details was never heard (or_area_nav).
     ///
     /// Python's `roots` and `subject` default to None.
     pub fn say(
@@ -299,7 +301,8 @@ impl ScreenAnnouncer {
         let mut cursored: HashSet<i64> = rows.clone();
         for pieces in under {
             if !pieces.iter().any(|p| labels.contains(&p.text)) {
-                self.menus.extend(pieces.iter().map(|p| p.root));
+                self.menus
+                    .extend(pieces.iter().filter(|p| !p.picture).map(|p| p.root));
                 cursored.extend(pieces.iter().map(|p| p.r#box));
             }
         }
