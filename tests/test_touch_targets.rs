@@ -109,6 +109,34 @@ impl Screen {
 }
 
 #[test]
+fn test_a_new_front_layer_takes_focus_without_trapping_navigation_there() {
+    let fight = Target {
+        layer: 1,
+        root: 10,
+        ..Target::new(1, "Fight", 40, 40, 80.0, 30.0)
+    };
+    let back = Target {
+        layer: 1,
+        root: 10,
+        ..Target::new(2, "Back", 40, 200, -80.0, 30.0)
+    };
+    let tackle = Target {
+        layer: 2,
+        root: 20,
+        ..Target::new(3, "Tackle", 240, 40, 80.0, 30.0)
+    };
+    let mut screen = Screen::new(vec![fight, back]);
+    assert_eq!(screen.start(), "Fight");
+    screen.found.borrow_mut().push(tackle);
+    assert_eq!(screen.press(touch::TAP), "Tackle");
+    assert!(screen.tapped().is_empty());
+    assert_eq!(screen.press(touch::ITEM_NEXT), "Back");
+    assert_eq!(screen.press(touch::TAP), "");
+    assert_eq!(screen.tapped(), [(40, 200)]);
+    assert_eq!(screen.start(), "Tackle");
+}
+
+#[test]
 fn test_targets_are_walked_row_by_row_from_the_top() {
     let mut screen = Screen::new([bar(), vec![area(), dexnav()]].concat());
     assert_eq!(screen.start(), "DexNav");
@@ -492,6 +520,60 @@ fn floats(values: &[f32]) -> Vec<u8> {
         .iter()
         .flat_map(|value| value.to_le_bytes())
         .collect()
+}
+
+#[test]
+fn test_overlapping_battle_menus_follow_the_front_layer_and_return() {
+    for front_first in [false, true] {
+        let memory = FakeMemory::new();
+        let classes = FakeClasses::new(memory.clone());
+        let fake = FakeLayouts::new(&memory, &classes);
+        let bounding = classes.add(lyt::BOUNDING_CLASS);
+        let picture = classes.add(lyt::PICTURE_CLASS);
+        let mut images = IndexMap::new();
+        let mut works = Vec::new();
+        for (i, label) in ["Fight", "Tackle"].into_iter().enumerate() {
+            let base = 0x08200000 + if (i == 1) == front_first { 0 } else { 0x10000 };
+            let (work, group) = fake.screen(base);
+            works.push(work);
+            memory.write(work + lyt::WORK_LAYER, &(i as u16 + 1).to_le_bytes());
+            let button = group + 0x1000;
+            fake.pane(button, group);
+            fake.pane_with_vtable(button + 0x200, button, Some(bounding));
+            fake.pane_with_vtable(button + 0x400, button, Some(picture));
+            for pane in [button + 0x200, button + 0x400] {
+                memory.write(pane + lyt::WIDTH, &floats(&[80.0, 40.0]));
+                memory.write(pane + lyt::SCALE_X, &floats(&[1.0, 1.0]));
+            }
+            images.insert(button + 0x400, label.to_string());
+        }
+        fake.draw_with(works[1], false, true);
+        fake.track().unwrap();
+        let mut targets = TouchTargets::new(
+            fake.layouts.clone(),
+            Rc::new(Vec::new),
+            Rc::new(|_| Ok(String::new())),
+            Rc::new(|_| Ok(None)),
+            Rc::new(|_| None),
+            Rc::new(|_| {}),
+            Options {
+                picture_name: Some(Rc::new(move |pane| Ok(images.get(&pane).cloned()))),
+                ..Options::default()
+            },
+        );
+        assert_eq!(targets.start().unwrap(), "Fight");
+        fake.draw(works[1]);
+        fake.layouts.refresh();
+        assert_eq!(
+            targets.press(touch::TAP).unwrap(),
+            "Tackle",
+            "the newly exposed move must be named before it can be tapped"
+        );
+        assert_eq!(targets.targets().unwrap().len(), 1);
+        fake.draw_with(works[1], false, true);
+        fake.layouts.refresh();
+        assert_eq!(targets.press(touch::ITEM_NEXT).unwrap(), "Fight");
+    }
 }
 
 /// Super Training's carousel moves its party's pictures while their touch areas and parents

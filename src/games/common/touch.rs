@@ -212,6 +212,8 @@ pub struct TouchTargets {
     /// screen's and not the field's window onto it; none otherwise.
     places: Option<Places>,
     chosen: Option<i64>,
+    /// Highest layer at the last key, so a menu opening takes focus only once.
+    front_layer: Option<i64>,
     /// Touch area -> what it was last called (rule 4).
     named: IndexMap<i64, (String, HashSet<i64>)>,
     unnamed: HashSet<i64>,
@@ -268,6 +270,7 @@ impl TouchTargets {
             said_off,
             places,
             chosen: None,
+            front_layer: None,
             named: IndexMap::new(),
             unnamed: HashSet::new(),
             groups: IndexMap::new(),
@@ -280,8 +283,10 @@ impl TouchTargets {
     /// Touch mode coming on: the first target, as a menu opening says the item it is on.
     pub fn start(&mut self) -> Result<String> {
         let found = self.targets()?;
-        self.chosen = found.first().map(|target| target.pane);
-        Ok(match found.first() {
+        let first = front_target(&found);
+        self.chosen = first.map(|target| target.pane);
+        self.front_layer = first.map(|target| target.layer);
+        Ok(match first {
             Some(first) => self.said(first),
             None => own(NOTHING, &[]),
         })
@@ -295,14 +300,17 @@ impl TouchTargets {
         let found = self.targets()?;
         if found.is_empty() {
             self.chosen = None;
+            self.front_layer = None;
             return Ok(own(NOTHING, &[]));
         }
-        let Some(mut at) = found
-            .iter()
-            .position(|target| Some(target.pane) == self.chosen)
-        else {
-            self.chosen = Some(found[0].pane);
-            return Ok(self.said(&found[0]));
+        let first = front_target(&found).expect("targets is not empty");
+        let changed = self.front_layer != Some(first.layer);
+        self.front_layer = Some(first.layer);
+        let Some(mut at) = found.iter().position(|target| {
+            Some(target.pane) == self.chosen && (!changed || target.layer == first.layer)
+        }) else {
+            self.chosen = Some(first.pane);
+            return Ok(self.said(first));
         };
         if action == TAP {
             let target = &found[at];
@@ -725,10 +733,15 @@ impl TouchTargets {
         // Two touch areas under one pixel are one target: a tap cannot tell them apart. The party
         // list lays a second over each Pokémon's plate, and each was said twice (movie22).
         let mut once: IndexMap<(i64, i64), Target> = IndexMap::new();
-        for target in found {
-            once.entry((target.x, target.y)).or_insert(target);
+        // Remove covered targets before merging their pixels: otherwise a background button
+        // wins by root address, discards the foreground button, and is then removed itself.
+        for target in uncovered(&found, &areas) {
+            let entry = once.entry((target.x, target.y)).or_insert(target.clone());
+            if target.layer > entry.layer {
+                *entry = target;
+            }
         }
-        let mut found = uncovered(&once.into_values().collect::<Vec<_>>(), &areas);
+        let mut found: Vec<Target> = once.into_values().collect();
         if let Some(gestures) = &self.gestures {
             found.extend(gestures()?);
         }
@@ -950,6 +963,13 @@ impl TouchTargets {
         let end = raw.iter().position(|&byte| byte == 0).unwrap_or(raw.len());
         Ok(py::decode_ascii(&raw[..end]))
     }
+}
+
+/// First in reading order among the targets on the highest layer. A new foreground menu must
+/// be named before a further key can tap it, even when the old choice remains visible behind it.
+fn front_target(found: &[Target]) -> Option<&Target> {
+    let layer = found.iter().map(|target| target.layer).max()?;
+    found.iter().find(|target| target.layer == layer)
 }
 
 /// The touch screen's pixel a pane's place is, from its root's middle, y down.

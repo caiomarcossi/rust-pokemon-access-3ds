@@ -257,6 +257,11 @@ Kept here so the next porter, and anyone reading a tape that differs, knows what
   zero arguments and all Unicode text before the terminator. This is a deliberate local fix
   requested for the fork, not a Python sync; `port.toml` is unchanged.
 
+- **Local fork touch focus fix (2026-10-21).** `common::touch` removes covered targets before
+  merging identical tap coordinates, keeps the higher layer at a shared pixel, and moves the
+  choice to the front layer when it changes. This deliberately differs from Rust upstream
+  `baeadad`, as requested for the fork, and is not a Python sync.
+
 - **Integers past `i64`.** Python's ints never overflow. A float made an int past about 9.2e18
   saturates (`py::int`, `round`, `floor`, `ceil`); a product of two words out of freed memory is
   saturated where a port saw it (`lists`, `rtti`, `walls`, `keyfile`) and widened to `i128` in
