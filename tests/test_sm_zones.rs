@@ -454,4 +454,50 @@ fn test_the_rom_s_areas_are_read_file_by_file_from_their_events() {
         .unwrap();
     assert_eq!((door.zone, door.leads_to), (Some(TOWN), Some(0x25)));
     assert_eq!(loaded.place(TOWN).unwrap(), Some("Iki Town".to_string()));
+
+    // Ultra's file 67 contains unrelated text. The ROM's title selects its place-name file.
+    let mut ultra_names: Vec<GarcFile> = (0..=zones::ULTRA_PLACE_NAMES)
+        .map(|_| GarcFile::from(Vec::new()))
+        .collect();
+    ultra_names[zones::PLACE_NAMES as usize] = message_file(&[
+        MessageLine::from("Unrelated text"),
+        MessageLine::from("Wrong file"),
+    ])
+    .into();
+    ultra_names[zones::ULTRA_PLACE_NAMES as usize] = message_file(&[
+        MessageLine::from("Rota 1"),
+        MessageLine::from("Cidade de Iki"),
+    ])
+    .into();
+    let ultra_text = garc_with(&ultra_names, 0x0600);
+    let mut ultra_rows = rows.clone();
+    for (zone, kind) in [(ROUTE, zones::OUTDOORS), (TOWN, zones::INDOORS)] {
+        let offset = (zone * zones::ZONE_ROW + zones::ROW_KIND) as usize;
+        ultra_rows[offset..offset + 2].copy_from_slice(&((kind | 8) as u16).to_le_bytes());
+    }
+    let ultra_zone_table = garc_with(&[lz11_literals(&ultra_rows).into()], 0x0600);
+    for title in [crate::games::sm::ULTRA_SUN, crate::games::sm::ULTRA_MOON] {
+        let path = tmp_path.path().join(format!("ultra-{title:x}.3ds"));
+        std::fs::write(
+            &path,
+            rom_image(
+                &[
+                    (zones::ZONE_TABLE, &ultra_zone_table),
+                    (english, &ultra_text),
+                    (zones::EVENTS, &archive),
+                ],
+                title,
+            ),
+        )
+        .unwrap();
+        let rom = Rom::new(&path).unwrap();
+        let loaded = SunZones::load(&rom, "en").unwrap();
+        assert_eq!(
+            loaded.place(TOWN).unwrap().as_deref(),
+            Some("Cidade de Iki")
+        );
+        assert_eq!(loaded.areas.len(), 2);
+        assert!(loaded.outdoors(ROUTE).unwrap());
+        assert!(!loaded.outdoors(TOWN).unwrap());
+    }
 }

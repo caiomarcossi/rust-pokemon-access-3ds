@@ -262,6 +262,28 @@ Kept here so the next porter, and anyone reading a tape that differs, knows what
   choice to the front layer when it changes. This deliberately differs from Rust upstream
   `baeadad`, as requested for the fork, and is not a Python sync.
 
+- **Local fork Ultra field layout (2026-10-21).** Ultra Sun's live objects use position
+  `+0x3b0` rather than Sun's `+0x3a4`. The area's pointer remains at `+0x78`, but the number
+  inside its target moved from `+0x00` to `+0x04`; `+0x74` points to an unrelated object.
+  Ultra's zone kind is the low two bits of its field, with additional flags above them. Its ROM
+  holds place names in system text file 72, not 67. The shared field reader selects a
+  `FieldLayout` by title, and the zone loader normalizes the ROM's place-name file to its
+  existing logical slot. Sun and Moon retain their previous definitions. Ultra Moon uses
+  Ultra Sun's definitions provisionally at the fork owner's request; it has not been checked
+  live. These are local adaptations, not a Python sync.
+
+- **Local fork Ultra automatic map names (2026-10-21).** Ultra field models in `a/2/0/0`
+  are matched to species through `a/0/9/4`'s model table and nine-file model groups, then named
+  from system text file 60. Model tags are not assumed to be national species numbers. Objects'
+  codes select callbacks in the area's ZS pack (`a/0/8/2`, area file 7); constant message
+  calls through a verified wrapper supply short interaction descriptions from the zone's story
+  text. Conditional and ambiguous callbacks are excluded. Exits use destination place names;
+  the starting house's otherwise unnamed rooms have labels in `data/sm/en/navigation.ftl`.
+  The player's names retain priority. Human NPC identities and objects without a verified
+  description still use the previous generic labels. This is enabled only for Ultra titles,
+  measured with the owner's Ultra Sun ROM; Ultra Moon remains provisional. This is a local
+  feature, not a Python sync.
+
 - **Integers past `i64`.** Python's ints never overflow. A float made an int past about 9.2e18
   saturates (`py::int`, `round`, `floor`, `ceil`); a product of two words out of freed memory is
   saturated where a port saw it (`lists`, `rtti`, `walls`, `keyfile`) and widened to `i128` in

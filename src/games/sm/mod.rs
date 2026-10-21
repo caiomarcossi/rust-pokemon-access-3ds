@@ -3,9 +3,8 @@
 //!
 //! What agrees: the ROM's text files, a message window's fields, the string buffer's and the
 //! control sequences that break a message into pages. What does not: the classes' names, a
-//! TextBox's fields, where the heap is, and a speaker the game names itself. Only dialogue is read
-//! so far; Moon is Sun's other version and is taken to be laid out as Sun is, since no Moon has
-//! been read.
+//! TextBox's fields, where the heap is, and a speaker the game names itself. Moon shares Sun's
+//! definitions. Ultra shares the readers with the field differences described by `ultra` below.
 
 use std::collections::HashSet;
 use std::sync::OnceLock;
@@ -33,9 +32,9 @@ pub fn game() -> &'static SunMoon {
     })
 }
 
-/// Read as Sun, since they are the same engine a year on; no Ultra ROM has been read, so every
-/// class and field is Sun's until one is (2026-09-27). The classes a sweep needs are checked by
-/// name before anything is read, so a version laid out otherwise says nothing rather than nonsense.
+/// Shares Sun's readers, with Ultra Sun's measured field offsets and place-name file. Ultra Moon
+/// provisionally uses the same definitions at the fork owner's request (2026-10-21); its field
+/// layout has not been independently measured. Other structures still use Sun's definitions.
 ///
 /// `ULTRA`: a function for the same reason as [`game`].
 pub fn ultra() -> &'static SunMoon {
@@ -54,6 +53,7 @@ pub mod heaps;
 pub mod langselect;
 pub mod lyt;
 pub mod msgwin;
+pub mod naming;
 pub mod profile;
 pub mod session;
 pub mod talk;

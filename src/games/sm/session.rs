@@ -86,6 +86,31 @@ pub fn start(rpc: Rc<dyn Rpc>, speech: Rc<Speech>, setup: Setup) -> Result<Sessi
         &window::game_title(window::EMULATOR),
         None,
     )?);
+    if [super::ULTRA_SUN, super::ULTRA_MOON].contains(&setup.process.title_id) {
+        let automatic = setup.words(
+            |image, language| {
+                super::naming::AutomaticNames::load(image, language, zones.as_deref())
+            },
+            "automatic map names are unavailable",
+        )?;
+        if let Some(automatic) = automatic {
+            (setup.log)(&format!(
+                "map names: {} model names, {} place descriptions",
+                automatic.sprites.len(),
+                automatic.places.len()
+            ));
+            let automatic = Rc::new(automatic);
+            named.use_game(
+                Some({
+                    let automatic = automatic.clone();
+                    Rc::new(move |code| automatic.sprites.get(&code).cloned())
+                }),
+                Some(Rc::new(move |zone, source| {
+                    automatic.places.get(&(zone, source)).cloned()
+                })),
+            );
+        }
+    }
     // The field's move models are in a heap of their own, beside the dialogue's, and the field
     // reads its pointers only inside a small block the last walk found (spike 113). The running
     // process is in heap 6, two small blocks (`sm.apps`, spike 116).
@@ -165,6 +190,7 @@ pub fn start(rpc: Rc<dyn Rpc>, speech: Rc<Speech>, setup: Setup) -> Result<Sessi
         speech,
         setup.log.clone(),
         Options {
+            field_layout: field::FieldLayout::for_title(setup.process.title_id),
             ui: Some(setup.ui.clone()),
             navigation: Some(setup.navigation.clone()),
             text,

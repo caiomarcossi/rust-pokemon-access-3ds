@@ -126,6 +126,43 @@ pub const STATE_FIELD: i64 = 0x14;
 pub const FIELD_AREA: i64 = 0x78;
 pub const FIELD_ZONE: i64 = 0x7C;
 pub const FIELD_HEAD: i64 = 0x80;
+
+/// Fields that differ between Sun/Moon and Ultra. Ultra Sun was measured in live memory;
+/// Ultra Moon shares these definitions provisionally until it is measured independently.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FieldLayout {
+    pub model_place: i64,
+    pub field_area: i64,
+    pub area_number: i64,
+}
+
+impl Default for FieldLayout {
+    fn default() -> Self {
+        Self {
+            model_place: MODEL_PLACE,
+            field_area: FIELD_AREA,
+            area_number: 0,
+        }
+    }
+}
+
+impl FieldLayout {
+    pub fn for_title(title: i64) -> Self {
+        if [super::ULTRA_SUN, super::ULTRA_MOON].contains(&title) {
+            Self {
+                model_place: 0x3B0,
+                field_area: FIELD_AREA,
+                area_number: 4,
+            }
+        } else {
+            Self::default()
+        }
+    }
+
+    fn model_head(self) -> i64 {
+        self.model_place + PLACE_SIZE
+    }
+}
 /// What gfl2 puts before an object in its block: the field is 0x20 into its block's body.
 pub const OBJECT: i64 = 0x20;
 pub const ACTOR_X: i64 = 0x14;
@@ -229,6 +266,7 @@ struct Kept {
 /// The player's zone and cell, and the people, things and exits around them.
 pub struct SunFieldReader {
     memory: Rc<dyn Memory>,
+    layout: FieldLayout,
     names: Rc<ClassNames>,
     zones: Option<Rc<SunZones>>,
     walls: Option<Rc<dyn Walls>>,
@@ -278,6 +316,7 @@ impl SunFieldReader {
     ) -> Self {
         SunFieldReader {
             memory,
+            layout: FieldLayout::default(),
             names,
             zones,
             walls,
@@ -292,6 +331,11 @@ impl SunFieldReader {
             visit: Cell::new(None),
             area: Cell::new(None),
         }
+    }
+
+    pub fn with_layout(mut self, layout: FieldLayout) -> Self {
+        self.layout = layout;
+        self
     }
 
     /// Take in what a sweep found, and the blocks that may be read. A sweep of the blocks just
@@ -394,7 +438,7 @@ impl SunFieldReader {
         let model = self.standing(found.2)?;
         let mut height = match &model {
             None => None,
-            Some(model) => Some(f32(&model.0, MODEL_PLACE + 4)?),
+            Some(model) => Some(f32(&model.0, self.layout.model_place + 4)?),
         };
         if let Some(value) = height
             && !value.is_finite()
@@ -662,9 +706,9 @@ impl SunFieldReader {
                 continue;
             };
             let zone = u16(&head, FIELD_ZONE)?;
-            let area_link = u32(&head, FIELD_AREA)?;
+            let area_link = u32(&head, self.layout.field_area)?;
             let area = if area_link != 0 {
-                self.read(area_link, 4)?
+                self.read(area_link + self.layout.area_number, 4)?
             } else {
                 None
             };
@@ -746,7 +790,7 @@ impl SunFieldReader {
             for at in (MANAGER_FIRST..MANAGER_SLOTS).step_by(4) {
                 starts.push(u32(&slots, at)?);
             }
-            self.fetch(&starts, MODEL_HEAD)?;
+            self.fetch(&starts, self.layout.model_head())?;
             for at in (MANAGER_FIRST..MANAGER_SLOTS).step_by(4) {
                 let model = u32(&slots, at)?;
                 if model == player || self.class(model)?.as_deref() != Some(MODEL) {
@@ -766,13 +810,16 @@ impl SunFieldReader {
     /// A model's head and where it stands, (x, z), or None for a free slot or a place that
     /// is not a number.
     fn standing(&self, model: i64) -> Result<Option<Standing>> {
-        let Some(head) = self.read(model, MODEL_HEAD)? else {
+        let Some(head) = self.read(model, self.layout.model_head())? else {
             return Ok(None);
         };
         if u32(&head, MODEL_NODE)? == 0 {
             return Ok(None);
         }
-        let (x, z) = (f32(&head, MODEL_PLACE)?, f32(&head, MODEL_PLACE + 8)?);
+        let (x, z) = (
+            f32(&head, self.layout.model_place)?,
+            f32(&head, self.layout.model_place + 8)?,
+        );
         if !(x.is_finite() && z.is_finite()) {
             return Ok(None);
         }

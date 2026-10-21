@@ -65,6 +65,8 @@ pub const ROW_PLACE: i64 = 0x1C;
 pub const ROW_KIND: i64 = 0x3A;
 /// System text file 67: "Route 1", "Iki Town", "Hau'oli City".
 pub const PLACE_NAMES: i64 = 67;
+/// Ultra Sun's system text file holding the place names; provisionally also Ultra Moon's.
+pub const ULTRA_PLACE_NAMES: i64 = 72;
 /// A zone's kind (`ROW_KIND`): a room, a cave or trail or ruin, and a route or town or sea.
 pub const INDOORS: i64 = 0;
 /// A zone's kind (`ROW_KIND`): a room, a cave or trail or ruin, and a route or town or sea.
@@ -200,14 +202,37 @@ impl SunZones {
         let Some(table) = files.into_iter().next() else {
             return Err(Error::index("list index out of range"));
         };
-        let rows = lz11(&table)?;
+        let mut rows = lz11(&table)?;
         if rows.is_empty() || rows.len() as i64 % ZONE_ROW != 0 {
             return Err(Error::new(
                 Kind::RomError,
                 format!("{ZONE_TABLE} is not a zone table"),
             ));
         }
-        let places = SunText::load(rom, language, &[PLACE_NAMES])?;
+        let ultra = [super::ULTRA_SUN, super::ULTRA_MOON].contains(&rom.title_id);
+        if ultra {
+            // Ultra adds flags above the low two bits holding the zone kind (0 indoors,
+            // 2 enclosed, 3 outdoors). Normalize that field to the shared reader's format.
+            for row in rows.as_chunks_mut::<{ ZONE_ROW as usize }>().0 {
+                let kind = u16(row, ROW_KIND)? & 3;
+                row[ROW_KIND as usize..ROW_KIND as usize + 2]
+                    .copy_from_slice(&(kind as u16).to_le_bytes());
+            }
+        }
+        let place_file = if ultra {
+            ULTRA_PLACE_NAMES
+        } else {
+            PLACE_NAMES
+        };
+        let mut places = SunText::load(rom, language, &[place_file])?;
+        if place_file != PLACE_NAMES {
+            // Keep the reader's logical place-name slot independent of its physical ROM file.
+            let lines = places
+                .files
+                .shift_remove(&place_file)
+                .expect("requested text file was loaded");
+            places.files.insert(PLACE_NAMES, lines);
+        }
         // Each area's first file alone, a few KB: the whole archive is 332 MB, and reading it
         // all held 660 MB at every start.
         let (start, spans) = garc_spans(rom, EVENTS)?;

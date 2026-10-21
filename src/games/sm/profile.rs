@@ -86,6 +86,7 @@ type Listed = (i64, Vec<(String, String, Option<(i64, i64)>)>);
 /// looks for it on the memory it is given, which Rust cannot ask a `dyn Memory`).
 #[derive(Default)]
 pub struct Options {
+    pub field_layout: field::FieldLayout,
     pub ui: Option<Ui>,
     pub navigation: Option<Navigation>,
     pub text: Option<Rc<SunText>>,
@@ -191,6 +192,7 @@ impl SunProfile {
         options: Options,
     ) -> Self {
         let Options {
+            field_layout,
             ui,
             navigation,
             text,
@@ -260,14 +262,17 @@ impl SunProfile {
         // ORAS's navigator, and P's way found through the walls out of the ROM (spike 114).
         // Without them, P says where the thing is and that no way is known.
         let routes = walls.is_some();
-        let reader = Rc::new(SunFieldReader::with(
-            memory.clone(),
-            names.clone(),
-            zones.clone(),
-            blocks,
-            walls,
-            read_each,
-        ));
+        let reader = Rc::new(
+            SunFieldReader::with(
+                memory.clone(),
+                names.clone(),
+                zones.clone(),
+                blocks,
+                walls,
+                read_each,
+            )
+            .with_layout(field_layout),
+        );
         let navigator = Navigator::new(
             reader.clone(),
             speech.clone(),

@@ -443,6 +443,95 @@ fn test_the_player_is_in_the_zone_the_field_says_at_the_cell_their_model_stands_
 }
 
 #[test]
+fn test_ultra_profiles_read_their_area_and_coordinates_and_follow_movement() {
+    use crate::games::sm::{MOON, SUN, ULTRA_MOON, ULTRA_SUN};
+    for title in [SUN, MOON] {
+        assert_eq!(
+            field::FieldLayout::for_title(title),
+            field::FieldLayout::default()
+        );
+    }
+    for title in [ULTRA_SUN, ULTRA_MOON] {
+        let bedroom = Bedroom::new();
+        let layout = field::FieldLayout::for_title(title);
+        // The pointer remains at +0x78; the area's number moved to +4. A different object at
+        // +0x74 can begin with a plausible but unrelated number and must never select the area.
+        bedroom.memory.u32(FIELDMAP + 0x74, &[FREE]);
+        bedroom.memory.u32(FREE, &[22]);
+        bedroom.memory.u32(FIELDMAP + layout.field_area, &[LOADED]);
+        bedroom.memory.u32(LOADED, &[0x33FB5210, AREA]);
+        for (model, x) in [(PLAYER, 50.5), (MEOWTH, 46.5)] {
+            floats(
+                &bedroom.memory,
+                model + field::MODEL_PLACE,
+                &[0.0, 0.0, 0.0],
+            );
+            floats(
+                &bedroom.memory,
+                model + layout.model_place,
+                &[x * C, 5.0, 60.5 * C],
+            );
+        }
+        let memory: Rc<dyn Memory> = bedroom.memory.clone();
+        let profile = SunProfile::with(
+            memory.clone(),
+            names(&memory),
+            Rc::new(Speech::plain(bedroom.recorder.clone())),
+            silent(),
+            Options {
+                field_layout: layout,
+                zones: Some(Rc::new(rom())),
+                ..Options::default()
+            },
+        );
+        profile.track(&bedroom.found).unwrap();
+        let at = profile
+            .field
+            .poll()
+            .unwrap()
+            .expect("Ultra field is recognized");
+        assert_eq!((at.zone, at.cell), (BEDROOM, (50, 60)));
+        let listed = profile.field.interactables(&at).unwrap();
+        assert!(
+            listed
+                .interactables
+                .iter()
+                .any(|item| item.category == "people" && item.cell == (46, 60))
+        );
+        assert!(
+            listed
+                .interactables
+                .iter()
+                .any(|item| item.category == "exits")
+        );
+        assert!(
+            listed
+                .interactables
+                .iter()
+                .any(|item| item.category == "signs")
+        );
+        profile.press("c").unwrap();
+        assert!(
+            !bedroom
+                .recorder
+                .spoken()
+                .iter()
+                .any(|line| line == "no map")
+        );
+        floats(
+            &bedroom.memory,
+            PLAYER + layout.model_place,
+            &[52.5 * C, 5.0, 61.5 * C],
+        );
+        bedroom
+            .memory
+            .write(FIELDMAP + field::FIELD_ZONE, &le16(LIVING_ROOM));
+        let moved = profile.field.poll().unwrap().unwrap();
+        assert_eq!((moved.zone, moved.cell), (LIVING_ROOM, (52, 61)));
+    }
+}
+
+#[test]
 fn test_people_things_and_exits_are_listed_where_the_field_placed_them() {
     let at = Bedroom::new()
         .listed(Some(rom()), None, false, &[])
