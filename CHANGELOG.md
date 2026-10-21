@@ -28,6 +28,11 @@
   thing goes round the people it can.
 - The scene after Groudon or Kyogre is described when you knock it out, as when you catch it.
 
+### Known issues
+
+- In the AreaNav's Pokémon Distribution, touch mode names a Pokémon you have caught twice:
+  "Surskit Surskit". A later release fixes it.
+
 ## [0.5.0] - 2026-10-20
 
 ### Added
