@@ -18,7 +18,7 @@ use indexmap::IndexMap;
 
 use crate::core::binary::{self, u16, u32};
 use crate::core::rom::Rom;
-use crate::games::common::text::{Token, tokens};
+use crate::games::common::text::{MARKER, Token, tokens};
 use crate::py::{self, Error, Kind, Result};
 
 pub const GARC_MAGIC: &[u8] = b"CRAG";
@@ -133,7 +133,7 @@ pub fn garc_spans(image: &Rom, archive: &str) -> Result<(i64, Vec<(i64, i64)>)> 
 }
 
 /// The lines of one text file, each as UTF-16LE with its control sequences left in and its
-/// trailing zeros taken off.
+/// terminator and any padding after it taken off.
 pub fn message_lines(blob: &[u8]) -> Result<Vec<Vec<u8>>> {
     if blob.len() < 0x10 {
         return Err(Error::new(Kind::RomError, "too short for a text file"));
@@ -168,8 +168,20 @@ pub fn message_lines(blob: &[u8]) -> Result<Vec<Vec<u8>>> {
             clear.push(unit ^ rolling);
             rolling = (rolling << 3 | rolling >> 13) & 0xFFFF;
         }
-        while clear.last() == Some(&0) {
-            clear.pop();
+        // Translated ROMs can leave encrypted padding after the string's NUL. Passing that NUL
+        // to Prism rejects the entire announcement. Zero is also a valid control argument, so
+        // only a zero outside a control sequence ends the text.
+        let mut end = 0;
+        while end < clear.len() {
+            if clear[end] == 0 {
+                clear.truncate(end);
+                break;
+            }
+            if clear[end] == MARKER && end + 1 < clear.len() {
+                end += 2 + clear[end + 1] as usize;
+            } else {
+                end += 1;
+            }
         }
         lines.push(
             clear

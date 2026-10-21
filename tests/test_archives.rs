@@ -796,6 +796,48 @@ fn test_what_is_not_an_archive_is_a_rom_error() {
     );
 }
 
+#[test]
+fn test_translated_place_names_end_at_nul_before_residual_characters() {
+    let names = [
+        "Boulevard do Norte\0韈",
+        "Café Introversão\0혭",
+        "Coiffure Clips\0\u{ef8c}",
+        "ポケモンセンター",
+        "포켓몬센터",
+    ];
+    let blob = message_file(&names.map(MessageLine::from));
+    let lines = message_lines(&blob).unwrap();
+    let names: Vec<String> = lines
+        .iter()
+        .map(|line| crate::games::common::garc::plain(line))
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "Boulevard do Norte",
+            "Café Introversão",
+            "Coiffure Clips",
+            "ポケモンセンター",
+            "포켓몬센터"
+        ]
+    );
+    for name in names {
+        assert!(std::ffi::CString::new(name).is_ok());
+    }
+}
+
+#[test]
+fn test_a_zero_in_control_arguments_does_not_end_a_rom_line() {
+    let units = vec![0x41, 0x10, 3, 0xff00, 0, 0xd800, 0x42, 0x10, 2, 0xff00, 0];
+    let lines = message_lines(&message_file(&[MessageLine::from(units.clone())])).unwrap();
+    let expected: Vec<u8> = units
+        .iter()
+        .flat_map(|&unit| (unit as u16).to_le_bytes())
+        .collect();
+    assert_eq!(lines, [expected]);
+    assert_eq!(crate::games::common::garc::plain(&lines[0]), "AB");
+}
+
 /// The Center's kind is in three towns and the Mart's in two, so both are shared; Petalburg's
 /// Gym and Littleroot's lab are what is left in their towns; a house, whose kind is its town's,
 /// is nobody's to name.

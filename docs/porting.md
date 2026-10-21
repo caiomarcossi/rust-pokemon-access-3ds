@@ -250,6 +250,13 @@ every edit outside your files, any crate added, and any upstream bug you ported 
 
 Kept here so the next porter, and anyone reading a tape that differs, knows what is deliberate.
 
+- **Local fork ROM text fix (2026-10-21).** At Rust upstream `baeadad`, ROM text only
+  loses trailing zero halfwords. The player's translated X ROM has names with a NUL followed
+  by residual data; Prism rejects the entire announcement containing that NUL. This fork's
+  `common::garc::message_lines` stops at the first NUL outside control arguments, preserving
+  zero arguments and all Unicode text before the terminator. This is a deliberate local fix
+  requested for the fork, not a Python sync; `port.toml` is unchanged.
+
 - **Integers past `i64`.** Python's ints never overflow. A float made an int past about 9.2e18
   saturates (`py::int`, `round`, `floor`, `ceil`); a product of two words out of freed memory is
   saturated where a port saw it (`lists`, `rtti`, `walls`, `keyfile`) and widened to `i128` in
