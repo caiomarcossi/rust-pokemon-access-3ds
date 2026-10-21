@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.6.0] - 2026-10-21
+
+### Added
+
+- The AreaNav is read. Touch mode offers each place on the map by name, and a tap chooses it.
+  Left and right say its tabs, Places to Berries. Once a place is named, the Pokémon seen there
+  are said a line for each way they are met, those met walking first: "Swablu, Seedot caught",
+  "water: Marill". The icons along the top of the PokéNav's AreaNav window are named by the view
+  each opens.
+- The DexNav says which of the area's Pokémon are met on the water or by fishing: "Magikarp
+  fishing caught".
+- Footsteps in X and Y where the game plays none, as in Omega Ruby and Alpha Sapphire.
+- In X, the map's directions turn with the camera, as in Parfum Palace's garden: north is the way
+  up walks you.
+
+### Fixed
+
+- Touch mode offers the DexNav's Pokémon you have not caught again, and more than the magnifier
+  while a hidden Pokémon is up.
+- Touch mode's taps are no longer dropped for a while after the game restarts, its language is
+  read again or pa3ds is started again.
+- The AreaNav keeps its buttons in touch mode each time it opens, not only the first, and its
+  View Details is said again on coming back to the Trainer's Eye.
+- In X, the map finds its streets and the ways between outdoor places, says each step of a street
+  by the key that walks it, and names Route 6's rare item ball and shaking grass. The way to a
+  thing goes round the people it can.
+- The scene after Groudon or Kyogre is described when you knock it out, as when you catch it.
+
 ## [0.5.0] - 2026-10-20
 
 ### Added
