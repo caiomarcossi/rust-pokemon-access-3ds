@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.7.0] - 2026-10-23
+
+### Added
+
+- Omega Ruby's and Alpha Sapphire's intros and title screens are described, with the words they
+  show as pictures: "Presented by", "Game Freak", the game's name and "Press Start". A scene you
+  skip goes undescribed from there, and a description waits while the emulator is paused.
+- More of Omega Ruby and Alpha Sapphire is described: the Sky Pillar, from Zinnia's tale to
+  Rayquaza, and the end of the Delta Episode, from Deoxys to home. Playing as a girl, Brendan's
+  room next door and the Beautifly over Route 102 are described too.
+- In X, `P` crosses a mud pit by its jumping stones, two squares a hop.
+- On Route 9 in X and Y, the riding category lists the flat ground where you get on a Rhyhorn.
+  `P` walks you to the Rhyhorn, across the spiky ground and off again, "get off 3 north", and on
+  it says the rocks to smash, "smash 1 east".
+- In X's Glittering Cave, where the camera stays behind you, things are said from the way you
+  face, "9 ahead 8 left", and `P` says the turns, "turn left, 5 forward". The cave's lurking
+  Pokémon are listed under pokémon, and `P` walks through them.
+- The `sort_by_distance` setting: `false` keeps list mode's list in one order as you walk, so
+  you can tell by its place which house you have been in.
+- Simplified Chinese is complete: the names of things on the map in all four games, and the
+  scenes and pictures that were still in English.
+
+### Fixed
+
+- pa3ds finds a portable Azahar on its own when Azahar is open or pa3ds is in its folder, even
+  with an older Azahar's settings left in AppData.
+- In X, `P` no longer leads through the cliff on Route 8, and keeps the way to Cyllage City
+  instead of saying "no path to edge" as you walk.
+- The sparkle where a Mega Stone lies in Omega Ruby and Alpha Sapphire is called a Mega Stone.
+
 ## [0.6.0] - 2026-10-21
 
 ### Added
