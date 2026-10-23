@@ -7,13 +7,21 @@
 //! Kyogre caught or knocked out plays the same one (Orion, 2026-10-20). What follows the line is
 //! said a **beat** at a time, each when what it waits for comes: at once, a scene of the game's own
 //! starting (`app::field_demo::Proc`, which keeps nothing saying which), or the player arriving in
-//! a zone; then `at` seconds on. A scene waiting for a demo or a zone is let go when the player
+//! a zone, or in any one of several, as the player's own room is a boy's or a girl's; then `at`
+//! seconds on. A scene waiting for a demo or a zone is let go when the player
 //! arrives anywhere else, as after losing a battle in it. A scene with no line is said each time
 //! the player arrives in its zone: a room whose way on nothing shows but the room itself. A line
 //! with no zone is said before the player has arrived anywhere: the opening's. A scene of one of a
 //! zone's triggers is said as the player first steps onto the trigger's cells after arriving: each
 //! of the Pokémon League's corridors plays its scene as the player walks across the trigger halfway
-//! along it, with no line before or after (Orion, 2026-10-16).
+//! along it, with no line before or after (Orion, 2026-10-16). A scene of an app is said as the
+//! app starts, Omega Ruby's intro before the title screen as `app::field_demo::Proc` and then
+//! `movie::MovieProc`, and let go as any other app starts: A skips the intro straight to the title
+//! screen, and what it skipped is left unsaid (spike 236).
+//!
+//! A beat's seconds are the game's, counted in its frames (`GameClock`), where a game's profile can
+//! read its count: Omega Ruby's input device manager counts 60 a second through every app, so a
+//! beat waits while the emulator is paused and keeps up with fast-forward (spike 236).
 //!
 //! Omega Ruby and Alpha Sapphire play their own scenes in rooms of their own, twin zones of one
 //! layout (Seafloor Cavern's 0x6f and 0x6e), but some lines are said in a zone both share, as
@@ -26,14 +34,17 @@
 //! When each beat is said is a game's `scenes.toml`, every language's; what it says is the message
 //! of its `id` in the language's `scenes.ftl` (ADR-0040), English's where the language has none.
 //! A name the game shows is never written into a description: `{ POKEMON(383) }` is the game's own
-//! word for Groudon, out of the player's ROM, and so are `TRAINER`, `ITEM` and `PLACE`, and a whole
-//! line of the game's text, `{ TEXT(123, 91) }`. The credits draw the player's own Pokémon, which the
-//! save records as the story goes: `{ MEMORY(24) }` is the one it keeps for the 24th moment, in the
-//! form it keeps, read from the save as the beat is said (spike 222), and `{ YOURS(24) }` the same
-//! Pokémon as the player's: the nickname they gave it, where they still have it, or else
-//! `scene-yours` with its name in, "your Mega Latios" (Orion, 2026-10-16). Someone the game never
-//! names is `{ SPRITE(179) }`, called what a speaker drawn as sprite 179 is (`pa3ds.core.names`):
-//! the player's own name for them first, so a rename is heard in the next beat (`Described`).
+//! word for Groudon, out of the player's ROM, and so are `TRAINER`, `ITEM` and `PLACE`, a whole
+//! line of the game's text, `{ TEXT(123, 91) }`, and the game's own name, `{ GAME() }`. Words the
+//! game draws as a picture that no line of its text holds are the picture's words in
+//! `pictures.ftl`, `{ PICTURE("push_start") }`, as on any screen. The credits draw the player's own
+//! Pokémon, which the save records as the story goes: `{ MEMORY(24) }` is the one it keeps for the
+//! 24th moment, in the form it keeps, read from the save as the beat is said (spike 222), and
+//! `{ YOURS(24) }` the same Pokémon as the player's: the nickname they gave it, where they still
+//! have it, or else `scene-yours` with its name in, "your Mega Latios" (Orion, 2026-10-16).
+//! Someone the game never names is `{ SPRITE(179) }`, called what a speaker drawn as sprite 179 is
+//! (`pa3ds.core.names`): the player's own name for them first, so a rename is heard in the next
+//! beat (`Described`).
 //!
 //! The Python's `Scenes` keeps the callable it says each beat with, the announcements'
 //! `narrate`; here the profile owns the announcements through `&mut`, so it hands the callable to
@@ -58,6 +69,7 @@ use regex::Regex;
 
 use crate::core::toml;
 use crate::core::words::{Function, Words, current};
+use crate::games::common::pictures;
 use crate::games::common::text::{PAGE_BREAKS, Token, tokens};
 use crate::py::{self, Kind, Log, Result};
 
@@ -75,6 +87,13 @@ pub fn shipped(data: &Path) -> &'static str {
 }
 /// The one control sequence inside a page that inserts no words (`games.common.text`).
 pub const COLOUR: i64 = 0xFF00;
+/// The controls choosing between two forms of the words after them, by the player's gender ("boy"
+/// or "girl", "May" or "Brendan") or by a number (`garc.NUMBER_FORM`): the words after one are both
+/// forms back to back, the first's letters counted in its second argument's low byte and the
+/// other's in its high byte.
+pub const CHOICES: [i64; 2] = [0x1100, 0x1101];
+/// Where a choice stands in a page's words until they are made a pattern.
+pub const CHOICE: &str = "\u{E000}";
 
 /// The functions a description names what the ROM lists with, by what each is the game's word
 /// for: `{ POKEMON(383) }`.
@@ -97,6 +116,16 @@ pub const RECALLED: [(&str, &str); 3] = [
     ("YOURS", "yours"),
     ("SPRITE", "sprite"),
 ];
+pub const FRAMES_A_SECOND: i64 = 60;
+/// The most frames the game's count may move on between two looks and be believed, 100 s of
+/// game: more is a count read from another game, or from memory that is no longer the count.
+pub const LEAP: i64 = 6_000;
+/// The function that puts in what the game calls itself, out of the ROM: `{ GAME() }`, "Pokémon
+/// Omega Ruby", the words of its title screen's logo.
+pub const GAME: &str = "GAME";
+/// The function that puts in a picture's words, `{ PICTURE("push_start") }`, by its texture's
+/// name: what `pictures.ftl` calls it, or words made from the name (`common.pictures`).
+pub const PICTURE: &str = "PICTURE";
 /// How the player's own Pokémon they never named is said, its name `$pokemon`: "your Mega
 /// Latios".
 pub const YOURS: &str = "scene-yours";
@@ -114,8 +143,9 @@ pub struct Beat {
     pub message: String,
     /// Wait for a scene of the game's own to start.
     pub demo: bool,
-    /// Wait for the player to arrive in this zone.
-    pub zone: Option<i64>,
+    /// Wait for the player to arrive in any one of these zones: the player's own room is a boy's
+    /// or a girl's, 0xe0 or 0xe2, after a line said to either.
+    pub zones: HashSet<i64>,
     /// Then this many seconds.
     pub at: f64,
 }
@@ -132,11 +162,16 @@ pub struct Scene {
     pub beats: Vec<Beat>,
     pub demo: Option<i64>,
     pub trigger: Option<i64>,
+    /// The app that plays it, by its class, `movie::MovieProc`: said as the app starts, and let
+    /// go as any other starts.
+    pub app: Option<String>,
 }
 
 /// The index of a message's last page, and a pattern its text matches as the dialogue reader
 /// hears it: the words between inserts in order, anything where an insert was, as the player's
-/// name is in "Raiden changed into the Magma Suit!". None for a line that is not text.
+/// name is in "Raiden changed into the Magma Suit!", and either form where the game chooses one,
+/// "boy" or "girl" in Norman's "How about our little boy's favorite?". None for a line that is
+/// not text.
 pub fn last_page(line: &[u8]) -> Result<Option<(i64, Regex)>> {
     let parts = match tokens(line) {
         Ok(parts) => parts,
@@ -153,10 +188,29 @@ pub fn last_page(line: &[u8]) -> Result<Option<(i64, Regex)>> {
         .collect();
     let page = breaks.len() as i64;
     let mut pieces: Vec<String> = vec![String::new()];
+    let mut forms: Vec<(String, String)> = Vec::new();
+    let mut choice: Option<(i64, i64)> = None;
     let from = breaks.last().map_or(0, |last| last + 1);
     for part in &parts[from..] {
         match part {
-            Token::Text(text) => pieces.last_mut().expect("never empty").push_str(text),
+            Token::Text(text) => {
+                let mut text = text.clone();
+                if let Some((first, other)) = choice.take() {
+                    let chars: Vec<char> = text.chars().collect();
+                    forms.push((
+                        py::slice(&chars, 0, first).iter().collect(),
+                        py::slice(&chars, first, first + other).iter().collect(),
+                    ));
+                    pieces.last_mut().expect("never empty").push_str(CHOICE);
+                    text = py::slice_from(&chars, first + other).iter().collect();
+                }
+                pieces.last_mut().expect("never empty").push_str(&text);
+            }
+            Token::Control(control)
+                if CHOICES.contains(&control.code) && control.args.len() >= 2 =>
+            {
+                choice = Some((control.args[1] & 0xFF, control.args[1] >> 8));
+            }
             Token::Control(control) if control.code != COLOUR => pieces.push(String::new()),
             Token::Control(_) => {}
         }
@@ -168,11 +222,18 @@ pub fn last_page(line: &[u8]) -> Result<Option<(i64, Regex)>> {
     if words.iter().all(|word| word.is_empty()) {
         return Ok(None);
     }
-    let joined = words
+    let mut joined = words
         .iter()
         .map(|word| regex::escape(word))
         .collect::<Vec<_>>()
         .join(".*?");
+    for (first, other) in &forms {
+        joined = joined.replacen(
+            CHOICE,
+            &format!("(?:{}|{})", regex::escape(first), regex::escape(other)),
+            1,
+        );
+    }
     let pattern = Regex::new(&format!(r"(?s)\A(?:{joined})\z")).expect("escaped words");
     Ok(Some((page, pattern)))
 }
@@ -192,9 +253,10 @@ pub type Word = Rc<dyn Fn(&str, i64) -> Option<String>>;
 /// is anywhere; `after` may list several, `["text:147:67", "text:148:1"]`, and any one of them
 /// starts the scene, as a legendary caught or knocked out plays the same one. A scene with no
 /// line is said on arriving in its zone, as the player steps onto one of its triggers,
-/// `trigger = 0`, or as its demo starts, `demo = 6`, where the game numbers them. A scene whose
-/// lines or names the ROM does not have is left out, and logged. A scene with a `title` is the
-/// running `title`'s alone: one version's, said at a line in a zone the other version shares.
+/// `trigger = 0`, or as its demo starts, `demo = 6`, where the game numbers them, or as the app
+/// that plays it starts, `app = "movie::MovieProc"`. A scene whose lines or names the ROM does not
+/// have is left out, and logged. A scene with a `title` is the running `title`'s alone: one
+/// version's, said at a line in a zone the other version shares.
 pub fn load(
     text: &str,
     line: Line,
@@ -229,6 +291,10 @@ pub fn load(
             Some(Value::Integer(number)) => Some(*number),
             _ => None,
         };
+        let app = match table.get("app") {
+            Some(Value::String(app)) => Some(app.clone()),
+            _ => None,
+        };
         let pages: Vec<Option<(i64, Regex)>> = afters
             .iter()
             .map(|one| followed(one, line))
@@ -241,11 +307,11 @@ pub fn load(
             .cloned()
             .collect();
         if pages.iter().any(Option::is_none)
-            || (demo.is_none() && afters.is_empty() && zone.is_none())
+            || (demo.is_none() && app.is_none() && afters.is_empty() && zone.is_none())
             || kept.is_empty()
             || kept.len() < beats.len()
         {
-            log_left_out(log, &afters.join(" or "), demo, trigger);
+            log_left_out(log, &afters.join(" or "), demo, trigger, app.as_deref());
             continue;
         }
         scenes.push(Scene {
@@ -254,15 +320,23 @@ pub fn load(
             beats: kept,
             demo,
             trigger,
+            app,
         });
     }
     Ok(scenes)
 }
 
-fn log_left_out(log: &Log, after: &str, demo: Option<i64>, trigger: Option<i64>) {
+fn log_left_out(
+    log: &Log,
+    after: &str,
+    demo: Option<i64>,
+    trigger: Option<i64>,
+    app: Option<&str>,
+) {
     let what = match demo {
         _ if !after.is_empty() => after.to_string(),
         _ if let Some(trigger) = trigger => format!("trigger {trigger}"),
+        _ if let Some(app) = app => format!("app {app}"),
         None => "arriving".to_string(),
         Some(demo) => format!("demo {demo}"),
     };
@@ -354,7 +428,11 @@ fn beat(table: &IndexMap<String, Value>) -> Option<Beat> {
     Some(Beat {
         message: message.clone(),
         demo: truth(table.get("demo")),
-        zone: int_of(table.get("zone")),
+        // `zone if isinstance(zone, list) else [zone]`, its ints.
+        zones: match table.get("zone") {
+            Some(Value::Array(items)) => items.iter().filter_map(|one| int_of(Some(one))).collect(),
+            zone => int_of(zone).into_iter().collect(),
+        },
         at,
     })
 }
@@ -434,6 +512,24 @@ impl Described {
                 }),
             );
         }
+        functions.insert(
+            GAME.to_string(),
+            Rc::new(move |values| {
+                if !values.is_empty() {
+                    return None;
+                }
+                word("game", 0)
+            }),
+        );
+        functions.insert(
+            PICTURE.to_string(),
+            Rc::new(|values| {
+                let [texture] = values else {
+                    return None;
+                };
+                Some(pictured(texture))
+            }),
+        );
         let words = Rc::new(current().with_functions(functions)?);
         *these.borrow_mut() = Rc::downgrade(&words);
         Ok(Described { words, checking })
@@ -452,6 +548,19 @@ impl Described {
     pub fn said(&self, message: &str) -> Option<String> {
         self.words.get(message, &[])
     }
+}
+
+/// A picture's words by its texture's name (`pictures.words`). `str(texture)` of a number, which
+/// no file passes, is written as an int where it has no fraction.
+fn pictured(texture: &crate::core::words::Value) -> String {
+    let texture = match texture {
+        crate::core::words::Value::Text(text) => text.clone(),
+        crate::core::words::Value::Number(number) if number.fract() == 0.0 => {
+            (*number as i64).to_string()
+        }
+        crate::core::words::Value::Number(number) => py::float_repr(*number),
+    };
+    pictures::words(&texture)
 }
 
 /// `int(str(number))` of a value Fluent hands a function: a number written without a fraction.
@@ -483,13 +592,62 @@ fn words(raw: Option<&[u8]>) -> Option<String> {
     if said.is_empty() { None } else { Some(said) }
 }
 
+/// `clock()`: the seconds a scene's beats are timed by. Python's may raise, as `GameClock`'s
+/// reading of the game's frames may.
+pub type Clock = Rc<dyn Fn() -> Result<f64>>;
+
+/// Seconds as the game counts its frames, so a beat waits while the emulator is paused and
+/// keeps up with fast-forward; seconds of the wall clock while the count cannot be read, or goes
+/// back or jumps further than the game could run (`LEAP`).
+pub struct GameClock {
+    frames: Rc<dyn Fn() -> Result<Option<i64>>>,
+    wall: Rc<dyn Fn() -> f64>,
+    now: Cell<f64>,
+    /// The count and the wall clock as last looked at.
+    last: Cell<Option<(Option<i64>, f64)>>,
+}
+
+impl GameClock {
+    pub fn new(frames: Rc<dyn Fn() -> Result<Option<i64>>>, wall: Rc<dyn Fn() -> f64>) -> Self {
+        GameClock {
+            frames,
+            wall,
+            now: Cell::new(0.0),
+            last: Cell::new(None),
+        }
+    }
+
+    /// `GameClock(frames)`: on the monotonic clock.
+    pub fn with_monotonic(frames: Rc<dyn Fn() -> Result<Option<i64>>>) -> Self {
+        GameClock::new(frames, Rc::new(py::time::monotonic))
+    }
+
+    /// `clock()`.
+    pub fn call(&self) -> Result<f64> {
+        let (frames, wall) = ((self.frames)()?, (self.wall)());
+        if let Some((counted, then)) = self.last.get() {
+            match (frames, counted) {
+                (Some(frames), Some(counted))
+                    if 0 <= frames - counted && frames - counted <= LEAP =>
+                {
+                    self.now
+                        .set(self.now.get() + (frames - counted) as f64 / FRAMES_A_SECOND as f64);
+                }
+                _ => self.now.set(self.now.get() + (wall - then)),
+            }
+        }
+        self.last.set(Some((frames, wall)));
+        Ok(self.now.get())
+    }
+}
+
 /// Follows the scene the player is in, and says each beat of its description as it comes.
 pub struct Scenes {
     scenes: Vec<Scene>,
     /// A beat's words as it is said, by their id, or None where they are not to be said
     /// (`Described.said`).
     said: Rc<dyn Fn(&str) -> Option<String>>,
-    clock: Rc<dyn Fn() -> f64>,
+    clock: Clock,
     /// The scene followed now, by its place in `scenes`.
     scene: Option<usize>,
     /// The beat said next.
@@ -505,11 +663,7 @@ pub struct Scenes {
 }
 
 impl Scenes {
-    pub fn new(
-        scenes: Vec<Scene>,
-        said: Rc<dyn Fn(&str) -> Option<String>>,
-        clock: Rc<dyn Fn() -> f64>,
-    ) -> Self {
+    pub fn new(scenes: Vec<Scene>, said: Rc<dyn Fn(&str) -> Option<String>>, clock: Clock) -> Self {
         Scenes {
             scenes,
             said,
@@ -524,7 +678,7 @@ impl Scenes {
 
     /// `Scenes(scenes, say, said)`: on the monotonic clock.
     pub fn with_monotonic(scenes: Vec<Scene>, said: Rc<dyn Fn(&str) -> Option<String>>) -> Self {
-        Scenes::new(scenes, said, Rc::new(py::time::monotonic))
+        Scenes::new(scenes, said, Rc::new(|| Ok(py::time::monotonic())))
     }
 
     /// The triggers of a zone that start a scene, still to be stepped onto: where nothing is
@@ -585,14 +739,35 @@ impl Scenes {
         Ok(())
     }
 
+    /// An app has started, in the zone the player is in: a scene another app plays is let go, the
+    /// player having skipped it or it having ended, and a scene of this one starts.
+    pub fn started(&mut self, app: &str, zone: Option<i64>, say: Say) -> Result<()> {
+        if let Some(scene) = self.scene
+            && self.scenes[scene]
+                .app
+                .as_deref()
+                .is_some_and(|playing| playing != app)
+        {
+            self.scene = None;
+        }
+        let found = self
+            .scenes
+            .iter()
+            .position(|scene| scene.app.as_deref() == Some(app) && scene.zone == zone);
+        if let Some(found) = found {
+            self.start(found, say)?;
+        }
+        Ok(())
+    }
+
     /// The player is in another zone: a beat waiting for it comes, a scene waiting for another is
     /// let go, and a scene said on arriving there starts.
     pub fn arrived(&mut self, zone: i64, say: Say) -> Result<()> {
         self.stepped_on.clear();
         if let Some(beat) = self.waiting()
-            && (beat.zone.is_some() || beat.demo)
+            && (!beat.zones.is_empty() || beat.demo)
         {
-            if beat.zone == Some(zone) {
+            if beat.zones.contains(&zone) {
                 return self.came(say);
             }
             self.scene = None;
@@ -600,6 +775,7 @@ impl Scenes {
         let found = self.scenes.iter().position(|scene| {
             scene.lines.is_empty()
                 && scene.demo.is_none()
+                && scene.app.is_none()
                 && scene.trigger.is_none()
                 && scene.zone == Some(zone)
         });
@@ -610,10 +786,12 @@ impl Scenes {
     }
 
     fn start(&mut self, scene: usize, say: Say) -> Result<()> {
+        // Python's one assignment reads the clock before it sets anything.
+        let since = (self.clock)()?;
         self.scene = Some(scene);
         self.next = 0;
         self.met = false;
-        self.since = (self.clock)();
+        self.since = since;
         self.poll(say)
     }
 
@@ -623,8 +801,8 @@ impl Scenes {
             && self.next < self.scenes[scene].beats.len()
         {
             let beat = &self.scenes[scene].beats[self.next];
-            if ((beat.demo || beat.zone.is_some()) && !self.met)
-                || (self.clock)() < self.since + beat.at
+            if ((beat.demo || !beat.zones.is_empty()) && !self.met)
+                || (self.clock)()? < self.since + beat.at
             {
                 return Ok(());
             }
@@ -648,8 +826,9 @@ impl Scenes {
     }
 
     fn came(&mut self, say: Say) -> Result<()> {
+        let since = (self.clock)()?;
         self.met = true;
-        self.since = (self.clock)();
+        self.since = since;
         self.poll(say)
     }
 }

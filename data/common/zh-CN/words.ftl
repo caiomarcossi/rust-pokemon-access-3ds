@@ -24,6 +24,9 @@ rail-back = 向后{ $steps }
 rail-hold-right = 按住右
 rail-hold-left = 按住左
 rail-angled = 镜头倾斜，按住左，按住右
+turn-right = 向右转
+turn-left = 向左转
+turn-around = 向后转
 
 ## The list of what is on the map, and the navigation keys' answers
 
@@ -36,6 +39,7 @@ category-items = 道具
 category-berries = 树果
 category-ash = 火山灰
 category-bike = 自行车
+category-riding = 骑乘
 category-currents = 海流
 category-pokemon = 宝可梦
 key-category = { $category }，{ $count }
@@ -94,6 +98,8 @@ how-slope = 斜坡
 how-bumpy-slope = 崎岖斜坡
 how-push = 推
 how-ride-the-current = 顺着海流
+how-get-off = 下来
+how-smash = 击碎
 p-current = 顺着海流{ $bearing }
 p-to-push = 要向{ $way }推：
 p-nudge = 稍微向{ $way }
@@ -191,6 +197,7 @@ kind-barrier = 屏障
 kind-hole = 洞
 kind-dive-spot = 潜水点
 kind-current = 海流
+kind-flat-ground = 平地
 kind-slope = 斜坡
 kind-bumpy-slope = 崎岖斜坡
 kind-rail = 轨道

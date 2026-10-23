@@ -2,9 +2,9 @@
 
 use std::path::{Path, PathBuf};
 
-use super::fake_rom::{TmpDir, lz11_literals, rom_image, rom_image_with};
+use super::fake_rom::{TmpDir, lz11_literals, rom_image, rom_image_named, rom_image_with};
 use crate::core::rom::{self, Rom};
-use crate::py::Kind;
+use crate::py::{self, Kind};
 
 const OMEGA_RUBY: i64 = 0x000400000011C400;
 const ALPHA_SAPPHIRE: i64 = 0x000400000011C500;
@@ -38,6 +38,37 @@ fn test_files_are_read_by_their_path() {
         assert_eq!(opened.read(name).unwrap(), *data);
     }
     assert!(opened.read("a/9/9/9").unwrap_err().is(Kind::RomError));
+}
+
+/// ADR-0038: the title screen's logo is said as the game's own name, out of the ROM.
+#[test]
+fn test_the_game_names_itself_in_its_smdh_in_the_players_language() {
+    let tmp_path = TmpDir::new();
+    let image = rom_image_named(
+        &[("top", b"t")],
+        OMEGA_RUBY,
+        &[
+            "ポケットモンスター オメガルビー",
+            "Pokémon Omega Ruby",
+            "Pokémon Rubis Oméga",
+        ],
+    );
+    let opened = Rom::new(&write(tmp_path.path(), "or.3ds", &image)).unwrap();
+    assert_eq!(
+        opened.title("fr").unwrap().as_deref(),
+        Some("Pokémon Rubis Oméga")
+    );
+    assert_eq!(
+        opened.title("ko").unwrap().as_deref(),
+        Some("Pokémon Omega Ruby")
+    );
+    let bare = Rom::new(&write(
+        tmp_path.path(),
+        "bare.3ds",
+        &rom_image(&[("top", b"t")], OMEGA_RUBY),
+    ))
+    .unwrap();
+    assert_eq!(bare.title("en").unwrap(), None);
 }
 
 /// The player's Alpha Sapphire on this machine is one: pa3ds needs keys to read it, and will
@@ -98,14 +129,53 @@ fn test_the_rom_found_is_the_decrypted_one_of_the_game_running() {
     assert_eq!(
         rom::find(
             OMEGA_RUBY,
-            vec![other.clone(), installer, locked.clone(), wanted.clone()]
+            vec![
+                other.clone(),
+                installer.clone(),
+                locked.clone(),
+                wanted.clone()
+            ],
+            None
         )
         .unwrap(),
         Some(wanted.clone())
     );
     assert_eq!(
-        rom::find(ALPHA_SAPPHIRE, vec![other, locked, wanted]).unwrap(),
+        rom::find(
+            ALPHA_SAPPHIRE,
+            vec![other.clone(), locked.clone(), wanted],
+            None
+        )
+        .unwrap(),
         None
+    );
+    let mut notes: Vec<String> = Vec::new();
+    let gone = tmp_path.path().join("gone.3ds");
+    assert_eq!(
+        rom::find(
+            ALPHA_SAPPHIRE,
+            vec![
+                installer.clone(),
+                gone.clone(),
+                locked.clone(),
+                other.clone()
+            ],
+            Some(&mut notes)
+        )
+        .unwrap(),
+        None
+    );
+    assert_eq!(
+        notes,
+        vec![
+            format!("{} is not a ROM image", py::path_str(&installer)),
+            format!("{} is not there", py::path_str(&gone)),
+            format!(
+                "{} cannot be read as a decrypted ROM image",
+                py::path_str(&locked)
+            ),
+            format!("{} is title 0004000000055d00", py::path_str(&other)),
+        ]
     );
 }
 

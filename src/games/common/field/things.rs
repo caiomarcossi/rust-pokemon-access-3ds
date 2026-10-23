@@ -80,6 +80,10 @@ pub const MODEL_SOURCE: i64 = 13 << 32;
 /// player go round one place (spike 208).
 pub const CURRENT_SOURCE: i64 = 14 << 32;
 
+/// A patch of flat ground's source, where a ridden Pokémon is got on and off: `RIDE_SOURCE | x <<
+/// 12 | z`, its first cell (spike 238).
+pub const RIDE_SOURCE: i64 = 15 << 32;
+
 /// A place's `source` from its kind's tag and its own number. The number must leave the tag's
 /// bits clear, and no u16 the game holds can reach them, so one that does is a new encoding
 /// written wider than the tag allows for: a programmer's error, refused here rather than keyed as
@@ -144,8 +148,12 @@ pub const OBSTACLES: &str = "obstacles";
 /// teleporter is by where it comes out (Orion, 2026-10-13).
 pub const CURRENTS_CATEGORY: &str = "currents";
 
+/// The flat ground a ridden Pokémon is got on and off on, a category of its own: "not sure when you
+/// can get off rhyhorn so that prob need its own category" (Khai, 2026-10-22).
+pub const RIDING: &str = "riding";
+
 /// In the order they are walked and logged.
-pub const CATEGORIES: [&str; 10] = [
+pub const CATEGORIES: [&str; 11] = [
     "exits",
     "signs",
     OBSTACLES,
@@ -154,6 +162,7 @@ pub const CATEGORIES: [&str; 10] = [
     BERRIES,
     ASH,
     BIKE,
+    RIDING,
     CURRENTS_CATEGORY,
     POKEMON,
 ];
@@ -162,8 +171,8 @@ pub const CATEGORIES: [&str; 10] = [
 #[derive(Debug, Clone, PartialEq)]
 pub struct Interactable {
     /// One of `CATEGORIES`: `exits`, `signs`, `obstacles`, `people`, `items`, `berries`, `ash`,
-    /// `bike`, `currents` or `pokémon`, or in the sky `towns`, `routes`, `landmarks` or `mirage
-    /// spots`.
+    /// `bike`, `riding`, `currents` or `pokémon`, or in the sky `towns`, `routes`, `landmarks` or
+    /// `mirage spots`.
     pub category: String,
     /// What it is, in pa3ds's own words: `door`, `sign`, `PC`, `person`, `item ball`, `edge`,
     /// `berry spot`, `ash pile`, `hidden Pokémon`, `barrier`, `switch`, `passage`, `trapdoor`,
@@ -363,14 +372,20 @@ pub struct Field {
     /// player's own included (spike 102). With the rails loaded, `cell` and every cell listed are
     /// the corridor's (`Corridor`).
     pub on_rail: bool,
-    /// On a rail, the way of the corridor up walks the player, nearest `bearing`, which is the
-    /// way their keys work from: the camera is behind them there, so up walks the way it looks,
-    /// down back from it, and left and right turn the player a quarter, the camera following only
-    /// while the key is held (spike 105).
+    /// On a rail or under a camera behind the player, the way up walks them, nearest `bearing`,
+    /// which is the way their keys work from: up walks the way the camera looks. On a rail down
+    /// walks back from it, and left and right turn the player a quarter, the camera following only
+    /// while the key is held (spike 105); in Glittering Cave see `turning`.
     pub heading: Option<&'static str>,
-    /// On a rail, the way up walks the player in the corridor, in degrees clockwise from its
-    /// north: the camera's heading, which a tap of left or right leaves anywhere (spike 105).
+    /// On a rail or under a camera behind the player, the way up walks them, in degrees
+    /// clockwise from north, the corridor's on a rail: the camera's heading, which on a rail a tap
+    /// of left or right leaves anywhere (spikes 105 and 239).
     pub bearing: Option<f64>,
+    /// Whether the camera behind the player turns with them, as in Glittering Cave, rather than
+    /// being held round, as on Lumiose's rails: left and right turn the player a quarter and down
+    /// turns them round, the camera swinging after them, and only up walks (spike 239,
+    /// x_glittering_cave). Meaningful only with `heading` set.
+    pub turning: bool,
     /// Whether the player is riding the Mach Bike, which rides up a sandy slope (spike 158).
     pub on_bike: bool,
     /// Whether the player is surfing, where a current can carry them (spike 208).
@@ -404,6 +419,7 @@ impl Default for Field {
             on_rail: false,
             heading: None,
             bearing: None,
+            turning: false,
             on_bike: false,
             surfing: false,
             reach: None,
@@ -444,15 +460,23 @@ impl Field {
         }
     }
 
-    /// This category's interactables (every one for `ALL`), nearest first.
+    /// `of(category)`: nearest first.
     pub fn of(&self, category: &str) -> Vec<Interactable> {
+        self.of_with(category, true)
+    }
+
+    /// This category's interactables (every one for `ALL`), nearest first, or with `nearest`
+    /// false in the order the zone's tables list them, which walking leaves alone.
+    pub fn of_with(&self, category: &str, nearest: bool) -> Vec<Interactable> {
         let mut items: Vec<Interactable> = self
             .interactables
             .iter()
             .filter(|item| category == ALL || item.category == category)
             .cloned()
             .collect();
-        items.sort_by_key(|item| distance(self.cell, item.nearest(self.cell)));
+        if nearest {
+            items.sort_by_key(|item| distance(self.cell, item.nearest(self.cell)));
+        }
         items
     }
 }

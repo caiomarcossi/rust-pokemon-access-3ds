@@ -37,12 +37,13 @@ use crate::games::common::field::chunk::{
     BIKE_RAILS, BLOCKED, BUMPY_SLOPES, CHUNK, CURRENTS, Chunk, DIVE, FALLS, SLOPES,
 };
 use crate::games::common::field::ground::{
-    self as common, BLOCK, CRACKED, Far, Grid, Ground, NO_ZONE, Of, STRENGTH, pushes, walkable,
+    self as common, BLOCK, CRACKED, Far, Grid, Ground, NO_ZONE, Of, STRENGTH, pushes, riding,
+    walkable,
 };
 use crate::games::common::field::things::{
     BIKE, BIKE_SOURCE, CURRENT_SOURCE, CURRENTS_CATEGORY, DECORATION_SOURCE, DIVE_SOURCE,
-    EDGE_SOURCE, FURNITURE_SOURCE, Field, Interactable, OBSTACLES, POKEMON, STAIRS_SOURCE,
-    TILE_SOURCE, TRIGGER_SOURCE, WARP_SOURCE, kind_said, place_source,
+    EDGE_SOURCE, FURNITURE_SOURCE, Field, Interactable, OBSTACLES, POKEMON, RIDE_SOURCE, RIDING,
+    STAIRS_SOURCE, TILE_SOURCE, TRIGGER_SOURCE, WARP_SOURCE, kind_said, place_source,
 };
 use crate::games::gen6::field::features::{
     DoorReader, Feature, HiddenReader, Hiding, IceReader, SecretBaseReader, Tracked,
@@ -60,7 +61,7 @@ use crate::games::gen6::field::zonetable::{
     ZoneTable,
 };
 use crate::games::gen6::field::{fieldmap, mapblock, mmodel};
-use crate::games::gen6::game::{FurnitureKind, Game};
+use crate::games::gen6::game::{FurnitureKind, Game, Rides};
 use crate::games::gen6::rom::archives::GameText;
 use crate::games::gen6::rom::maps::{ChunkSource, StreetSource};
 use crate::py::{self, Error, PySet, Result};
@@ -136,6 +137,10 @@ pub const DIVE_SPOT: &str = "dive spot";
 /// What the sea's currents that let the player go round one place are called, listed at the cell
 /// of them nearest the player and said with where it lets them go: the game never names one.
 pub const CURRENT: &str = "current";
+
+/// What a patch of the flat ground a ridden Pokémon is got on and off on is called, listed at its
+/// cell nearest the player: the game never names it (spike 238).
+pub const FLAT_GROUND: &str = "flat ground";
 
 /// Cells apart the places two currents let the player go may be and the two still be listed as
 /// one current. Route 133's currents let the player go at 152 cells, 71 groups of them side by side,
@@ -242,13 +247,22 @@ struct Holder {
 
 /// What `_ways` was found for: the zone, the matrix's chunk files, and the chunks loaded.
 type BikeKey = (i64, Rc<Vec<i64>>, Vec<(i64, i64)>);
-/// `_ways_of`: what they were found for, the bike's things, the dive spots' patches and the
-/// currents.
+/// `_ways_of`: what they were found for, the bike's things, the dive spots' patches, the
+/// currents and the patches of flat ground.
 type Ways = (
     Option<BikeKey>,
     Vec<Interactable>,
     Vec<Vec<Cell>>,
     Vec<IndexMap<Cell, Cell>>,
+    Vec<Vec<Cell>>,
+);
+/// What `_find_ways` finds: the bike's things, the dive spots' patches, the currents and the
+/// patches of flat ground.
+type FoundWays = (
+    Vec<Interactable>,
+    Vec<Vec<Cell>>,
+    Vec<IndexMap<Cell, Cell>>,
+    Vec<Vec<Cell>>,
 );
 /// `_stand_ins`: what each model drawn as nothing stands in for by its record's index, the
 /// cells of the zone's warps, and the records' indices of its gates.
@@ -288,6 +302,8 @@ pub struct FieldReader {
     furniture_kinds: IndexMap<(i64, i64), FurnitureKind>,
     /// The bit of a cell's word that marks a strand walked diagonally (`Game.strands`).
     strands: i64,
+    /// What the game's ridden Pokémon cross, or None in a game without one (`Game.rides`).
+    rides: Option<Rides>,
     /// Whether a row of models drawn as nothing with a script of its own is a gate
     /// (`Game.gates`).
     gates: bool,
@@ -302,6 +318,8 @@ pub struct FieldReader {
     clears: IndexMap<i64, i64>,
     /// The sprites of the spots a wild Pokémon leaps out of (`Game.ambushes`).
     ambushes: HashSet<i64>,
+    /// The sprites of the spots a wild Pokémon waits at unseen (`Game.lurkers`).
+    lurkers: HashSet<i64>,
     /// The matrix out of the ROM, which never touches RAM.
     pub terrain: Terrain,
     /// Underwater zone -> its `Ground.surfaces`, once found.
@@ -312,9 +330,9 @@ pub struct FieldReader {
     /// The player's height in the world at the last poll, which says which floor of a chunk with a
     /// deck they are on (`mapblock.flat`).
     height: Slot<Option<f64>>,
-    /// What the slopes, rail ends, dive spots and currents were found for, and what they are:
-    /// the bike's things, each dive spot's patch, and each current's cells with where each lets
-    /// the player go (`_ways`).
+    /// What the slopes, rail ends, dive spots, currents and flat ground were found for, and
+    /// what they are: the bike's things, each dive spot's patch, each current's cells with where
+    /// each lets the player go, and each patch of flat ground (`_ways`).
     ways_of: RefCell<Ways>,
     clock: Rc<dyn Fn() -> f64>,
     /// Lumiose's streets, which X places things on rather than on cells.
@@ -342,6 +360,8 @@ pub struct FieldReader {
     player: Slot<Option<i64>>,
     /// Whether the player's model was on a rail at the last poll.
     on_rail: Slot<bool>,
+    /// Whether the last poll found the camera behind a player off the rails (`Rails.behind`).
+    behind: Slot<bool>,
     holder: RefCell<Option<Holder>>,
     map: Slot<Option<i64>>,
     /// The field map's grid as last read: a sweep ago, or when the player's model changed.
@@ -450,17 +470,19 @@ impl FieldReader {
             decorations: text.decorations.clone(),
             furniture_kinds: game.furniture.clone(),
             strands: game.strands,
+            rides: game.rides.clone(),
             gates: game.gates,
             secret_bases,
             barriers: game.barriers.clone(),
             triggers: game.triggers.clone(),
             clears: game.clears.clone(),
             ambushes: game.ambushes.clone(),
+            lurkers: game.lurkers.clone(),
             terrain,
             surfaces_of: RefCell::new(HashMap::new()),
             trigger_boxes: RefCell::new(HashMap::new()),
             height: Slot::new(None),
-            ways_of: RefCell::new((None, Vec::new(), Vec::new(), Vec::new())),
+            ways_of: RefCell::new((None, Vec::new(), Vec::new(), Vec::new(), Vec::new())),
             clock,
             rails: Rails::new(memory.clone(), streets, text.street_records.clone()),
             belts: game.belts.clone(),
@@ -474,6 +496,7 @@ impl FieldReader {
             models: RefCell::new(Vec::new()),
             player: Slot::new(None),
             on_rail: Slot::new(false),
+            behind: Slot::new(false),
             holder: RefCell::new(None),
             map: Slot::new(None),
             grid: RefCell::new(None),
@@ -628,22 +651,34 @@ impl FieldReader {
         };
         let bike = mmodel::on_bike(&head, form)?;
         self.on_rail.set(mmodel::on_rail(&head)?);
+        // One map's streets for the whole poll, the sweep's as the grid is (#18). Without the ROM
+        // the sweep keeps no files, and only the field map's own let the last map's lines go.
+        let files: Vec<i64> = if self.terrain.known() || !self.on_rail.get() {
+            self.terrain.files.borrow().1.to_vec()
+        } else {
+            self.read_files()?.1
+        };
         // Under a street's own camera the keys walk the world's ways, so its streets are the
         // grid's ground (`Rails.fixed`).
-        if !mmodel::on_rail(&head)? || {
-            let files = self.terrain.files.borrow().1.clone();
-            self.rails.fixed(&files, mmodel::rail(&head)?.0)?
-        } {
+        if !self.on_rail.get() || self.rails.fixed(&files, mmodel::rail(&head)?.0)? {
             *self.rails.corridor.borrow_mut() = None;
+            let behind = self.rails.behind()?;
+            self.behind.set(behind.is_some());
             return Ok(Some(Field {
                 on_bike: bike,
                 place: Some(mmodel::place(&head)?),
                 surfing: mmodel::surfing(&head, form)?,
                 height: self.height.get(),
+                heading: match behind {
+                    None => None,
+                    Some(behind) => Some(pathfind::nearest(behind)?),
+                },
+                bearing: behind,
+                turning: self.behind.get(),
                 ..Field::new(zone, cell)
             }));
         }
-        let on = self.rails.poll(&head, &self.read_files()?.1)?;
+        let on = self.rails.poll(&head, &files)?;
         let Some((at, bearing)) = on else {
             return Ok(Some(Field {
                 on_rail: true,
@@ -668,9 +703,11 @@ impl FieldReader {
 
     /// The quarters clockwise from north the pad's up walks the player, as the last poll
     /// found them: where the camera looks (`Rails.turn`), and north on a rail, where the keys
-    /// walk the corridor or a street's lanes and the camera's own heading reads 0 (spike 230).
+    /// walk the corridor or a street's lanes and the camera's own heading reads 0 (spike 230),
+    /// and under a camera behind the player, where the ways are said from `Field.heading`
+    /// (spike 239).
     pub fn turn(&self, current: i64) -> Result<i64> {
-        if self.on_rail.get() {
+        if self.on_rail.get() || self.behind.get() {
             Ok(0)
         } else {
             self.rails.turn(current)
@@ -802,7 +839,7 @@ impl FieldReader {
             None
         };
         let belts = self.belts_here(r#where.zone)?;
-        Ok(Ground {
+        let ground = Ground {
             decks,
             cliffs,
             ladders,
@@ -828,11 +865,24 @@ impl FieldReader {
                         None
                     },
                     clears: self.clears.clone(),
+                    through: self.lurkers.clone(),
                     solid,
                     ..Of::default()
                 },
             )
-        })
+        };
+        // Where no flat ground lies, nothing is got on or off, and no search carries a ride.
+        let flats = !self.found_ways(r#where.zone)?.3.is_empty();
+        match &self.rides {
+            Some(rides) if flats => ground.mounted(
+                r#where,
+                &rides.ground,
+                &rides.stops,
+                &rides.mounts,
+                &rides.smashes,
+            ),
+            _ => Ok(ground),
+        }
     }
 
     /// Under the water, each cell of deep water in the zone with every one the sea above joins it
@@ -1018,7 +1068,32 @@ impl FieldReader {
         }
         let mut items: Vec<Interactable> = Vec::new();
         let data = self.current()?;
-        let people = self.people(r#where.zone)?;
+        let mut people = self.people(r#where.zone)?;
+        let kind = |cell: Cell| -> Result<Option<i64>> {
+            // The ROM's chunk where none is loaded, as the ground has it: a battle unloads them all.
+            let loaded = self
+                .chunks_loaded()?
+                .into_iter()
+                .find(|chunk| chunk.holds(cell));
+            let chunk = match loaded {
+                Some(chunk) => Some(chunk),
+                None => self
+                    .terrain
+                    .far(py::floordiv(cell.0, CHUNK), py::floordiv(cell.1, CHUNK))?,
+            };
+            match chunk {
+                Some(chunk) => Ok(Some(chunk.kind(cell)?)),
+                None => Ok(None),
+            }
+        };
+        if let Some(rides) = &self.rides {
+            let both: HashSet<i64> = rides.ground.union(&rides.stops).copied().collect();
+            if riding(r#where, &kind, &both)? {
+                // The ridden Pokémon's model stays where it was got on: nobody to walk to (spike
+                // 238).
+                people.retain(|item| !rides.mounts.contains(&item.code));
+            }
+        }
         let mut home = None;
         if let Some(data) = &data {
             home = self.home(data, &[r#where.zone])?;
@@ -1821,12 +1896,17 @@ impl FieldReader {
         }
         let holes = self.holes(zone)?;
         let mut stand_ins: Option<StandIns> = None;
+        let none = HashSet::new();
+        let rides = match &self.rides {
+            None => &none,
+            Some(rides) => &rides.ground,
+        };
         for other in self.others() {
             let (model, head) = other?;
             let Some(cell) = mmodel::cell(&head)? else {
                 continue;
             };
-            if !holes.contains(&cell) && walled_in(&chunks, cell)? {
+            if !holes.contains(&cell) && walled_in(&chunks, cell, rides)? {
                 continue;
             }
             let code =
@@ -1977,9 +2057,14 @@ impl FieldReader {
         let source = u32(head, mmodel::ZONE)? << 32 | model;
         let (category, kind) = if mmodel::ITEM_BALLS.contains(&code) {
             ("items", "item ball")
-        } else if self.ambushes.contains(&code) {
+        } else if self.ambushes.contains(&code) || self.lurkers.contains(&code) {
             (POKEMON, PROP)
-        } else if self.clears.contains_key(&code) {
+        } else if self.clears.contains_key(&code)
+            || self
+                .rides
+                .as_ref()
+                .is_some_and(|rides| rides.smashes.contains(&code))
+        {
             (OBSTACLES, PROP)
         } else if code >= mmodel::PROP_MODEL {
             ("signs", PROP)
@@ -2040,10 +2125,12 @@ impl FieldReader {
     /// The border is a run of blocks, and most of it is trees: Littleroot's north side is 40 cells
     /// wide and the way onto Route 101 is 3 of them (the user, 2026-09-22, asking for the walkable
     /// cells rather than the whole border). A cell is a way across when neither side of it is
-    /// blocked in the chunks loaded now, and each run of such cells is an exit of its own. Only the
-    /// four chunks around the player are loaded, so a border can have one side known and the other
-    /// not; a border with neither side known is listed whole, as it was before the chunks were
-    /// read.
+    /// blocked in the chunks loaded now, or the ROM's where none is, and each run of such cells is
+    /// an exit of its own, the same runs whatever is loaded: Route 8's border to Cyllage City split
+    /// in two as the chunk north of it unloaded, and P's way to the gap became a way to the new
+    /// first run, "no path to edge" (x_route-8.ctm, spike 234). Without the ROM a side no loaded
+    /// chunk holds is not known; a border with neither side known is listed whole, as it was before
+    /// the chunks were read.
     fn edges(&self, zone: i64, narrow: bool) -> Result<Vec<Interactable>> {
         let Some(grid) = self.grid.borrow().clone() else {
             return Ok(Vec::new());
@@ -2078,6 +2165,26 @@ impl FieldReader {
         if !narrow {
             // On a rail the chunks mark every cell a wall, and would narrow every edge away.
             chunks = Vec::new();
+        } else {
+            let held: HashSet<(i64, i64)> = chunks.iter().map(|chunk| chunk.key()).collect();
+            // A set of tuples in Python, iterated in its hash order: the chunks it adds cover
+            // cells no other chunk does, so the order they are added in changes nothing.
+            let mut keys: IndexSet<(i64, i64)> = IndexSet::new();
+            for pairs in borders.values() {
+                for pair in pairs {
+                    for cell in [pair.0, pair.1] {
+                        keys.insert((py::floordiv(cell.0, CHUNK), py::floordiv(cell.1, CHUNK)));
+                    }
+                }
+            }
+            for key in keys {
+                if held.contains(&key) {
+                    continue;
+                }
+                if let Some(far) = self.terrain.far(key.0, key.1)? {
+                    chunks.push(self.terrain.flattened(&far, None, false)?);
+                }
+            }
         }
         if wanted != self.wanted.get() {
             self.wanted.set(wanted);
@@ -2158,12 +2265,13 @@ impl FieldReader {
 
     /// The zone's slopes, each patch of one kind a thing, each end of its rails, where the
     /// player gets on one (spike 159), each patch of deep water a dive spot (spike 164), and
-    /// its currents, those that let the player go round one place a thing (spike 208). Cells of
-    /// the map with no record behind them, as use tiles are, but read off the whole matrix where
-    /// the ROM's chunks are: the game loads the quarter round the player, and Route 119's rails
-    /// are 67 cells north of where it starts. Off the chunks loaded without the ROM.
+    /// its currents, those that let the player go round one place a thing (spike 208), and each
+    /// patch of the flat ground a ridden Pokémon is got on and off on (spike 238). Cells of the map
+    /// with no record behind them, as use tiles are, but read off the whole matrix where the
+    /// ROM's chunks are: the game loads the quarter round the player, and Route 119's rails are
+    /// 67 cells north of where it starts. Off the chunks loaded without the ROM.
     fn ways(&self, zone: i64, player: Cell) -> Result<Vec<Interactable>> {
-        let (mut out, dives, currents) = self.found_ways(zone)?;
+        let (mut out, dives, currents, flats) = self.found_ways(zone)?;
         let nearest = |cells: &mut dyn Iterator<Item = Cell>| -> Cell {
             cells
                 .min_by_key(|cell| ((cell.0 - player.0).abs() + (cell.1 - player.1).abs(), *cell))
@@ -2190,16 +2298,19 @@ impl FieldReader {
                 ..Interactable::new(CURRENTS_CATEGORY, CURRENT, at)
             });
         }
+        for patch in &flats {
+            out.push(Interactable {
+                source: place_source(RIDE_SOURCE, cell_number(patch[0]))?,
+                home: Some(zone),
+                ..Interactable::new(RIDING, FLAT_GROUND, nearest(&mut patch.iter().copied()))
+            });
+        }
         Ok(out)
     }
 
-    /// The bike's things in the zone, its holes, each patch of deep water and its currents,
-    /// found once a map.
-    #[allow(clippy::type_complexity)]
-    fn found_ways(
-        &self,
-        zone: i64,
-    ) -> Result<(Vec<Interactable>, Vec<Vec<Cell>>, Vec<IndexMap<Cell, Cell>>)> {
+    /// The bike's things in the zone, its holes, each patch of deep water, its currents and
+    /// each patch of flat ground, found once a map.
+    fn found_ways(&self, zone: i64) -> Result<FoundWays> {
         let mut loaded: IndexMap<(i64, i64), Rc<Chunk>> = IndexMap::new();
         for chunk in self.chunks_loaded()? {
             loaded.insert(chunk.key(), chunk);
@@ -2217,21 +2328,23 @@ impl FieldReader {
             },
         );
         if self.ways_of.borrow().0.as_ref() != Some(&key) {
-            let (out, dives, currents) = self.find_ways(zone, &loaded)?;
-            *self.ways_of.borrow_mut() = (Some(key), out, dives, currents);
+            let (out, dives, currents, flats) = self.find_ways(zone, &loaded)?;
+            *self.ways_of.borrow_mut() = (Some(key), out, dives, currents, flats);
         }
         let held = self.ways_of.borrow();
-        Ok((held.1.clone(), held.2.clone(), held.3.clone()))
+        Ok((
+            held.1.clone(),
+            held.2.clone(),
+            held.3.clone(),
+            held.4.clone(),
+        ))
     }
 
-    /// The bike's things in the zone and its holes, each patch of deep water, and each of its
-    /// currents, its cells with where each lets the player go (`_ways`).
-    #[allow(clippy::type_complexity)]
-    fn find_ways(
-        &self,
-        zone: i64,
-        loaded: &IndexMap<(i64, i64), Rc<Chunk>>,
-    ) -> Result<(Vec<Interactable>, Vec<Vec<Cell>>, Vec<IndexMap<Cell, Cell>>)> {
+    /// The bike's things in the zone and its holes, each patch of deep water, each of its
+    /// currents, its cells with where each lets the player go, and each patch of the flat
+    /// ground a ridden Pokémon is got on and off on, where the zone has ground one crosses
+    /// (`_ways`).
+    fn find_ways(&self, zone: i64, loaded: &IndexMap<(i64, i64), Rc<Chunk>>) -> Result<FoundWays> {
         let (wide, files) = {
             let held = self.terrain.files.borrow();
             (held.0, held.1.clone())
@@ -2283,6 +2396,11 @@ impl FieldReader {
         for &cell in &mine {
             currents[which[&landings[&cell]]].insert(cell, landings[&cell]);
         }
+        let none = HashSet::new();
+        let ridden: (&HashSet<i64>, &HashSet<i64>) = match &self.rides {
+            None => (&none, &none),
+            Some(rides) => (&rides.ground, &rides.stops),
+        };
         let mut found: IndexMap<Cell, i64> = IndexMap::new();
         for chunk in chunks.values() {
             for (cell, kind) in chunk.kinds() {
@@ -2290,7 +2408,9 @@ impl FieldReader {
                     || BIKE_RAILS.contains(&kind)
                     || BUMPY_SLOPES.contains(&kind)
                     || kind == DIVE
-                    || kind == BOULDER_HOLE)
+                    || kind == BOULDER_HOLE
+                    || ridden.0.contains(&kind)
+                    || ridden.1.contains(&kind))
                     && {
                         let at = self.zone_at(cell)?;
                         at == Some(zone) || at.is_none()
@@ -2308,9 +2428,19 @@ impl FieldReader {
         };
         let mut out: Vec<Interactable> = Vec::new();
         let mut dives: Vec<Vec<Cell>> = Vec::new();
+        let mut flats: Vec<Vec<Cell>> = Vec::new();
+        let mut spikes = false;
         for patch in patches(&found) {
             if kind_at(patch[0])? == DIVE {
                 dives.push(patch);
+                continue;
+            }
+            if ridden.0.contains(&kind_at(patch[0])?) {
+                spikes = true;
+                continue;
+            }
+            if ridden.1.contains(&kind_at(patch[0])?) {
+                flats.push(patch);
                 continue;
             }
             if kind_at(patch[0])? == BOULDER_HOLE {
@@ -2364,7 +2494,13 @@ impl FieldReader {
                 }
             }
         }
-        Ok((out, dives, currents))
+        // Vaniville Town's pen round Mom's Rhyhorn is flat ground too, with nothing to ride over.
+        Ok((
+            out,
+            dives,
+            currents,
+            if spikes { flats } else { Vec::new() },
+        ))
     }
 
     /// The cell tables of the chunks loaded now.
@@ -2461,12 +2597,20 @@ fn laid(
 /// Whether the cell and every cell round it are walls in the chunks loaded: where the game keeps a
 /// move model it has built and not put on the map. A Secret Base parks the six people of the
 /// player's secret team in the walls of its far corner until each is registered, and they were
-/// listed as six people there with no way to them (spike 154).
-fn walled_in(chunks: &[Rc<Chunk>], cell: Cell) -> Result<bool> {
+/// listed as six people there with no way to them (spike 154). Ground only a ridden Pokémon
+/// crosses, of a kind of `rides`, is no wall: once its chunk was loaded, Route 9's rocks on the
+/// spikes and the Rhyhorn ridden over them were left out (spike 238).
+fn walled_in(chunks: &[Rc<Chunk>], cell: Cell, rides: &HashSet<i64>) -> Result<bool> {
+    let wall = |near: Cell| -> Result<bool> {
+        match chunks.iter().find(|chunk| chunk.holds(near)) {
+            None => Ok(false),
+            Some(chunk) => Ok(!chunk.walkable(near)? && !rides.contains(&chunk.kind(near)?)),
+        }
+    };
     let (x, z) = cell;
     for dx in [-1, 0, 1] {
         for dz in [-1, 0, 1] {
-            if walkable(chunks, (x + dx, z + dz))? != Some(false) {
+            if !wall((x + dx, z + dz))? {
                 return Ok(false);
             }
         }

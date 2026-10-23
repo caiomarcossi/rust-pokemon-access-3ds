@@ -25,6 +25,9 @@ rail-back = 뒤로 { $steps }
 rail-hold-right = 오른쪽 누르기
 rail-hold-left = 왼쪽 누르기
 rail-angled = 카메라 비스듬함, 왼쪽 누르기, 오른쪽 누르기
+turn-right = 오른쪽으로 돌기
+turn-left = 왼쪽으로 돌기
+turn-around = 뒤로 돌기
 
 ## The list of what is on the map, and the navigation keys' answers
 
@@ -37,6 +40,7 @@ category-items = 도구
 category-berries = 나무열매
 category-ash = 화산재
 category-bike = 자전거
+category-riding = 라이드
 category-currents = 해류
 category-pokemon = 포켓몬
 key-category = { $category }, { $count }
@@ -95,6 +99,8 @@ how-slope = 비탈
 how-bumpy-slope = 울퉁불퉁한 비탈
 how-push = 밀기
 how-ride-the-current = 해류 타기
+how-get-off = 내리기
+how-smash = 부수기
 p-current = 해류 타기 { $bearing }
 p-to-push = { $way } 방향으로 밀려면:
 p-nudge = 조금 { $way }
@@ -192,6 +198,7 @@ kind-barrier = 장벽
 kind-hole = 구멍
 kind-dive-spot = 다이빙 포인트
 kind-current = 해류
+kind-flat-ground = 평평한 땅
 kind-slope = 비탈
 kind-bumpy-slope = 울퉁불퉁한 비탈
 kind-rail = 레일

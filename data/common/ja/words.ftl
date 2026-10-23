@@ -24,6 +24,9 @@ rail-back = 後ろへ{ $steps }
 rail-hold-right = 右を押し続ける
 rail-hold-left = 左を押し続ける
 rail-angled = カメラが斜め、左を押し続ける、右を押し続ける
+turn-right = 右を向く
+turn-left = 左を向く
+turn-around = 後ろを向く
 
 ## The list of what is on the map, and the navigation keys' answers
 
@@ -36,6 +39,7 @@ category-items = 道具
 category-berries = きのみ
 category-ash = 火山灰
 category-bike = 自転車
+category-riding = ライド
 category-currents = 海流
 category-pokemon = ポケモン
 key-category = { $category }、{ $count }
@@ -94,6 +98,8 @@ how-slope = 坂
 how-bumpy-slope = でこぼこの坂
 how-push = 押す
 how-ride-the-current = 海流に乗る
+how-get-off = 降りる
+how-smash = 砕く
 p-current = 海流に乗って{ $bearing }
 p-to-push = { $way }に押すには：
 p-nudge = 少し{ $way }
@@ -191,6 +197,7 @@ kind-barrier = 柵
 kind-hole = 穴
 kind-dive-spot = ダイビングポイント
 kind-current = 海流
+kind-flat-ground = 平らな地面
 kind-slope = 坂
 kind-bumpy-slope = でこぼこの坂
 kind-rail = レール

@@ -61,6 +61,20 @@ const FALLS: i64 = 0x3F180003;
 const SOUTH_SLOPE: i64 = 0x6C000020;
 /// Route 132's current, which carried the player west (movie43, spike 208).
 const WEST_CURRENT: i64 = 0x951A0002;
+/// A jumping stone in X's Route 8 mud pit, hopped onto two cells at a time (x_route-8-3.ctm,
+/// spike 235).
+const STONE: i64 = 0x92000021;
+/// Where the hops onto the stones start and end, at the pit's edge.
+const LAUNCH: i64 = 0x93000020;
+/// X's Route 9's spiky ground, blocked, crossed only riding a Rhyhorn (x_route_9_rhyhorn, spike
+/// A).
+const SPIKY: i64 = 0x32000025;
+/// The flat ground between the spikes and plain ground, where the Rhyhorn is got on and off.
+const FLAT: i64 = 0x31000020;
+/// The Rhyhorn's character, waiting on flat ground to be ridden.
+const RHYHORN: i64 = 0x100F;
+/// Route 9's rocks, `IROCK02`, which the Rhyhorn smashes with A.
+const ROCK: i64 = 0x200D;
 
 /// What `FakeField.ground` is run through before it is handed over: Python's tests replace the
 /// method itself, which Rust cannot do to a value behind a trait.
@@ -96,6 +110,10 @@ struct FakeField {
     /// A stacked ground's ladders, each step with the heights it leaves and lands at.
     ladders: RefCell<IndexMap<(Cell, Cell), (f64, f64)>>,
     ice: RefCell<Vec<IceRoom>>,
+    stones: RefCell<HashSet<Cell>>,
+    launches: RefCell<HashSet<Cell>>,
+    spiky: RefCell<HashSet<Cell>>,
+    flat: RefCell<HashSet<Cell>>,
     visit: Slot<Option<(i64, i64)>>,
     edit: RefCell<Option<Edit>>,
 }
@@ -125,6 +143,10 @@ impl FakeField {
             level: Slot::new(None),
             ladders: RefCell::new(IndexMap::new()),
             ice: RefCell::new(Vec::new()),
+            stones: RefCell::new(HashSet::new()),
+            launches: RefCell::new(HashSet::new()),
+            spiky: RefCell::new(HashSet::new()),
+            flat: RefCell::new(HashSet::new()),
             visit: Slot::new(Some((0x08D209B8, 0x6))),
             edit: RefCell::new(None),
         }
@@ -175,6 +197,10 @@ impl FieldSource for FakeField {
         let shore = self.shore.borrow();
         let falls = self.falls.borrow();
         let currents = self.currents.borrow();
+        let stones = self.stones.borrow();
+        let launches = self.launches.borrow();
+        let spiky = self.spiky.borrow();
+        let flat = self.flat.borrow();
         let words: Vec<i64> = cells
             .iter()
             .map(|cell| {
@@ -192,6 +218,14 @@ impl FieldSource for FakeField {
                     SHORE
                 } else if falls.contains(cell) {
                     FALLS
+                } else if stones.contains(cell) {
+                    STONE
+                } else if launches.contains(cell) {
+                    LAUNCH
+                } else if spiky.contains(cell) {
+                    SPIKY
+                } else if flat.contains(cell) {
+                    FLAT
                 } else if blocked.contains(cell) && !opened.contains(cell) {
                     BLOCKED
                 } else {
@@ -268,6 +302,15 @@ impl FieldSource for FakeField {
             .map(|&cell| (cell, pathfind::NORTH))
             .collect::<IndexMap<_, _>>();
         ground.surfaces = self.surfaces.borrow().clone();
+        if !spiky.is_empty() {
+            ground = ground.mounted(
+                r#where,
+                &HashSet::from([SPIKY >> 24]),
+                &HashSet::from([FLAT >> 24]),
+                &HashSet::from([RHYHORN]),
+                &HashSet::from([ROCK]),
+            )?;
+        }
         let edit = self.edit.borrow().clone();
         Ok(match edit {
             Some(edit) => edit(ground),
@@ -493,6 +536,39 @@ fn test_both_modes_start_on_everything_nearest_first() {
     assert_eq!(
         said(&rig.backend),
         ["door, 1 of 5, 1 north", "sign, 2 of 5, 3 east 1 north"]
+    );
+}
+
+/// Players asked that a thing keep its place, to tell which house they had been in by it.
+#[test]
+fn test_unsorted_the_list_keeps_the_tables_order_as_the_player_walks() {
+    let unsorted = Navigation {
+        sort_by_distance: false,
+        ..Navigation::default()
+    };
+    let mut rig = navigator(Want {
+        navigation: Some(unsorted.clone()),
+        ..Want::default()
+    });
+    walk_to(&rig, (90, 161));
+    rig.press(ITEM_READ);
+    rig.press(ITEM_NEXT);
+    let mut looking = navigator(Want {
+        direction: true,
+        navigation: Some(unsorted),
+        ..Want::default()
+    });
+    walk_to(&looking, (90, 161));
+    looking.press(NORTH);
+    let mut heard = said(&rig.backend);
+    heard.extend(said(&looking.backend));
+    assert_eq!(
+        heard,
+        [
+            "door, 1 of 5, 4 east 10 south",
+            "edge, 2 of 5, 2 north",
+            "person, 1 of 2, 1 north"
+        ]
     );
 }
 
@@ -1511,6 +1587,233 @@ fn test_shift_p_jumps_the_shore_onto_the_water_and_off_it() {
     });
     rig.press(PATHFIND);
     assert_eq!(last(&rig.backend), "2 south");
+}
+
+/// X's Route 8 (x_route-8-3.ctm, spike 235): a mud pit's stones are blocked in the cell table, and
+/// the player hops from the launch at the pit's edge onto one two cells on, over the mud, then from
+/// stone to stone and onto the launch on the far side, each hop one move. P took the pit for a
+/// wall, "can't continue".
+#[test]
+fn test_p_hops_across_a_mud_pit_from_stone_to_stone() {
+    let across = Field {
+        interactables: vec![Interactable {
+            source: 0x08D1E9A8,
+            ..Interactable::new("people", "person", (101, 175))
+        }],
+        ..Field::new(street().zone, (90, 175))
+    };
+    let mut blocked: Vec<Cell> = (92..99)
+        .flat_map(|x| (160..200).map(move |z| (x, z)))
+        .collect();
+    blocked.push((101, 175));
+    let mut rig = navigator(Want {
+        blocked,
+        ..on(across)
+    });
+    let stones: HashSet<Cell> = [(93, 175), (95, 175), (97, 175)].into_iter().collect();
+    *rig.field.stones.borrow_mut() = stones.clone();
+    *rig.field.launches.borrow_mut() = [(91, 175), (99, 175)].into_iter().collect();
+    rig.press(PATHFIND);
+    let way = guidance(&rig);
+    assert_eq!(last(&rig.backend), "10 east");
+    let path = path_of(&way);
+    assert!(stones.iter().all(|stone| path.contains(stone)) && path.iter().all(|c| c.1 == 175));
+    step(
+        &mut rig,
+        &[(91, 175), (93, 175), (95, 175), (97, 175), (99, 175)],
+    );
+    assert!(
+        Rc::ptr_eq(
+            way.as_ref().unwrap(),
+            rig.nav.guide.guidance.as_ref().unwrap()
+        ),
+        "each hop is on the way"
+    );
+    step(&mut rig, &[(100, 175)]);
+    assert_eq!(last(&rig.backend), "person, 1 east");
+}
+
+/// A band of spiky ground across the chunk.
+fn spikes() -> HashSet<Cell> {
+    (92..98)
+        .flat_map(|x| (160..200).map(move |z| (x, z)))
+        .collect()
+}
+
+/// A band of spiky ground across the chunk, with flat ground along each side.
+fn flats() -> HashSet<Cell> {
+    [90, 91, 98, 99]
+        .into_iter()
+        .flat_map(|x| (160..200).map(move |z| (x, z)))
+        .collect()
+}
+
+/// The person east of the spikes, as Python's tests give it.
+fn person_at(cell: Cell) -> Interactable {
+    Interactable {
+        source: 0x08D1E9A8,
+        ..Interactable::new("people", "person", cell)
+    }
+}
+
+/// A rock the Rhyhorn smashes.
+fn rock_at(cell: Cell) -> Interactable {
+    Interactable {
+        code: ROCK,
+        source: 0x08D21F18,
+        move_model: true,
+        ..Interactable::new("obstacles", "rock", cell)
+    }
+}
+
+/// X's Route 9 (x_route_9_rhyhorn, spike 238): spiky ground is blocked in the cell table, and a
+/// player riding the Rhyhorn, the bike's bits set, crosses it from flat ground to flat ground and
+/// gets off onto plain ground. Riding at (31, 61), every way was "no path".
+#[test]
+fn test_p_riding_crosses_spiky_ground_and_gets_off_onto_plain_ground() {
+    let riding = Field {
+        interactables: vec![person_at((102, 175))],
+        on_bike: true,
+        ..Field::new(street().zone, (91, 175))
+    };
+    let mut rig = navigator(Want {
+        blocked: vec![(102, 175)],
+        ..on(riding)
+    });
+    *rig.field.spiky.borrow_mut() = spikes();
+    *rig.field.flat.borrow_mut() = flats();
+    rig.press(PATHFIND);
+    assert_eq!(last(&rig.backend), "8 east, get off 2 east");
+}
+
+/// Route 9 (spike 238): the player walked onto flat ground, faced the Rhyhorn waiting there and
+/// pressed A, and the game moved them into its cell, riding. P stopped at the spikes, "then can't
+/// continue".
+#[test]
+fn test_p_on_foot_gets_on_the_rhyhorn_waiting_on_flat_ground_to_cross_the_spikes() {
+    let beside = Field {
+        interactables: vec![
+            Interactable {
+                code: RHYHORN,
+                source: 0x08D21F18,
+                move_model: true,
+                ..Interactable::new("people", "Rhyhorn", (90, 175))
+            },
+            person_at((102, 175)),
+        ],
+        ..Field::new(street().zone, (88, 175))
+    };
+    let mut rig = navigator(Want {
+        blocked: vec![(102, 175)],
+        ..on(beside)
+    });
+    *rig.field.spiky.borrow_mut() = spikes();
+    *rig.field.flat.borrow_mut() = flats();
+    rig.press(ITEM_NEXT);
+    rig.press(PATHFIND);
+    assert_eq!(
+        last(&rig.backend),
+        "1 east, Rhyhorn 1 east, 9 east, get off 2 east"
+    );
+}
+
+/// Route 9 (spike 238): only a player riding crosses the spikes, so with nothing to ride the way
+/// goes round them, here past the chunk, never across.
+#[test]
+fn test_p_on_foot_with_no_rhyhorn_takes_spiky_ground_for_a_wall() {
+    let alone = Field {
+        interactables: vec![person_at((102, 175))],
+        ..Field::new(street().zone, (88, 175))
+    };
+    let mut rig = navigator(Want {
+        blocked: vec![(102, 175)],
+        ..on(alone)
+    });
+    *rig.field.spiky.borrow_mut() = spikes();
+    *rig.field.flat.borrow_mut() = flats();
+    rig.press(PATHFIND);
+    let way = guidance(&rig);
+    let spiky = spikes();
+    assert!(way.is_some() && !path_of(&way).iter().any(|cell| spiky.contains(cell)));
+}
+
+/// Route 9 (spike 238): two rocks close the only way east across the spikes at x 51, and the
+/// player smashed them riding, pressing A at each: they were gone from the list after 103 s, and
+/// the player at (58, 59) by 130 s. P riding stopped at them, "then can't continue".
+#[test]
+fn test_p_riding_smashes_a_rock_standing_in_the_only_way_across_the_spikes() {
+    let wall: HashSet<Cell> = (160..200).filter(|&z| z != 175).map(|z| (94, z)).collect();
+    let riding = Field {
+        interactables: vec![person_at((102, 175)), rock_at((94, 175))],
+        on_bike: true,
+        ..Field::new(street().zone, (91, 175))
+    };
+    let mut blocked: Vec<Cell> = vec![(102, 175)];
+    blocked.extend(wall.iter().copied());
+    let mut rig = navigator(Want {
+        blocked,
+        ..on(riding)
+    });
+    *rig.field.spiky.borrow_mut() = spikes().difference(&wall).copied().collect();
+    *rig.field.flat.borrow_mut() = flats();
+    rig.press(CATEGORY_PREVIOUS);
+    rig.press(PATHFIND);
+    assert_eq!(
+        last(&rig.backend),
+        "2 east, smash 1 east, 5 east, get off 2 east"
+    );
+}
+
+/// Route 9 (spike 238): a rock is faced and smashed with A, so a way round it a step or two longer
+/// is taken, as P goes round a cracked boulder.
+#[test]
+fn test_p_riding_goes_round_a_rock_where_that_costs_less_than_smashing_it() {
+    let riding = Field {
+        interactables: vec![person_at((102, 175)), rock_at((94, 175))],
+        on_bike: true,
+        ..Field::new(street().zone, (91, 175))
+    };
+    let mut rig = navigator(Want {
+        blocked: vec![(102, 175)],
+        ..on(riding)
+    });
+    *rig.field.spiky.borrow_mut() = spikes();
+    *rig.field.flat.borrow_mut() = flats();
+    rig.press(CATEGORY_PREVIOUS);
+    rig.press(PATHFIND);
+    let way = guidance(&rig);
+    assert!(way.is_some() && !path_of(&way).contains(&(94, 175)));
+    assert!(!last(&rig.backend).contains("smash"));
+}
+
+/// Route 9 (spike 238): only the Rhyhorn smashes a rock, so on foot one in the gap into a pen is in
+/// the way, as before.
+#[test]
+fn test_p_on_foot_takes_a_rock_for_somebody_in_the_way() {
+    let gapped = Field {
+        interactables: vec![
+            Interactable {
+                move_model: true,
+                ..person_at((95, 182))
+            },
+            rock_at((95, 177)),
+        ],
+        ..Field::new(street().zone, (95, 175))
+    };
+    let mut blocked = pen(None);
+    blocked.push((96, 177));
+    let mut rig = navigator(Want {
+        blocked,
+        ..on(gapped)
+    });
+    *rig.field.spiky.borrow_mut() = (80..120).map(|x| (x, 199)).collect();
+    *rig.field.flat.borrow_mut() = HashSet::from([(95, 177)]);
+    rig.press(CATEGORY_PREVIOUS);
+    rig.press(PATHFIND);
+    assert_eq!(
+        last(&rig.backend),
+        "1 south, then can't continue, rock in the way"
+    );
 }
 
 /// Ever Grande City: the waterfall is a row of blocked water, and Waterfall carries the player up
@@ -3083,6 +3386,27 @@ fn test_on_a_rail_the_way_and_the_bearing_are_said_from_the_camera() {
     assert_eq!(last(&rig.backend), "5 forward, hold left, 2 forward");
     rig.press(ITEM_PREVIOUS);
     assert_eq!(last(&rig.backend), "person, 2 of 2, 10 ahead 5 right");
+}
+
+/// Glittering Cave (spike 239): left and right turn the player and the camera swings after them,
+/// so P says each turn, then the steps forward.
+#[test]
+fn test_under_a_camera_that_turns_with_the_player_p_says_the_turns() {
+    let cave = Field {
+        heading: Some("north"),
+        bearing: Some(352.3),
+        turning: true,
+        ..street()
+    };
+    let mut rig = navigator(Want {
+        blocked: house_front(),
+        ..on(cave)
+    });
+    rig.press_key("p");
+    assert_eq!(
+        last(&rig.backend),
+        "turn right, 5 forward, turn left, 2 forward"
+    );
 }
 
 /// A tap of left or right leaves the camera between two ways, and up walks the player across

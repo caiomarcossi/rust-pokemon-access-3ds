@@ -57,7 +57,9 @@ the Game Boy games. Nothing here is taken from its code.
 - **Pictures the game never names**: the boy and the girl to choose from as a game begins, and
   the Trainer Passport's photos in Sun and Moon, described in pa3ds's own words.
 - **Scenes without words**, described when the `descriptions` setting is on: many in Omega Ruby
-  and Alpha Sapphire, and one in Sun so far.
+  and Alpha Sapphire, each one's intro and title screen among them, and one in Sun so far. A
+  scene you skip goes undescribed from there, and in Omega Ruby and Alpha Sapphire a description
+  waits while the emulator is paused.
 - **Footsteps** where Omega Ruby, Alpha Sapphire, X and Y play none, as on streets, floors and in
   caves: the game's own step sound, as loud as the game and Azahar would play it.
 
@@ -96,8 +98,9 @@ pa3ds can change Azahar's settings only while Azahar is closed. If it says "clos
 pa3ds again to apply its settings", do exactly that. If it says "Azahar's settings were not
 found", start Azahar once, close it, and start pa3ds again.
 
-With a portable Azahar, one with a `user` folder beside `azahar.exe`, pa3ds asks the first time
-for the folder `azahar.exe` is in. Choose it, and pa3ds remembers it. Cancel instead if Azahar is
+With a portable Azahar, one with a `user` folder beside `azahar.exe`, pa3ds finds it on its own
+when Azahar is open or pa3ds is in the same folder. Otherwise pa3ds asks the first time for the
+folder `azahar.exe` is in. Choose it, and pa3ds remembers it. Cancel instead if Azahar is
 installed the usual way.
 
 Started by double-clicking or from a shortcut, pa3ds hides its window while Azahar is open, so

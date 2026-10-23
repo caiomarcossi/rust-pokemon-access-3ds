@@ -16,7 +16,7 @@ use crate::core::words::{self, ENGLISH, Words};
 use crate::games::common::announce::{Announcements, Speaker};
 use crate::games::common::dialogue::{PageShown, Shown};
 use crate::games::common::scenes::{
-    Described, FILE, Recall, Scene, Scenes, last_page, load, shipped,
+    Described, FILE, GameClock, Recall, Scene, Scenes, last_page, load, shipped,
 };
 use crate::games::sm::field;
 use crate::py::{Log, Result};
@@ -70,6 +70,24 @@ fn test_a_line_is_matched_by_its_last_page_with_anything_where_an_insert_was() -
     assert!(index == 0 && words.is_match("Raiden changed into the Magma Suit!"));
     let (_, words) = page(&line(&[Part::Text("Gurrrooouuuhhh!!!")]))?;
     assert!(!words.is_match("Gurrraaahhhh! Gurrrooouuuhhh!!!"));
+    Ok(())
+}
+
+/// The player's gender choosing the words after it: "boy", 3 letters, or "girl", 4 after them.
+const GENDER: &[i64] = &[0x1100, 255, 0x0403];
+
+/// Norman's "How about our little boy's favorite?" is one line for a boy and a girl, the ROM
+/// writing "boygirl" after a control saying how long each is (story 253:147, or_sky_pillar_7).
+#[test]
+fn test_words_the_players_gender_chooses_are_matched_as_either() -> Result<()> {
+    let (_, words) = page(&line(&[
+        Part::Text("Hmm.\nHow about our little "),
+        Part::Control(GENDER),
+        Part::Text("boygirl's favorite?"),
+    ]))?;
+    assert!(words.is_match("Hmm. How about our little boy's favorite?"));
+    assert!(words.is_match("Hmm. How about our little girl's favorite?"));
+    assert!(!words.is_match("Hmm. How about our little boygirl's favorite?"));
     Ok(())
 }
 
@@ -230,7 +248,7 @@ missing-1 = { ITEM(9999) } is nowhere.
     let said: RefCell<Vec<String>> = RefCell::new(Vec::new());
     let now = Rc::new(Cell::new(0.0));
     let clock = now.clone();
-    let mut reader = Scenes::new(scenes, said_of(&words), Rc::new(move || clock.get()));
+    let mut reader = Scenes::new(scenes, said_of(&words), Rc::new(move || Ok(clock.get())));
     let mut say = |text: &str| said.borrow_mut().push(text.to_string());
     let last = || said.borrow().last().cloned().unwrap_or_default();
     reader.heard(0, "Augh... You...", Some(0x6E), &mut say)?;
@@ -263,6 +281,49 @@ missing-1 = { ITEM(9999) } is nowhere.
             .count(),
         1
     );
+    Ok(())
+}
+
+/// "Welcome home, [name]!" is said to a boy and a girl alike, and their rooms are zones of their
+/// own (or_ and as_sky_pillar_7): the room's beat comes in either, and nowhere else.
+#[test]
+fn test_a_beat_waiting_for_several_zones_comes_in_any_one() -> Result<()> {
+    let tmp_path = TmpDir::new();
+    let (scenes, words) = described(
+        tmp_path.path(),
+        r#"
+[[scene]]
+after = "story:66:35"
+zone = 0x6
+[[scene.beat]]
+zone = [0xe0, 0xe2]
+id = "room-1"
+"#,
+        "room-1 = Your room.\n",
+        &[(
+            ("story", 66, 35),
+            line(&[
+                Part::Text("Welcome home, "),
+                Part::Control(NAME),
+                Part::Text("!"),
+            ]),
+        )],
+        &[],
+        None,
+        &quiet(),
+        None,
+    )?;
+    let said: RefCell<Vec<String>> = RefCell::new(Vec::new());
+    let mut reader = Scenes::with_monotonic(scenes, said_of(&words));
+    let mut say = |text: &str| said.borrow_mut().push(text.to_string());
+    for room in [0xE0, 0xE2] {
+        reader.heard(0, "Welcome home, Raiden!", Some(0x6), &mut say)?;
+        reader.arrived(room, &mut say)?;
+    }
+    reader.heard(0, "Welcome home, Raiden!", Some(0x6), &mut say)?;
+    reader.arrived(0xDF, &mut say)?;
+    reader.arrived(0xE0, &mut say)?;
+    assert_eq!(*said.borrow(), ["Your room.", "Your room."]);
     Ok(())
 }
 
@@ -668,6 +729,133 @@ battle-3 = You and { YOURS(4) } are nowhere.
     Ok(())
 }
 
+/// ADR-0038: Omega Ruby's intro is two apps before the title screen, and A skips straight to the
+/// title screen (spike 236): what the skipped app had left to say goes unsaid.
+#[test]
+fn test_a_scene_of_an_app_is_said_as_it_starts_and_let_go_as_another_starts() -> Result<()> {
+    let tmp_path = TmpDir::new();
+    let (scenes, words) = described(
+        tmp_path.path(),
+        r#"
+[[scene]]
+app = "movie::MovieProc"
+[[scene.beat]]
+at = 1
+id = "movie-1"
+[[scene.beat]]
+at = 6
+id = "movie-2"
+[[scene]]
+app = "title::TitleProc"
+[[scene.beat]]
+id = "title"
+[[scene]]
+after = "text:118:60"
+[[scene.beat]]
+id = "line-1"
+[[scene.beat]]
+demo = true
+id = "line-2"
+"#,
+        "movie-1 = A Poké Ball rushes at you.\nmovie-2 = Fire.\ntitle = The title screen.\n\
+         line-1 = He waves.\nline-2 = The ground shakes.\n",
+        &[(
+            ("text", 118, 60),
+            line(&[Part::Text("Come see me in my Pokémon Lab!")]),
+        )],
+        &[],
+        None,
+        &quiet(),
+        None,
+    )?;
+    let said: RefCell<Vec<String>> = RefCell::new(Vec::new());
+    let now = Rc::new(Cell::new(0.0));
+    let clock = now.clone();
+    let mut reader = Scenes::new(scenes, said_of(&words), Rc::new(move || Ok(clock.get())));
+    let mut say = |text: &str| said.borrow_mut().push(text.to_string());
+    reader.started("movie::MovieProc", Some(0x10), &mut say)?;
+    now.set(2.0);
+    reader.poll(&mut say)?;
+    assert!(said.borrow().is_empty());
+    reader.started("movie::MovieProc", None, &mut say)?;
+    now.set(4.0);
+    reader.poll(&mut say)?;
+    assert_eq!(*said.borrow(), ["A Poké Ball rushes at you."]);
+    reader.started("app::title_menu::Proc", None, &mut say)?;
+    now.set(20.0);
+    reader.poll(&mut say)?;
+    assert_eq!(*said.borrow(), ["A Poké Ball rushes at you."]);
+    reader.started("title::TitleProc", None, &mut say)?;
+    assert_eq!(said.borrow().last().unwrap(), "The title screen.");
+    reader.heard(0, "Come see me in my Pokémon Lab!", None, &mut say)?;
+    reader.started("app::field_demo::Proc", None, &mut say)?;
+    reader.demo(None, &mut say)?;
+    assert_eq!(
+        said.borrow()[said.borrow().len() - 2..],
+        ["He waves.", "The ground shakes."]
+    );
+    Ok(())
+}
+
+/// ADR-0038: the title screen's logo is the game's own name out of its ROM, and its prompt a
+/// picture's words, as `pictures.ftl` calls it or as its texture's name says (spike 236).
+#[test]
+fn test_words_drawn_as_pictures_are_said_as_the_picture_and_the_rom_name_them() -> Result<()> {
+    let tmp_path = TmpDir::new();
+    let english = tmp_path.path().join("data").join("oras").join("en");
+    fs::create_dir_all(&english).unwrap();
+    fs::write(
+        english.join("pictures.ftl"),
+        "texture-push_start = Press Start\n",
+    )
+    .unwrap();
+    let (scenes, words) = described(
+        tmp_path.path(),
+        "[[scene]]\napp = \"title::TitleProc\"\n[[scene.beat]]\nid = \"title\"\n",
+        "title = { GAME() }. { PICTURE(\"push_start\") }, { PICTURE(\"gf_logo\") }.\n",
+        &[],
+        &[(("game", 0), "Pokémon Omega Ruby")],
+        None,
+        &quiet(),
+        None,
+    )?;
+    let mut said: Vec<String> = Vec::new();
+    Scenes::with_monotonic(scenes, said_of(&words)).started(
+        "title::TitleProc",
+        None,
+        &mut |text: &str| said.push(text.to_string()),
+    )?;
+    assert_eq!(said, ["Pokémon Omega Ruby. Press Start, gf logo."]);
+    Ok(())
+}
+
+/// ADR-0038: a paused emulator holds a scene's beats, and the wall clock stands in only while the
+/// game's count is not to be had or leaps (spike 236).
+#[test]
+fn test_a_beat_is_timed_by_the_games_frames_where_they_can_be_read() -> Result<()> {
+    let count: Rc<Cell<Option<i64>>> = Rc::new(Cell::new(Some(1000)));
+    let wall = Rc::new(Cell::new(0.0));
+    let (counted, walled) = (count.clone(), wall.clone());
+    let clock = GameClock::new(
+        Rc::new(move || Ok(counted.get())),
+        Rc::new(move || walled.get()),
+    );
+    let start = clock.call()?;
+    let at = |seconds: f64, frames: Option<i64>| -> Result<f64> {
+        wall.set(seconds);
+        count.set(frames);
+        Ok(clock.call()? - start)
+    };
+    assert_eq!(at(10.0, Some(1060))?, 1.0);
+    assert_eq!(at(20.0, Some(1060))?, 1.0);
+    assert_eq!(at(21.0, None)?, 2.0);
+    assert_eq!(at(22.0, Some(1120))?, 3.0);
+    assert_eq!(at(23.0, Some(900_000))?, 4.0);
+    assert_eq!(at(24.0, Some(899_000))?, 5.0);
+    assert_eq!(at(30.0, Some(899_120))?, 7.0);
+    Ok(())
+}
+
 /// Sun numbers its demos, 55 Kukui's call and 6 the chase after it (Khai, sun_1.ctm,
 /// 2026-09-30): the chase is described from Sun's own file as it starts, a beat as each second
 /// comes, and the arrival after it once the field has come, in Route 1's zone 0x0.
@@ -687,7 +875,7 @@ fn test_a_scene_of_suns_is_said_over_the_demo_it_plays_as() -> Result<()> {
     let said: RefCell<Vec<String>> = RefCell::new(Vec::new());
     let now = Rc::new(Cell::new(100.0));
     let clock = now.clone();
-    let mut reader = Scenes::new(scenes, said_of(&words), Rc::new(move || clock.get()));
+    let mut reader = Scenes::new(scenes, said_of(&words), Rc::new(move || Ok(clock.get())));
     let mut say = |text: &str| said.borrow_mut().push(text.to_string());
     reader.demo(Some(55), &mut say)?;
     reader.demo(None, &mut say)?;

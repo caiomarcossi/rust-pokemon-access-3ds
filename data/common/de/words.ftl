@@ -24,6 +24,9 @@ rail-back = { $steps } rückwärts
 rail-hold-right = rechts halten
 rail-hold-left = links halten
 rail-angled = Kamera schräg, links halten, rechts halten
+turn-right = rechts drehen
+turn-left = links drehen
+turn-around = umdrehen
 
 ## The list of what is on the map, and the navigation keys' answers
 
@@ -36,6 +39,7 @@ category-items = Items
 category-berries = Beeren
 category-ash = Asche
 category-bike = Rad
+category-riding = Reiten
 category-currents = Strömungen
 category-pokemon = Pokémon
 key-category = { $category }, { $count }
@@ -94,6 +98,8 @@ how-slope = Hang
 how-bumpy-slope = holpriger Hang
 how-push = schieben
 how-ride-the-current = mit der Strömung treiben
+how-get-off = absteigen
+how-smash = zertrümmern
 p-current = mit der Strömung { $bearing }
 p-to-push = um nach { $way } zu schieben:
 p-nudge = ein wenig nach { $way }
@@ -191,6 +197,7 @@ kind-barrier = Barriere
 kind-hole = Loch
 kind-dive-spot = Tauchstelle
 kind-current = Strömung
+kind-flat-ground = flacher Boden
 kind-slope = Hang
 kind-bumpy-slope = holpriger Hang
 kind-rail = Schiene
