@@ -604,6 +604,6 @@ place-0xe1-furniture-0 = Muñeco Azurill
 # Azurill Doll: text 56:111
 place-0x18f-furniture-0 = Muñeco Azurill
 # ice rock: story 378:0, "It's a rock that is covered in ice.", in Shoal Cave
-place-0x86-furniture-0 = roca helada
+place-0x86-furniture-0 = roca hielo
 # moss rock: story 432:45, "The surface is covered with moss.", in Petalburg Woods
-place-0x52-furniture-2 = roca musgosa
+place-0x52-furniture-2 = roca musgo

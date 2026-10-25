@@ -604,6 +604,6 @@ place-0xe1-furniture-0 = Poupée Azurill
 # Azurill Doll: text 56:111
 place-0x18f-furniture-0 = Poupée Azurill
 # ice rock: story 378:0, "It's a rock that is covered in ice.", in Shoal Cave
-place-0x86-furniture-0 = rocher glacé
+place-0x86-furniture-0 = pierre glacée
 # moss rock: story 432:45, "The surface is covered with moss.", in Petalburg Woods
-place-0x52-furniture-2 = rocher moussu
+place-0x52-furniture-2 = pierre mousse
