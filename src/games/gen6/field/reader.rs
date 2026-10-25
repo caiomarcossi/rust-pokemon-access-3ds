@@ -2357,17 +2357,18 @@ impl FieldReader {
     fn climbing_spots(&self, zone: i64) -> Result<Vec<Interactable>> {
         let mut out: Vec<Interactable> = Vec::new();
         for (cells, ledge) in self.walls()?.spots() {
-            let at = self.zone_at(cells[0])?;
-            if at.is_some_and(|at| at != zone) {
-                continue;
+            for (first, size) in runs(cells) {
+                let at = self.zone_at(first)?;
+                if at.is_some_and(|at| at != zone) {
+                    continue;
+                }
+                out.push(Interactable {
+                    size,
+                    source: place_source(CLIMB_SOURCE, cell_number(first))?,
+                    home: Some(zone),
+                    ..Interactable::new(CLIMBING, if ledge { WALL_LEDGE } else { BLUE_SPOT }, first)
+                });
             }
-            let (first, size) = spread(&cells);
-            out.push(Interactable {
-                size,
-                source: place_source(CLIMB_SOURCE, cell_number(first))?,
-                home: Some(zone),
-                ..Interactable::new(CLIMBING, if ledge { WALL_LEDGE } else { BLUE_SPOT }, first)
-            });
         }
         Ok(out)
     }

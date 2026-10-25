@@ -476,11 +476,7 @@ impl Terrain {
                     }
                 }
             }
-            let walls = if cells.is_empty() {
-                Rc::new(Walls::default())
-            } else {
-                Rc::new(Walls::found(&cells, climbing.face, &climbing.sideways))
-            };
+            let walls = Rc::new(Walls::found(&cells, climbing.face, &climbing.sideways));
             *self.walls_of.borrow_mut() = (Some(files), walls);
         }
         Ok(self.walls_of.borrow().1.clone())

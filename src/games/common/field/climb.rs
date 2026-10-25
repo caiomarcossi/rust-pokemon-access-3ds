@@ -19,7 +19,7 @@ pub const HOLD: f64 = 18.0;
 /// wall, or either. Off every line it is `FOOT`. Bits, so `state & WALL` asks one.
 pub const FOOT: i64 = 1;
 pub const WALL: i64 = 2;
-pub const EITHER: i64 = 3;
+pub const EITHER: i64 = FOOT | WALL;
 
 /// One stretch of a way climbed, by index along the path: got on at `path[on]`, off at
 /// `path[off]`, every step between on the wall.
@@ -247,7 +247,7 @@ impl Walls {
     /// (`hold`) puts a spot before a step off sideways and after a step on.
     pub fn climbs(&self, path: &[Cell], level: Option<f64>) -> Result<Vec<Climb>> {
         let mut out: Vec<Climb> = Vec::new();
-        let mut i = 0;
+        let mut i = if self.lines.is_empty() { path.len() } else { 0 };
         while i < path.len() {
             let (face, mut j) = (self.lines.get(&path[i]), i);
             while face.is_some() && j + 1 < path.len() && self.lines.get(&path[j + 1]) == face {
@@ -298,37 +298,22 @@ impl Walls {
         Ok(out)
     }
 
-    /// Each run of blue spots side by side on one face at one height, and whether it is a
-    /// ledge's: what the list shows.
+    /// The blue spots of each face at each height, and whether they stand on a ledge, above
+    /// the face's foot: what the list shows, a run of them at a time.
     pub fn spots(&self) -> Vec<(Vec<Cell>, bool)> {
         // Python's dict keyed by (face, height): looked up by `==`, so a NaN height, which no
         // ROM's heights hold, makes a key of its own each time.
         let mut faces: Vec<((i64, f64), Vec<Cell>)> = Vec::new();
-        let mut sorted: Vec<Cell> = self.pads.keys().copied().collect();
-        sorted.sort();
-        for cell in sorted {
-            let key = (self.lines[&cell], self.pads[&cell]);
+        for (&cell, &height) in &self.pads {
+            let key = (self.lines[&cell], height);
             match faces.iter_mut().find(|(known, _)| *known == key) {
                 Some((_, cells)) => cells.push(cell),
                 None => faces.push((key, vec![cell])),
             }
         }
-        let mut out: Vec<(Vec<Cell>, bool)> = Vec::new();
-        for (_, cells) in faces {
-            let mut runs: Vec<Vec<Cell>> = vec![vec![cells[0]]];
-            for &cell in &cells[1..] {
-                let last = *runs.last().unwrap().last().unwrap();
-                if (cell.0 - last.0).abs() + (cell.1 - last.1).abs() == 1 {
-                    runs.last_mut().unwrap().push(cell);
-                } else {
-                    runs.push(vec![cell]);
-                }
-            }
-            out.extend(runs.into_iter().map(|run| {
-                let ledge = run.iter().any(|cell| self.ledges.contains_key(cell));
-                (run, ledge)
-            }));
-        }
-        out
+        faces
+            .into_iter()
+            .map(|((face, height), cells)| (cells, height > self.feet[face as usize]))
+            .collect()
     }
 }

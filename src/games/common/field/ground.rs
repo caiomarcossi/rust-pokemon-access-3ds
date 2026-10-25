@@ -1025,12 +1025,18 @@ impl Ground {
     /// (`smashed`); through a big boulder or somebody of `crowd`, `SHOVE`; along a street a
     /// way it does not run, which the keys never walk and a way takes only where the cells laid
     /// on the grid leave it no other (`lanes`); and off a climbing wall's face onto its ledge or
-    /// back, a step's worth a handhold climbed to it (`Walls.toll`).
+    /// back, a step's worth a handhold climbed to it (`Walls.toll`), on top of the rest.
     pub fn toll(&self, cell: Cell, step: Cell) -> Result<i64> {
-        let held = self.walls.toll(cell, step)?;
-        if held != 0 {
-            return Ok(held);
-        }
+        let held = if self.walls.ledges.is_empty() {
+            0
+        } else {
+            self.walls.toll(cell, step)?
+        };
+        Ok(held + self._toll(cell, step)?)
+    }
+
+    // Python's `_toll` sits beside the public `toll`, so it keeps its underscore.
+    fn _toll(&self, cell: Cell, step: Cell) -> Result<i64> {
         if self.cleared.get(&step) == Some(&STRENGTH) || self.crowd.contains(&step) {
             return Ok(SHOVE);
         }
@@ -1614,13 +1620,13 @@ impl Ground {
     /// them; and on a stacked ground the floor each step is on, the player's first, the last of
     /// the turns.
     fn walk(&self, start: Cell) -> Result<Walk<'_>> {
-        let (ride, climb) = (!self.rides.is_empty(), !self.walls.lines.is_empty());
-        if self.doors.is_empty() && !self.stacked && !ride && !climb {
+        let (ride, walled) = (!self.rides.is_empty(), !self.walls.lines.is_empty());
+        if self.doors.is_empty() && !self.stacked && !ride && !walled {
             return Ok(Walk {
                 ground: self,
                 active: false,
                 ride,
-                climb,
+                walled,
                 turns: Vec::new(),
                 crossings: None,
             });
@@ -1636,7 +1642,7 @@ impl Ground {
         if ride {
             turns.push(self.riding as i64);
         }
-        if climb {
+        if walled {
             turns.push(self.walls.start(start, self.level));
         }
         turns.extend(self.turns());
@@ -1647,7 +1653,7 @@ impl Ground {
             ground: self,
             active: true,
             ride,
-            climb,
+            walled,
             turns,
             crossings,
         })
@@ -1687,7 +1693,7 @@ struct Walk<'a> {
     /// Whether the first of the turns is whether the player is riding.
     ride: bool,
     /// Whether the next is what the player may be doing on a climbing wall's line.
-    climb: bool,
+    walled: bool,
     turns: pathfind::Turns,
     crossings: Option<Rc<HashMap<(Cell, Cell), i64>>>,
 }
@@ -1712,7 +1718,7 @@ impl Walk<'_> {
             return Ok(None);
         };
         let rest = if self.ride { &turns[1..] } else { turns };
-        let held = if self.climb {
+        let held = if self.walled {
             ground.walls.hold(rest[0], cell, step)
         } else {
             Some(FOOT)
@@ -1720,7 +1726,7 @@ impl Walk<'_> {
         let Some(held) = held else {
             return Ok(None);
         };
-        let rest = if self.climb { &rest[1..] } else { rest };
+        let rest = if self.walled { &rest[1..] } else { rest };
         let doors = if ground.stacked {
             &rest[..rest.len() - 1]
         } else {
@@ -1740,7 +1746,7 @@ impl Walk<'_> {
             };
             after.push(floor);
         }
-        if self.climb {
+        if self.walled {
             after.insert(0, held);
         }
         if self.ride {
