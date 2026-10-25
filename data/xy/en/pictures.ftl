@@ -28,3 +28,12 @@ model-girl_right = Brown skin, long wavy dark grey-black hair, amber-brown eyes,
 texture-kwg_button01 = PLAY
 texture-kwg_button02 = DECORATE
 texture-kwg_button03 = SWITCH
+
+# Words the title screen draws as pictures, as a sighted player reads them, said in its
+# description (`{ PICTURE("push_start") }`): its blinking prompt, `push_start`, and the studio's
+# credit at the end of the bottom screen's reel, which X and Y draw into the reel itself, with no
+# texture, and Omega Ruby as `presented_by` and `gf_logo`, the names it is said by here
+# (x_intro_and_title_screen).
+texture-push_start = Press Start
+texture-presented_by = Presented by
+texture-gf_logo = Game Freak

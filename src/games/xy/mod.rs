@@ -143,6 +143,10 @@ pub const PUFF_NAMES: i64 = 67;
 /// Pokémon-Amie's wallpapers and interior items, line for line ORAS's file 110
 /// (`oras.GOODS_NAMES`), the English with a plural's ending after each (`garc.singular`).
 pub const GOODS_NAMES: i64 = 92;
+/// The items' names, a line an item by its number as ORAS's file 114 (`oras.ITEM_NAMES`): the Poké
+/// Ball at 4, which the title screen's film throws (x_intro_and_title_screen). File 98 holds the same
+/// lines, and 95 and 97 the plurals.
+pub const ITEM_NAMES: i64 = 96;
 /// Super Training's bags in the list its page opens, as ORAS's (`oras.TRAINING_BAGS`): line N of
 /// text file 23 is the bag of `sand_bagNN.bclim`, HP Bag S at 1, Strength Bag at 19 (spike 228).
 pub fn training_bags() -> &'static (i64, IndexMap<&'static str, i64>) {
@@ -258,6 +262,7 @@ pub fn rom() -> &'static RomLayout {
         battle_models: Some("a/0/0/7".to_string()),
         puffs: Some(PUFF_NAMES),
         goods: Some(GOODS_NAMES),
+        items: Some(ITEM_NAMES),
         sounds: Some(SOUND_ARCHIVE.to_string()),
         touch_words: [
             training_bags(),

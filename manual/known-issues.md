@@ -36,6 +36,8 @@ What pa3ds gets wrong or leaves out for now. To report one that is not here, see
 
 ## X and Y
 
+- **A scene you skip** goes undescribed from there, and a description waits while the emulator is
+  paused.
 - **Cyllage Gym's climbs** have been tried on one wall, the one nearest the entrance. On the walls
   facing east or west, "north" and "south" along the wall may not be the keys that climb it.
 - **Slides** have been tried in Cyllage Gym only. `P` also slides down a few short drops outside

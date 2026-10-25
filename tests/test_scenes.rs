@@ -910,7 +910,11 @@ fn test_a_scene_of_suns_is_said_over_the_demo_it_plays_as() -> Result<()> {
 #[test]
 fn test_every_beat_of_every_scene_shipped_has_english_words() {
     let sun = field::names();
-    for game in [sun.parent().unwrap().join("oras"), sun.clone()] {
+    for game in [
+        sun.parent().unwrap().join("oras"),
+        sun.parent().unwrap().join("xy"),
+        sun.clone(),
+    ] {
         let timing: ::toml::Table = fs::read_to_string(game.join(FILE))
             .unwrap()
             .parse()

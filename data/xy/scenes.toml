@@ -1,0 +1,178 @@
+# The scenes X and Y show without words, and when each beat of a scene's description is said,
+# under [pa3ds.ui] descriptions. What each beat says is in each language's `scenes.ftl`, by the
+# beat's `id` (ADR-0040): this file is every language's. Its fields are Omega Ruby's
+# (`../oras/scenes.toml`, `games.common.scenes`); a scene's `title` is the version it shows in,
+# 0x0004000000055D00 X and 0x0004000000055E00 Y.
+#
+# Each scene was described from pictures of a replay, named by the game's frame count (spike 237's
+# script, x_intro_and_title_screen and y_intro_and_title_screen, 2026-10-25); the seconds are from
+# the moment its app started, by the game's own frames.
+
+# Each version's title screen and the film it plays when left alone, before the player is
+# anywhere, each scene said as the app that plays it starts and let go as another starts. From
+# boot the title screen forms its logo over 12 s, then plays a reel of 60 s on the bottom screen;
+# then a film of 13.5 s, and the title screen again from the start, until a button is pressed.
+#
+# X's title screen: the logo forming, then Xerneas and the journey on the bottom screen.
+[[scene]]
+app = "title::TitleProc"
+title = 0x0004000000055D00
+
+[[scene.beat]]
+at = 1
+id = "x-title-light"
+
+[[scene.beat]]
+at = 4
+id = "x-title-emblem"
+
+[[scene.beat]]
+at = 8.5
+id = "x-title-logo"
+
+[[scene.beat]]
+at = 12
+id = "x-title"
+
+[[scene.beat]]
+at = 13.5
+id = "x-title-xerneas"
+
+[[scene.beat]]
+at = 28
+id = "x-title-riding"
+
+[[scene.beat]]
+at = 35
+id = "x-title-city"
+
+[[scene.beat]]
+at = 40.5
+id = "x-title-amie"
+
+[[scene.beat]]
+at = 47
+id = "x-title-skates"
+
+[[scene.beat]]
+at = 50.5
+id = "x-title-hats"
+
+[[scene.beat]]
+at = 53.5
+id = "x-title-flight"
+
+[[scene.beat]]
+at = 56.5
+id = "x-title-credit"
+
+# Its film of quick cuts, half a second to two seconds each.
+[[scene]]
+app = "movie::MovieProc"
+title = 0x0004000000055D00
+
+[[scene.beat]]
+at = 0.5
+id = "x-movie-ball"
+
+[[scene.beat]]
+at = 2
+id = "x-movie-starters"
+
+[[scene.beat]]
+at = 3.5
+id = "x-movie-fire"
+
+[[scene.beat]]
+at = 5.9
+id = "x-movie-water"
+
+[[scene.beat]]
+at = 7.3
+id = "x-movie-flashes"
+
+[[scene.beat]]
+at = 9.6
+id = "x-movie-charizard"
+
+# Y's, the same to the frame with Yveltal for Xerneas, a red Y for the blue X, and Charizard and
+# Mewtwo in other forms.
+[[scene]]
+app = "title::TitleProc"
+title = 0x0004000000055E00
+
+[[scene.beat]]
+at = 1
+id = "y-title-light"
+
+[[scene.beat]]
+at = 4
+id = "y-title-emblem"
+
+[[scene.beat]]
+at = 8.5
+id = "y-title-logo"
+
+[[scene.beat]]
+at = 12
+id = "y-title"
+
+[[scene.beat]]
+at = 13.5
+id = "y-title-yveltal"
+
+[[scene.beat]]
+at = 28
+id = "y-title-riding"
+
+[[scene.beat]]
+at = 35
+id = "y-title-city"
+
+[[scene.beat]]
+at = 40.5
+id = "y-title-amie"
+
+[[scene.beat]]
+at = 47
+id = "y-title-skates"
+
+[[scene.beat]]
+at = 50.5
+id = "y-title-hats"
+
+[[scene.beat]]
+at = 53.5
+id = "y-title-flight"
+
+[[scene.beat]]
+at = 56.5
+id = "y-title-credit"
+
+[[scene]]
+app = "movie::MovieProc"
+title = 0x0004000000055E00
+
+[[scene.beat]]
+at = 0.5
+id = "y-movie-ball"
+
+[[scene.beat]]
+at = 2
+id = "y-movie-starters"
+
+[[scene.beat]]
+at = 3.5
+id = "y-movie-fire"
+
+[[scene.beat]]
+at = 5.9
+id = "y-movie-water"
+
+[[scene.beat]]
+at = 7.3
+id = "y-movie-flashes"
+
+[[scene.beat]]
+at = 9.6
+id = "y-movie-charizard"

@@ -81,6 +81,7 @@ pub const FILE: &str = "scenes.toml";
 pub fn shipped(data: &Path) -> &'static str {
     match data.file_name().and_then(|name| name.to_str()) {
         Some("oras") => include_str!("../../../data/oras/scenes.toml"),
+        Some("xy") => include_str!("../../../data/xy/scenes.toml"),
         Some("sm") => include_str!("../../../data/sm/scenes.toml"),
         _ => "",
     }
