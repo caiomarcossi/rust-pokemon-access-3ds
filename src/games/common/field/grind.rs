@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 
 use indexmap::{IndexMap, IndexSet};
 
-use crate::core::pathfind::Cell;
+use crate::core::pathfind::{self, Cell};
 use crate::games::common::field::chunk::{BLOCKED, KIND_SHIFT};
 
 /// The search's state off every rail. On one it is a ride's number, from 1: `2 * i + 1` along
@@ -51,11 +51,11 @@ impl GrindRails {
         let mut boards: HashMap<(Cell, Cell), i64> = HashMap::new();
         for (i, rail) in rails.iter().enumerate() {
             let i = i as i64;
-            let back: Vec<Cell> = rail.cells.iter().rev().copied().collect();
-            for (ride, cells) in [(2 * i + 1, &rail.cells), (2 * i + 2, &back)] {
-                if ride % 2 == 0 && !rail.both {
-                    continue;
-                }
+            let mut rides: Vec<(i64, Vec<Cell>)> = vec![(2 * i + 1, rail.cells.clone())];
+            if rail.both {
+                rides.push((2 * i + 2, rail.cells.iter().rev().copied().collect()));
+            }
+            for (ride, cells) in rides {
                 boards.insert((cells[0], cells[1]), ride);
                 for pair in cells.windows(2) {
                     ahead.insert((ride, pair[0]), pair[1]);
@@ -124,15 +124,12 @@ impl GrindRails {
                 let Some(mut chain) = chain(&mut left) else {
                     continue;
                 };
-                let n = chain.len();
-                let (mut first, mut last) =
-                    (past(chain[0], chain[1]), past(chain[n - 1], chain[n - 2]));
-                let (mut at_first, mut at_last) =
-                    (kinds(first).contains(&end), kinds(last).contains(&end));
-                if at_last && !at_first {
+                if !kinds(past(chain[0], chain[1])).contains(&end) {
                     chain.reverse();
-                    (first, last, at_first, at_last) = (last, first, true, false);
                 }
+                let n = chain.len();
+                let (first, last) = (past(chain[0], chain[1]), past(chain[n - 1], chain[n - 2]));
+                let (at_first, at_last) = (kinds(first).contains(&end), kinds(last).contains(&end));
                 if at_first && (at_last || open(last)) {
                     let mut cells = vec![first];
                     cells.extend(chain);
@@ -216,16 +213,10 @@ fn chain(left: &mut IndexSet<Cell>) -> Option<Vec<Cell>> {
 /// The cells `of` holds beside `cell` or touching it at a corner (Python's `_near(cell, cells)`).
 fn near(cell: Cell, of: impl Fn(Cell) -> bool) -> Vec<Cell> {
     let (x, z) = cell;
-    let mut out: Vec<Cell> = Vec::new();
-    for dx in [-1, 0, 1] {
-        for dz in [-1, 0, 1] {
-            if dx != 0 || dz != 0 {
-                let one = (x + dx, z + dz);
-                if of(one) {
-                    out.push(one);
-                }
-            }
-        }
-    }
-    out
+    pathfind::STEPS
+        .iter()
+        .chain(pathfind::DIAGONALS.iter())
+        .map(|&(_, (dx, dz))| (x + dx, z + dz))
+        .filter(|&one| of(one))
+        .collect()
 }

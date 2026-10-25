@@ -224,7 +224,7 @@ pub struct Options<'a> {
     pub carry: Option<&'a dyn Fn(Cell) -> Result<Option<&'static str>>>,
     pub slants: Option<&'a dyn Fn(Cell, Cell) -> Result<bool>>,
     pub slide: Option<&'a dyn Fn(Cell) -> Result<bool>>,
-    pub stops: Option<&'a dyn Fn(Cell, &[i64]) -> bool>,
+    pub stops: Option<&'a dyn Fn(Cell) -> bool>,
 }
 
 /// The way of the compass `going` is, as `STEPS` holds it, or "" where it is none: a diagonal,
@@ -319,10 +319,10 @@ impl Ord for Entry<'_> {
 /// a state too, where one floor lies over another, and `arrives` says whether a cell stood on
 /// with `turns` is on the goals' floor: a goal is reached only there, not on the floor above
 /// it, and with `closest` the nearest cell on it comes before any nearer on another. `stops`
-/// says whether the player can stop on a cell with `turns` at all: one a grind rail is carrying
-/// along cannot, and no way ends there, at a goal or short of one. With Shalour Gym's centre
-/// shut, P to the gym leader's spot said "grind the rail 5 west, then can't continue", the cell 5
-/// along a rail of 14 being the nearest the centre (spike A).
+/// says whether the player can stop on a cell at all, every one where it is None: one a grind
+/// rail is carrying them along cannot, and no way ends there, at a goal or short of one. With
+/// Shalour Gym's centre shut, P to the gym leader's spot said "grind the rail 5 west, then can't
+/// continue", the cell 5 along a rail of 14 being the nearest the centre (spike A).
 ///
 /// A* over (cell, heading), since a turn has a price and the same cell entered two ways is two
 /// different places to go on from. The estimate is the distance to the goals' box, which never
@@ -465,7 +465,7 @@ pub fn find(
             let (dx, dz) = step_of(sliding)?;
             can_walk((cell.0 + dx, cell.1 + dz))?
         };
-        if !past && stops.is_none_or(|stops| stops(cell, turned)) {
+        if !past && stops.is_none_or(|stops| stops(cell)) {
             // `min` keeps the first of equals, so a later state replaces it only by being less,
             // and between equal estimates and costs the states themselves are compared, as tuples.
             let candidate = (!arrives(cell, turned)?, estimate(cell), cost, state.clone());
@@ -648,7 +648,7 @@ pub struct Reach<'a> {
     pub through: Option<&'a dyn Fn(&[i64], Cell, Cell) -> Result<Option<Turns>>>,
     pub slants: Option<&'a dyn Fn(Cell, Cell) -> Result<bool>>,
     pub slide: Option<&'a dyn Fn(Cell) -> Result<bool>>,
-    pub stops: Option<&'a dyn Fn(Cell, &[i64]) -> bool>,
+    pub stops: Option<&'a dyn Fn(Cell) -> bool>,
 }
 
 /// Every cell inside `box` a way from `start` can end on, by `find`'s moves, with each state
@@ -756,7 +756,7 @@ pub fn reached(
                     let (dx, dz) = step_of(on)?;
                     can_walk((step.0 + dx, step.1 + dz))?
                 };
-                if !past && options.stops.is_none_or(|stops| stops(step, &after)) {
+                if !past && options.stops.is_none_or(|stops| stops(step)) {
                     out.entry(step).or_default().insert(after);
                 }
                 Ok(())

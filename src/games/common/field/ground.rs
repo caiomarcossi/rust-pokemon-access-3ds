@@ -1199,7 +1199,7 @@ impl Ground {
     /// along or across a street that runs so, where both cells are its (`lanes`), and along a
     /// grind rail where it bends, as Shalour Gym's do a cell at a time (`grind_rails`).
     pub fn slants(&self, cell: Cell, step: Cell) -> Result<bool> {
-        if self.grind_rails.steps.contains(&(cell, step)) {
+        if !self.grind_rails.steps.is_empty() && self.grind_rails.steps.contains(&(cell, step)) {
             return Ok(true);
         }
         if self.lanes.contains_key(&cell) && self.lanes.contains_key(&step) {
@@ -1552,7 +1552,7 @@ impl Ground {
         let carry = |cell: Cell| self.carry(cell);
         let slants = |cell: Cell, step: Cell| self.slants(cell, step);
         let slide = |cell: Cell| self.slide(cell);
-        let stops = |cell: Cell, turns: &[i64]| walk.stops(cell, turns);
+        let stops = |cell: Cell| walk.stops(cell);
         pathfind::find(
             start,
             goals,
@@ -1608,7 +1608,7 @@ impl Ground {
         let carry = |cell: Cell| ground.carry(cell);
         let slants = |cell: Cell, step: Cell| self.slants(cell, step);
         let slide = |cell: Cell| ground.slide(cell);
-        let stops = |cell: Cell, turns: &[i64]| walk.stops(cell, turns);
+        let stops = |cell: Cell| walk.stops(cell);
         let states = pathfind::reached(
             start,
             &|cell: Cell| self.passable(cell),
@@ -1667,7 +1667,7 @@ impl Ground {
     /// the turns.
     fn walk(&self, start: Cell) -> Result<Walk<'_>> {
         let (ride, walled) = (!self.rides.is_empty(), !self.walls.lines.is_empty());
-        let grinding = !self.grind_rails.rails.is_empty();
+        let grinding = !self.grind_rails.cells.is_empty();
         if self.doors.is_empty() && !self.stacked && !ride && !walled && !grinding {
             return Ok(Walk {
                 ground: self,
@@ -1761,10 +1761,10 @@ struct Arrives<'a> {
 }
 
 impl Walk<'_> {
-    /// Python's `stops` closure: whether the player can stop on the cell with the turns they
-    /// stand in, off every ride.
-    fn stops(&self, _cell: Cell, turns: &[i64]) -> bool {
-        turns[self.ride as usize + self.walled as usize] == OFF
+    /// Python's `stops` closure: whether the player can stop on the cell.
+    fn stops(&self, cell: Cell) -> bool {
+        // A rail's own cells are only ever stood on mid-ride: its end cells are not among them.
+        !self.ground.grind_rails.cells.contains(&cell)
     }
 
     fn through(&self, turns: &[i64], cell: Cell, step: Cell) -> Result<Option<pathfind::Turns>> {

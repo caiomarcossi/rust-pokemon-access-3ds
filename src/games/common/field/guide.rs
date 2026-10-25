@@ -64,6 +64,16 @@ pub const GRIND: &str = "grind the rail";
 /// said by, where it leaves them (`_spoken`).
 pub const CARRIED: [(&str, &str); 2] = [(CURRENT, "p-current"), (GRIND, "p-grind")];
 
+/// A carried leg's way -> its step: a rail's bends are diagonal (Python's `_CARRIED_STEPS`, the
+/// two tables one after the other).
+fn carried_step(direction: &str) -> Option<Cell> {
+    pathfind::STEPS
+        .iter()
+        .chain(pathfind::DIAGONALS.iter())
+        .find(|(known, _)| *known == direction)
+        .map(|&(_, step)| step)
+}
+
 /// `CARRIED.get(how)`: the message a run of legs carried so is said by, or None for a leg walked.
 fn carried(how: &str) -> Option<&'static str> {
     CARRIED
@@ -825,12 +835,8 @@ fn spoken(legs: &[Leg], r#where: &Field, crossings: &IndexMap<i64, String>) -> R
         if let Some(leg) = leg
             && carried(&leg.how).is_some()
         {
-            let (dx, dz) = pathfind::STEPS
-                .iter()
-                .chain(pathfind::DIAGONALS.iter())
-                .find(|(known, _)| *known == leg.direction)
-                .map(|&(_, step)| step)
-                .ok_or_else(|| Error::key(py::repr(leg.direction)))?;
+            let (dx, dz) =
+                carried_step(leg.direction).ok_or_else(|| Error::key(py::repr(leg.direction)))?;
             drift = (drift.0 + dx * leg.steps, drift.1 + dz * leg.steps);
             how = &leg.how;
             continue;
