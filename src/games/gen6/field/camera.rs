@@ -34,7 +34,7 @@
 //! bytes sooner, +0xc20, the way from where it is to what it looks at just before it as in X. On
 //! the Battle Resort's beach it reads pi/2, the way (0.77, -0.64, 0): east, and up walked the
 //! player east, into the counter of the hut P said to walk north past; in the Contest Spectacular
-//! Hall -pi, north (spike B, or_battle_resort_pathfinding_glitch). Until then the size was X's
+//! Hall -pi, north (spike 241, or_battle_resort_pathfinding_glitch). Until then the size was X's
 //! alone, no block was ever found, and ORAS's compass stayed north. No camera behind the player
 //! has been seen in ORAS, so its `yaw` is read nowhere.
 

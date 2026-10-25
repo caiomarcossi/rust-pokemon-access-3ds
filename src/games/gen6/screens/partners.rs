@@ -1,5 +1,5 @@
 //! The Battle Maison's partners for a Multi Battle, named on the buttons the player picks one from
-//! (spike C, or_multi_battle_partners).
+//! (spike 242, or_multi_battle_partners).
 //!
 //! After "Please choose a Trainer to serve as your partner." the bottom screen shows a button a
 //! partner, May, Wally, Maxie and Steven, each a portrait over the partner's name, and a menu
