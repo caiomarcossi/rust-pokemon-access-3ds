@@ -186,6 +186,16 @@ impl PartyIcons {
         Ok(())
     }
 
+    /// The party's list, as last found.
+    pub fn party(&self) -> Option<i64> {
+        self.party
+    }
+
+    /// The save's Battle Box, as last found.
+    pub fn battle_box(&self) -> Option<i64> {
+        self.battle_box
+    }
+
     /// The species of the party member a picture draws the icon of, or None.
     pub fn name(&self, picture: i64) -> Result<Option<String>> {
         if (self.running)().as_deref().and_then(first).is_none() || self.species.is_empty() {
@@ -274,12 +284,11 @@ impl PartyIcons {
         if self.names.of_object(r#box)?.as_deref() != Some(BATTLE_BOX) {
             return Ok(None);
         }
-        let at = r#box + RECORDS + pokemon::RECORD_SIZE * slot;
-        let plain = pokemon::decrypt(&self.memory.read(at, pokemon::RECORD_SIZE)?);
-        let found = match plain {
-            None => None,
-            Some(plain) => pokemon::parse(&plain, pokemon::SPECIES_MAX)?,
-        };
+        let found = pokemon::stored(
+            &*self.memory,
+            r#box + RECORDS + pokemon::RECORD_SIZE * slot,
+            pokemon::SPECIES_MAX,
+        )?;
         let Some(found) = found else {
             return Ok(None);
         };

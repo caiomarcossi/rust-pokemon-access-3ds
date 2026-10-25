@@ -64,6 +64,7 @@ slot-grid = { $row }행 { $column }열
 slot-titled-grid = { $title }, { $row }행 { $column }열
 slot-titled-list = { $title } { $number }
 slot-empty = { $slot }, 비어 있음
+slot-held = { $slot }, { $name }
 contest-place-one = 1위
 contest-place-two = 2위
 contest-place-three = 3위

@@ -64,6 +64,7 @@ slot-grid = fila { $row }, columna { $column }
 slot-titled-grid = { $title }, fila { $row }, columna { $column }
 slot-titled-list = { $title } { $number }
 slot-empty = { $slot }, vacío
+slot-held = { $slot }, { $name }
 contest-place-one = primer puesto
 contest-place-two = segundo puesto
 contest-place-three = tercer puesto

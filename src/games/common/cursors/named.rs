@@ -290,7 +290,15 @@ impl ListCursors {
                 let mut found = if !shown_roots.contains(&root) {
                     None
                 } else {
-                    slots::slot(&self.layouts, file.as_deref(), root, x, y, on_screen)?
+                    slots::slot(
+                        &self.layouts,
+                        file.as_deref(),
+                        root,
+                        x,
+                        y,
+                        on_screen,
+                        self.panes.occupant.as_ref(),
+                    )?
                 };
                 if found.as_ref().is_none_or(|found| found.1.is_empty()) {
                     found = slots::button(&self.layouts, &files, root, x, y, rect.top)?;

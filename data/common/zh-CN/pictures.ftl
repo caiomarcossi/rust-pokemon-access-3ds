@@ -65,6 +65,7 @@ slot-grid = 第{ $row }行，第{ $column }列
 slot-titled-grid = { $title }，第{ $row }行，第{ $column }列
 slot-titled-list = { $title }{ $number }
 slot-empty = { $slot }，空
+slot-held = { $slot }，{ $name }
 contest-place-one = 第一名
 contest-place-two = 第二名
 contest-place-three = 第三名

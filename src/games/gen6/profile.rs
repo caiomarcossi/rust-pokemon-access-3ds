@@ -50,6 +50,7 @@ use crate::games::common::scenes::{
 use crate::games::common::screen::{Pictures, ScreenPoll, ScreenText, ScreenTextReader};
 use crate::games::common::screen_announce::ScreenAnnouncer;
 use crate::games::common::session::Profile;
+use crate::games::common::slots::Occupant;
 use crate::games::common::touch::{
     self, FileOf, Idle, ImageOf, Lists, OnScreen, PictureName, Tap, TextOf, TouchTargets,
 };
@@ -78,7 +79,7 @@ use crate::games::gen6::screens::partners::Partners;
 use crate::games::gen6::screens::partyicons::PartyIcons;
 use crate::games::gen6::screens::training::{Bags, Goals, Round, TrainingPage};
 use crate::games::gen6::screens::{
-    amie, buttons, distribution, partners, partyicons, summary, townmap, training,
+    amie, boxes, buttons, distribution, partners, partyicons, summary, townmap, training,
 };
 use crate::games::gen6::{frames, gflheap, mystatus};
 use crate::py::{self, Error, Log, PySet, Result};
@@ -102,7 +103,7 @@ use crate::py::{self, Error, Log, PySet, Result};
 /// Not TextBoxes or cursor windows: walking each layout's tree finds every one that can be placed on
 /// screen (spike 62). And the linear heap is not swept: the battle builds its layouts there, and its
 /// message window leads to their pool (spike 64).
-pub const HEAP_CLASSES: [&str; 34] = [
+pub const HEAP_CLASSES: [&str; 36] = [
     msgwin::CLASSES[0],
     msgwin::CLASSES[1],
     talk::CLASSES[0],
@@ -134,6 +135,8 @@ pub const HEAP_CLASSES: [&str; 34] = [
     partyicons::ICON_CLASS,
     partyicons::PARTY_SAVE,
     partyicons::BATTLE_BOX,
+    boxes::BOXES,
+    boxes::NAMES,
     buttons::MANAGER_CLASS,
     buttons::BAR_CLASS,
     buttons::MENU_CLASS,
@@ -233,6 +236,7 @@ pub struct Gen6Profile {
     pub buttons: Rc<RefCell<buttons::Buttons>>,
     pub party_icons: Rc<RefCell<PartyIcons>>,
     pub partners: Rc<RefCell<Partners>>,
+    pub occupants: Rc<RefCell<boxes::Occupants>>,
     pub standings: Option<Rc<RefCell<dyn StandingsReader>>>,
     pub map_cursor: RefCell<MapCursor>,
     pub footsteps: Option<RefCell<Footsteps>>,
@@ -591,6 +595,21 @@ impl Gen6Profile {
             }
         }
 
+        // Carrying a Pokémon in the PC Box, the slot it is over says who is in it, from the save.
+        // Made before the block the cursors are made in, where Python makes it inside, just before
+        // them; making it reads nothing.
+        let occupants = Rc::new(RefCell::new(boxes::Occupants::new(
+            memory.clone(),
+            names.clone(),
+            {
+                let party_icons = party_icons.clone();
+                Rc::new(move || party_icons.borrow().party())
+            },
+            {
+                let party_icons = party_icons.clone();
+                Rc::new(move || party_icons.borrow().battle_box())
+            },
+        )));
         // Omega Ruby's boy and girl are portraits the game never names, said in pa3ds's words
         // (`pictures.named`).
         // A cursor over pictures alone says what the game calls them, by the image or by the
@@ -642,12 +661,18 @@ impl Gen6Profile {
                 }
                 game_word(pane)
             });
-            CursorReader::with(
+            CursorReader::with_occupant(
                 layouts.clone(),
                 names.clone(),
                 Some(files.clone()),
                 false,
                 Some(cursor_named),
+                Some({
+                    let occupants = occupants.clone();
+                    Rc::new(move |kind: &str, title: Option<&str>, index: i64| {
+                        occupants.borrow().call(kind, title, index)
+                    }) as Occupant
+                }),
             )
         };
         // And the training bags in its page's list, pictures with no touch area of their own.
@@ -974,6 +999,7 @@ impl Gen6Profile {
             buttons,
             party_icons,
             partners,
+            occupants,
             standings,
             map_cursor: RefCell::new(map_cursor),
             footsteps,
@@ -1038,6 +1064,7 @@ impl Gen6Profile {
         self.goods.borrow_mut().track(&found.heap, adding)?;
         self.training.borrow_mut().track(&found.heap, adding)?;
         self.partners.borrow_mut().track(&found.heap, adding)?;
+        self.occupants.borrow_mut().track(&found.heap);
         self.sparring.borrow_mut().track(&found.heap, adding)?;
         self.buttons.borrow_mut().track(
             found.of(&[buttons::MANAGER_CLASS]),

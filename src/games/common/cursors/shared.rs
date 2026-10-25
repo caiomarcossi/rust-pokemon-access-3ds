@@ -14,6 +14,7 @@ use crate::games::common::layout_file::{LayoutFile, LayoutFiles};
 use crate::games::common::lyt;
 use crate::games::common::pictures::{EMPTY, words};
 use crate::games::common::screen::{Pictures, ScreenText, distinct, in_rows};
+use crate::games::common::slots::Occupant;
 use crate::py::{self, Result};
 
 /// The biggest side of a picture taken for a cursor. The battle's is 20 by 20; a lone picture the
@@ -111,6 +112,8 @@ pub struct Panes {
     /// What the game calls what a picture draws now, by its image (`gen6.rom.textures`), or
     /// None.
     pub pictures: Option<Pictures>,
+    /// Who is in a PC Box's slot, said while a Pokémon is carried (`slots`), or None.
+    pub occupant: Option<Occupant>,
     /// Whether Sun's cursor pane and its boxes' pointers are read: ORAS and X have none.
     pub cursor_panes: bool,
     /// (root, group) -> the words of the group's first picture's texture, once known.
@@ -125,11 +128,13 @@ impl Panes {
         files: Option<Rc<LayoutFiles>>,
         pictures: Option<Pictures>,
         cursor_panes: bool,
+        occupant: Option<Occupant>,
     ) -> Self {
         Panes {
             layouts,
             files,
             pictures,
+            occupant,
             cursor_panes,
             picture_words: RefCell::new(IndexMap::new()),
             cursor_textures: RefCell::new(IndexMap::new()),

@@ -21,9 +21,11 @@
 //! top screen's summary of what is under the pointer changes as it moves, and is read after the
 //! slot as its details (the user, 2026-09-27: where, then the summary; where, then "empty").
 //! While a Pokémon is carried the summary is the carried one's, whatever slot the pointer is on,
-//! so a slot is said alone.
+//! so a slot is said alone, with the name of the Pokémon in it where the game's own reader knows
+//! it: "BOX 1, row 1, column 2, erza" (Orion, or_organize_boxes).
 
 use std::collections::{BTreeSet, HashSet};
+use std::rc::Rc;
 
 use indexmap::IndexMap;
 
@@ -40,9 +42,16 @@ pub const PARTY: &str = "slot-party";
 pub const GRID: &str = "slot-grid";
 pub const TITLED_GRID: &str = "slot-titled-grid";
 pub const TITLED_LIST: &str = "slot-titled-list";
-/// pa3ds's own words for a slot, "Party 2", "BOX 1, row 2, column 3", "BATTLE BOX 2", and one
-/// holding no Pokémon: the game names neither the party's slots nor a box's rows.
 pub const EMPTY_SLOT: &str = "slot-empty";
+/// pa3ds's own words for a slot, "Party 2", "BOX 1, row 2, column 3", "BATTLE BOX 2", one
+/// holding no Pokémon, and one with who is in it: the game names neither the party's slots nor a
+/// box's rows.
+pub const HELD_SLOT: &str = "slot-held";
+/// Which slot: its words' kind (`PARTY`, `GRID`, `TITLED_GRID`, `TITLED_LIST`), the title above
+/// its group, and its place in the group from 0 in reading order.
+pub type Held = (&'static str, Option<String>, i64);
+/// The name of the Pokémon in a slot (`Held`), or None.
+pub type Occupant = Rc<dyn Fn(&str, Option<&str>, i64) -> Result<Option<String>>>;
 /// The alpha from which a mark's picture is drawn as set: 255 set, 127 not (spike 129).
 pub const SET_ALPHA: i64 = 192;
 /// The texture a slot's Pokémon is drawn with.
@@ -62,9 +71,9 @@ fn index_of(items: &[i64], item: i64) -> Result<usize> {
 }
 
 /// The touch area a cursor resting at (x, y) is on, what to say of it, and whether it is said
-/// alone, the summary left unsaid: an empty slot, or any while a Pokémon is carried. None where it
-/// rests on no slot, as on a lone button's touch area; no words for a slot behind the Battle
-/// Box's, which nothing reaches.
+/// alone, the summary left unsaid: an empty slot, or any while a Pokémon is carried, said with
+/// who is in it by `occupant`. None where it rests on no slot, as on a lone button's touch area;
+/// no words for a slot behind the Battle Box's, which nothing reaches.
 pub fn slot(
     layouts: &Layouts,
     file: Option<&LayoutFile>,
@@ -72,6 +81,7 @@ pub fn slot(
     x: f64,
     y: f64,
     on_screen: &[ScreenText],
+    occupant: Option<&Occupant>,
 ) -> Result<Option<(i64, String, bool)>> {
     let tree = layouts.tree(root);
     let mut touch: Option<i64> = None;
@@ -108,10 +118,10 @@ pub fn slot(
     for &pane in &group {
         places.insert(pane, place(layouts, pane)?);
     }
-    let mut r#where: Option<String> = None;
+    let mut found: Option<(String, Held)> = None;
     let mut listed: Vec<i64> = group.clone();
     if parent != root {
-        r#where = in_grid(layouts, touch, &places, root, on_screen)?;
+        found = in_grid(layouts, touch, &places, root, on_screen)?;
     } else {
         // The Battle Box's six lie under the root beside the box's thirty, and both stay shown
         // whichever is drawn, overlapping: a tap on one was taken for the other (or_battle_box).
@@ -136,11 +146,11 @@ pub fn slot(
             if battle {
                 return Ok(Some((touch, String::new(), true)));
             }
-            r#where = in_grid(layouts, touch, &places, root, on_screen)?;
+            found = in_grid(layouts, touch, &places, root, on_screen)?;
         }
         listed = if battle { loose } else { Vec::new() };
     }
-    if r#where.is_none() && listed.len() > 1 && listed.contains(&touch) {
+    if found.is_none() && listed.len() > 1 && listed.contains(&touch) {
         // The key is `(-y, x)`: a tuple is smaller by its first element that differs.
         let order = sorted_by_lt(listed.clone(), |a, b| {
             if -places[a].1 != -places[b].1 {
@@ -155,34 +165,43 @@ pub fn slot(
             let at: Vec<(f64, f64)> = listed.iter().map(|pane| places[pane]).collect();
             title(&at, self::size(layouts, touch)?.0 / 2.0, root, on_screen)
         };
-        r#where = if parent != root {
-            Some(own(PARTY, &[("number", &number)]))
+        let index = number as i64 - 1;
+        found = if parent != root {
+            Some((own(PARTY, &[("number", &number)]), (PARTY, None, index)))
         } else {
-            title
-                .filter(|title| !title.is_empty())
-                .map(|title| own(TITLED_LIST, &[("title", &title), ("number", &number)]))
+            title.filter(|title| !title.is_empty()).map(|title| {
+                (
+                    own(TITLED_LIST, &[("title", &title), ("number", &number)]),
+                    (TITLED_LIST, Some(title), index),
+                )
+            })
         };
     }
-    let Some(r#where) = r#where else {
+    let Some((r#where, held)) = found else {
         return Ok(None);
     };
     let place = place(layouts, touch)?;
-    let empty = match file {
-        None => true,
-        Some(file) => !holds_icon(layouts, file, root, place)?,
+    let Some(file) = file else {
+        return Ok(Some((touch, own(EMPTY_SLOT, &[("slot", &r#where)]), true)));
     };
-    let carrying = match file {
-        None => false,
-        Some(file) => holds_icon(layouts, file, root, (place.0, place.1 + CARRIED))?,
+    if !holds_icon(layouts, file, root, place)? {
+        return Ok(Some((touch, own(EMPTY_SLOT, &[("slot", &r#where)]), true)));
+    }
+    if !holds_icon(layouts, file, root, (place.0, place.1 + CARRIED))? {
+        return Ok(Some((touch, r#where, false)));
+    }
+    // The summary is the carried one's, so the Pokémon in the slot is named from the save.
+    let name = match occupant {
+        None => None,
+        Some(occupant) => occupant(held.0, held.1.as_deref(), held.2)?,
     };
     Ok(Some((
         touch,
-        if empty {
-            own(EMPTY_SLOT, &[("slot", &r#where)])
-        } else {
-            r#where
+        match name.filter(|name| !name.is_empty()) {
+            Some(name) => own(HELD_SLOT, &[("slot", &r#where), ("name", &name)]),
+            None => r#where,
         },
-        empty || carrying,
+        true,
     )))
 }
 
@@ -237,14 +256,15 @@ pub fn button(
 }
 
 /// The slot's row and column, in the full grid of touch areas it shares rows and columns with,
-/// after the words just above the grid; None when those make no grid two by two or more.
+/// after the words just above the grid, and which slot it is; None when those make no grid two
+/// by two or more.
 fn in_grid(
     layouts: &Layouts,
     touch: i64,
     places: &IndexMap<i64, (f64, f64)>,
     root: i64,
     on_screen: &[ScreenText],
-) -> Result<Option<String>> {
+) -> Result<Option<(String, Held)>> {
     let Some(grid) = grid(places, touch)? else {
         return Ok(None);
     };
@@ -263,12 +283,21 @@ fn in_grid(
     let column = index_of(&xs, py::round(x)?)? + 1;
     let at: Vec<(f64, f64)> = grid.iter().map(|pane| places[&pane]).collect();
     let title = title(&at, size(layouts, touch)?.0 / 2.0, root, on_screen);
+    let titled = title.as_deref().is_some_and(|text| !text.is_empty());
+    let held: Held = (
+        if titled { TITLED_GRID } else { GRID },
+        title.clone(),
+        (row as i64 - 1) * xs.len() as i64 + column as i64 - 1,
+    );
     Ok(Some(match title.filter(|text| !text.is_empty()) {
-        Some(title) => own(
-            TITLED_GRID,
-            &[("title", &title), ("row", &row), ("column", &column)],
+        Some(title) => (
+            own(
+                TITLED_GRID,
+                &[("title", &title), ("row", &row), ("column", &column)],
+            ),
+            held,
         ),
-        None => own(GRID, &[("row", &row), ("column", &column)]),
+        None => (own(GRID, &[("row", &row), ("column", &column)]), held),
     }))
 }
 

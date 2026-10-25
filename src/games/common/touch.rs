@@ -625,7 +625,15 @@ impl TouchTargets {
                     names.insert(touch, name.clone());
                 } else if let Some(slot) = {
                     let (x, y) = place(&layouts, touch)?;
-                    slots::slot(&layouts, file.as_deref(), root, x, y, &(self.on_screen)())?
+                    slots::slot(
+                        &layouts,
+                        file.as_deref(),
+                        root,
+                        x,
+                        y,
+                        &(self.on_screen)(),
+                        None,
+                    )?
                 } && slot.0 == touch
                 {
                     // A slot is said as the Box's pointer says it, by its place in the grid, its

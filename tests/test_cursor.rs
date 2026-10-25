@@ -4,6 +4,7 @@
 // and setting the reader last. Here a struct is built as soon as its fields exist and holds a
 // reader made the plain way until `__init__`'s own line replaces it.
 
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 
@@ -3016,6 +3017,7 @@ fn test_the_battle_boxs_slots_are_said_by_the_name_above_them_and_their_number()
         -100.0,
         25.0,
         &[r#box.title.clone()],
+        None,
     )
     .unwrap();
     assert!(found.is_some_and(|found| found.1.is_empty()));
@@ -3041,6 +3043,7 @@ fn test_the_battle_boxs_slots_are_none_while_a_box_is_drawn() {
             -80.0,
             40.0,
             &[r#box.title.clone()],
+            None,
         )
         .unwrap(),
         None
@@ -3074,6 +3077,76 @@ fn test_a_slot_under_a_pokemon_carried_is_said_without_the_summary() {
         );
     }
     assert_eq!(heard, lines(&[("Party 1", true)]));
+}
+
+/// Carrying Gigas over erza's slot said only "BOX 1, row 1, column 2" (Orion,
+/// or_organize_boxes): the game's reader names who is in it, by the slot's group and place.
+#[test]
+fn test_a_slot_under_a_pokemon_carried_says_who_is_in_it() {
+    let r#box = BoxGrid::new();
+    let file = r#box
+        .files
+        .matching(&r#box.fake.layouts.pane_names(r#box.root));
+    let asked: Rc<RefCell<Vec<(String, Option<String>, i64)>>> = Rc::new(RefCell::new(Vec::new()));
+    let occupant: slots::Occupant = {
+        let asked = asked.clone();
+        Rc::new(move |kind: &str, title: Option<&str>, index: i64| {
+            asked
+                .borrow_mut()
+                .push((kind.to_string(), title.map(String::from), index));
+            Ok(Some("erza".to_string()))
+        })
+    };
+    let carried = r#box
+        .names
+        .iter()
+        .find(|(name, _pane, _kind, _material)| name == "ih")
+        .unwrap()
+        .1;
+    for (x, y) in [(80.0, 55.0), (-100.0, 25.0)] {
+        put(&r#box.memory, carried + lyt::X, &[x]);
+        put(&r#box.memory, carried + lyt::Y, &[y + slots::CARRIED]);
+        r#box.fake.layouts.refresh();
+        let found = slots::slot(
+            &r#box.fake.layouts,
+            file.as_deref(),
+            r#box.root,
+            x,
+            y,
+            std::slice::from_ref(&r#box.title),
+            Some(&occupant),
+        )
+        .unwrap()
+        .expect("a slot");
+        assert!(found.2);
+        assert!(["Party 1, erza", "BOX 1, row 2, column 2, erza"].contains(&found.1.as_str()));
+    }
+    assert_eq!(
+        *asked.borrow(),
+        [
+            (slots::PARTY.to_string(), None, 0),
+            (slots::TITLED_GRID.to_string(), Some("BOX 1".to_string()), 4),
+        ]
+    );
+    // Not carrying, the summary says who it is.
+    put(&r#box.memory, carried + lyt::Y, &[200.0]);
+    r#box.fake.layouts.refresh();
+    let found = slots::slot(
+        &r#box.fake.layouts,
+        file.as_deref(),
+        r#box.root,
+        -100.0,
+        25.0,
+        std::slice::from_ref(&r#box.title),
+        Some(&occupant),
+    )
+    .unwrap()
+    .expect("a slot");
+    assert_eq!(
+        (found.1.as_str(), found.2),
+        ("BOX 1, row 2, column 2", false)
+    );
+    assert_eq!(asked.borrow().len(), 2);
 }
 
 #[test]

@@ -158,6 +158,15 @@ pub fn contest_conditions(
     }))
 }
 
+/// The Pokémon of an encrypted record where a save keeps it, a box's slot, or None. Python's
+/// default for `species_max` is [`SPECIES_MAX`].
+pub fn stored(memory: &dyn Memory, record: i64, species_max: i64) -> Result<Option<Pokemon>> {
+    match decrypt(&memory.read(record, RECORD_SIZE)?) {
+        None => Ok(None),
+        Some(plain) => parse(&plain, species_max),
+    }
+}
+
 /// The Pokémon a `pml::pokepara::PokemonParam` holds, or None when it is not one. Python's default
 /// for `species_max` is [`SPECIES_MAX`].
 pub fn read(
