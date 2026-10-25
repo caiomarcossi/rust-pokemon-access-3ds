@@ -1868,7 +1868,7 @@ fn test_p_on_foot_takes_a_rock_for_somebody_in_the_way() {
     );
 }
 
-/// Where one of X's Cyllage Gym's rock walls meets the floor, blocked (x_gym_2, spike 244).
+/// Where one of X's Cyllage Gym's rock walls meets the floor, blocked (x_gym_2, spike 245).
 const FACE: i64 = 0x59000001;
 /// The step off a wall's face east onto the ledge at its side, open.
 const OFF_EAST: i64 = 0x51000020;
@@ -1890,7 +1890,7 @@ fn somebody(cell: Cell, source: i64) -> Interactable {
     }
 }
 
-/// The Gym's first wall, its rows 31 and 32 moved into the fake chunk (spike 244): blue spots at
+/// The Gym's first wall, its rows 31 and 32 moved into the fake chunk (spike 245): blue spots at
 /// (105, 172) and (106, 172) at its foot, 0, and the ledge at its side, (111, 172) at 54, stepped
 /// onto east off (110, 172), a drop on foot; the face along row 171, and the ledge walled in but
 /// for the face. The player stands at `level`. A `wide` ledge goes on to (112, 172), two spots
@@ -1940,11 +1940,11 @@ fn gym_wall(rig: &Rig, level: Option<f64>, wide: bool) {
     rig.field.level.set(level);
 }
 
-/// The top of a slide down one of Cyllage Gym's walls, open (x_gym_2_slide, spike 244).
+/// The top of a slide down one of Cyllage Gym's walls, open (x_gym_2_slide, spike 245).
 const SLIDE: i64 = 0x8A000020;
 
 /// The Gym's two slides south of Grant, its columns 14 to 16 and rows 18 to 33 moved into the
-/// fake chunk (spike 244): the floor at 198, the first slide's top at 189 in row 170 and its
+/// fake chunk (spike 245): the floor at 198, the first slide's top at 189 in row 170 and its
 /// blocked cells falling 18 a row to 117, the floor between at 108, the second's top at 99 in
 /// row 177 and its cells falling to 9, then the floor at 0; walls either side of each slide.
 fn gym_slides(rig: &Rig) {
@@ -1985,7 +1985,7 @@ fn gym_slides(rig: &Rig) {
     }
 }
 
-/// Cyllage Gym (x_gym_2_slide, spike 244): south of Grant the player stepped onto the top of a
+/// Cyllage Gym (x_gym_2_slide, spike 245): south of Grant the player stepped onto the top of a
 /// slide at (16, 20) and was carried down it onto the floor at (16, 25), walked on onto the next
 /// and was carried down onto (16, 33), where P had said the long way round. A slide carries the
 /// player one way only, so a way up goes round.
@@ -2019,7 +2019,7 @@ fn test_p_goes_down_a_gyms_slides_and_never_up_one() {
     assert!(!said.contains("slide") && !said.contains("can't continue"));
 }
 
-/// X's Cyllage Gym (x_gym_2, spike 244): the player walked from the entrance to the blue spot at
+/// X's Cyllage Gym (x_gym_2, spike 245): the player walked from the entrance to the blue spot at
 /// (25, 32), climbed up in place from 3 to 57, three handholds, went east along the face and
 /// stepped off east onto the ledge (31, 32) at 54, a drop from the floor on foot.
 #[test]
@@ -2034,7 +2034,7 @@ fn test_p_climbs_a_wall_from_a_blue_spot_onto_the_ledge_at_its_side() {
     assert_eq!(last(&rig.backend), "7 north, 5 east, climb 3 up, 6 east");
 }
 
-/// Cyllage Gym's ledge at (29, 27) and (29, 28) is two spots along its face's line (spike 244).
+/// Cyllage Gym's ledge at (29, 27) and (29, 28) is two spots along its face's line (spike 245).
 /// A way that steps off the face onto it and walks on along it climbs up first, and walks the
 /// rest: P said "climb 6 south, 1 south" on the way to Grant, with no handholds.
 #[test]
@@ -2055,7 +2055,7 @@ fn test_p_climbs_up_onto_a_wide_ledge_and_walks_on_along_it() {
     );
 }
 
-/// Cyllage Gym (spike 244): back from the ledge at 57, the player went west along the face and
+/// Cyllage Gym (spike 245): back from the ledge at 57, the player went west along the face and
 /// climbed down at the blue spot (25, 32) to 3, then walked off west onto (24, 32).
 #[test]
 fn test_p_climbs_down_from_the_ledge_and_says_the_holds_at_the_foot() {
@@ -2073,7 +2073,7 @@ fn test_p_climbs_down_from_the_ledge_and_says_the_holds_at_the_foot() {
 }
 
 /// Guiding says each leg as the player reaches it (ADR-0024), and a climb up is in place: the
-/// cell does not change from 3 to 57 at (25, 32) (spike 244). So its handholds are said with the
+/// cell does not change from 3 to 57 at (25, 32) (spike 245). So its handholds are said with the
 /// leg along the face, as the player reaches the spot, and nothing more until the ledge.
 #[test]
 fn test_p_following_a_climb_says_the_holds_up_as_the_player_reaches_the_blue_spot() {
@@ -2099,7 +2099,7 @@ fn test_p_following_a_climb_says_the_holds_up_as_the_player_reaches_the_blue_spo
     assert_eq!(last(&rig.backend), "wall ledge, here");
 }
 
-/// Cyllage Gym (spike 244): a face is got onto at a blue spot, "start from one of those blue
+/// Cyllage Gym (spike 245): a face is got onto at a blue spot, "start from one of those blue
 /// spots", the Gym's guide says, so with both of the wall's taken the ledge is out of reach from
 /// the floor in front of the face.
 #[test]
@@ -2120,7 +2120,7 @@ fn test_p_never_takes_a_ledge_off_a_face_walked_onto_from_the_side() {
     assert!(last(&rig.backend).contains("then can't continue"));
 }
 
-/// Cyllage Gym (spike 244): on the face at 54 the player went along it to the blue spot and
+/// Cyllage Gym (spike 245): on the face at 54 the player went along it to the blue spot and
 /// climbed down there, the one place a face is got off but onto a ledge.
 #[test]
 fn test_p_on_the_face_gets_off_only_at_a_blue_spot() {
@@ -2134,7 +2134,7 @@ fn test_p_on_the_face_gets_off_only_at_a_blue_spot() {
     assert_eq!(last(&rig.backend), "climb 2 west, climb 3 down, 2 south");
 }
 
-/// Cyllage Gym (spike 244): the step off a face onto its ledge is a drop on foot, and only that.
+/// Cyllage Gym (spike 245): the step off a face onto its ledge is a drop on foot, and only that.
 /// Past the ledge somebody stands in the one way on, and P says who, as anywhere else (spike
 /// 160), rather than stopping at the face.
 #[test]

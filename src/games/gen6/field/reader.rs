@@ -146,7 +146,7 @@ pub const FLAT_GROUND: &str = "flat ground";
 
 /// What a run of the blue spots a climbing wall is climbed from is called, and one on a ledge at
 /// its side, where it is got off: the Gym's guide says "start from one of those blue spots", and the
-/// game names neither (spike 244).
+/// game names neither (spike 245).
 pub const BLUE_SPOT: &str = "blue spot";
 pub const WALL_LEDGE: &str = "wall ledge";
 
@@ -2353,7 +2353,7 @@ impl FieldReader {
 
     /// The zone's climbing walls' blue spots, each run of them side by side on one face at
     /// one height a thing, a blue spot where the wall is got onto from the floor and a wall
-    /// ledge where it is got off onto a ledge at its side (`Walls.spots`, spike 244).
+    /// ledge where it is got off onto a ledge at its side (`Walls.spots`, spike 245).
     fn climbing_spots(&self, zone: i64) -> Result<Vec<Interactable>> {
         let mut out: Vec<Interactable> = Vec::new();
         for (cells, ledge) in self.walls()?.spots() {

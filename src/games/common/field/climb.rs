@@ -1,6 +1,6 @@
 //! Climbing walls: X's Cyllage Gym's rock faces, climbed from the blue spots at their foot, along
 //! the row of cells in front of each, and off onto a ledge at a face's side; and the slides down
-//! them, which carry the player (spike 244).
+//! them, which carry the player (spike 245).
 //!
 //! Bound by:
 //! - ADR-0006: nothing here names a game's kinds; `gen6.game.Climbing` carries them.
@@ -13,7 +13,7 @@ use crate::games::common::field::chunk::{BLOCKED, CLIMB, KIND_SHIFT};
 use crate::py::{self, Result};
 
 /// A handhold, in world units: a cell's height. Up the wall from (25, 32) at 3 the player rose to
-/// 13, 38 and 57 for the ledge at 54, three holds (spike 244).
+/// 13, 38 and 57 for the ledge at 54, three holds (spike 245).
 pub const HOLD: f64 = 18.0;
 
 /// What a player on a face's line may be doing, a search's state there: walking its floor, on the
@@ -75,7 +75,7 @@ impl Walls {
     /// outermost, broken where a cell is shut or has no wall behind it, and a line of one cell
     /// is none. A cell of a `sideways` kind on a line, beside a spot of the line that way above
     /// its foot, is the step off onto that ledge. In Cyllage Gym the foot is the lowest of a
-    /// face's spots: every ledge stands 36 to 144 over it (spike 244). A slide is an open cell
+    /// face's spots: every ledge stands 36 to 144 over it (spike 245). A slide is an open cell
     /// of the `slide` kind from which, one way, the cells are blocked, each lower than the one
     /// before, for one or more, and then open lower than it: the Gym's two fall 18 a cell, 171
     /// to 117 onto the floor at 108 from a top at 189, and 81 to 9 onto 0 from 99.
@@ -286,7 +286,7 @@ impl Walls {
     /// one line with a step sideways in it, from the run's first blue spot to its last, and a
     /// first run the player starts on the wall, from where they are. Any other run is walked,
     /// and so is the rest of one along a ledge it steps off onto: Cyllage Gym's (29, 27) and
-    /// (29, 28) are one ledge, two spots of their face's line (spike 244). The search's state
+    /// (29, 28) are one ledge, two spots of their face's line (spike 245). The search's state
     /// (`hold`) puts a spot before a step off sideways and after a step on.
     pub fn climbs(&self, path: &[Cell], level: Option<f64>) -> Result<Vec<Climb>> {
         let mut out: Vec<Climb> = Vec::new();

@@ -475,7 +475,7 @@ pub struct Ground {
     pub smashed: HashSet<Cell>,
     /// The climbing walls: a face's line walked on foot or climbed, onto it only at a blue spot
     /// and off it sideways onto a ledge only climbing; and their slides, open though blocked, which
-    /// carry the player down them as a current does (`carry`; `climb.Walls`, spike 244).
+    /// carry the player down them as a current does (`carry`; `climb.Walls`, spike 245).
     ///
     /// An `Rc`: the terrain finds them once a matrix and every ground built on it shares them, as
     /// the Python's grounds share the one object.

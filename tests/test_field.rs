@@ -3457,7 +3457,7 @@ fn test_flat_ground_is_listed_under_riding_a_patch_at_a_time() -> Result<()> {
     Ok(())
 }
 
-/// Spike 244: Cyllage Gym's walls are climbed from the blue spots at their foot, two side by side
+/// Spike 245: Cyllage Gym's walls are climbed from the blue spots at their foot, two side by side
 /// at (25, 32) and (26, 32), and got off onto a ledge at a face's side, (31, 32) at 54; Khai
 /// asked for their "entry point and exit point maybe? in a category" (2026-10-24). The plateau
 /// behind a face's top, open beside it at another height, is neither.
@@ -3526,7 +3526,7 @@ fn test_climbing_walls_are_listed_a_run_of_blue_spots_or_a_ledge_at_a_time() -> 
     Ok(())
 }
 
-/// Spike 244: in Cyllage Gym the player stepped south onto `0x8a` at (16, 20), at 189, and was
+/// Spike 245: in Cyllage Gym the player stepped south onto `0x8a` at (16, 20), at 189, and was
 /// carried down the blocked cells south of it, 171 to 117, onto the floor at 108 (x_gym_2_slide).
 /// X has `0x8a` in other chunks too; where the cells past it do not fall, it is no slide.
 #[test]

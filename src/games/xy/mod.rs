@@ -381,7 +381,7 @@ pub fn rides() -> Rides {
 /// were in (26, 32) to (30, 32), and stepped off east from `0x51` at (30, 32) onto the ledge (31,
 /// 32) at 54; then back on, west along it and down at (25, 32) to 3, and off west onto (24, 32). The
 /// step from (26, 17) onto its ledge rises 36, a step's worth on foot, so the kinds, not the heights,
-/// say where a ledge is. X has 0x51 to 0x54 in chunk files 458 and 594 too, never seen (spike 244).
+/// say where a ledge is. X has 0x51 to 0x54 in chunk files 458 and 594 too, never seen (spike 245).
 ///
 /// Kind 0x8a, open (`0x8a000020`), is the top of a slide down a wall: two rows of three south of
 /// Grant, (14..16, 20) at 189 and (14..16, 27) at 99, each with blocked cells (`0x01000021`) south
