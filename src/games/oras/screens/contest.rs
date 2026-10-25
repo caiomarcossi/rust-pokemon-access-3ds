@@ -31,8 +31,9 @@ use crate::games::gen6::rom::archives::GameText;
 use crate::games::gen6::rom::textures;
 use crate::py::{self, Result};
 
-/// The appeals' app (spike 196).
-pub const APP: &str = "N7contest11OhiromeProcE";
+/// The entry cards' app, then the appeals' (spike 196). The appeals were taken for the cards'
+/// until a new app built where the last ran was noticed (2026-10-09, or_broken_contest).
+pub const APPS: [&str; 2] = ["N7contest11OhiromeProcE", "N7contest8MainProcE"];
 pub const BACKGROUND: &str = "contest_player_bg_01.bclim";
 pub const BAR: &str = "appeal_bar_filler.bclim";
 pub const ICON: &str = "poke_icon.bclim";
@@ -256,7 +257,7 @@ impl Standings {
 impl StandingsReader for Standings {
     /// Learn the entrant the panel names, by the icon in the portrait the cursor is on.
     fn poll(&mut self, on_screen: &[ScreenText]) -> Result<()> {
-        if (self.running)().as_deref() != Some(APP) {
+        if !(self.running)().is_some_and(|app| APPS.contains(&app.as_str())) {
             self.names.clear();
             self.written.clear();
             self.turns.clear();
@@ -330,7 +331,7 @@ impl StandingsReader for Standings {
     /// its appeal" is the portrait whose turn it is, and the first round appeals left to right.
     /// Only entrants whose entry cards were shown are looked for; the panel's names win.
     fn heard(&mut self, texts: &[&str]) {
-        if (self.running)().as_deref() != Some(APP)
+        if !(self.running)().is_some_and(|app| APPS.contains(&app.as_str()))
             || !self.first_round
             || self.turns.len() != ENTRANTS
         {
@@ -360,7 +361,7 @@ impl StandingsReader for Standings {
     ///
     /// Python's `pauses` defaults to False.
     fn said(&self, player: bool, pauses: bool) -> Result<Option<String>> {
-        if (self.running)().as_deref() != Some(APP) {
+        if !(self.running)().is_some_and(|app| APPS.contains(&app.as_str())) {
             return Ok(None);
         }
         let Some((portraits, _at)) = self.portraits()? else {
