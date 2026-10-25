@@ -102,7 +102,7 @@ use crate::py::{self, Error, Log, PySet, Result};
 /// Not TextBoxes or cursor windows: walking each layout's tree finds every one that can be placed on
 /// screen (spike 62). And the linear heap is not swept: the battle builds its layouts there, and its
 /// message window leads to their pool (spike 64).
-pub const HEAP_CLASSES: [&str; 32] = [
+pub const HEAP_CLASSES: [&str; 34] = [
     msgwin::CLASSES[0],
     msgwin::CLASSES[1],
     talk::CLASSES[0],
@@ -132,6 +132,8 @@ pub const HEAP_CLASSES: [&str; 32] = [
     partners::CLASS,
     pokemon::PARAM_CLASS,
     partyicons::ICON_CLASS,
+    partyicons::PARTY_SAVE,
+    partyicons::BATTLE_BOX,
     buttons::MANAGER_CLASS,
     buttons::BAR_CLASS,
     buttons::MENU_CLASS,
@@ -1048,6 +1050,10 @@ impl Gen6Profile {
             found.of(&[partyicons::ICON_CLASS]),
             &|targets: &[i64]| found.holders(targets),
             adding,
+            found
+                .of(&[partyicons::PARTY_SAVE])
+                .into_iter()
+                .chain(found.of(&[partyicons::BATTLE_BOX])),
         )?;
         self.lists.borrow_mut().track(found.of(&[CONTROLLER_CLASS]));
         if let Some(memories) = &self.memories {

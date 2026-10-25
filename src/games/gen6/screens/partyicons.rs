@@ -16,8 +16,17 @@
 //! The count is a byte: the Battle Maison sets the one after it to 2, and the party read as a u32
 //! of 518 was no party. Its screen choosing the Battle Box or the party draws both on the top
 //! screen from one PokeIcon of twelve textures, the Battle Box's six and then the party's, each
-//! slot a level and an icon: "L 73 L 71" (or_multi_battle_partners). The Battle Box's are not
-//! named.
+//! slot a level and an icon: "L 73 L 71" (or_multi_battle_partners).
+//!
+//! There the Maison keeps five more lists of six, one the Battle Box's, counting its two, which
+//! was taken for the party: the party's first two were said as the Battle Box's (or_battle_box).
+//! The party's list is the one whose members are the save's party, `savedata::PokePartySave`, by
+//! each record's encryption constant; the Battle Box's icons are named from `savedata::BattleBox`:
+//!
+//! ```text
+//! PokePartySave  +0x04  six records 0x104 apart, then +0x61C the count, a byte
+//! BattleBox      +0x04  six records 0xE8 apart
+//! ```
 //!
 //! Only while the Bag or that screen runs: another screen's icons are not the party's in its
 //! order.
@@ -50,14 +59,23 @@ fn first(app: &str) -> Option<i64> {
         .map(|&(_, first)| first)
 }
 pub const COUNT: i64 = 0x18;
+pub const PARTY_SAVE: &str = "N8savedata13PokePartySaveE";
+pub const BATTLE_BOX: &str = "N8savedata9BattleBoxE";
+/// Where each save object's records start.
+pub const RECORDS: i64 = 0x04;
+/// How far apart the save's party's records are: a record and the stats a party member has.
+pub const SAVED: i64 = 0x104;
 
 /// The party's list among the addresses holding a PokemonParam: six pointers to them, the
-/// first `COUNT` of them filled, then the count.
+/// first `COUNT` of them filled, then the count. Of several, the one whose members' encryption
+/// constants are `saved`, the save's party's, in order.
 pub fn party_of(
     holders: impl IntoIterator<Item = i64>,
     memory: &dyn Memory,
     names: &ClassNames,
+    saved: &[i64],
 ) -> Result<Option<i64>> {
+    let mut found: Vec<i64> = Vec::new();
     for at in holders {
         let head = memory.read(at, COUNT + 4)?;
         let count = head[COUNT as usize] as i64;
@@ -72,10 +90,32 @@ pub fn party_of(
             }
         }
         if all {
-            return Ok(Some(at));
+            if !saved.is_empty() {
+                let mut constants: Vec<i64> = Vec::new();
+                for i in 0..count {
+                    constants.push(u32(
+                        &memory.read(u32(&head, 4 * i)? + pokemon::RECORD_IN_PARAM, 4)?,
+                        0,
+                    )?);
+                }
+                if constants == saved {
+                    return Ok(Some(at));
+                }
+            }
+            found.push(at);
         }
     }
-    Ok(None)
+    Ok(found.first().copied())
+}
+
+/// The encryption constants of the save's party's members, in order.
+pub fn saved_party(memory: &dyn Memory, party: i64) -> Result<Vec<i64>> {
+    let count = memory.read(party + RECORDS + SAVED * SLOTS, 1)?[0] as i64;
+    let mut out = Vec::new();
+    for i in 0..std::cmp::min(count, SLOTS) {
+        out.push(u32(&memory.read(party + RECORDS + SAVED * i, 4)?, 0)?);
+    }
+    Ok(out)
 }
 
 /// Names a picture of the Bag's party by the species of the member whose icon it draws.
@@ -85,6 +125,7 @@ pub struct PartyIcons {
     species: Vec<String>,
     running: Rc<dyn Fn() -> Option<String>>,
     party: Option<i64>,
+    battle_box: Option<i64>,
     icons: PySet,
     /// Image -> the species it draws, until the next sweep: screen text asks of every
     /// picture at every poll, and naming one reads the party member's record.
@@ -104,18 +145,21 @@ impl PartyIcons {
             species,
             running,
             party: None,
+            battle_box: None,
             icons: PySet::new(),
             named: RefCell::new(IndexMap::new()),
         }
     }
 
-    /// What a sweep found: the PokemonParams, to find the party by, and the PokeIcons.
+    /// What a sweep found: the PokemonParams, to find the party by, the PokeIcons, and the
+    /// save's party and Battle Box.
     pub fn track(
         &mut self,
         params: &[i64],
         icons: impl IntoIterator<Item = i64>,
         holders: &dyn Fn(&[i64]) -> Result<Vec<i64>>,
         adding: bool,
+        saves: impl IntoIterator<Item = i64>,
     ) -> Result<()> {
         self.icons = if adding {
             self.icons.union(&PySet::of(icons))
@@ -123,8 +167,17 @@ impl PartyIcons {
             PySet::of(icons)
         };
         self.named.borrow_mut().clear();
+        let mut saved: Vec<i64> = Vec::new();
+        for save in saves {
+            let kind = self.names.of_object(save)?;
+            if kind.as_deref() == Some(PARTY_SAVE) {
+                saved = saved_party(&*self.memory, save)?;
+            } else if kind.as_deref() == Some(BATTLE_BOX) {
+                self.battle_box = Some(save);
+            }
+        }
         if !params.is_empty() && (self.party.is_none() || !adding) {
-            let found = party_of(holders(params)?, &*self.memory, &self.names)?;
+            let found = party_of(holders(params)?, &*self.memory, &self.names, &saved)?;
             self.party = match found {
                 Some(party) if party != 0 => Some(party),
                 _ => self.party,
@@ -184,7 +237,11 @@ impl PartyIcons {
             let Some(mut slot) = slot else {
                 continue;
             };
-            slot -= first((self.running)().as_deref().unwrap_or("")).unwrap_or(0);
+            let first = first((self.running)().as_deref().unwrap_or("")).unwrap_or(0);
+            if slot < first {
+                return self.boxed(slot);
+            }
+            slot -= first;
             let party = memory.read(party_at, COUNT + 4)?;
             // The list found in an earlier Bag may be another object's now, counting past six.
             if !(0 <= slot && slot < std::cmp::min(party[COUNT as usize] as i64, SLOTS)) {
@@ -207,5 +264,28 @@ impl PartyIcons {
             );
         }
         Ok(None)
+    }
+
+    /// The species of the Battle Box's member in this slot, or None.
+    fn boxed(&self, slot: i64) -> Result<Option<String>> {
+        let Some(r#box) = self.battle_box else {
+            return Ok(None);
+        };
+        if self.names.of_object(r#box)?.as_deref() != Some(BATTLE_BOX) {
+            return Ok(None);
+        }
+        let at = r#box + RECORDS + pokemon::RECORD_SIZE * slot;
+        let plain = pokemon::decrypt(&self.memory.read(at, pokemon::RECORD_SIZE)?);
+        let found = match plain {
+            None => None,
+            Some(plain) => pokemon::parse(&plain, pokemon::SPECIES_MAX)?,
+        };
+        let Some(found) = found else {
+            return Ok(None);
+        };
+        if found.species >= self.species.len() as i64 {
+            return Ok(None);
+        }
+        Ok(Some(self.species[found.species as usize].clone()).filter(|name| !name.is_empty()))
     }
 }

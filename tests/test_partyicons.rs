@@ -24,18 +24,18 @@ fn test_the_party_is_six_params_and_a_count() {
     let names = ClassNames::new(memory.clone(), CODE);
     // A word holding a param on its own is not the party; the list is.
     assert_eq!(
-        partyicons::party_of([PARTY + 4, PARTY], &*memory, &names).unwrap(),
+        partyicons::party_of([PARTY + 4, PARTY], &*memory, &names, &[]).unwrap(),
         Some(PARTY)
     );
     memory.u32(PARTY + partyicons::COUNT, &[7]);
     assert_eq!(
-        partyicons::party_of([PARTY], &*memory, &names).unwrap(),
+        partyicons::party_of([PARTY], &*memory, &names, &[]).unwrap(),
         None
     );
     // A byte: the Battle Maison sets the one after it (or_multi_battle_partners).
     memory.u32(PARTY + partyicons::COUNT, &[0x206]);
     assert_eq!(
-        partyicons::party_of([PARTY], &*memory, &names).unwrap(),
+        partyicons::party_of([PARTY], &*memory, &names, &[]).unwrap(),
         Some(PARTY)
     );
 }
@@ -81,15 +81,86 @@ fn test_the_maisons_group_screen_draws_the_party_after_the_battle_box() {
         },
     );
     icons
-        .track(&[PARAMS], [icon], &|_params: &[i64]| Ok(vec![PARTY]), false)
+        .track(
+            &[PARAMS],
+            [icon],
+            &|_params: &[i64]| Ok(vec![PARTY]),
+            false,
+            [],
+        )
         .unwrap();
     assert_eq!(icons.name(picture).unwrap().as_deref(), Some("Wurmple"));
     // In the Bag the seventh texture is no party member's.
     *running.borrow_mut() = partyicons::BAG.to_string();
     icons
-        .track(&[PARAMS], [icon], &|_params: &[i64]| Ok(vec![PARTY]), false)
+        .track(
+            &[PARAMS],
+            [icon],
+            &|_params: &[i64]| Ok(vec![PARTY]),
+            false,
+            [],
+        )
         .unwrap();
     assert_eq!(icons.name(picture).unwrap(), None);
+    // The Battle Box's are its first six, named from the save's Battle Box.
+    *running.borrow_mut() = partyicons::GROUPS.to_string();
+    let r#box = 0x08C6E33C;
+    memory.u32(r#box, &[classes.add(partyicons::BATTLE_BOX)]);
+    memory.write(r#box + partyicons::RECORDS, &second_wurmple());
+    memory.u32(0x08649000 + distribution::IMAGE, &[0x2000]);
+    memory.u32(picture + 0x200 + lyt::MATERIAL_TEXTURE, &[0x2000]);
+    icons
+        .track(
+            &[PARAMS],
+            [icon],
+            &|_params: &[i64]| Ok(vec![PARTY]),
+            false,
+            [r#box],
+        )
+        .unwrap();
+    assert_eq!(icons.name(picture).unwrap().as_deref(), Some("Wurmple"));
+}
+
+/// At the Maison five more lists of six are kept, and the Battle Box's, counting its two, was
+/// taken for the party (or_battle_box). The save's party names its members by their records'
+/// encryption constants.
+#[test]
+fn test_the_party_is_the_list_holding_the_saves_party() {
+    let memory = FakeMemory::new();
+    let classes = FakeClasses::new(memory.clone());
+    let param = classes.add(pokemon::PARAM_CLASS);
+    let (copy, party) = (PARTY - 0x1000, PARTY);
+    for (holder, constants) in [(copy, vec![7, 8]), (party, vec![1, 2, 3])] {
+        for i in 0..6 {
+            let at = holder + 0x40 + 0x1E4 * i;
+            memory.u32(at, &[param, at + pokemon::RECORD_IN_PARAM]);
+            memory.u32(
+                at + pokemon::RECORD_IN_PARAM,
+                &[constants.get(i as usize).copied().unwrap_or(0)],
+            );
+            memory.u32(holder + 4 * i, &[at]);
+        }
+        memory.u32(holder + partyicons::COUNT, &[constants.len() as i64]);
+    }
+    let save = 0x08C7D4C8;
+    for (i, constant) in [1, 2, 3].into_iter().enumerate() {
+        memory.u32(
+            save + partyicons::RECORDS + partyicons::SAVED * i as i64,
+            &[constant],
+        );
+    }
+    memory.write(save + partyicons::RECORDS + partyicons::SAVED * 6, &[3]);
+    let names = ClassNames::new(memory.clone(), CODE);
+    let saved = partyicons::saved_party(&*memory, save).unwrap();
+    assert_eq!(saved, [1, 2, 3]);
+    assert_eq!(
+        partyicons::party_of([copy, party], &*memory, &names, &[]).unwrap(),
+        Some(copy)
+    );
+    assert_eq!(
+        partyicons::party_of([copy, party], &*memory, &names, &saved).unwrap(),
+        Some(party)
+    );
 }
 
 /// Another screen's icons, 21 textures, hold an empty texture at slot 16, as a picture drawing
@@ -125,7 +196,13 @@ fn test_a_slot_past_six_is_no_party_member() {
         Rc::new(|| Some(partyicons::BAG.to_string())),
     );
     icons
-        .track(&[PARAMS], [icon], &|_params: &[i64]| Ok(vec![PARTY]), false)
+        .track(
+            &[PARAMS],
+            [icon],
+            &|_params: &[i64]| Ok(vec![PARTY]),
+            false,
+            [],
+        )
         .unwrap();
     memory.u32(PARTY + partyicons::COUNT, &[0x20]);
     assert_eq!(icons.name(picture).unwrap(), None);
