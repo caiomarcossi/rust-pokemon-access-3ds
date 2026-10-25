@@ -2632,6 +2632,58 @@ fn test_a_group_of_its_own_rows_is_not_read_into_a_table_beside_one_of_them() {
 }
 
 #[test]
+fn test_details_of_a_screen_of_two_columns_are_read_as_it_was_shown() {
+    // The PC Box's summary is one group of two columns, the stats and the moves, and its details
+    // were read across both, "SP. ATK: 68, MOVES LEARNED, SP. DEF: 58, Bubble Beam", and
+    // "Intimidate: Sweet Scent, ABILITY", where opening it read each column down (Orion,
+    // or_organize_boxes, 2026-10-24). Places are the summary's.
+    let mut screen = Screen::with(true);
+    let slot = vec![piece(1, "BATTLE BOX 1", 80.0, 90.0, MENU)];
+    let kw = |parent: i64| Kw {
+        parent,
+        with_layout: false,
+        ..PLAIN
+    };
+    let mut summary = vec![piece_kw(10, "bubbles", -170.0, 110.0, PANEL, kw(6))];
+    for (r#box, (text, x, y)) in [
+        ("♀", -70.0, 110.0),
+        ("Lv.33", -34.0, 120.0),
+        ("SP. ATK", -190.0, -10.0),
+        ("68", -74.0, -10.0),
+        ("SP. DEF", -190.0, -30.0),
+        ("58", -74.0, -30.0),
+        ("ABILITY", -190.0, -90.0),
+        ("Intimidate", -110.0, -80.0),
+        ("MOVES LEARNED", 40.0, -20.0),
+        ("Bubble Beam", 50.0, -40.0),
+        ("Sweet Scent", 50.0, -80.0),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        summary.push(piece_kw(r#box as i64 + 11, text, x, y, PANEL, kw(5)));
+    }
+    let everything = cat(&[&slot, &summary]);
+    let texts: Vec<ScreenText> = summary.iter().map(changed).collect();
+    let mut said = screen.say(args(
+        &texts,
+        vec![CursorItem::new(0x0C, slot.clone(), false)],
+        &everything,
+    ));
+    for _ in 0..DETAIL_POLLS {
+        said.extend(screen.on(&everything));
+    }
+    assert_eq!(
+        said,
+        [
+            "BATTLE BOX 1",
+            "bubbles, ♀, Lv.33, SP. ATK: 68, SP. DEF: 58, ABILITY: Intimidate, MOVES LEARNED, \
+             Bubble Beam, Sweet Scent"
+        ]
+    );
+}
+
+#[test]
 fn test_two_groups_beside_each_other_on_one_row_are_read_apart() {
     // The PC Box's summary draws a Pokémon's name and its level, a little higher, side by side,
     // and read as one table it put the level first, "Lv.5 Umbra" (movie6).

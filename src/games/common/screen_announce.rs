@@ -905,7 +905,13 @@ impl ScreenAnnouncer {
             }
         }
         for table in tables {
-            let group = under_their_labels(distinct(by_rows(table)));
+            let groups: IndexSet<(i64, i64)> = table.iter().map(|p| p.group()).collect();
+            let ordered = if groups.len() > 1 {
+                by_rows(table)
+            } else {
+                columns(&table)
+            };
+            let group = under_their_labels(distinct(ordered));
             if !group.is_empty() {
                 let mut text = join(&group, self.pauses);
                 if gathering.held && !gathering.count.is_empty() && texts.is_empty() {
@@ -1188,6 +1194,66 @@ fn under_their_labels(pieces: Vec<ScreenText>) -> Vec<ScreenText> {
         above.insert(label + 1, first);
     }
     rows.into_iter().flatten().collect()
+}
+
+/// A group's placed pieces row by row, as a table, unless it is tables side by side: each
+/// column it built, higher up and to the right of the one before, is read with that one row by
+/// row where every row of it is one of that one's, and otherwise after it, as it was built, as
+/// a screen opening reads it (`_speaking_order`). A move's panel builds its labels and then its
+/// values, "Category Power 40"; the PC Box's summary builds its stats and then its moves, between
+/// their rows, and read row by row they came interleaved, "SP. ATK: 68, MOVES LEARNED, SP. DEF:
+/// 58, Bubble Beam", where opening it read each down (Orion, or_organize_boxes, 2026-10-24).
+fn columns(pieces: &[ScreenText]) -> Vec<ScreenText> {
+    let mut columns: Vec<Vec<ScreenText>> = Vec::new();
+    for piece in pieces.iter().filter(|p| p.glyph > 0.0) {
+        let starts = match columns.last() {
+            None => true,
+            Some(last) => {
+                // Python's `max` over floats: the first unless a later one is strictly greater.
+                let mut right = last[0].right;
+                for p in &last[1..] {
+                    if p.right > right {
+                        right = p.right;
+                    }
+                }
+                piece.row - last[last.len() - 1].row >= piece.glyph / 2.0 && piece.left >= right
+            }
+        };
+        if starts {
+            columns.push(vec![piece.clone()]);
+        } else {
+            columns
+                .last_mut()
+                .expect("a column to add to")
+                .push(piece.clone());
+        }
+    }
+    let mut tables: Vec<Vec<Vec<ScreenText>>> = Vec::new();
+    for column in columns {
+        let beside = tables.last().is_some_and(|table: &Vec<Vec<ScreenText>>| {
+            let before = &table[table.len() - 1];
+            column
+                .iter()
+                .all(|b| before.iter().any(|a| side_by_side(a, b)))
+        });
+        if beside {
+            tables.last_mut().expect("checked above").push(column);
+        } else {
+            tables.push(vec![column]);
+        }
+    }
+    if tables.len() < 2 {
+        return by_rows(pieces.to_vec());
+    }
+    let mut out: Vec<ScreenText> = Vec::new();
+    for table in tables {
+        if table.len() > 1 {
+            out.extend(by_rows(table.into_iter().flatten()));
+        } else {
+            out.extend(in_rows(table.into_iter().next().expect("one column")));
+        }
+    }
+    out
 }
 
 /// Python's `min(a, b)` on floats: `a`, unless `b < a`, so a NaN stays where Python puts it.
