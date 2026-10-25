@@ -140,7 +140,7 @@ pub const CURRENTS: [(i64, &str); 4] = [(0x94, EAST), (0x95, WEST), (0x96, NORTH
 /// step off it any way, or until they slide onto ground that is not ice, where they stop. In the
 /// low tide's ice room, zone `0x86`, they slid west from (28, 50) over (26, 50) to (18, 50) and
 /// stopped on the floor at (17, 50), and west from (16, 50) to (13, 50), against the rock, and
-/// turned back east (or_shoal_cave_ice_cavern, spike A). Only that zone has it, 534 cells; X has
+/// turned back east (or_shoal_cave_ice_cavern, spike 246). Only that zone has it, 534 cells; X has
 /// none.
 pub const ICE: i64 = 0x91;
 

@@ -446,7 +446,7 @@ fn test_a_current_carries_the_player_its_way_until_that_way_is_shut() {
 
 /// Shoal Cave: on its ice the player slides the way they stepped onto it, a cell at a time,
 /// onto the floor past it or against a wall, where they stop on the ice (or_shoal_cave_ice_cavern,
-/// spike A). A way turns only where a slide stops, and ends only there.
+/// spike 246). A way turns only where a slide stops, and ends only there.
 #[test]
 fn test_on_ice_the_player_slides_the_way_they_came_until_a_wall_or_the_floor_stops_them() {
     let rows = ["#.#.##", ".~~~~.", "......"];

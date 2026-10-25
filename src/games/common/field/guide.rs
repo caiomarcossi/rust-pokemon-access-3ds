@@ -51,7 +51,7 @@ pub const CLIMB: &str = "climb";
 /// What a leg down a climbing wall's slide is said with, "slide 5 south": in Cyllage Gym the player
 /// stepped onto one's top and was carried down it (x_gym_2_slide, spike 245). Never said as a current
 /// (`CURRENT`). So is a leg onto, over or off Shoal Cave's ice, "slide 11 west", which the player
-/// slides along once on it (`Ground.slide`, spike A). The game names no such thing.
+/// slides along once on it (`Ground.slide`, spike 246). The game names no such thing.
 pub const SLIDE: &str = "slide";
 
 /// A leg with handholds climbed in place before it, at its first cell, and after it, at the
@@ -1718,7 +1718,7 @@ impl Guide {
             && ground.passable((r#where.cell.0 + ahead.0, r#where.cell.1 + ahead.1))?
         {
             // Sliding on ice, the player cannot turn either: in Shoal Cave's ice room the way was
-            // found again at each cell of a slide, counting up "4 west" to "14 west" (spike A).
+            // found again at each cell of a slide, counting up "4 west" to "14 west" (spike 246).
             return Ok(());
         }
         let Some(item) = self.find(&listed, &guidance.borrow()) else {
