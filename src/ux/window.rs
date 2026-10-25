@@ -15,10 +15,11 @@
 //! **What it is.** A modeless dialog, the system's `#32770` as the rename box is, so a screen reader
 //! reads it as a dialog: its title and a menu bar, and no more, so a window left in sight for OBS
 //! takes as little of the screen as a window can (Orion, 2026-10-25). Alt opens the menus, as any
-//! program's: **pa3ds**, whose Check for updates offers the latest release (the port's own,
-//! `update::check`) and whose Exit ends pa3ds as Azahar closing does; **Azahar**, to download its
-//! latest zip or its installer (Orion), the browser straight at the file; and **Help**, to report
-//! an issue, the browser at the port's issues. Closing the window ends pa3ds too;
+//! program's: **Mod**, whose Settings... opens the settings dialog (`ux.settings`), whose Check
+//! for updates offers the latest release (the port's own, `update::check`) and whose Exit
+//! ends pa3ds as Azahar closing does; **Azahar**, to download its latest zip or its installer
+//! (Orion), the browser straight at the file; and **Help**, the browser at a page of the manual or
+//! at the port's issues. Closing the window ends pa3ds too;
 //! Escape does nothing, so a stray press never ends it. It runs on a thread of its own with its own
 //! message loop, as long as pa3ds does, and the poll loop never waits on it.
 //!
@@ -54,11 +55,39 @@ pub const IDC_INSTALLER: i64 = 203;
 pub const IDC_EXIT: i64 = 204;
 /// The port's own: the Python has no updater (`update::check`).
 pub const IDC_UPDATES: i64 = 205;
-/// The menu bar, in order: each menu's message, and its items' ids and messages.
+/// After the port's own Check for updates, 205.
+pub const IDC_SETTINGS: i64 = 206;
+pub const IDC_DOCUMENTATION: i64 = 207;
+pub const IDC_KEYS: i64 = 208;
+pub const IDC_KNOWN_ISSUES: i64 = 209;
+pub const IDC_TRANSLATING: i64 = 210;
+pub const IDC_CHANGELOG: i64 = 211;
+pub const IDC_SETTINGS_GUIDE: i64 = 212;
+/// Where the manual is read: the port's, which is what players run and which ships it, on
+/// GitHub, which shows it as a page a screen reader walks by its headings; beside pa3ds.exe it is
+/// Markdown, which nothing on a player's machine may open (Orion, 2026-10-25).
+pub const DOCS: &str = "https://github.com/pa3ds/rust-pokemon-access-3ds/blob/main/";
+/// Each of the Help menu's pages of the manual, by where it is under `DOCS`.
+pub const DOCUMENTS: [(i64, &str); 6] = [
+    (IDC_DOCUMENTATION, "README.md"),
+    (IDC_KEYS, "manual/keys.md"),
+    (IDC_KNOWN_ISSUES, "manual/known-issues.md"),
+    (IDC_TRANSLATING, "manual/languages.md"),
+    (IDC_CHANGELOG, "CHANGELOG.md"),
+    (IDC_SETTINGS_GUIDE, "manual/settings.md"),
+];
+/// A line between a menu's items.
+pub const SEPARATOR: (i64, &str) = (0, "");
+/// The menu bar, in order: each menu's message, and its items' ids and messages (Orion,
+/// 2026-10-25: the first menu is the mod's, and Help's pages are in Orion's order).
 pub const MENUS: [(&str, &[(i64, &str)]); 3] = [
     (
-        "window-menu-pa3ds",
-        &[(IDC_UPDATES, "window-updates"), (IDC_EXIT, "window-exit")],
+        "window-menu-mod",
+        &[
+            (IDC_SETTINGS, "window-settings"),
+            (IDC_UPDATES, "window-updates"),
+            (IDC_EXIT, "window-exit"),
+        ],
     ),
     (
         "window-menu-azahar",
@@ -67,15 +96,40 @@ pub const MENUS: [(&str, &[(i64, &str)]); 3] = [
             (IDC_INSTALLER, "window-azahar-installer"),
         ],
     ),
-    ("window-menu-help", &[(IDC_ISSUES, "window-issues")]),
+    (
+        "window-menu-help",
+        &[
+            (IDC_DOCUMENTATION, "window-documentation"),
+            (IDC_KEYS, "window-keys"),
+            (IDC_KNOWN_ISSUES, "window-known-issues"),
+            (IDC_TRANSLATING, "window-translating"),
+            (IDC_CHANGELOG, "window-changelog"),
+            (IDC_SETTINGS_GUIDE, "window-settings-guide"),
+            SEPARATOR,
+            (IDC_ISSUES, "window-issues"),
+        ],
+    ),
 ];
 
-/// Whether `ident` is one of the menus' items (Python's `COMMANDS`).
+/// Whether `ident` is one of the menus' items (Python's `COMMANDS`), a separator not one.
 pub fn command(ident: i64) -> bool {
-    MENUS
-        .iter()
-        .any(|(_, items)| items.iter().any(|(item, _)| *item == ident))
+    ident != 0
+        && MENUS
+            .iter()
+            .any(|(_, items)| items.iter().any(|(item, _)| *item == ident))
 }
+
+/// The page of the manual `ident` opens (Python's `DOCUMENTS[ident]`), or None.
+pub fn document(ident: i64) -> Option<&'static str> {
+    DOCUMENTS
+        .iter()
+        .find(|(item, _)| *item == ident)
+        .map(|(_, page)| *page)
+}
+
+/// What opens the settings dialog over the window, given the window to open it over. It runs on
+/// the window's thread, so it is `Send`.
+pub type Settings = Box<dyn Fn(isize) + Send>;
 
 pub const WS_MINIMIZEBOX: i64 = 0x00020000;
 /// On the taskbar and in Alt+Tab, as a program's main window is, though it has no owner.
@@ -84,6 +138,7 @@ pub const WM_CLOSE: i64 = 0x0010;
 pub const SW_HIDE: i64 = 0;
 pub const SW_SHOWNORMAL: i64 = 1;
 pub const MF_POPUP: i64 = 0x10;
+pub const MF_SEPARATOR: i64 = 0x800;
 pub const WIDTH: i64 = 160;
 /// In dialog units: no more than the menu bar takes as the window opens, so nothing is under
 /// it.
@@ -114,7 +169,16 @@ pub fn menus() -> Vec<Menu> {
                 own(menu, &[]),
                 items
                     .iter()
-                    .map(|(ident, message)| (*ident, own(message, &[])))
+                    .map(|(ident, message)| {
+                        (
+                            *ident,
+                            if message.is_empty() {
+                                String::new()
+                            } else {
+                                own(message, &[])
+                            },
+                        )
+                    })
                     .collect(),
             )
         })
@@ -208,6 +272,8 @@ mod win {
         /// The menu bar's words, built where the words are (`Window::new`), for the procedure
         /// to set as the window opens.
         static MENU_BAR: RefCell<Vec<Menu>> = const { RefCell::new(Vec::new()) };
+        /// What opens the settings dialog, which Python's procedure closed over.
+        static SETTINGS: RefCell<Option<std::rc::Rc<Settings>>> = const { RefCell::new(None) };
     }
 
     /// Give the window its menu bar (`menus`).
@@ -220,7 +286,14 @@ mod win {
                 for (words, items) in bar_words.borrow().iter() {
                     let popup = CreatePopupMenu();
                     for (ident, said) in items {
-                        AppendMenuW(popup, 0, *ident as usize, wide(said).as_ptr());
+                        let flags = if *ident != 0 { 0 } else { MF_SEPARATOR as u32 };
+                        let said = wide(said);
+                        let said = if said.len() > 1 {
+                            said.as_ptr()
+                        } else {
+                            std::ptr::null()
+                        };
+                        AppendMenuW(popup, flags, *ident as usize, said);
                     }
                     AppendMenuW(bar, MF_POPUP as u32, popup as usize, wide(words).as_ptr());
                 }
@@ -259,8 +332,16 @@ mod win {
         }
         if message == WM_COMMAND {
             let command = wparam as i64 & 0xFFFF;
-            if command == IDC_ISSUES {
+            let settings = SETTINGS.with(|settings| settings.borrow().clone());
+            if command == IDC_SETTINGS
+                && let Some(settings) = settings
+            {
+                // Modal over this window, on its thread: its own loop runs meanwhile.
+                settings(window as isize);
+            } else if command == IDC_ISSUES {
                 browse(ISSUES);
+            } else if let Some(page) = document(command) {
+                browse(&format!("{DOCS}{page}"));
             } else if command == IDC_PORTABLE || command == IDC_INSTALLER {
                 // Asking GitHub takes a moment: not on the window's thread, which would
                 // stop answering the screen reader meanwhile.
@@ -286,9 +367,16 @@ mod win {
     }
 
     /// Open the window and run its message loop until it is closed.
-    pub fn show(built: Vec<u8>, bar: Vec<Menu>, exited: Arc<AtomicBool>, opened: Arc<AtomicIsize>) {
+    pub fn show(
+        built: Vec<u8>,
+        bar: Vec<Menu>,
+        exited: Arc<AtomicBool>,
+        opened: Arc<AtomicIsize>,
+        settings: Option<Settings>,
+    ) {
         EXITED.with(|slot| *slot.borrow_mut() = Some(exited));
         MENU_BAR.with(|slot| *slot.borrow_mut() = bar);
+        SETTINGS.with(|slot| *slot.borrow_mut() = settings.map(std::rc::Rc::new));
         // The template must start on a 4-byte boundary, as in `dialog::ask`.
         let mut held = vec![0u32; built.len().div_ceil(4)];
         for (word, bytes) in held.iter_mut().zip(built.chunks(4)) {
@@ -329,7 +417,8 @@ mod win {
     }
 }
 
-/// pa3ds's window, open from the moment it is made, on a thread of its own.
+/// pa3ds's window, open from the moment it is made, on a thread of its own. `settings` opens
+/// the settings dialog over it, given the window to open it over.
 #[derive(Clone)]
 pub struct Window {
     exited: Arc<AtomicBool>,
@@ -337,7 +426,8 @@ pub struct Window {
 }
 
 impl Window {
-    pub fn new() -> Result<Self> {
+    /// Python's `settings` defaults to None.
+    pub fn new(settings: Option<Settings>) -> Result<Self> {
         let window = Window {
             exited: Arc::new(AtomicBool::new(false)),
             opened: Arc::new(AtomicIsize::new(0)),
@@ -351,11 +441,11 @@ impl Window {
             let (exited, opened) = (window.exited.clone(), window.opened.clone());
             let _ = std::thread::Builder::new()
                 .name("window".to_string())
-                .spawn(move || win::show(built, bar, exited, opened));
+                .spawn(move || win::show(built, bar, exited, opened, settings));
         }
         #[cfg(not(windows))]
         {
-            let _ = (built, bar);
+            let _ = (built, bar, settings);
             eprintln!("Exception in thread window:\nOSError: a window needs Windows");
         }
         Ok(window)

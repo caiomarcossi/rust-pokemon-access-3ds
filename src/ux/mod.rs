@@ -6,4 +6,5 @@
 
 pub mod dialog;
 pub mod folder;
+pub mod settings;
 pub mod window;

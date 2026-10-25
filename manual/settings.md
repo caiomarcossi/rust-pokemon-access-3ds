@@ -4,6 +4,12 @@ Settings are in `user\config.toml`, written with the defaults on the first start
 settings later versions bring, at their defaults, and never changes a line you have. Each setting
 has a comment in the file saying what it does.
 
+The mod settings change them for you: in pa3ds's window, Settings in the **Mod** menu. It has a
+tab for each table below, and Ctrl+Tab and Ctrl+Shift+Tab change the tab from anywhere in it; Tab
+walks a tab's settings, each said with what it does after it. A relative volume is in percent there, 100 as loud as the game. OK and Apply write only the
+settings you changed, and ask whether to restart pa3ds now for them to take effect; otherwise
+they take effect the next time pa3ds starts.
+
 | Setting | Default | What it does |
 |---|---|---|
 | **`[pa3ds]`** | | |

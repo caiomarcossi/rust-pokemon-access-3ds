@@ -1,13 +1,15 @@
 //! pa3ds's own window (`pa3ds.ux.window`), read back from its template: no test opens it.
 
 use super::test_rename::read_template;
+use crate::core::keyfile::data_path;
 use crate::ux::window::{
-    IDC_EXIT, IDC_INSTALLER, IDC_ISSUES, IDC_PORTABLE, IDC_UPDATES, INSTALLER, PORTABLE,
-    WS_EX_APPWINDOW, download, menus, template,
+    DOCUMENTS, IDC_CHANGELOG, IDC_DOCUMENTATION, IDC_EXIT, IDC_INSTALLER, IDC_ISSUES, IDC_KEYS,
+    IDC_KNOWN_ISSUES, IDC_PORTABLE, IDC_SETTINGS, IDC_SETTINGS_GUIDE, IDC_TRANSLATING, IDC_UPDATES,
+    INSTALLER, PORTABLE, WS_EX_APPWINDOW, download, menus, template,
 };
 
 /// A window left in sight for OBS takes as little of the screen as a window can (Orion,
-/// 2026-10-25): what were its buttons are the items of its menus.
+/// 2026-10-25): what were its buttons are the items of its menus, the first menu the mod's.
 #[test]
 fn test_the_window_is_pa3dss_by_its_title_and_holds_nothing_but_its_menu_bar() {
     let (title, items) = read_template(&template().unwrap());
@@ -23,8 +25,12 @@ fn test_the_window_is_pa3dss_by_its_title_and_holds_nothing_but_its_menu_bar() {
         menus(),
         vec![
             (
-                "&pa3ds".to_string(),
-                owned(&[(IDC_UPDATES, "Check for &updates"), (IDC_EXIT, "E&xit")])
+                "&Mod".to_string(),
+                owned(&[
+                    (IDC_SETTINGS, "&Settings..."),
+                    (IDC_UPDATES, "Check for &updates"),
+                    (IDC_EXIT, "E&xit"),
+                ])
             ),
             (
                 "&Azahar".to_string(),
@@ -35,10 +41,32 @@ fn test_the_window_is_pa3dss_by_its_title_and_holds_nothing_but_its_menu_bar() {
             ),
             (
                 "&Help".to_string(),
-                owned(&[(IDC_ISSUES, "&Report an issue on GitHub")])
+                owned(&[
+                    (IDC_DOCUMENTATION, "&Documentation..."),
+                    (IDC_KEYS, "&Key commands..."),
+                    (IDC_KNOWN_ISSUES, "Known &issues..."),
+                    (IDC_TRANSLATING, "&Translating..."),
+                    (IDC_CHANGELOG, "&Changelog..."),
+                    (IDC_SETTINGS_GUIDE, "&Settings guide..."),
+                    (0, ""),
+                    (IDC_ISSUES, "&Report an issue on GitHub"),
+                ])
             ),
         ]
     );
+}
+
+/// The port ships this repository's manual, and its own changelog.
+#[test]
+fn test_each_page_of_the_manual_the_help_menu_opens_is_one_pa3ds_has() {
+    let data = data_path().unwrap();
+    let root = data.parent().unwrap();
+    let missing: Vec<&str> = DOCUMENTS
+        .iter()
+        .map(|(_, page)| *page)
+        .filter(|page| *page != "CHANGELOG.md" && !root.join(page).is_file())
+        .collect();
+    assert!(missing.is_empty(), "{missing:?}");
 }
 
 /// A dialog with no owner is left off the taskbar and out of Alt+Tab unless it says

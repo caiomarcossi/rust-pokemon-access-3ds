@@ -154,6 +154,28 @@ fn uint(value: i64) -> Result<[u8; 4]> {
         .map_err(|_| Error::unpack("'I' format requires 0 <= number <= 4294967295"))
 }
 
+/// A control's class in a template, Python's `int | str`: a predefined one's atom, or a class's
+/// name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Class {
+    Atom(i64),
+    Name(String),
+}
+
+impl From<i64> for Class {
+    fn from(atom: i64) -> Self {
+        Class::Atom(atom)
+    }
+}
+
+impl From<&str> for Class {
+    fn from(name: &str) -> Self {
+        Class::Name(name.to_string())
+    }
+}
+
+/// One control: its class a predefined one's atom, or a class's name, as a common
+/// control's, `SysTabControl32`, has no atom.
 pub fn item(
     data: &mut Vec<u8>,
     style: i64,
@@ -163,7 +185,7 @@ pub fn item(
     cx: i64,
     cy: i64,
     ident: i64,
-    atom: i64,
+    atom: impl Into<Class>,
     text: &str,
 ) -> Result<()> {
     align(data);
@@ -173,8 +195,13 @@ pub fn item(
         data.extend_from_slice(&short(number)?);
     }
     data.extend_from_slice(&ushort(ident)?);
-    data.extend_from_slice(&ushort(0xFFFF)?);
-    data.extend_from_slice(&ushort(atom)?);
+    match atom.into() {
+        Class::Atom(atom) => {
+            data.extend_from_slice(&ushort(0xFFFF)?);
+            data.extend_from_slice(&ushort(atom)?);
+        }
+        Class::Name(name) => data.extend_from_slice(&wstr(&name)),
+    }
     data.extend_from_slice(&wstr(text));
     data.extend_from_slice(&ushort(0)?); // no creation data
     Ok(())

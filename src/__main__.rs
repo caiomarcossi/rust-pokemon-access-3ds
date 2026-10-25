@@ -17,6 +17,7 @@ use crate::core::{config, instance, keyfile, window};
 use crate::games::common::field::keys::{DEFAULT_BINDINGS, EXPLAINED};
 use crate::py::{self, Log, time};
 use crate::ux::folder;
+use crate::ux::settings as settings_dialog;
 use crate::ux::window::Window;
 
 /// Runs whose logs are kept, this one included.
@@ -31,6 +32,23 @@ impl Backend for Silent {
     fn speak(&self, _text: &str, _interrupt: bool) {}
 
     fn braille(&self, _text: &str) {}
+}
+
+thread_local! {
+    /// The screen reader the settings dialog describes through: the window's thread's own, since
+    /// a backend cannot cross threads, where Python's is the one backend.
+    static DESCRIBING: std::cell::OnceCell<Option<Rc<dyn Backend>>> =
+        const { std::cell::OnceCell::new() };
+}
+
+/// What a setting does, after the screen reader has said its control (`ux.settings`).
+fn describe(text: &str) {
+    DESCRIBING.with(|backend| {
+        let backend = backend.get_or_init(|| speech::screen_reader().ok().map(|(found, _)| found));
+        if let Some(backend) = backend {
+            backend.speak(text, false);
+        }
+    });
 }
 
 /// The command line: a flag is only what a developer passes for one run; settings are the
@@ -228,13 +246,6 @@ fn run(args: Args, hooks: &Hooks) -> py::Result<()> {
         settings = ask_for_azahar(settings, &mut asked)?;
     }
     let ui = settings.ui.clone();
-    // pa3ds's own window, for a pa3ds double-clicked: alone on its console, never a shell's, and
-    // never a silent run (docs/plans/pa3ds-window.md).
-    let own_window = if !args.silent && instance::alone() {
-        Some(Window::new()?)
-    } else {
-        None
-    };
 
     let backend: Rc<dyn Backend> = if args.silent {
         hooks.silent.clone()
@@ -242,6 +253,26 @@ fn run(args: Args, hooks: &Hooks) -> py::Result<()> {
         let (backend, name) = speech::screen_reader()?;
         println!("speaking through {name}");
         backend
+    };
+
+    // pa3ds's own window, for a pa3ds double-clicked: alone on its console, never a shell's, and
+    // never a silent run (docs/plans/pa3ds-window.md). Settings applied in its settings dialog
+    // take when pa3ds starts again in its place.
+    let own_window = if !args.silent && instance::alone() {
+        Some(Window::new(Some(Box::new(|owner: isize| {
+            let shown =
+                settings_dialog::show(owner, Rc::new(describe), Rc::new(instance::again), None);
+            if let Err(error) = shown {
+                // What ctypes writes for a callback that raised: the window's procedure, here.
+                eprintln!(
+                    "Exception ignored on calling ctypes callback function:\n{}: {}",
+                    error.kind.name(),
+                    error.message
+                );
+            }
+        })))?)
+    } else {
+        None
     };
 
     let log_file: Option<Rc<RefCell<File>>> = if args.no_log {

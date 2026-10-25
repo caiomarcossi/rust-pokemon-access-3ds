@@ -104,9 +104,11 @@ folder `azahar.exe` is in. Choose it, and pa3ds remembers it. Cancel instead if 
 installed the usual way.
 
 Started by double-clicking or from a shortcut, pa3ds opens a window, Pokémon Access 3DS, which
-is only a menu bar: press Alt for its menus. **pa3ds** has Check for updates and Exit, **Azahar**
-downloads Azahar's latest portable zip or its installer, and **Help** reports an issue on GitHub.
-It hides the window while Azahar is open, so it is not in Alt+Tab; `hide_window` keeps it in sight. While another window is in front of Azahar, pa3ds says nothing of the
+is only a menu bar: press Alt for its menus. **Mod** has Settings, Check for updates and Exit,
+**Azahar** downloads Azahar's latest portable zip or its installer, and **Help** opens a page of
+this manual in your browser, or reports an issue on GitHub. Settings opens the mod settings
+([Settings](manual/settings.md)). It hides the window while Azahar is open, so it is not in
+Alt+Tab; `hide_window` keeps it in sight. While another window is in front of Azahar, pa3ds says nothing of the
 game, but still answers its keys.
 
 ## Updating
@@ -114,7 +116,7 @@ game, but still answers its keys.
 When pa3ds starts, it checks for a newer version. If there is one, a window asks whether to
 update. Yes downloads it, replaces `pa3ds.exe`, the `data` folder, the manual, `CHANGELOG.md` and
 the licences, and starts the new pa3ds; your `user` folder is kept. No starts the version you
-have, and pa3ds asks again on its next start. Check for updates, in the **pa3ds** menu of
+have, and pa3ds asks again on its next start. Check for updates, in the **Mod** menu of
 pa3ds's window, asks the same at any time, or says you have the latest.
 
 What changed in each version is in `CHANGELOG.md` beside `pa3ds.exe`, and on the

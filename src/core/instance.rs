@@ -210,6 +210,23 @@ pub fn replace(home: &Path) -> Result<bool> {
     Ok(replaced)
 }
 
+/// Start pa3ds again as this one was started, to take its place (`replace`): for settings
+/// applied in the settings dialog (Orion, 2026-10-25). In a console of its own, where it is
+/// alone and opens its window, as a double-clicked pa3ds does; this one is ended by it.
+///
+/// The port's is `pa3ds.exe` itself, where the Python's is its interpreter running `-m pa3ds`.
+pub fn again() -> Result<()> {
+    let create_new_console = 0x10;
+    let mut command = std::process::Command::new(std::env::current_exe()?);
+    command.args(std::env::args_os().skip(1));
+    #[cfg(windows)]
+    std::os::windows::process::CommandExt::creation_flags(&mut command, create_new_console);
+    #[cfg(not(windows))]
+    let _ = create_new_console;
+    command.spawn()?;
+    Ok(())
+}
+
 /// Delete the file naming the pa3ds running, while it still names this one.
 pub fn release(home: &Path) {
     let path = home.join(LOCK);
