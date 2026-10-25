@@ -911,6 +911,54 @@ fn test_show_y_says_how_high_the_player_and_the_thing_stand_where_known() {
     );
 }
 
+/// A thing further above or below the player than it is walked up to from says how far, in
+/// the game's units, whatever `show_y` says: an item ball under a cliff was "1 north" alone to a
+/// player on top, who could not pick it up (Orion, 2026-10-24). Nearer, or with no height, it
+/// says nothing more.
+#[test]
+fn test_a_thing_more_than_two_cells_above_or_below_says_how_far() {
+    let ball = Interactable {
+        source: 0x08D1E9A8,
+        move_model: true,
+        height: Some(6.0),
+        ..Interactable::new("items", "item ball", (94, 171))
+    };
+    let sign = Interactable {
+        source: 0,
+        ..Interactable::new("signs", "sign", (94, 170))
+    };
+    let door = Interactable {
+        zone: Some(0xDF),
+        source: 0,
+        height: Some(150.0),
+        ..Interactable::new("exits", "door", (97, 171))
+    };
+    let person = Interactable {
+        source: 0x08D1F458,
+        move_model: true,
+        height: Some(140.0),
+        ..Interactable::new("people", "person", (90, 172))
+    };
+    let mut rig = navigator(on(Field {
+        interactables: vec![ball, sign, door, person],
+        height: Some(110.0),
+        ..Field::new(0x6, (94, 172))
+    }));
+    rig.press(ITEM_READ);
+    for _ in 0..3 {
+        rig.press(ITEM_NEXT);
+    }
+    assert_eq!(
+        said(&rig.backend),
+        [
+            "item ball, 1 of 4, 1 north, 104 below",
+            "sign, 2 of 4, 2 north",
+            "door, 3 of 4, 3 east 1 north, 40 above",
+            "person, 4 of 4, 4 west"
+        ]
+    );
+}
+
 #[test]
 fn test_a_key_answer_interrupts() {
     let mut rig = navigator(Want {

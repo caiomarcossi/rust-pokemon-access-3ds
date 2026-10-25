@@ -59,6 +59,7 @@ use crate::core::names::Names;
 use crate::core::pathfind::{self, AHEAD, BEHIND, Cell, LEFT, RIGHT};
 use crate::core::speech::{Category, Speech};
 use crate::core::words::own;
+use crate::games::common::field::chunk::CLIMB;
 use crate::games::common::field::guide::{Clock, FieldSource, Guide, Key};
 use crate::games::common::field::keys::{
     Bindings, CATEGORY_NEXT, CATEGORY_PREVIOUS, COORDINATES, DEFAULT_BINDINGS, DIRECTIONS, EAST,
@@ -727,6 +728,9 @@ impl Navigator {
     fn said(&self, r#where: &Field, items: &[Interactable], at: i64) -> Result<()> {
         let item = &items[at as usize];
         let mut way = item.bearing(r#where.cell, r#where.heading)?;
+        if let Some(rise) = rise(r#where, item)? {
+            way += &format!(", {rise}");
+        }
         if let Some(arrival) = item.arrival {
             way += &format!(
                 ", {}",
@@ -1028,6 +1032,24 @@ fn named(called: Option<&str>) -> String {
         Some(called) if !called.is_empty() => own("rename-called", &[("name", &called)]),
         _ => own("rename-not-named", &[]),
     }
+}
+
+/// How far above or below the player `item` stands, "104 below", in the game's units, where
+/// both heights are known and further apart than a thing is walked up to from (`Ground.open`):
+/// an item ball on a path under a cliff, said "1 north" alone, left a player on the cliff top
+/// against it and unable to pick it up (Orion, 2026-10-24).
+fn rise(r#where: &Field, item: &Interactable) -> Result<Option<String>> {
+    let (Some(height), Some(item_height)) = (r#where.height, item.height) else {
+        return Ok(None);
+    };
+    let rise = py::round(item_height - height)?;
+    if rise.abs() as f64 <= 2.0 * CLIMB {
+        return Ok(None);
+    }
+    Ok(Some(own(
+        if rise > 0 { "above" } else { "below" },
+        &[("count", &rise.abs())],
+    )))
 }
 
 /// Where `cells` are, "x 94, z 171", an axis they span by its first and last, "x 80 to 119";

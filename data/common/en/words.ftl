@@ -30,6 +30,10 @@ steps = { $count } { $way }
 leg-with = { $how } { $steps } { $way }
 # Where something is when it is where the player stands.
 here = here
+# How far a thing stands above or below the player, in the game's units, 18 to a cell, where
+# it is more than two cells' height: "ladder, 2 west, 54 above".
+above = { $count } above
+below = { $count } below
 # A leg on Lumiose's rails, where up walks the way the camera looks and left and right turn the
 # player (spike 105): "hold right, 5 forward, 3 back".
 rail-forward = { $steps } forward
