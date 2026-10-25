@@ -663,3 +663,7 @@ place-0xdf-furniture-0 = 露力丽玩偶
 place-0xe1-furniture-0 = 露力丽玩偶
 # in the moving truck
 place-0x18f-furniture-0 = 露力丽玩偶
+# The rocks that evolve Eevee, which no text names: story 378:0, in Shoal Cave's ice room
+place-0x86-furniture-0 = 冰之岩
+# story 432:45, in Petalburg Woods
+place-0x52-furniture-2 = 青苔之岩
