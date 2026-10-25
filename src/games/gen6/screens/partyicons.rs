@@ -8,12 +8,19 @@
 //! no class of its own:
 //!
 //! ```text
-//! party     +0x00  six pointers to PokemonParams    +0x18 u32 how many are in the party
+//! party     +0x00  six pointers to PokemonParams    +0x18 u8 how many are in the party
 //! PokeIcon  +0x0C  -> LytTexReplaceSystem: +0x04 its textures, +0x08 how many
 //! texture   +0x0C  the image's physical address, as a picture's material keeps it
 //! ```
 //!
-//! Only while the Bag runs: another screen's icons are not the party's in its order.
+//! The count is a byte: the Battle Maison sets the one after it to 2, and the party read as a u32
+//! of 518 was no party. Its screen choosing the Battle Box or the party draws both on the top
+//! screen from one PokeIcon of twelve textures, the Battle Box's six and then the party's, each
+//! slot a level and an icon: "L 73 L 71" (or_multi_battle_partners). The Battle Box's are not
+//! named.
+//!
+//! Only while the Bag or that screen runs: another screen's icons are not the party's in its
+//! order.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -28,8 +35,20 @@ use crate::games::gen6::screens::distribution as d;
 use crate::py::{PySet, Result};
 
 pub const BAG: &str = "N3app3bag4ProcE";
+pub const GROUPS: &str = "N3app19battle_party_select4ProcE";
 pub const ICON_CLASS: &str = d::ICON_CLASS;
 pub const SLOTS: i64 = 6;
+
+/// App -> the texture holding the party's first member's icon.
+pub const FIRST: [(&str, i64); 2] = [(BAG, 0), (GROUPS, SLOTS)];
+
+/// `FIRST.get(app)`.
+fn first(app: &str) -> Option<i64> {
+    FIRST
+        .iter()
+        .find(|(running, _)| *running == app)
+        .map(|&(_, first)| first)
+}
 pub const COUNT: i64 = 0x18;
 
 /// The party's list among the addresses holding a PokemonParam: six pointers to them, the
@@ -41,7 +60,7 @@ pub fn party_of(
 ) -> Result<Option<i64>> {
     for at in holders {
         let head = memory.read(at, COUNT + 4)?;
-        let count = u32(&head, COUNT)?;
+        let count = head[COUNT as usize] as i64;
         if !(0 < count && count <= SLOTS) {
             continue;
         }
@@ -116,7 +135,7 @@ impl PartyIcons {
 
     /// The species of the party member a picture draws the icon of, or None.
     pub fn name(&self, picture: i64) -> Result<Option<String>> {
-        if (self.running)().as_deref() != Some(BAG) || self.species.is_empty() {
+        if (self.running)().as_deref().and_then(first).is_none() || self.species.is_empty() {
             return Ok(None);
         }
         if self.party.is_none() {
@@ -162,12 +181,13 @@ impl PartyIcons {
                     break;
                 }
             }
-            let Some(slot) = slot else {
+            let Some(mut slot) = slot else {
                 continue;
             };
+            slot -= first((self.running)().as_deref().unwrap_or("")).unwrap_or(0);
             let party = memory.read(party_at, COUNT + 4)?;
             // The list found in an earlier Bag may be another object's now, counting past six.
-            if slot >= std::cmp::min(u32(&party, COUNT)?, SLOTS) {
+            if !(0 <= slot && slot < std::cmp::min(party[COUNT as usize] as i64, SLOTS)) {
                 return Ok(None);
             }
             let found = pokemon::read(

@@ -35,7 +35,7 @@ fn first_stats() -> Vec<u8> {
     from_hex(&["927e9f1da38c8ea49dc0016f70d8e747a9e05c0c10c1ce82586dfa4a"])
 }
 
-fn second_wurmple() -> Vec<u8> {
+pub(crate) fn second_wurmple() -> Vec<u8> {
     from_hex(&[
         "f7d67e2600003ef88b03233797268b5848557dc0149eb12772c5003836fd90bcb04a8494ace0f10bb6da43db53c91a90",
         "0febe4a893d663432d389b00099708b05c24de5a66fd4129ed09e70296578f8153881b7b23f259d2778cc256dce1b628",
@@ -49,7 +49,7 @@ fn second_stats() -> Vec<u8> {
     from_hex(&["8b03233795268b58455570c0139eb72774c5043830fd90bcb04ac294"])
 }
 
-const WURMPLE: i64 = 265;
+pub(crate) const WURMPLE: i64 = 265;
 
 fn wurmple() -> Pokemon {
     Pokemon {
