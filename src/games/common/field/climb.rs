@@ -241,9 +241,10 @@ impl Walls {
 
     /// Where `path` climbs, from a player at `level` on its first cell: each run of it along
     /// one line with a step sideways in it, from the run's first blue spot to its last, and a
-    /// first run the player starts on the wall, from where they are. Any other run is walked.
-    /// The search's state (`hold`) puts a spot before a step off sideways and after a step
-    /// on.
+    /// first run the player starts on the wall, from where they are. Any other run is walked,
+    /// and so is the rest of one along a ledge it steps off onto: Cyllage Gym's (29, 27) and
+    /// (29, 28) are one ledge, two spots of their face's line (spike A). The search's state
+    /// (`hold`) puts a spot before a step off sideways and after a step on.
     pub fn climbs(&self, path: &[Cell], level: Option<f64>) -> Result<Vec<Climb>> {
         let mut out: Vec<Climb> = Vec::new();
         let mut i = 0;
@@ -265,9 +266,16 @@ impl Walls {
                 } else {
                     spots[0]
                 };
-                let off = match spots.last() {
-                    Some(&last) if last > side.last().copied().unwrap_or(on) => last,
-                    _ => j,
+                let onto = side
+                    .last()
+                    .is_some_and(|&last| self.ledges.get(&path[last + 1]) == Some(&path[last]));
+                let off = if onto {
+                    side[side.len() - 1] + 1
+                } else {
+                    match spots.last() {
+                        Some(&last) if last > side.last().copied().unwrap_or(on) => last,
+                        _ => j,
+                    }
                 };
                 let was = match level {
                     Some(level) if on == 0 => Some(level),
@@ -278,8 +286,6 @@ impl Walls {
                     (Some(was), Some(now)) => py::round((now - was) / HOLD)?,
                     _ => 0,
                 };
-                let onto = side.last().is_some_and(|&last| last + 1 == off)
-                    && self.ledges.contains_key(&path[off]);
                 out.push(Climb {
                     on: on as i64,
                     off: off as i64,
