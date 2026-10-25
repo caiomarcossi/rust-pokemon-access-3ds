@@ -62,6 +62,7 @@ mark-off = { $mark }, aus
 slot-party = Team { $number }
 slot-grid = Reihe { $row }, Spalte { $column }
 slot-titled-grid = { $title }, Reihe { $row }, Spalte { $column }
+slot-titled-list = { $title } { $number }
 slot-empty = { $slot }, leer
 contest-place-one = erster Platz
 contest-place-two = zweiter Platz

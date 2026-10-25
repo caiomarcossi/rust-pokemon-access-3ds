@@ -62,6 +62,7 @@ mark-off = { $mark }，關
 slot-party = 隊伍{ $number }
 slot-grid = 第{ $row }列，第{ $column }欄
 slot-titled-grid = { $title }，第{ $row }列，第{ $column }欄
+slot-titled-list = { $title }{ $number }
 slot-empty = { $slot }，空
 contest-place-one = 第一名
 contest-place-two = 第二名

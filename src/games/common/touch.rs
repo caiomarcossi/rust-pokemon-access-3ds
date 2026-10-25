@@ -632,6 +632,10 @@ impl TouchTargets {
                     // number in the party or the mark it shows: by its pictures, the Box's grid
                     // was its wallpaper's, "wave pattern", and a mark "box mark 01". Two of the
                     // grid's slots lie under a placeholder TextBox of another panel (movie22).
+                    if slot.1.is_empty() {
+                        // Behind the Battle Box's, and in the way of its taps (or_battle_box).
+                        continue;
+                    }
                     names.insert(touch, slot.1);
                 } else if !worded && u32(&layouts.pane(touch)?, lyt::PARENT)? != root {
                     // A touch area hanging straight from the root has no button of its own, and

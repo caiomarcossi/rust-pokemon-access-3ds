@@ -292,7 +292,7 @@ impl ListCursors {
                 } else {
                     slots::slot(&self.layouts, file.as_deref(), root, x, y, on_screen)?
                 };
-                if found.is_none() {
+                if found.as_ref().is_none_or(|found| found.1.is_empty()) {
                     found = slots::button(&self.layouts, &files, root, x, y, rect.top)?;
                 }
                 if let Some((touch, said, was_alone)) = found {

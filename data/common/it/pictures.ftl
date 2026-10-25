@@ -62,6 +62,7 @@ mark-off = { $mark }, disattivo
 slot-party = Squadra { $number }
 slot-grid = riga { $row }, colonna { $column }
 slot-titled-grid = { $title }, riga { $row }, colonna { $column }
+slot-titled-list = { $title } { $number }
 slot-empty = { $slot }, vuoto
 contest-place-one = primo posto
 contest-place-two = secondo posto

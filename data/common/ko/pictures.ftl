@@ -62,6 +62,7 @@ mark-off = { $mark }, 꺼짐
 slot-party = 지닌 포켓몬 { $number }
 slot-grid = { $row }행 { $column }열
 slot-titled-grid = { $title }, { $row }행 { $column }열
+slot-titled-list = { $title } { $number }
 slot-empty = { $slot }, 비어 있음
 contest-place-one = 1위
 contest-place-two = 2위
