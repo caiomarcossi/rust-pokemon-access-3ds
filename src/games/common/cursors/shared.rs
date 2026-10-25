@@ -40,16 +40,21 @@ pub struct CursorItem {
     /// No details follow it: an empty slot, over which the top screen's summary keeps showing
     /// the Pokémon carried or the one last passed (spike 129).
     pub quiet: bool,
+    /// A pane of the list of rows it is one of, where its cursor knows it (`MenuCursors`), or 0:
+    /// the details kept from moves along one list are not another's.
+    pub rows: i64,
 }
 
 impl CursorItem {
-    /// `CursorItem(cursor, pieces, opened)`: `quiet` left to its default, False.
+    /// `CursorItem(cursor, pieces, opened)`: `quiet` and `rows` left to their defaults, False
+    /// and 0.
     pub fn new(cursor: i64, pieces: Vec<ScreenText>, opened: bool) -> Self {
         CursorItem {
             cursor,
             pieces,
             opened,
             quiet: false,
+            rows: 0,
         }
     }
 }
@@ -416,6 +421,19 @@ impl Said {
         r#where: Where,
         quiet: bool,
     ) {
+        self.report_in(cursor, inside, items, r#where, quiet, 0);
+    }
+
+    /// `report(..., rows=rows)`: the item one of the list of rows `rows` is a pane of.
+    pub fn report_in(
+        &self,
+        cursor: i64,
+        inside: Vec<ScreenText>,
+        items: &mut Vec<CursorItem>,
+        r#where: Where,
+        quiet: bool,
+        rows: i64,
+    ) {
         self.under.borrow_mut().insert(cursor, inside.clone());
         if inside.is_empty() {
             return;
@@ -431,6 +449,7 @@ impl Said {
                 pieces: inside,
                 opened: !held.contains_key(&cursor),
                 quiet,
+                rows,
             });
             held.insert(cursor, said);
         }

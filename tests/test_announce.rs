@@ -1875,6 +1875,40 @@ fn test_moving_on_drops_the_last_items_details_unsaid() {
     assert_eq!(screen.on(&everything), ["Category Power 40 Accuracy 100"]);
 }
 
+/// The fitting room's tabs change the card beside them, and each move between Change and Back,
+/// a list of their own, read the card again (Khai, 2026-10-24, x_cyllage_boutique_fitting_room).
+#[test]
+fn test_an_item_of_another_list_keeps_no_details_from_this_ones_moves() {
+    let mut screen = Screen::new();
+    let panel = move_panel("40");
+    let tab = vec![piece(1, "bag", -120.0, 70.0, MENU)];
+    let everything = cat(&[&tab, &panel]);
+    screen.say(args(
+        &[changed(&panel[3])],
+        vec![CursorItem::new(0x0C, tab.clone(), false)],
+        &everything,
+    ));
+    assert_eq!(screen.on(&everything), NOTHING);
+    assert_eq!(screen.on(&everything), ["Category Power 40 Accuracy 100"]);
+    for word in ["Change", "Back"] {
+        let moved = vec![piece(2, word, -120.0, 70.0, MENU)];
+        let everything = cat(&[&moved, &panel]);
+        assert_eq!(
+            screen.say(args(
+                &[],
+                vec![CursorItem {
+                    rows: 0x40,
+                    ..CursorItem::new(0x0C, moved.clone(), false)
+                }],
+                &everything
+            )),
+            [word]
+        );
+        let heard: Vec<Vec<String>> = (0..3).map(|_| screen.on(&everything)).collect();
+        assert_eq!(heard, vec![Vec::<String>::new(); 3], "{word}");
+    }
+}
+
 #[test]
 fn test_details_wait_for_words_being_written_no_longer_than_their_most_polls() {
     let mut screen = Screen::new();

@@ -135,7 +135,8 @@ impl MenuCursors {
                 // with its town's facilities (or_areanav_by_touch).
                 self.said.under.borrow_mut().insert(cursor, inside);
             } else {
-                self.said.report(cursor, inside, items, at, false);
+                let rows = rows.iter().map(|&(_root, row)| row).min().unwrap_or(0);
+                self.said.report_in(cursor, inside, items, at, false, rows);
             }
         }
         Ok(())

@@ -131,12 +131,17 @@ struct Gathering {
     item: String,
     /// The root of the layout the item is in.
     menu: i64,
+    /// The list of rows the item is one of, where its cursor knows it (`CursorItem.rows`): the
+    /// list its details are of. The fitting room's Change and Back are a list beside its tabs, and
+    /// each move between them read again the card the tabs had changed (Khai,
+    /// x_cyllage_boutique_fitting_room).
+    rows: i64,
 }
 
 impl Gathering {
     /// What the panels its moves change are kept under (`ScreenAnnouncer.detail_panels`).
-    fn kept(&self) -> (i64, i64) {
-        (self.cursor, self.menu)
+    fn kept(&self) -> (i64, i64, i64) {
+        (self.cursor, self.menu, self.rows)
     }
 
     /// `_Gathering(cursor, quiet=quiet, count=count, held=held)`: `polls` at 0 and no panels or
@@ -154,6 +159,7 @@ impl Gathering {
             lead: (0, String::new()),
             item: String::new(),
             menu: 0,
+            rows: 0,
         }
     }
 }
@@ -176,12 +182,12 @@ pub struct ScreenAnnouncer {
     /// place the poll after: the Bag's said "Pokéblock Kit" as it opened and again 0.2 s later
     /// (movie30).
     opened: IndexMap<i64, (String, i64)>,
-    /// (cursor, layout of its item) -> every panel its moves among that layout's items have
+    /// (cursor, layout of its item, its list) -> every panel its moves along that list have
     /// changed. Ember to Scratch changes only the description, and the move's power and accuracy
     /// went unsaid. Kept a layout at a time: the battle's move to forget, changed as the cursor
     /// went onto FORGET, was read again for "return" in the move list beside it
-    /// (or_move-learning, 2026-10-18).
-    detail_panels: IndexMap<(i64, i64), IndexSet<Panel>>,
+    /// (or_move-learning, 2026-10-18); and a list at a time (`_Gathering.rows`).
+    detail_panels: IndexMap<(i64, i64, i64), IndexSet<Panel>>,
     polls: i64,
     /// Words a cursor said lately -> the poll it said them at and the cursor
     /// (`said_by_cursor`).
@@ -361,7 +367,7 @@ impl ScreenAnnouncer {
                 // stood, the Bag's panel, half written for the next item, read the next item's
                 // name with the last one's count (movie33). Its panels are kept.
                 self.detail_panels
-                    .entry((0, 0))
+                    .entry((0, 0, 0))
                     .or_default()
                     .extend(rewrite.panels.iter().copied());
                 (self.log)(&format!(
@@ -418,6 +424,7 @@ impl ScreenAnnouncer {
                 self.gathering = Some(Gathering {
                     item: text.clone(),
                     menu: item.pieces[0].root,
+                    rows: item.rows,
                     ..Gathering::new(item.cursor, item.quiet, count, held)
                 });
             }
@@ -1051,7 +1058,7 @@ impl ScreenAnnouncer {
         cursored: &HashSet<i64>,
     ) -> HashSet<i64> {
         self.rewrite = None;
-        let kept = self.detail_panels.entry((0, 0)).or_default();
+        let kept = self.detail_panels.entry((0, 0, 0)).or_default();
         kept.extend(rewrite.panels.iter().copied());
         let mut panels = kept.clone();
         panels.extend(rewrite.joined.iter().copied());
