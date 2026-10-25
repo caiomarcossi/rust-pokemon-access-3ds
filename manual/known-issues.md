@@ -10,6 +10,12 @@ What pa3ds gets wrong or leaves out for now. To report one that is not here, see
   turning a PlayNav page with its arrows says nothing of the new page.
 - **X, Y, Sun and Moon** are read less completely than Omega Ruby and Alpha Sapphire.
 
+## The map
+
+- **How far above or below** a thing is, is in the game's units, 18 to a square, as `C` and
+  `Shift+C` say heights: a thing 54 below is three squares down, and a slope or stairs can take
+  you there in three steps.
+
 ## The PC Box
 
 - **An empty Battle Box** reads as the box behind it.

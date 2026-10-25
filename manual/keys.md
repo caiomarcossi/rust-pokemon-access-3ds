@@ -10,10 +10,11 @@ pa3ds lists what is on the map in categories: all, exits, interactables, obstacl
 berries, ash, bike, riding, currents and pokémon, and while soaring, towns, routes, landmarks and mirage
 spots. A category with nothing in it is skipped. Each thing is said with where it is from you:
 "door, 1 of 3, 3 east 2 north". A thing more than two squares' height above or below you says how
-far, in the game's units, 18 to a square: "item ball, 1 north, 90 below". North is the way up walks you: where the camera is turned, as in
-Parfum Palace's garden in X or on the Battle Resort's beach, the directions turn with it. Where the camera stays behind you and
-left, right and down turn you, as in X's Glittering Cave, things are said from the way you face,
-"9 ahead 8 left", and `P` says the turns, "turn left, 5 forward".
+far, in the game's units, 18 to a square: "item ball, 1 north, 90 below". North is the way up
+walks you: where the camera is turned, as in Parfum Palace's garden in X or on the Battle Resort's
+beach, the directions turn with it. Where the camera stays behind you and left, right and down
+turn you, as in X's Glittering Cave, things are said from the way you face, "9 ahead 8 left", and
+`P` says the turns, "turn left, 5 forward".
 
 The list has three **modes**, and the apostrophe steps through them. During a battle or a scene
 the map's keys say "no map", and the thing you had chosen is kept for when the map comes back.
