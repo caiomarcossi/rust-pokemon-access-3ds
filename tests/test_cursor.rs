@@ -462,6 +462,99 @@ fn test_a_menu_cursors_rows_are_panels_where_its_words_stand_alone_in_theirs() {
     );
 }
 
+/// ADR-0012: a menu never lists itself. The fitting room's list is a column of cards in one
+/// panel, each card a picture in a pane of its own, the cursor on the middle one: the next
+/// card's name, peeking at the screen's edge, was said as each move's details
+/// (x_cyllage_boutique_fitting_room).
+#[test]
+fn test_a_menu_cursors_rows_are_the_cards_drawn_like_its_own_anywhere_in_their_panel() {
+    let mut menu = Menu::new();
+    let (_work, root) = menu.fake.screen_with(0x08400000, false, false);
+    let column = 0x08401000;
+    menu.fake.pane(column, root);
+    let mut pieces: Vec<ScreenText> = Vec::new();
+    for (i, (text, y)) in [
+        ("Logo Cap black", 180.0),
+        ("Two-Tone Bag red", 60.0),
+        ("Zipped Jacket", -60.0),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let (holder, card) = (0x08402000 + i as i64 * 0x100, 0x08403000 + i as i64 * 0x100);
+        menu.fake.pane(holder, column);
+        menu.fake.pane(card, holder);
+        for (offset, value) in [
+            (lyt::X, -80.0),
+            (lyt::Y, y),
+            (lyt::WIDTH, 178.0),
+            (lyt::HEIGHT, 106.0),
+        ] {
+            put(&menu.memory, card + offset, &[value]);
+        }
+        pieces.push(ScreenText {
+            root,
+            parent: card,
+            panel: column,
+            ..ScreenText::placed(
+                0x08404000 + i as i64 * 0x100,
+                text,
+                false,
+                -120.0,
+                -40.0,
+                y,
+                12.5,
+            )
+        });
+    }
+    menu.fake.track().unwrap();
+    assert_eq!(
+        menu.heard_with(&pieces),
+        said(&[(&["Two-Tone Bag red"], true)])
+    );
+    assert_eq!(
+        menu.reader.last.rows.clone(),
+        pieces
+            .iter()
+            .map(|piece| piece.r#box)
+            .collect::<HashSet<i64>>()
+    );
+}
+
+/// The fitting room writes the next colour into the card under its cursor and shows its
+/// "Wearing" a poll before it hides the price: each move was said half written, "Two-Tone Bag
+/// black $2,900 Wearing", and then again whole (x_cyllage_boutique_fitting_room).
+#[test]
+fn test_words_coming_beside_those_under_a_cursor_that_has_not_moved_wait_a_poll() {
+    let mut menu = Menu::new();
+    let name = label(1, "Two-Tone Bag", -70.0, 66.0);
+    let price = label(2, "$2,900", -70.0, 54.0);
+    let wearing = label(3, "Wearing", -40.0, 54.0);
+    menu.heard_with(&[name.clone(), label(4, "red", -40.0, 66.0), price.clone()]);
+    let black = label(4, "black", -40.0, 66.0);
+    assert_eq!(
+        menu.heard_with(&[name.clone(), black.clone(), price, wearing.clone()]),
+        said(&[])
+    );
+    assert_eq!(
+        menu.heard_with(&[name, black, wearing]),
+        said(&[(&["Two-Tone Bag", "black", "Wearing"], false)])
+    );
+}
+
+/// The Bag's list writes the next item into the row under its cursor as it scrolls, with the
+/// item's description beside the list: held a poll, the item was said after its description had
+/// changed, and the description went unsaid (or_dexnav_chain_linoone).
+#[test]
+fn test_words_rewritten_in_place_under_a_cursor_that_has_not_moved_are_said_at_once() {
+    let mut menu = Menu::new();
+    menu.heard_with(&[label(1, "Icy Rock", -70.0, 60.0)]);
+    assert_eq!(
+        menu.heard_with(&[label(1, "Stardust", -70.0, 60.0)]),
+        said(&[(&["Stardust"], false)])
+    );
+}
+
 /// The Pokéblock Case's cursor sits on a block's cell, its count just below its frame, over
 /// the Berry Blender's grid, whose cell sits off its middle with its count inside the frame:
 /// framed, the case said the blender's "16" for its own "5" (movie30, spike 196).

@@ -183,8 +183,9 @@ pub struct ScreenAnnouncer {
     /// (or_move-learning, 2026-10-18).
     detail_panels: IndexMap<(i64, i64), IndexSet<Panel>>,
     polls: i64,
-    /// Words a cursor said lately -> the poll it said them at (`said_by_cursor`).
-    cursor_said: IndexMap<String, i64>,
+    /// Words a cursor said lately -> the poll it said them at and the cursor
+    /// (`said_by_cursor`).
+    cursor_said: IndexMap<String, (i64, i64)>,
     /// Words said lately -> (the poll they were said at, the root of the layout they came from).
     recent: IndexMap<String, (i64, i64)>,
     /// Layout root -> the poll its words came on screen at, for layouts with words on screen.
@@ -242,8 +243,8 @@ impl ScreenAnnouncer {
         self.cursor_said = self
             .cursor_said
             .iter()
-            .filter(|&(_words, &poll)| self.polls - poll <= CURSOR_HEARD_POLLS)
-            .map(|(words, &poll)| (words.clone(), poll))
+            .filter(|&(_words, &said)| self.polls - said.0 <= CURSOR_HEARD_POLLS)
+            .map(|(words, &said)| (words.clone(), said))
             .collect();
         self.cursor_said.contains_key(text)
     }
@@ -369,7 +370,12 @@ impl ScreenAnnouncer {
                 ));
             }
             let count = if held { text.clone() } else { String::new() };
-            let again = spoken.contains(&text);
+            // Or a poll apart, where one holds an item still being laid out (`MenuCursors`): the
+            // summary's battle page drew Hold Back a poll before its contest page
+            // (or_summary_moves).
+            let by = self.cursor_said.get(&text).copied();
+            let again = spoken.contains(&text)
+                || by.is_some_and(|by| by.1 != item.cursor && self.polls - by.0 <= 1);
             (self.log)(&format!(
                 "cursor {:#010x} {}: {text}{}{}  [layout {:#x}]",
                 item.cursor,
@@ -395,7 +401,8 @@ impl ScreenAnnouncer {
                 );
                 spoken.insert(text.clone());
             }
-            self.cursor_said.insert(text.clone(), self.polls);
+            self.cursor_said
+                .insert(text.clone(), (self.polls, item.cursor));
             cursored.extend(item.pieces.iter().map(|p| p.r#box));
             // Only a move brings up details. A cursor coming on screen comes with whatever else
             // the key changed: the bag's cursor came back with the pocket name, and "MEDICINE"

@@ -3024,6 +3024,30 @@ fn test_two_cursors_over_one_item_say_it_once() {
     assert_eq!(said, ["Hold Back"]);
 }
 
+/// A menu cursor holds an item still being laid out a poll, and the summary's battle page
+/// said Hold Back a poll after its contest page had (or_summary_moves).
+#[test]
+fn test_two_cursors_over_one_item_a_poll_apart_say_it_once() {
+    let mut screen = Screen::new();
+    let r#move = vec![piece(1, "Hold Back", -1.0, 100.0, MENU)];
+    assert_eq!(
+        screen.say(args(
+            &[],
+            vec![CursorItem::new(0x0D, r#move.clone(), true)],
+            &r#move
+        )),
+        ["Hold Back"]
+    );
+    assert_eq!(
+        screen.say(args(
+            &[],
+            vec![CursorItem::new(0x0C, r#move.clone(), false)],
+            &r#move
+        )),
+        Vec::<String>::new()
+    );
+}
+
 #[test]
 fn test_a_cursor_sliding_into_place_as_it_opens_is_said_once() {
     // The Bag's said "Pokéblock Kit" as it opened, and again 0.2 s later (movie30).

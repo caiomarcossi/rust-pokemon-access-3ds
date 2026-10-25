@@ -296,6 +296,25 @@ impl Panes {
         Ok(py::PySet::of([row]).union(&py::PySet::of(alike)))
     }
 
+    /// A row and the rows drawn like it anywhere in its panel, in one column: its class, at
+    /// its x and of its size, each under a pane of its own (`MenuCursors._rows`).
+    pub fn alike_in(&self, root: i64, row: i64, panel: i64) -> Result<py::PySet> {
+        let tree = self.layouts.tree(root);
+        let ((x, _y), (width, height)) = (self.place(row)?, self.size(row)?);
+        let mut alike: Vec<i64> = Vec::new();
+        for &pane in tree.keys() {
+            if class_of(&tree, pane) == class_of(&tree, row)
+                && self.below(pane, panel)?
+                && near(self.place(pane)?.0, x)
+                && near(self.size(pane)?.0, width)
+                && near(self.size(pane)?.1, height)
+            {
+                alike.push(pane);
+            }
+        }
+        Ok(py::PySet::of([row]).union(&py::PySet::of(alike)))
+    }
+
     /// Is this picture or window drawn with a texture its designer named a cursor? A pane
     /// that is neither has no texture in its layout's file, and is not. Without the file, as in
     /// Sun, a picture is a cursor by its place: a box's pointer.

@@ -113,7 +113,30 @@ impl MenuCursors {
                     .map(|piece| piece.r#box),
             );
             let at = place_of(&rect)?;
-            self.said.report(cursor, inside, items, at, false);
+            let said = self.said.said.borrow().get(&cursor).cloned();
+            let before: HashSet<i64> = match self.said.under.borrow().get(&cursor) {
+                Some(under) => under.iter().map(|p| p.r#box).collect(),
+                None => HashSet::new(),
+            };
+            let now: HashSet<i64> = inside.iter().map(|p| p.r#box).collect();
+            if let Some(said) = said
+                && said.1 == at
+                && now.difference(&before).next().is_some()
+                && now.intersection(&before).next().is_some()
+            {
+                // Words coming beside those under a cursor that has not moved are an item still
+                // being laid out: the fitting room writes the next colour into the card under its
+                // cursor and shows its price or "Wearing" a poll before it hides the other, and
+                // each move was said twice, "Two-Tone Bag black $2,900 Wearing" and then
+                // "Two-Tone Bag black Wearing" (x_cyllage_boutique_fitting_room). Held a poll
+                // otherwise, an item lost the details that changed with it: words rewritten in
+                // place, the Bag's next item with its description (or_dexnav_chain_linoone), a
+                // row slid under the cursor, and words only leaving, the AreaNav's leader card
+                // with its town's facilities (or_areanav_by_touch).
+                self.said.under.borrow_mut().insert(cursor, inside);
+            } else {
+                self.said.report(cursor, inside, items, at, false);
+            }
         }
         Ok(())
     }
@@ -131,6 +154,10 @@ impl MenuCursors {
             if panels.len() > 1 {
                 return Ok(panels);
             }
+            // The fitting room's list is a column of cards, each in a pane of its own, the
+            // cursor on the middle one and the next and the last peeking at the screen's edges:
+            // their names were said as each move's details (x_cyllage_boutique_fitting_room).
+            return self.panes.alike_in(piece.root, piece.parent, piece.panel);
         }
         Ok(alike)
     }
