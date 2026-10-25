@@ -1,4 +1,5 @@
-//! Updating pa3ds.exe from GitHub's latest release, on the player's say.
+//! Updating pa3ds.exe from GitHub's latest release, on the player's say: offered as pa3ds starts
+//! (`offer`), and whenever the player asks from pa3ds's window (`check`).
 //!
 //! The port's own, with no Python counterpart: pa3ds ships as this binary (upstream ADR-0033 as
 //! amended), and the player's files survive an update because they are in `user\` beside the exe
@@ -11,8 +12,8 @@ use std::process::Command;
 
 use regex::Regex;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    IDYES, MB_ICONQUESTION, MB_ICONWARNING, MB_OK, MB_SETFOREGROUND, MB_TOPMOST, MB_YESNO,
-    MessageBoxW,
+    IDYES, MB_ICONINFORMATION, MB_ICONQUESTION, MB_ICONWARNING, MB_OK, MB_SETFOREGROUND,
+    MB_TOPMOST, MB_YESNO, MessageBoxW,
 };
 
 // A test build points this at a local server.
@@ -70,7 +71,6 @@ pub fn offer(argv: &[String]) -> Option<i32> {
     let dir = exe.parent()?;
     let _ = fs::remove_file(dir.join("pa3ds.exe.old"));
 
-    let current = env!("CARGO_PKG_VERSION");
     let release = match latest() {
         Ok(release) => release,
         Err(error) => {
@@ -78,25 +78,7 @@ pub fn offer(argv: &[String]) -> Option<i32> {
             return None;
         }
     };
-    if !newer(current, &release.version) {
-        return None;
-    }
-    let question = format!(
-        "pa3ds {} is out. You have {current}.\n\nUpdate now? pa3ds downloads it, replaces \
-         itself and starts again. Everything in your user folder is kept.",
-        release.version
-    );
-    if message(&question, MB_YESNO | MB_ICONQUESTION) != IDYES {
-        return None;
-    }
-    if let Err(error) = update(&exe, dir, &release) {
-        message(
-            &format!(
-                "The update to pa3ds {} failed: {error}\n\npa3ds carries on as {current}.",
-                release.version
-            ),
-            MB_OK | MB_ICONWARNING,
-        );
+    if !newer(CURRENT, &release.version) || !install(&exe, dir, &release) {
         return None;
     }
     match Command::new(dir.join("pa3ds.exe")).args(argv).status() {
@@ -106,6 +88,90 @@ pub fn offer(argv: &[String]) -> Option<i32> {
             Some(1)
         }
     }
+}
+
+/// Checks for a newer release on the player's say, from pa3ds's window, and says what it found:
+/// that this is the latest, or the question `offer` asks. Once updated, the new pa3ds starts in a
+/// console of its own, where it is alone and opens its window, and replaces this one (upstream
+/// ADR-0039).
+pub fn check() {
+    if option_env!("PA3DS_RELEASE").is_none() {
+        message(
+            &format!("This pa3ds, {CURRENT}, is a test build, which does not update itself."),
+            MB_OK | MB_ICONINFORMATION,
+        );
+        return;
+    }
+    let Some((exe, dir)) = std::env::current_exe()
+        .ok()
+        .and_then(|exe| Some((exe.clone(), exe.parent()?.to_path_buf())))
+    else {
+        return;
+    };
+    let release = match latest() {
+        Ok(release) => release,
+        Err(error) => {
+            message(
+                &format!("pa3ds could not check for an update: {error}"),
+                MB_OK | MB_ICONWARNING,
+            );
+            return;
+        }
+    };
+    if !newer(CURRENT, &release.version) {
+        message(
+            &format!("You have the latest pa3ds, {CURRENT}."),
+            MB_OK | MB_ICONINFORMATION,
+        );
+        return;
+    }
+    if !install(&exe, &dir, &release) {
+        return;
+    }
+    let argv: Vec<String> = std::env::args().skip(1).collect();
+    #[cfg(windows)]
+    let started = {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NEW_CONSOLE: u32 = 0x10;
+        Command::new(dir.join("pa3ds.exe"))
+            .args(&argv)
+            .creation_flags(CREATE_NEW_CONSOLE)
+            .spawn()
+    };
+    #[cfg(not(windows))]
+    let started = Command::new(dir.join("pa3ds.exe")).args(&argv).spawn();
+    if let Err(error) = started {
+        message(
+            &format!("pa3ds is updated, but could not start again: {error}"),
+            MB_OK | MB_ICONWARNING,
+        );
+    }
+}
+
+const CURRENT: &str = env!("CARGO_PKG_VERSION");
+
+/// Asks the player whether to update to `release`, and updates if they say yes: whether pa3ds is
+/// now `release`'s. A failed update is said, and pa3ds carries on as it is.
+fn install(exe: &Path, dir: &Path, release: &Release) -> bool {
+    let question = format!(
+        "pa3ds {} is out. You have {CURRENT}.\n\nUpdate now? pa3ds downloads it, replaces \
+         itself and starts again. Everything in your user folder is kept.",
+        release.version
+    );
+    if message(&question, MB_YESNO | MB_ICONQUESTION) != IDYES {
+        return false;
+    }
+    if let Err(error) = update(exe, dir, release) {
+        message(
+            &format!(
+                "The update to pa3ds {} failed: {error}\n\npa3ds carries on as {CURRENT}.",
+                release.version
+            ),
+            MB_OK | MB_ICONWARNING,
+        );
+        return false;
+    }
+    true
 }
 
 fn latest() -> Result<Release, String> {

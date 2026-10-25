@@ -2,8 +2,8 @@
 
 use super::test_rename::read_template;
 use crate::ux::window::{
-    IDC_EXIT, IDC_INSTALLER, IDC_ISSUES, IDC_PORTABLE, INSTALLER, PORTABLE, WS_EX_APPWINDOW,
-    download, menus, template,
+    IDC_EXIT, IDC_INSTALLER, IDC_ISSUES, IDC_PORTABLE, IDC_UPDATES, INSTALLER, PORTABLE,
+    WS_EX_APPWINDOW, download, menus, template,
 };
 
 /// A window left in sight for OBS takes as little of the screen as a window can (Orion,
@@ -22,7 +22,10 @@ fn test_the_window_is_pa3dss_by_its_title_and_holds_nothing_but_its_menu_bar() {
     assert_eq!(
         menus(),
         vec![
-            ("&pa3ds".to_string(), owned(&[(IDC_EXIT, "E&xit")])),
+            (
+                "&pa3ds".to_string(),
+                owned(&[(IDC_UPDATES, "Check for &updates"), (IDC_EXIT, "E&xit")])
+            ),
             (
                 "&Azahar".to_string(),
                 owned(&[

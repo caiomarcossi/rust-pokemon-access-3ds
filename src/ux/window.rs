@@ -15,7 +15,8 @@
 //! **What it is.** A modeless dialog, the system's `#32770` as the rename box is, so a screen reader
 //! reads it as a dialog: its title and a menu bar, and no more, so a window left in sight for OBS
 //! takes as little of the screen as a window can (Orion, 2026-10-25). Alt opens the menus, as any
-//! program's: **pa3ds**, whose Exit ends pa3ds as Azahar closing does; **Azahar**, to download its
+//! program's: **pa3ds**, whose Check for updates offers the latest release (the port's own,
+//! `update::check`) and whose Exit ends pa3ds as Azahar closing does; **Azahar**, to download its
 //! latest zip or its installer (Orion), the browser straight at the file; and **Help**, to report
 //! an issue, the browser at the port's issues. Closing the window ends pa3ds too;
 //! Escape does nothing, so a stray press never ends it. It runs on a thread of its own with its own
@@ -51,9 +52,14 @@ pub const IDC_ISSUES: i64 = 201;
 pub const IDC_PORTABLE: i64 = 202;
 pub const IDC_INSTALLER: i64 = 203;
 pub const IDC_EXIT: i64 = 204;
+/// The port's own: the Python has no updater (`update::check`).
+pub const IDC_UPDATES: i64 = 205;
 /// The menu bar, in order: each menu's message, and its items' ids and messages.
 pub const MENUS: [(&str, &[(i64, &str)]); 3] = [
-    ("window-menu-pa3ds", &[(IDC_EXIT, "window-exit")]),
+    (
+        "window-menu-pa3ds",
+        &[(IDC_UPDATES, "window-updates"), (IDC_EXIT, "window-exit")],
+    ),
     (
         "window-menu-azahar",
         &[
@@ -266,6 +272,11 @@ mod win {
                 let _ = std::thread::Builder::new()
                     .name("azahar".to_string())
                     .spawn(move || browse(&azahar(name)));
+            } else if command == IDC_UPDATES {
+                // GitHub again, and message boxes the window's thread must not wait on.
+                let _ = std::thread::Builder::new()
+                    .name("update".to_string())
+                    .spawn(crate::update::check);
             } else if command == IDC_EXIT {
                 end(window);
             }

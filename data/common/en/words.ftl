@@ -250,6 +250,8 @@ dialog-cancel = Cancel
 # items. The letter after & is the one that opens it, underlined, with Alt on a menu.
 window-title = Pokémon Access 3DS
 window-menu-pa3ds = &pa3ds
+# The Rust port's alone, which updates itself; the Python has no updater.
+window-updates = Check for &updates
 window-exit = E&xit
 window-menu-azahar = &Azahar
 window-azahar-portable = Download Azahar (&portable)
