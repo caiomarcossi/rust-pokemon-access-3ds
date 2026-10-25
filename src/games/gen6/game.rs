@@ -25,6 +25,7 @@ use crate::games::common::layout::Layouts;
 use crate::games::common::layout_file::LayoutFiles;
 use crate::games::common::screen::ScreenText;
 use crate::games::gen6::apps::RunningApp;
+use crate::games::gen6::field::camera;
 use crate::games::gen6::field::features::{
     DoorReader, Feature, HiddenReader, IceReader, SecretBaseReader,
 };
@@ -326,6 +327,9 @@ pub struct Game {
     /// set while an app has the input (`buttons`): ORAS's +0x7C and +0x9C, X's +0x70 and +0x90
     /// (spike 228).
     pub field_menu: (i64, i64),
+    /// Where its field camera's block keeps where the camera looks (`camera.Shape`): ORAS's, or
+    /// X's (spikes 230 and 239).
+    pub camera: camera::Shape,
 }
 
 impl Game {
@@ -378,6 +382,7 @@ impl Game {
             amie: NUMBER,
             worded: IndexSet::new(),
             field_menu: MENU,
+            camera: camera::ORAS,
         }
     }
 }

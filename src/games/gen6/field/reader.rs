@@ -491,7 +491,12 @@ impl FieldReader {
             height: Slot::new(None),
             ways_of: RefCell::new((None, Vec::new(), Vec::new(), Vec::new(), Vec::new())),
             clock,
-            rails: Rails::new(memory.clone(), streets, text.street_records.clone()),
+            rails: Rails::new(
+                memory.clone(),
+                streets,
+                text.street_records.clone(),
+                game.camera,
+            ),
             belts: game.belts.clone(),
             outdoors: text.outdoors.clone(),
             drawn: game.drawn,

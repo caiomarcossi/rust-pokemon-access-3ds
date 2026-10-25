@@ -15,6 +15,7 @@ use indexmap::IndexMap;
 
 use crate::core::keyfile::data_path;
 use crate::games::common::field::ground::{CUT, ROCK_SMASH, STRENGTH};
+use crate::games::gen6::field::camera;
 use crate::games::gen6::field::footsteps::{RUN, Steps, WALK};
 use crate::games::gen6::game::{Data, FurnitureKind, Game, Rides};
 use crate::games::gen6::rom::layout::{RomLayout, TownFacilities, owned};
@@ -477,6 +478,7 @@ pub fn game() -> &'static Game {
         amie: AMIE,
         field_menu: FIELD_MENU,
         worded: WORDED.iter().map(|texture| texture.to_string()).collect(),
+        camera: camera::X,
         opening: Some(|memory, _language| Box::new(IntroReader::new(memory))),
         ..Game::new("X and Y", [X, Y], DATA, rom().clone(), DRAWN)
     })

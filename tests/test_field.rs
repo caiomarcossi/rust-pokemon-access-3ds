@@ -508,7 +508,16 @@ impl Town {
         Town::with(true, 5, 7)
     }
 
+    /// `Town(**game)`: the town read by a reader of `game`, with `DexNav` unless it hides its own.
+    pub(crate) fn of(game: Game) -> Self {
+        Town::with_game(true, 5, 7, game)
+    }
+
     pub(crate) fn with(chunks: bool, sections: i64, chunk_sections: i64) -> Self {
+        Town::with_game(chunks, sections, chunk_sections, game())
+    }
+
+    fn with_game(chunks: bool, sections: i64, chunk_sections: i64, chosen: Game) -> Self {
         let memory = FakeMemory::new();
         let classes = FakeClasses::new(memory.clone());
         let vtable = classes.add(MOVE_MODEL_CLASS);
@@ -582,8 +591,8 @@ impl Town {
             memory.clone(),
             Given::default(),
             Game {
-                hidden: Some(dex_nav),
-                ..game()
+                hidden: chosen.hidden.or(Some(dex_nav)),
+                ..chosen
             },
         );
         let _ = ClassNames::new(memory.clone(), CODE);
@@ -4492,7 +4501,10 @@ fn test_a_step_in_progress_is_in_the_cell_it_is_heading_for() -> Result<()> {
 fn test_on_the_rails_everything_is_in_the_corridor_and_its_walls_are_the_ground() -> Result<()> {
     use test_rail::{A, B, network};
 
-    let town = Town::new();
+    let town = Town::of(Game {
+        camera: camera::X,
+        ..game()
+    });
     network(&town.memory);
     let player = town.model(0, TOWN, mmodel::PLAYER_INDEX, 0xAC, (94, 172));
     town.memory.u32(player + mmodel::CELL_X, &[B]);
@@ -4582,7 +4594,10 @@ fn test_on_the_rails_up_walks_the_way_the_camera_looks_not_the_way_the_player_fa
 {
     use test_rail::{B, network};
 
-    let town = Town::new();
+    let town = Town::of(Game {
+        camera: camera::X,
+        ..game()
+    });
     network(&town.memory);
     let player = town.model(0, TOWN, mmodel::PLAYER_INDEX, 0xAC, (94, 172));
     town.memory.u32(player + mmodel::CELL_X, &[B]);
@@ -4596,24 +4611,9 @@ fn test_on_the_rails_up_walks_the_way_the_camera_looks_not_the_way_the_player_fa
         player + mmodel::LINE_SIN,
         &f32s(&[way.sin(), 0.0, way.cos()]),
     );
-    let (block, holder) = (0x08277140, 0x0827855C);
-    town.memory.u32(block, &[ALLOCATION, camera::BLOCK_SIZE]);
-    town.memory.u32(
-        holder,
-        &[FakeClasses::new(town.memory.clone()).add(camera::CLASS)],
-    );
-    town.memory.u32(holder + camera::BLOCK, &[block]);
-    let found = town.found();
-    let mut heap = found.heap.clone();
-    heap.insert(holder, camera::CLASS.to_string());
-    town.reader.track(&Found {
-        pages: found.pages.clone(),
-        heap,
-        partial: false,
-    })?;
+    let block = camera_of(&town, &camera::X)?;
     for (yaw, heading, bearing) in [(127.0f64, "north", 357), (-146.0, "west", 270)] {
-        town.memory
-            .write(block + camera::YAW, &f32s(&[yaw.to_radians()]));
+        town.memory.write(block + X_YAW, &f32s(&[yaw.to_radians()]));
         let r#where = town.reader.poll()?.expect("a field");
         assert_eq!(r#where.heading, Some(heading));
         assert_eq!(py::round(r#where.bearing.unwrap_or(0.0))?, bearing);
@@ -4621,15 +4621,15 @@ fn test_on_the_rails_up_walks_the_way_the_camera_looks_not_the_way_the_player_fa
     Ok(())
 }
 
-/// Spike 230: Parfum Palace's garden, where the camera looks west, a little south, and up
-/// walked Khai west; it swings round to north as he walks up the garden, past the edge of a
-/// quarter only (`pad.HYSTERESIS`).
-#[test]
-fn test_off_the_rails_up_walks_the_way_the_camera_looks() -> Result<()> {
-    let town = Town::new();
-    town.model(0, TOWN, mmodel::PLAYER_INDEX, 0xAC, (94, 172));
+const X_YAW: i64 = match camera::X.yaw {
+    Some(yaw) => yaw,
+    None => 0,
+};
+
+/// A camera block of `shape`'s game, found by the town's reader through a camera object.
+fn camera_of(town: &Town, shape: &camera::Shape) -> Result<i64> {
     let (block, holder) = (0x08277140, 0x0827855C);
-    town.memory.u32(block, &[ALLOCATION, camera::BLOCK_SIZE]);
+    town.memory.u32(block, &[ALLOCATION, shape.size]);
     town.memory.u32(
         holder,
         &[FakeClasses::new(town.memory.clone()).add(camera::CLASS)],
@@ -4643,10 +4643,24 @@ fn test_off_the_rails_up_walks_the_way_the_camera_looks() -> Result<()> {
         heap,
         partial: false,
     })?;
+    Ok(block)
+}
+
+/// Spike 230: Parfum Palace's garden, where the camera looks west, a little south, and up
+/// walked Khai west; it swings round to north as he walks up the garden, past the edge of a
+/// quarter only (`pad.HYSTERESIS`).
+#[test]
+fn test_off_the_rails_up_walks_the_way_the_camera_looks() -> Result<()> {
+    let town = Town::of(Game {
+        camera: camera::X,
+        ..game()
+    });
+    town.model(0, TOWN, mmodel::PLAYER_INDEX, 0xAC, (94, 172));
+    let block = camera_of(&town, &camera::X)?;
     let mut turn = 0;
     for (looks, quarter) in [(-70.0f64, 3), (-130.0, 3), (-166.8, 0), (180.0, 0)] {
         town.memory
-            .write(block + camera::LOOKS, &f32s(&[looks.to_radians()]));
+            .write(block + camera::X.looks, &f32s(&[looks.to_radians()]));
         turn = town.reader.turn(turn)?;
         assert_eq!(turn, quarter, "{looks}");
     }
@@ -4655,31 +4669,45 @@ fn test_off_the_rails_up_walks_the_way_the_camera_looks() -> Result<()> {
     Ok(())
 }
 
+/// The Battle Resort's beach: Omega Ruby's camera looks east there, and its block is 16 bytes
+/// smaller than X's, so it was never found; P said "5 north" and up walked the player east,
+/// into a hut's counter (or_battle_resort_pathfinding_glitch). ORAS keeps no heading behind the
+/// player, so nothing is said from one.
+#[test]
+fn test_oras_camera_turns_the_compass_too() -> Result<()> {
+    let town = Town::new();
+    town.model(0, TOWN, mmodel::PLAYER_INDEX, 0xAC, (94, 172));
+    let block = camera_of(&town, &camera::ORAS)?;
+    town.memory.write(
+        block + camera::ORAS.looks,
+        &f32s(&[std::f64::consts::PI / 2.0]),
+    );
+    town.memory.write(block + X_YAW, &f32s(&[1.0]));
+    assert_eq!(town.reader.turn(0)?, 1);
+    let r#where = town.reader.poll()?.expect("a poll");
+    assert!(r#where.heading.is_none() && !r#where.turning);
+    town.memory
+        .write(block + camera::ORAS.looks, &f32s(&[-std::f64::consts::PI]));
+    assert_eq!(town.reader.turn(1)?, 0);
+    town.memory.u32(block, &[ALLOCATION, camera::X.size]);
+    assert_eq!(town.reader.turn(1)?, 1);
+    Ok(())
+}
+
 /// Spike 239: in Glittering Cave `LOOKS` reads 0, which was taken for south, so P said "22
 /// south" for 22 north, and `YAW`, the heading on a rail, holds where the camera looks: north,
 /// 7.7 degrees west. The ways are said from that heading, and the compass is not turned.
 #[test]
 fn test_under_a_camera_behind_the_player_off_the_rails_the_ways_are_said_from_it() -> Result<()> {
-    let town = Town::new();
+    let town = Town::of(Game {
+        camera: camera::X,
+        ..game()
+    });
     town.model(0, TOWN, mmodel::PLAYER_INDEX, 0xAC, (94, 172));
-    let (block, holder) = (0x08277140, 0x0827855C);
-    town.memory.u32(block, &[ALLOCATION, camera::BLOCK_SIZE]);
-    town.memory.u32(
-        holder,
-        &[FakeClasses::new(town.memory.clone()).add(camera::CLASS)],
-    );
-    town.memory.u32(holder + camera::BLOCK, &[block]);
-    let found = town.found();
-    let mut heap = found.heap.clone();
-    heap.insert(holder, camera::CLASS.to_string());
-    town.reader.track(&Found {
-        pages: found.pages.clone(),
-        heap,
-        partial: false,
-    })?;
+    let block = camera_of(&town, &camera::X)?;
     town.memory
-        .write(block + camera::YAW, &f32s(&[(-172.3f64).to_radians()]));
-    town.memory.write(block + camera::LOOKS, &f32s(&[0.0]));
+        .write(block + X_YAW, &f32s(&[(-172.3f64).to_radians()]));
+    town.memory.write(block + camera::X.looks, &f32s(&[0.0]));
     let r#where = town.reader.poll()?;
     let r#where = r#where.expect("a poll");
     assert!(r#where.heading == Some("north") && r#where.turning);
@@ -4890,7 +4918,10 @@ fn test_the_corridor_stays_laid_out_from_one_line_as_the_player_walks_onto_the_n
 {
     use test_rail::{A, B, network};
 
-    let town = Town::new();
+    let town = Town::of(Game {
+        camera: camera::X,
+        ..game()
+    });
     network(&town.memory);
     let player = town.model(0, TOWN, mmodel::PLAYER_INDEX, 0xAC, (94, 172));
     town.memory.u32(player + mmodel::CELL_X, &[B]);
