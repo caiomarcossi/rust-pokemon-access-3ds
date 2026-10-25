@@ -50,7 +50,8 @@ pub const CLIMB: &str = "climb";
 
 /// What a leg down a climbing wall's slide is said with, "slide 5 south": in Cyllage Gym the player
 /// stepped onto one's top and was carried down it (x_gym_2_slide, spike 245). Never said as a current
-/// (`CURRENT`). The game names no such thing.
+/// (`CURRENT`). So is a leg onto, over or off Shoal Cave's ice, "slide 11 west", which the player
+/// slides along once on it (`Ground.slide`, spike A). The game names no such thing.
 pub const SLIDE: &str = "slide";
 
 /// A leg with handholds climbed in place before it, at its first cell, and after it, at the
@@ -1232,7 +1233,10 @@ impl Guide {
             if pushed.contains(&(cell, step)) {
                 return Ok(PUSH.to_string());
             }
-            if ground.walls.slides.get(&cell) == Some(&pathfind::towards(cell, step)) {
+            if ground.walls.slides.get(&cell) == Some(&pathfind::towards(cell, step))
+                || ground.slide(cell)?
+                || ground.slide(step)?
+            {
                 return Ok(SLIDE.to_string());
             }
             if ground.carry(cell)? == Some(pathfind::towards(cell, step)) {
@@ -1703,6 +1707,18 @@ impl Guide {
         if ground.drift(r#where.cell)?.len() > 1 {
             // A current is carrying the player where they cannot turn, and the way is found
             // where it leaves them: on Route 133 a new way was said at every cell of 63 (movie43).
+            return Ok(());
+        }
+        let ahead = pathfind::STEPS
+            .iter()
+            .find(|(way, _)| *way == heading)
+            .map(|&(_, step)| step);
+        if let Some(ahead) = ahead
+            && ground.slide(r#where.cell)?
+            && ground.passable((r#where.cell.0 + ahead.0, r#where.cell.1 + ahead.1))?
+        {
+            // Sliding on ice, the player cannot turn either: in Shoal Cave's ice room the way was
+            // found again at each cell of a slide, counting up "4 west" to "14 west" (spike A).
             return Ok(());
         }
         let Some(item) = self.find(&listed, &guidance.borrow()) else {

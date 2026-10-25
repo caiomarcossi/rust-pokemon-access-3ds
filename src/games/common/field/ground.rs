@@ -1123,6 +1123,20 @@ impl Ground {
         }
     }
 
+    /// Whether the cell is ice, which a player on foot slides over: the search's `slide`
+    /// (`ICE`).
+    pub fn slide(&self, cell: Cell) -> Result<bool> {
+        let chunk = if self.corridor.is_some() {
+            None
+        } else {
+            self.chunk(cell)?
+        };
+        match chunk {
+            Some(chunk) => chunk.ice(cell),
+            None => Ok(false),
+        }
+    }
+
     /// Where a current carries a player on `cell`, a cell at a time, to the first cell it
     /// does not carry them on from, `cell` first: `cell` alone off a current, and where the
     /// way it carries is shut. Stops if the currents go round in a ring.
@@ -1523,6 +1537,7 @@ impl Ground {
         };
         let carry = |cell: Cell| self.carry(cell);
         let slants = |cell: Cell, step: Cell| self.slants(cell, step);
+        let slide = |cell: Cell| self.slide(cell);
         pathfind::find(
             start,
             goals,
@@ -1540,6 +1555,7 @@ impl Ground {
                 arrives: if at.is_some() { Some(&arrives) } else { None },
                 carry: Some(&carry),
                 slants: Some(&slants),
+                slide: Some(&slide),
             },
         )
     }
@@ -1575,6 +1591,7 @@ impl Ground {
         let through = |turns: &[i64], cell: Cell, step: Cell| walk.through(turns, cell, step);
         let carry = |cell: Cell| ground.carry(cell);
         let slants = |cell: Cell, step: Cell| self.slants(cell, step);
+        let slide = |cell: Cell| ground.slide(cell);
         let states = pathfind::reached(
             start,
             &|cell: Cell| self.passable(cell),
@@ -1588,6 +1605,7 @@ impl Ground {
                 turns: walk.turns.clone(),
                 through: if walk.active { Some(&through) } else { None },
                 slants: Some(&slants),
+                slide: Some(&slide),
             },
         )?;
         Ok(states
@@ -1619,12 +1637,12 @@ impl Ground {
     }
 
     /// What a search from `start` is given to walk the sea's currents, which carry the player
-    /// their own way; on a ground a ridden Pokémon crosses, whether the player is riding, the
-    /// first of the turns, 1 riding (`ride`); on a ground with climbing walls, what the player
-    /// may be doing on a face's line, on foot, on the wall or either, after it (`Walls.hold`);
-    /// through the ground's rotating doors, where they stand now and what each step does to
-    /// them; and on a stacked ground the floor each step is on, the player's first, the last of
-    /// the turns.
+    /// their own way, and Shoal Cave's ice, which they slide over their own (`slide`); on a
+    /// ground a ridden Pokémon crosses, whether the player is riding, the first of the turns, 1
+    /// riding (`ride`); on a ground with climbing walls, what the player may be doing on a face's
+    /// line, on foot, on the wall or either, after it (`Walls.hold`); through the ground's
+    /// rotating doors, where they stand now and what each step does to them; and on a stacked
+    /// ground the floor each step is on, the player's first, the last of the turns.
     fn walk(&self, start: Cell) -> Result<Walk<'_>> {
         let (ride, walled) = (!self.rides.is_empty(), !self.walls.lines.is_empty());
         if self.doors.is_empty() && !self.stacked && !ride && !walled {

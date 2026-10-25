@@ -86,6 +86,10 @@ steps past the corner of a wall. Where that would stop you, `P` first says which
 `P` and `Shift+P` ride a current as one step of the way, and find the way again if one carries
 you off it.
 
+**Ice.** In Shoal Cave at low tide you slide across the ice until a wall or the floor stops you.
+`P` says each slide as one step of the way, "slide 4 north": step that way once and let it carry
+you.
+
 **Jumping stones.** In Pokémon X, `P` crosses a mud pit by its stones: each press of the way hops
 you two squares, onto the next stone.
 

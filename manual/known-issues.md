@@ -33,6 +33,8 @@ What pa3ds gets wrong or leaves out for now. To report one that is not here, see
   paused.
 - **A Pokémon met in seaweed under water** is said as one met walking, and as met in grass in the
   Pokédex, because the game itself shows it that way.
+- **Shoal Cave's ice** has been tried in Omega Ruby only, and `P`'s way across it has not been
+  heard in play yet.
 
 ## X and Y
 

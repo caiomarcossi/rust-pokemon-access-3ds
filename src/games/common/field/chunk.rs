@@ -135,6 +135,15 @@ pub const SLOPES: [(i64, &str); 4] = [(0x69, EAST), (0x6A, WEST), (0x6B, NORTH),
 /// no `0x94`, so east rests on the numbering.
 pub const CURRENTS: [(i64, &str); 4] = [(0x94, EAST), (0x95, WEST), (0x96, NORTH), (0x97, SOUTH)];
 
+/// The kind of Shoal Cave's ice, open: a player stepping onto it slides on the way they stepped, a
+/// cell at a time as fast as a walk, until the cell ahead is a wall, where they stop on the ice and
+/// step off it any way, or until they slide onto ground that is not ice, where they stop. In the
+/// low tide's ice room, zone `0x86`, they slid west from (28, 50) over (26, 50) to (18, 50) and
+/// stopped on the floor at (17, 50), and west from (16, 50) to (13, 50), against the rock, and
+/// turned back east (or_shoal_cave_ice_cavern, spike A). Only that zone has it, 534 cells; X has
+/// none.
+pub const ICE: i64 = 0x91;
+
 /// A bumpy slope's kind, the rocky step only the Acro Bike's bunny hop gets up: walled to the
 /// player, and in Jagged Pass each one stands in a row of ledges dropping south, where a ledge
 /// would be, five of them up a column at x 50 from z 86 to 73, or alone across a narrow way, as at
@@ -249,6 +258,11 @@ impl Chunk {
     /// Which way the cell carries a player surfing on it where it is a current, or None.
     pub fn current(&self, cell: (i64, i64)) -> Result<Option<&'static str>> {
         Ok(way_of(&CURRENTS, self.kind(cell)?))
+    }
+
+    /// Whether the cell is ice, which the player slides on (`ICE`).
+    pub fn ice(&self, cell: (i64, i64)) -> Result<bool> {
+        Ok(self.kind(cell)? == ICE)
     }
 
     pub fn kind(&self, cell: (i64, i64)) -> Result<i64> {

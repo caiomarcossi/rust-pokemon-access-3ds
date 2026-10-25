@@ -223,6 +223,17 @@ pub struct Options<'a> {
     pub arrives: Option<&'a dyn Fn(Cell, &[i64]) -> Result<bool>>,
     pub carry: Option<&'a dyn Fn(Cell) -> Result<Option<&'static str>>>,
     pub slants: Option<&'a dyn Fn(Cell, Cell) -> Result<bool>>,
+    pub slide: Option<&'a dyn Fn(Cell) -> Result<bool>>,
+}
+
+/// The way of the compass `going` is, as `STEPS` holds it, or "" where it is none: a diagonal,
+/// or no way at all.
+fn compass_way(going: &str) -> &'static str {
+    STEPS
+        .iter()
+        .find(|(way, _)| *way == going)
+        .map(|&(way, _)| way)
+        .unwrap_or("")
 }
 
 /// What `functools.cache` makes of a callable: asked once for each argument. A call that raises
@@ -288,10 +299,13 @@ impl Ord for Entry<'_> {
 /// shore Surf jumps the player over, getting on the water and off it. `carry` says which way a
 /// cell carries the player, a current: entered any way, and left only that way, a cell at a time,
 /// unless the cell that way cannot be walked. The player does not turn there, so the turns it
-/// makes cost nothing. `slants` says whether a step between two cells that touch only at a
-/// corner can be taken, where both can be walked: Santalune Gym's floor is a web whose strands
-/// run so, the cells beside them walls (`DIAGONALS`). A diagonal step costs a step, is a turn
-/// like any change of way, and is never taken off a current.
+/// makes cost nothing. `slide` says which cells are ice: entered any way, and left only the way
+/// the player came in, unless the cell that way cannot be walked, where they stop and step off
+/// any way; a goal is reached only where a slide stops. `slants` says whether a step between
+/// two cells that touch only at a corner can be taken, where both can be walked: Santalune
+/// Gym's floor is a web whose strands run so, the cells beside them walls (`DIAGONALS`). A
+/// diagonal step costs a step, is a turn like any change of way, and is never taken off a
+/// current.
 ///
 /// `toll` is what a move from one cell to the next costs on top of its steps and turns, and
 /// `joined` whether a step between two cells side by side can be taken at all: one off a
@@ -327,6 +341,7 @@ pub fn find(
         arrives,
         carry,
         slants,
+        slide,
     } = options;
     if goals.is_empty() {
         return Ok(None);
@@ -342,6 +357,7 @@ pub fn find(
     let joined_cache: Cached<(Cell, Cell), bool> = Cached::new();
     let carry_cache: Cached<Cell, Option<&'static str>> = Cached::new();
     let slants_cache: Cached<(Cell, Cell), bool> = Cached::new();
+    let slide_cache: Cached<Cell, bool> = Cached::new();
     let down = |cell: Cell| {
         down_cache.get(cell, || match ledge {
             Some(ledge) => ledge(cell),
@@ -375,6 +391,12 @@ pub fn find(
     let slants = |cell: Cell, step: Cell| {
         slants_cache.get((cell, step), || match slants {
             Some(slants) => slants(cell, step),
+            None => Ok(false),
+        })
+    };
+    let slide = |cell: Cell| {
+        slide_cache.get(cell, || match slide {
+            Some(slide) => slide(cell),
             None => Ok(false),
         })
     };
@@ -425,29 +447,42 @@ pub fn find(
         done.insert(state.clone());
         let (cell, going, turned) = (state.0, state.1, &state.2);
         let cost = spent[&state];
-        // `min` keeps the first of equals, so a later state replaces it only by being less,
-        // and between equal estimates and costs the states themselves are compared, as tuples.
-        let candidate = (!arrives(cell, turned)?, estimate(cell), cost, state.clone());
-        if candidate < nearest {
-            nearest = candidate;
-        }
-        if let Some(&face) = goals.get(&cell)
-            && arrives(cell, turned)?
-        {
-            let arrived = cost
-                + if face.is_some_and(|way| way != going) {
-                    FACE
-                } else {
-                    0
-                };
-            if arrived < spent.get(&ARRIVED).copied().unwrap_or(arrived + 1) {
-                spent.insert(ARRIVED, arrived);
-                came.insert(ARRIVED, state.clone());
-                frontier.push(Entry {
-                    key: (arrived, 0, order),
-                    state: ARRIVED,
-                });
-                order += 1;
+        let way = compass_way(going);
+        let sliding = if !way.is_empty() && slide(cell)? {
+            way
+        } else {
+            ""
+        };
+        // A player sliding on ice is past a cell before they can stop on it.
+        let stops = sliding.is_empty() || {
+            let (dx, dz) = step_of(sliding)?;
+            !can_walk((cell.0 + dx, cell.1 + dz))?
+        };
+        if stops {
+            // `min` keeps the first of equals, so a later state replaces it only by being less,
+            // and between equal estimates and costs the states themselves are compared, as tuples.
+            let candidate = (!arrives(cell, turned)?, estimate(cell), cost, state.clone());
+            if candidate < nearest {
+                nearest = candidate;
+            }
+            if let Some(&face) = goals.get(&cell)
+                && arrives(cell, turned)?
+            {
+                let arrived = cost
+                    + if face.is_some_and(|way| way != going) {
+                        FACE
+                    } else {
+                        0
+                    };
+                if arrived < spent.get(&ARRIVED).copied().unwrap_or(arrived + 1) {
+                    spent.insert(ARRIVED, arrived);
+                    came.insert(ARRIVED, state.clone());
+                    frontier.push(Entry {
+                        key: (arrived, 0, order),
+                        state: ARRIVED,
+                    });
+                    order += 1;
+                }
             }
         }
         let carried = carry(cell)?;
@@ -462,6 +497,7 @@ pub fn find(
             &carry,
             *through,
             &slants,
+            sliding,
             &mut |direction, step, steps, after| {
                 let onward: State = (step, direction, after);
                 // Python's `going != direction != carried`: both inequalities, chained.
@@ -495,9 +531,10 @@ pub fn find(
 
 /// Each move from `cell` as `find` takes them: its way, where it lands, and how many cells
 /// on, two for a jump over a ledge or the shore. On a current, the one cell it carries the
-/// player to, where that can be walked. After the four straight moves, each diagonal one
-/// `slants` allows. Handed to `each` one at a time, as Python's generator yields them, so a move
-/// is taken before the next is tried.
+/// player to, where that can be walked, and on ice the player is `sliding` on, the one cell on
+/// that way, where it can be walked. After the four straight moves, each diagonal one `slants`
+/// allows. Handed to `each` one at a time, as Python's generator yields them, so a move is taken
+/// before the next is tried.
 #[allow(clippy::too_many_arguments)]
 fn moves(
     cell: Cell,
@@ -508,9 +545,16 @@ fn moves(
     joined: &dyn Fn(Cell, Cell) -> Result<bool>,
     carry: &dyn Fn(Cell) -> Result<Option<&'static str>>,
     slants: &dyn Fn(Cell, Cell) -> Result<bool>,
+    sliding: &'static str,
     each: &mut dyn FnMut(&'static str, Cell, i64) -> Result<()>,
 ) -> Result<()> {
-    if let Some(carried) = carry(cell)? {
+    // Python's `carry(cell) or sliding or None`.
+    let carried = match carry(cell)? {
+        Some(way) => Some(way),
+        None if !sliding.is_empty() => Some(sliding),
+        None => None,
+    };
+    if let Some(carried) = carried {
         let (dx, dz) = step_of(carried)?;
         let ahead = (cell.0 + dx, cell.1 + dz);
         if can_walk(ahead)? {
@@ -559,6 +603,7 @@ fn onward(
     carry: &dyn Fn(Cell) -> Result<Option<&'static str>>,
     through: Option<&dyn Fn(&[i64], Cell, Cell) -> Result<Option<Turns>>>,
     slants: &dyn Fn(Cell, Cell) -> Result<bool>,
+    sliding: &'static str,
     each: &mut dyn FnMut(&'static str, Cell, i64, Turns) -> Result<()>,
 ) -> Result<()> {
     moves(
@@ -570,6 +615,7 @@ fn onward(
         joined,
         carry,
         slants,
+        sliding,
         &mut |direction, step, steps| {
             let after = match through {
                 Some(through) if steps != 2 => through(turned, cell, step)?,
@@ -594,13 +640,15 @@ pub struct Reach<'a> {
     pub turns: Turns,
     pub through: Option<&'a dyn Fn(&[i64], Cell, Cell) -> Result<Option<Turns>>>,
     pub slants: Option<&'a dyn Fn(Cell, Cell) -> Result<bool>>,
+    pub slide: Option<&'a dyn Fn(Cell) -> Result<bool>>,
 }
 
 /// Every cell inside `box` a way from `start` can end on, by `find`'s moves, with each state
 /// of `turns` it can be reached in (`through`, as `find` has them): a cell that can be walked, or
 /// one of `ends`, which a way may step into and not on from, as `find` steps into a goal it would
 /// walk round on the way to anything else. What `find` would reach from `start`, found once for
-/// every goal at a time.
+/// every goal at a time. On ice (`slide`), the way the player slides is part of where they are,
+/// and a way ends only where a slide stops, as `find`'s does.
 pub fn reached(
     start: Cell,
     walkable: &dyn Fn(Cell) -> Result<bool>,
@@ -612,6 +660,7 @@ pub fn reached(
     let walked_cache: Cached<Cell, bool> = Cached::new();
     let carry_cache: Cached<Cell, Option<&'static str>> = Cached::new();
     let slants_cache: Cached<(Cell, Cell), bool> = Cached::new();
+    let slide_cache: Cached<Cell, bool> = Cached::new();
     let down = |cell: Cell| {
         down_cache.get(cell, || match options.ledge {
             Some(ledge) => ledge(cell),
@@ -627,6 +676,12 @@ pub fn reached(
     let slants = |cell: Cell, step: Cell| {
         slants_cache.get((cell, step), || match options.slants {
             Some(slants) => slants(cell, step),
+            None => Ok(false),
+        })
+    };
+    let slide = |cell: Cell| {
+        slide_cache.get(cell, || match options.slide {
+            Some(slide) => slide(cell),
             None => Ok(false),
         })
     };
@@ -651,10 +706,12 @@ pub fn reached(
     };
     let mut out: IndexMap<Cell, HashSet<Turns>> =
         IndexMap::from([(start, HashSet::from([options.turns.clone()]))]);
-    let mut todo: Vec<(Cell, Turns)> = vec![(start, options.turns.clone())];
+    let mut seen: HashSet<(Cell, Turns, &'static str)> =
+        HashSet::from([(start, options.turns.clone(), "")]);
+    let mut todo: Vec<(Cell, Turns, &'static str)> = vec![(start, options.turns.clone(), "")];
     let mut at = 0;
     while at < todo.len() {
-        let (cell, turned) = todo[at].clone();
+        let (cell, turned, sliding) = todo[at].clone();
         at += 1;
         if cell != start && !walk(cell)? {
             continue;
@@ -670,9 +727,27 @@ pub fn reached(
             &carry,
             options.through,
             &slants,
-            &mut |_, step, _, after| {
-                if out.entry(step).or_default().insert(after.clone()) {
-                    todo.push((step, after));
+            sliding,
+            &mut |direction, step, _, after| {
+                let way = compass_way(direction);
+                let on = if !way.is_empty() && slide(step)? {
+                    way
+                } else {
+                    ""
+                };
+                let state = (step, after.clone(), on);
+                if seen.contains(&state) {
+                    return Ok(());
+                }
+                seen.insert(state.clone());
+                todo.push(state);
+                // A cell slid over is no end: the player is past it before they can stop.
+                let ends = on.is_empty() || {
+                    let (dx, dz) = step_of(on)?;
+                    !can_walk((step.0 + dx, step.1 + dz))?
+                };
+                if ends {
+                    out.entry(step).or_default().insert(after);
                 }
                 Ok(())
             },
