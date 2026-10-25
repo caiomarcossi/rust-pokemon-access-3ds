@@ -434,7 +434,7 @@ pub fn climbing() -> Climbing {
 /// are beaten, never seen. X has 0x8b and 0x8c on Route 5, Route 13, Route 18, Dendemille Town and
 /// Couriway Town too, never seen; Route 5's rail over the water, (695..707, 455), is broken in the
 /// middle by (701, 455), `0x90000021`, blocked, and is no rail: 0x90 is in one other cell of X's,
-/// mid-rail on Route 13 (spike A).
+/// mid-rail on Route 13 (spike 247).
 pub const GRINDING: Grinding = Grinding {
     rail: 0x8C,
     end: 0x8B,
@@ -443,7 +443,7 @@ pub const GRINDING: Grinding = Grinding {
 pub const SHALOUR_GYM: i64 = 0xAF;
 /// The script of Shalour Gym's two triggers at the centre's edges, (35, 38) and (45, 38), each 1
 /// wide and 5 deep, work 0x40f7: where Korrina's scene starts, her model, sprite 0x11, loaded only
-/// then (spike A).
+/// then (spike 247).
 pub const KORRINA: i64 = 0x7;
 
 pub const SANTALUNE_LOBBY: i64 = 0x37;

@@ -483,7 +483,7 @@ pub struct Ground {
     pub walls: Rc<Walls>,
     /// The grind rails: open though blocked, got onto only from an end cell in line, and ridden
     /// end to end with no other step, diagonally where a rail bends (`slants`; `grind.GrindRails`,
-    /// spike A).
+    /// spike 247).
     ///
     /// An `Rc`, as `walls` is.
     pub grind_rails: Rc<GrindRails>,
@@ -1661,7 +1661,7 @@ impl Ground {
     /// line, on foot, on the wall or either, after it (`Walls.hold`); on a ground with grind
     /// rails, the ride the player is on, or none, after that (`GrindRails.hold`), and a way never
     /// ends on a ride, which carries the player on to the rail's end (`stops`): P to Shalour
-    /// Gym's centre, its gate shut, said "grind the rail 5 west, then can't continue" (spike A);
+    /// Gym's centre, its gate shut, said "grind the rail 5 west, then can't continue" (spike 247);
     /// through the ground's rotating doors, where they stand now and what each step does to
     /// them; and on a stacked ground the floor each step is on, the player's first, the last of
     /// the turns.

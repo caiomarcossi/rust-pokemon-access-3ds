@@ -332,7 +332,7 @@ pub struct Game {
     /// (spike 245).
     pub climbing: Option<Climbing>,
     /// The rails it lets the player grind along on roller skates, or None in a game with none:
-    /// X's Shalour City Gym (spike A).
+    /// X's Shalour City Gym (spike 247).
     pub grinding: Option<Grinding>,
     /// Whether a row of models drawn as nothing, two or more with one script that no drawn record
     /// of their zone has, is an invisible gate: not listed, and in the way. X's Santalune Gym has

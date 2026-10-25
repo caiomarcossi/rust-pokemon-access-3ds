@@ -496,7 +496,7 @@ impl Terrain {
     /// of each, found once a matrix; none without the ROM. Only chunks with a `grinding.rail`
     /// cell on a floor are read, and the chunks round them for the cells past a rail's ends:
     /// Shalour Gym's way out is on its floor 1, and on Route 5 a rail runs on into file 57,
-    /// which holds 21 of its cells and no end (spike A).
+    /// which holds 21 of its cells and no end (spike 247).
     pub fn grind_rails(&self, grinding: &Grinding) -> Result<Rc<GrindRails>> {
         let (wide, files) = {
             let held = self.files.borrow();

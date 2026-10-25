@@ -322,7 +322,7 @@ impl Ord for Entry<'_> {
 /// says whether the player can stop on a cell at all, every one where it is None: one a grind
 /// rail is carrying them along cannot, and no way ends there, at a goal or short of one. With
 /// Shalour Gym's centre shut, P to the gym leader's spot said "grind the rail 5 west, then can't
-/// continue", the cell 5 along a rail of 14 being the nearest the centre (spike A).
+/// continue", the cell 5 along a rail of 14 being the nearest the centre (spike 247).
 ///
 /// A* over (cell, heading), since a turn has a price and the same cell entered two ways is two
 /// different places to go on from. The estimate is the distance to the goals' box, which never
@@ -657,7 +657,7 @@ pub struct Reach<'a> {
 /// walk round on the way to anything else. What `find` would reach from `start`, found once for
 /// every goal at a time. On ice (`slide`), the way the player slides is part of where they are,
 /// and a way ends only where a slide stops, as `find`'s does; nor where `stops` says the player
-/// cannot, along a grind rail, though a thing beside one has a goal on its cell (spike A).
+/// cannot, along a grind rail, though a thing beside one has a goal on its cell (spike 247).
 pub fn reached(
     start: Cell,
     walkable: &dyn Fn(Cell) -> Result<bool>,

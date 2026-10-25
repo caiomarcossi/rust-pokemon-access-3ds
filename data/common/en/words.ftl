@@ -163,7 +163,7 @@ p-climb-down = climb { $holds } down
 # "slide 5 south" (spike 245).
 how-slide = slide
 # A leg along a grind rail, skated onto from the end cell before it, and a run of them, by
-# where it lands the player: "3 east, grind the rail 17 east" (spike A).
+# where it lands the player: "3 east, grind the rail 17 east" (spike 247).
 how-grind-the-rail = grind the rail
 p-grind = grind the rail { $bearing }
 # The way chosen to push a big boulder, before the way to its side: "to push east: 3 west".
@@ -386,7 +386,7 @@ kind-flat-ground = flat ground
 # the climber steps off it: the Gym's guide says "those blue spots" (spike 245).
 kind-blue-spot = blue spot
 kind-wall-ledge = wall ledge
-# Where Shalour Gym's leader comes out to meet the player, at the centre's edges (spike A).
+# Where Shalour Gym's leader comes out to meet the player, at the centre's edges (spike 247).
 kind-gym-leader-spot = gym leader's spot
 kind-slope = slope
 kind-bumpy-slope = bumpy slope

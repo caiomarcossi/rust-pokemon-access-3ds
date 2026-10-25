@@ -3612,7 +3612,7 @@ fn test_a_slide_is_found_where_the_cells_past_its_top_fall_to_a_lower_landing() 
     Ok(())
 }
 
-/// Spike A: Shalour Gym's way out is a rail on its floor 1, skated onto from an end cell on
+/// Spike 247: Shalour Gym's way out is a rail on its floor 1, skated onto from an end cell on
 /// floor 0 by the centre, landing on the floor by the entrance, which is no end cell: ridden that
 /// one way. On Route 5 a rail over the water is broken in the middle by `0x90`, blocked, and
 /// neither half of it lands anywhere.

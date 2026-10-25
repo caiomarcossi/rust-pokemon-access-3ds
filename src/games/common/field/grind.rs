@@ -1,5 +1,5 @@
 //! Grind rails: X's rails the player skates onto on roller skates and is carried along, end to
-//! end, as in Shalour City Gym (spike A).
+//! end, as in Shalour City Gym (spike 247).
 //!
 //! Bound by:
 //! - ADR-0006: nothing here names a game's kinds; `gen6.game.Grinding` carries them.
@@ -88,7 +88,7 @@ impl GrindRails {
     /// north from `0x8b` at (67, 62) along `0x8c` (67, 61) to (67, 53) onto `0x8b` at (67, 52);
     /// the Gym's way out, on its floor 1, has an end only at its top, on floor 0, and lands on
     /// the floor by the entrance; and on Route 5 a rail over the water is broken by `0x90` at
-    /// (701, 455), which neither half is ridden past (spike A).
+    /// (701, 455), which neither half is ridden past (spike 247).
     ///
     /// Python takes a floor's rail cells as a `set` and pops a chain's first cell off it, in
     /// CPython's order for tuples; here it is the floor's own order, last first. The order

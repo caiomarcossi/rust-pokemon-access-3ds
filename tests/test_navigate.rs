@@ -2023,14 +2023,14 @@ fn test_p_goes_down_a_gyms_slides_and_never_up_one() {
     assert!(!said.contains("slide") && !said.contains("can't continue"));
 }
 
-/// A cell of one of Shalour City Gym's grind rails, blocked (x_gym_3, spike A).
+/// A cell of one of Shalour City Gym's grind rails, blocked (x_gym_3, spike 247).
 const RAIL: i64 = 0x8C000021;
 /// The cell past a rail's end, open, that it is skated onto from.
 const RAIL_END: i64 = 0x8B000020;
 
 /// Grind rails laid in the fake chunk, a table of words a floor, their cells blocked. `across`
 /// walls off columns 91 to 101 but for what the floors open there, so the rails are the one way
-/// across, as the entrance's rail is the one way north in Shalour Gym (spike A).
+/// across, as the entrance's rail is the one way north in Shalour Gym (spike 247).
 ///
 /// Python's `across` defaults to True.
 fn gym_rails(rig: &Rig, floors: &[IndexMap<Cell, i64>], across: bool) {
@@ -2066,7 +2066,7 @@ fn rail_row(xs: std::ops::Range<i64>, z: i64) -> impl Iterator<Item = (Cell, i64
     xs.map(move |x| ((x, z), RAIL))
 }
 
-/// Shalour City Gym (x_gym_3, spike A): the player skated north onto the rail's end cell and
+/// Shalour City Gym (x_gym_3, spike 247): the player skated north onto the rail's end cell and
 /// was carried along it to the far end in about 1.7 s. Its rails bend a cell at a time, so a ride
 /// is said by where it lands, from the end cell it is skated onto at.
 #[test]
@@ -2088,7 +2088,7 @@ fn test_p_rides_a_grind_rail_end_to_end_and_says_it_as_one_leg() {
     );
 }
 
-/// Shalour Gym's entrance rail runs up a corridor of open floor either side (spike A): a rail
+/// Shalour Gym's entrance rail runs up a corridor of open floor either side (spike 247): a rail
 /// is got onto only from its end cell, in line, and left only at its far end, so a way across it
 /// goes round by an end cell.
 #[test]
@@ -2110,7 +2110,7 @@ fn test_p_never_gets_onto_a_grind_rail_sideways_nor_off_one_halfway() {
 }
 
 /// Shalour Gym's way out has an end cell only at its top, by the centre, and lands on the
-/// floor by the entrance: "take the south rail out" (spike A). It is ridden from that end alone.
+/// floor by the entrance: "take the south rail out" (spike 247). It is ridden from that end alone.
 #[test]
 fn test_p_rides_a_rail_with_one_end_cell_only_from_it() {
     let mut rail: IndexMap<Cell, i64> = IndexMap::from([((90, 175), RAIL_END)]);
@@ -2135,7 +2135,7 @@ fn test_p_rides_a_rail_with_one_end_cell_only_from_it() {
 }
 
 /// Shalour Gym's rail from (30, 49) crosses its way out at (40, 55), one on floor 0 and one on
-/// floor 1 (spike A): a ride goes on along the rail it is on, so the pocket only the other rail
+/// floor 1 (spike 247): a ride goes on along the rail it is on, so the pocket only the other rail
 /// lands in is out of reach from this one.
 #[test]
 fn test_p_never_changes_rails_where_two_cross() {
@@ -2158,7 +2158,7 @@ fn test_p_never_changes_rails_where_two_cross() {
 
 /// With Shalour Gym's centre shut, P to the gym leader's spot rode a rail 5 cells of 14 and
 /// stopped on it, "grind the rail 5 west, then can't continue", that cell being nearest the
-/// centre (spike A). A ride goes to its end, so a way that falls short ends where the player can
+/// centre (spike 247). A ride goes to its end, so a way that falls short ends where the player can
 /// stand, off the rail.
 #[test]
 fn test_p_short_of_a_thing_never_stops_on_a_grind_rail() {

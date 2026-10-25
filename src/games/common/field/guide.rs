@@ -57,7 +57,7 @@ pub const SLIDE: &str = "slide";
 /// What a leg along a grind rail is said with, a run of them as one by where it lands the player,
 /// from the end cell they skate onto it at: "3 east, grind the rail 17 east". In Shalour City Gym
 /// the player skated north onto (67, 62) and was carried along the rail onto (67, 52) in about 1.7 s
-/// (x_gym_3, spike A). The game names no such thing.
+/// (x_gym_3, spike 247). The game names no such thing.
 pub const GRIND: &str = "grind the rail";
 
 /// The legs a player is carried along rather than walks, each with the message a run of them is
