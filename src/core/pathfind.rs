@@ -224,6 +224,7 @@ pub struct Options<'a> {
     pub carry: Option<&'a dyn Fn(Cell) -> Result<Option<&'static str>>>,
     pub slants: Option<&'a dyn Fn(Cell, Cell) -> Result<bool>>,
     pub slide: Option<&'a dyn Fn(Cell) -> Result<bool>>,
+    pub stops: Option<&'a dyn Fn(Cell, &[i64]) -> bool>,
 }
 
 /// The way of the compass `going` is, as `STEPS` holds it, or "" where it is none: a diagonal,
@@ -317,7 +318,11 @@ impl Ord for Entry<'_> {
 /// over every way they can be turned on the way as well. Which floor the player is on is such
 /// a state too, where one floor lies over another, and `arrives` says whether a cell stood on
 /// with `turns` is on the goals' floor: a goal is reached only there, not on the floor above
-/// it, and with `closest` the nearest cell on it comes before any nearer on another.
+/// it, and with `closest` the nearest cell on it comes before any nearer on another. `stops`
+/// says whether the player can stop on a cell with `turns` at all: one a grind rail is carrying
+/// along cannot, and no way ends there, at a goal or short of one. With Shalour Gym's centre
+/// shut, P to the gym leader's spot said "grind the rail 5 west, then can't continue", the cell 5
+/// along a rail of 14 being the nearest the centre (spike A).
 ///
 /// A* over (cell, heading), since a turn has a price and the same cell entered two ways is two
 /// different places to go on from. The estimate is the distance to the goals' box, which never
@@ -342,6 +347,7 @@ pub fn find(
         carry,
         slants,
         slide,
+        stops,
     } = options;
     if goals.is_empty() {
         return Ok(None);
@@ -453,12 +459,13 @@ pub fn find(
         } else {
             ""
         };
-        // A player sliding on ice is past a cell before they can stop on it.
-        let stops = sliding.is_empty() || {
+        // A player sliding on ice is past a cell before they can stop on it, and one riding a
+        // rail past each of its cells (`stops`).
+        let past = !sliding.is_empty() && {
             let (dx, dz) = step_of(sliding)?;
-            !can_walk((cell.0 + dx, cell.1 + dz))?
+            can_walk((cell.0 + dx, cell.1 + dz))?
         };
-        if stops {
+        if !past && stops.is_none_or(|stops| stops(cell, turned)) {
             // `min` keeps the first of equals, so a later state replaces it only by being less,
             // and between equal estimates and costs the states themselves are compared, as tuples.
             let candidate = (!arrives(cell, turned)?, estimate(cell), cost, state.clone());
@@ -641,6 +648,7 @@ pub struct Reach<'a> {
     pub through: Option<&'a dyn Fn(&[i64], Cell, Cell) -> Result<Option<Turns>>>,
     pub slants: Option<&'a dyn Fn(Cell, Cell) -> Result<bool>>,
     pub slide: Option<&'a dyn Fn(Cell) -> Result<bool>>,
+    pub stops: Option<&'a dyn Fn(Cell, &[i64]) -> bool>,
 }
 
 /// Every cell inside `box` a way from `start` can end on, by `find`'s moves, with each state
@@ -648,7 +656,8 @@ pub struct Reach<'a> {
 /// one of `ends`, which a way may step into and not on from, as `find` steps into a goal it would
 /// walk round on the way to anything else. What `find` would reach from `start`, found once for
 /// every goal at a time. On ice (`slide`), the way the player slides is part of where they are,
-/// and a way ends only where a slide stops, as `find`'s does.
+/// and a way ends only where a slide stops, as `find`'s does; nor where `stops` says the player
+/// cannot, along a grind rail, though a thing beside one has a goal on its cell (spike A).
 pub fn reached(
     start: Cell,
     walkable: &dyn Fn(Cell) -> Result<bool>,
@@ -741,12 +750,13 @@ pub fn reached(
                 }
                 seen.insert(state.clone());
                 todo.push(state);
-                // A cell slid over is no end: the player is past it before they can stop.
-                let ends = on.is_empty() || {
+                // A cell slid over is no end: the player is past it before they can stop. Nor is a
+                // rail's, ridden.
+                let past = !on.is_empty() && {
                     let (dx, dz) = step_of(on)?;
-                    !can_walk((step.0 + dx, step.1 + dz))?
+                    can_walk((step.0 + dx, step.1 + dz))?
                 };
-                if ends {
+                if !past && options.stops.is_none_or(|stops| stops(step, &after)) {
                     out.entry(step).or_default().insert(after);
                 }
                 Ok(())

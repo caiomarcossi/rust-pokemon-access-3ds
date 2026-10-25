@@ -1552,6 +1552,7 @@ impl Ground {
         let carry = |cell: Cell| self.carry(cell);
         let slants = |cell: Cell, step: Cell| self.slants(cell, step);
         let slide = |cell: Cell| self.slide(cell);
+        let stops = |cell: Cell, turns: &[i64]| walk.stops(cell, turns);
         pathfind::find(
             start,
             goals,
@@ -1570,6 +1571,7 @@ impl Ground {
                 carry: Some(&carry),
                 slants: Some(&slants),
                 slide: Some(&slide),
+                stops: if walk.grinding { Some(&stops) } else { None },
             },
         )
     }
@@ -1606,6 +1608,7 @@ impl Ground {
         let carry = |cell: Cell| ground.carry(cell);
         let slants = |cell: Cell, step: Cell| self.slants(cell, step);
         let slide = |cell: Cell| ground.slide(cell);
+        let stops = |cell: Cell, turns: &[i64]| walk.stops(cell, turns);
         let states = pathfind::reached(
             start,
             &|cell: Cell| self.passable(cell),
@@ -1620,6 +1623,7 @@ impl Ground {
                 through: if walk.active { Some(&through) } else { None },
                 slants: Some(&slants),
                 slide: Some(&slide),
+                stops: if walk.grinding { Some(&stops) } else { None },
             },
         )?;
         Ok(states
@@ -1655,9 +1659,12 @@ impl Ground {
     /// ground a ridden Pokémon crosses, whether the player is riding, the first of the turns, 1
     /// riding (`ride`); on a ground with climbing walls, what the player may be doing on a face's
     /// line, on foot, on the wall or either, after it (`Walls.hold`); on a ground with grind
-    /// rails, the ride the player is on, or none, after that (`GrindRails.hold`); through the
-    /// ground's rotating doors, where they stand now and what each step does to them; and on a
-    /// stacked ground the floor each step is on, the player's first, the last of the turns.
+    /// rails, the ride the player is on, or none, after that (`GrindRails.hold`), and a way never
+    /// ends on a ride, which carries the player on to the rail's end (`stops`): P to Shalour
+    /// Gym's centre, its gate shut, said "grind the rail 5 west, then can't continue" (spike A);
+    /// through the ground's rotating doors, where they stand now and what each step does to
+    /// them; and on a stacked ground the floor each step is on, the player's first, the last of
+    /// the turns.
     fn walk(&self, start: Cell) -> Result<Walk<'_>> {
         let (ride, walled) = (!self.rides.is_empty(), !self.walls.lines.is_empty());
         let grinding = !self.grind_rails.rails.is_empty();
@@ -1754,6 +1761,12 @@ struct Arrives<'a> {
 }
 
 impl Walk<'_> {
+    /// Python's `stops` closure: whether the player can stop on the cell with the turns they
+    /// stand in, off every ride.
+    fn stops(&self, _cell: Cell, turns: &[i64]) -> bool {
+        turns[self.ride as usize + self.walled as usize] == OFF
+    }
+
     fn through(&self, turns: &[i64], cell: Cell, step: Cell) -> Result<Option<pathfind::Turns>> {
         let ground = self.ground;
         let rode = if self.ride {

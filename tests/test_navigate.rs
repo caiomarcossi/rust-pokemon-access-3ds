@@ -2156,6 +2156,28 @@ fn test_p_never_changes_rails_where_two_cross() {
     assert!(last(&rig.backend).contains("can't continue"));
 }
 
+/// With Shalour Gym's centre shut, P to the gym leader's spot rode a rail 5 cells of 14 and
+/// stopped on it, "grind the rail 5 west, then can't continue", that cell being nearest the
+/// centre (spike A). A ride goes to its end, so a way that falls short ends where the player can
+/// stand, off the rail.
+#[test]
+fn test_p_short_of_a_thing_never_stops_on_a_grind_rail() {
+    let mut rail: IndexMap<Cell, i64> = IndexMap::from([((90, 180), RAIL_END)]);
+    rail.extend(rail_row(91..102, 180));
+    rail.insert((102, 180), RAIL_END);
+    rail.extend((183..186).map(|z| ((96, z), 0)));
+    let mut rig = navigator(on(Field {
+        interactables: vec![somebody((96, 186), 0x08D1E9A8)],
+        ..Field::new(street().zone, (87, 180))
+    }));
+    gym_rails(&rig, &[rail], true);
+    rig.press(PATHFIND);
+    let way = guidance(&rig);
+    let rails = rig.field.grinds.borrow().clone();
+    assert!(way.is_some() && !rails.cells.contains(path_of(&way).last().unwrap()));
+    assert!(last(&rig.backend).contains("can't continue"));
+}
+
 /// X's Cyllage Gym (x_gym_2, spike 245): the player walked from the entrance to the blue spot at
 /// (25, 32), climbed up in place from 3 to 57, three handholds, went east along the face and
 /// stepped off east onto the ledge (31, 32) at 54, a drop from the floor on foot.
