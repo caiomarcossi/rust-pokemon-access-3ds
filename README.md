@@ -21,6 +21,7 @@ the Game Boy games. Nothing here is taken from its code.
 - [Keys](manual/keys.md): pa3ds's keys, the map's list, finding the way, and naming things.
 - [Settings](manual/settings.md): every setting, the Azahar settings pa3ds changes, and your files.
 - [Languages](manual/languages.md): the language pa3ds speaks, and translating it.
+- [Known issues](manual/known-issues.md): what pa3ds gets wrong or leaves out for now.
 
 ## Games
 
@@ -49,17 +50,13 @@ the Game Boy games. Nothing here is taken from its code.
   PokéNav's and PlayNav's apps and the AreaNav's places among them.
 - **The AreaNav**: each place, and the Pokémon seen there, as the DexNav says them.
 - **The DexNav**: the area's Pokémon, which are met on the water or by fishing, and which you
-  have caught, searching, and a hidden Pokémon's details. A Pokémon met in seaweed under water
-  is said as one met walking, and as met in grass in the Pokédex, because the game itself shows
-  it that way.
+  have caught, searching, and a hidden Pokémon's details.
 - **The Dowsing Machine**, **soaring** on Latios or Latias, and **Secret Bases**, decorating
   them included.
 - **Pictures the game never names**: the boy and the girl to choose from as a game begins, and
   the Trainer Passport's photos in Sun and Moon, described in pa3ds's own words.
 - **Scenes without words**, described when the `descriptions` setting is on: many in Omega Ruby
-  and Alpha Sapphire, each one's intro and title screen among them, and one in Sun so far. A
-  scene you skip goes undescribed from there, and in Omega Ruby and Alpha Sapphire a description
-  waits while the emulator is paused.
+  and Alpha Sapphire, each one's intro and title screen among them, and one in Sun so far.
 - **Footsteps** where Omega Ruby, Alpha Sapphire, X and Y play none, as on streets, floors and in
   caves: the game's own step sound, as loud as the game and Azahar would play it.
 
@@ -125,14 +122,7 @@ What changed in each version is in `CHANGELOG.md` beside `pa3ds.exe`, and on the
 - **pa3ds has gone quiet or stopped answering its keys**: start pa3ds again.
 
 To report a problem, send `user\logs\pa3ds.log` from the run where it happened, and say what you
-were doing.
-
-## Known problems
-
-- **Some touch-screen apps are only partly read**: the DexNav, Pokémon-Amie, Super Training and
-  the PSS. Super Training's regimen descriptions read their two columns run together, and
-  turning a PlayNav page with its arrows says nothing of the new page.
-- **X, Y, Sun and Moon** are read less completely than Omega Ruby and Alpha Sapphire.
+were doing. What is already known is in [Known issues](manual/known-issues.md).
 
 ## For developers
 

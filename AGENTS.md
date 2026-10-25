@@ -162,8 +162,9 @@ counterpart. It runs only in a build `tools/package.ps1` made (`PA3DS_RELEASE`),
 [README.md](README.md) and the pages it links to in [`manual/`](manual/) are what a player reads,
 and they ship in the release zip: the README the games, what is said, setup and updating;
 `keys.md` the default keys; `settings.md` every setting, the Azahar settings pa3ds writes and the
-player's files; `languages.md` languages and translating. Upstream's are the same manual for the
-Python pa3ds (Orion, 2026-10-06); a sync that changes them changes these to match, in the same
+player's files; `languages.md` languages and translating; `known-issues.md` every known problem
+and gap a player meets, there and not in the other pages (Orion, 2026-10-24). Upstream's are the
+same manual for the Python pa3ds (Orion, 2026-10-06); a sync that changes them changes these to match, in the same
 commit, but for running `pa3ds.exe` where upstream runs uv, and for the Updating section, which
 only the port has. Keep them short, as upstream's AGENTS.md says (Orion, 2026-10-18). They name
 no ADR, finding or spike. Building and releasing are in [BUILDING.md](BUILDING.md), which does
