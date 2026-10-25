@@ -15,7 +15,7 @@ use crate::core::config::Navigation;
 use crate::core::pathfind::{self, Cell, Leg};
 use crate::core::words::own;
 use crate::games::common::field::ground::{
-    CUT, Ground, IceRoom, Of, ROCK_SMASH, SOLID, STRENGTH, SURF, WATERFALL, WHOLE,
+    BLOCK, CUT, Ground, IceRoom, NO_ZONE, Of, ROCK_SMASH, SOLID, STRENGTH, SURF, WATERFALL, WHOLE,
 };
 use crate::games::common::field::things::{self as field, Field, Interactable};
 use crate::py::{self, Error, Log, Result};
@@ -150,6 +150,9 @@ pub struct Guidance {
     /// The way the player was last told to step to line up, `west` for "a little west", until
     /// they are.
     pub nudge: Option<&'static str>,
+    /// Each leg that ends in another place than it starts in, by its end, with that place
+    /// (`_crossings`).
+    pub crossings: IndexMap<i64, String>,
 }
 
 impl Guidance {
@@ -620,14 +623,55 @@ fn left(guidance: &Guidance, at: i64, r#where: &Field) -> Result<String> {
         ..now.clone()
     }];
     legs.extend_from_slice(&guidance.legs[leg + 1..]);
-    spoken(&legs, r#where)
+    spoken(&legs, r#where, &guidance.crossings)
+}
+
+/// Each leg of `path` that ends in another place than it starts in, by its end, with what
+/// the game calls that place. From Verdanturf Town's east end the way to its houses goes out
+/// onto Route 117 and back, and said bare, "10 east" led the player out of the town with no
+/// word of why (or_pathfinding_through_multiple_entrances; Orion, 2026-10-24, asked for "10
+/// east into Route 117, ..., 23 west into Verdanturf Town"). Two zones of one place, as Route
+/// 119's, are one place.
+fn crossings(
+    ground: &Ground,
+    path: &[Cell],
+    legs: &[Leg],
+    place: &Place,
+) -> Result<IndexMap<i64, String>> {
+    let Some(grid) = &ground.grid else {
+        return Ok(IndexMap::new());
+    };
+    let mut out: IndexMap<i64, String> = IndexMap::new();
+    let mut start = 0;
+    for leg in legs {
+        let cell = |i: i64| -> Result<Cell> {
+            usize::try_from(i)
+                .ok()
+                .and_then(|i| path.get(i))
+                .copied()
+                .ok_or_else(|| Error::index("tuple index out of range"))
+        };
+        let ((x0, z0), (x1, z1)) = (cell(start)?, cell(leg.end)?);
+        let here = grid.at(py::floordiv(x0, BLOCK), py::floordiv(z0, BLOCK))?;
+        let there = grid.at(py::floordiv(x1, BLOCK), py::floordiv(z1, BLOCK))?;
+        if here != there && here != NO_ZONE && there != NO_ZONE {
+            let into = place(there)?;
+            if let Some(into) = into
+                && Some(&into) != place(here)?.as_ref()
+            {
+                out.insert(leg.end, into);
+            }
+        }
+        start = leg.end;
+    }
+    Ok(out)
 }
 
 /// Legs as the player's keys walk them: by the compass on the grid, and on a rail or under a
 /// camera behind the player, where the keys work from it, from the way it looks (spikes 105 and
 /// A). A run of legs a current carries the player along is said as one, by where it leaves them
-/// (`CURRENT`).
-fn spoken(legs: &[Leg], r#where: &Field) -> Result<String> {
+/// (`CURRENT`). A leg into another place says it (`_crossings`).
+fn spoken(legs: &[Leg], r#where: &Field, crossings: &IndexMap<i64, String>) -> Result<String> {
     if let Some(heading) = r#where.heading {
         let angled = match r#where.bearing {
             Some(bearing) => pathfind::off(bearing, heading)?.abs() > ANGLED,
@@ -657,7 +701,10 @@ fn spoken(legs: &[Leg], r#where: &Field) -> Result<String> {
             drift = (0, 0);
         }
         if let Some(leg) = leg {
-            parts.push(leg.to_string());
+            parts.push(match crossings.get(&leg.end) {
+                None => leg.to_string(),
+                Some(into) => own("p-into", &[("leg", &leg.to_string()), ("place", into)]),
+            });
         }
     }
     Ok(parts.join(", "))
@@ -674,11 +721,16 @@ pub type Label = Rc<dyn Fn(&Interactable, i64) -> Result<String>>;
 pub type NameOf = Rc<dyn Fn(&Interactable, i64) -> Result<String>>;
 /// `Callable[[str], None]`: say something about the way unasked (`Navigator._tell`).
 pub type Tell = Rc<dyn Fn(&str)>;
+/// `Callable[[int], str | None]`: what the game calls the place a zone is in. It reads the
+/// game's words, so it can raise.
+pub type Place = Rc<dyn Fn(i64) -> Result<Option<String>>>;
 
 /// P and guiding: the way on foot to a thing, said as its legs, and the player followed along
 /// it, the next leg said at each turn and the thing on arriving.
 pub struct Guide {
     field: Rc<dyn FieldSource>,
+    /// What the game calls the place a zone is in.
+    place: Place,
     label: Label,
     name_of: NameOf,
     /// Says what is said unasked as the player walks (`Navigator._tell`).
@@ -720,8 +772,8 @@ type Asked = (i64, Cell, Vec<Interactable>, Option<(i64, i64)>);
 
 impl Guide {
     /// `label` and `name_of` say a thing as the navigator does; `tell` says what is said
-    /// unasked, as the player walks. Python's `clock` defaults to `time.monotonic`, `routes` to
-    /// True and `slack` to 0.
+    /// unasked, as the player walks; `place` what the game calls the place a zone is in.
+    /// Python's `clock` defaults to `time.monotonic`, `routes` to True and `slack` to 0.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         field: Rc<dyn FieldSource>,
@@ -736,6 +788,7 @@ impl Guide {
         moves: Option<IndexMap<i64, String>>,
         bike: Option<String>,
         acro: Option<String>,
+        place: Option<Place>,
     ) -> Self {
         let mut own: IndexMap<i64, String> = OWN_MOVE_WORDS
             .iter()
@@ -744,6 +797,7 @@ impl Guide {
         own.extend(moves.unwrap_or_default());
         Guide {
             field,
+            place: place.unwrap_or_else(|| Rc::new(|_zone| Ok(None))),
             label,
             name_of,
             tell,
@@ -1094,6 +1148,7 @@ impl Guide {
             .map(|(i, &cell)| (cell, i as i64))
             .collect();
         let nudge = nudge(&ground, r#where.place, &path, 0)?;
+        let crossings = crossings(&ground, &path, &legs, &self.place)?;
         let since = (self.clock)();
         let first = legs.first().map(|leg| leg.direction);
         self.guidance = Some(Rc::new(RefCell::new(Guidance {
@@ -1118,6 +1173,7 @@ impl Guide {
             still: (self.clock)(),
             judged: r#where.place,
             nudge,
+            crossings: crossings.clone(),
         })));
         let first = first.ok_or_else(|| Error::index("list index out of range"))?;
         if first != heading {
@@ -1132,7 +1188,7 @@ impl Guide {
             if let Some(nudge) = nudge {
                 text += &(own("p-nudge-then", &[("nudge", &nudged(nudge))]) + " ");
             }
-            text += &spoken(&legs, r#where)?;
+            text += &spoken(&legs, r#where, &crossings)?;
             if short {
                 text += &format!(", {}{blocker}", own("p-then-cant-continue", &[]));
             }
@@ -1276,7 +1332,7 @@ impl Guide {
             }];
             run.extend(rest.into_iter().take_while(|one| one.how == CURRENT));
             if !riding {
-                let text = spoken(&run, r#where)?;
+                let text = spoken(&run, r#where, &guidance.borrow().crossings)?;
                 (self.tell)(&text);
             }
         }

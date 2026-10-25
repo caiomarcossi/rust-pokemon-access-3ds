@@ -111,6 +111,7 @@ p-then-cant-continue = 然後無法繼續
 p-cant-continue = 無法繼續
 p-in-the-way = { $thing }擋路
 p-surface = 浮上水面，前往{ $bearing }的潛水點
+p-into = { $leg }，進入{ $place }
 p-and-ice-cleared = 冰面全部碎裂
 p-ice-cleared = 冰面已碎
 p-no-path-to = 沒有通往{ $thing }的路線

@@ -166,6 +166,9 @@ p-cant-continue = can't continue
 p-in-the-way = { $thing } in the way
 # Under the sea, where the way goes on from another dive spot (spike 165).
 p-surface = surface and go to the dive spot { $bearing }
+# A leg that crosses into another place, said with it: "10 east into Route 117" (Orion,
+# 2026-10-24).
+p-into = { $leg } into { $place }
 # A way over a room of thin ice, which cracks every tile on the way (spike 167).
 p-and-ice-cleared = and the ice is cleared
 p-ice-cleared = ice cleared

@@ -60,7 +60,7 @@ use crate::core::pathfind::{self, AHEAD, BEHIND, Cell, LEFT, RIGHT};
 use crate::core::speech::{Category, Speech};
 use crate::core::words::own;
 use crate::games::common::field::chunk::CLIMB;
-use crate::games::common::field::guide::{Clock, FieldSource, Guide, Key};
+use crate::games::common::field::guide::{Clock, FieldSource, Guide, Key, Place};
 use crate::games::common::field::keys::{
     Bindings, CATEGORY_NEXT, CATEGORY_PREVIOUS, COORDINATES, DEFAULT_BINDINGS, DIRECTIONS, EAST,
     ENEMY_SIDE, HIDE_UNREACHABLE, ITEM_COORDINATES, ITEM_NEXT, ITEM_PREVIOUS, LIST, MODE_TOGGLE,
@@ -169,6 +169,8 @@ pub struct Options {
     /// Whether a slot on a map is a sign that says only the name of a door there, which the
     /// list leaves out with `[pa3ds.navigation] hide_door_signs`.
     pub door_sign: Option<DoorSign>,
+    /// What the game calls the place a zone is in, which a leg of P's way into another says.
+    pub place: Option<Place>,
 }
 
 impl Default for Options {
@@ -191,6 +193,7 @@ impl Default for Options {
             touch: None,
             categories: Vec::new(),
             door_sign: None,
+            place: None,
         }
     }
 }
@@ -315,7 +318,8 @@ pub struct Navigator {
 impl Navigator {
     /// `categories` are those a game's own apps list, after the field's: ORAS's sky's.
     /// `door_sign` says whether a slot on a map is a sign that says only the name of a door
-    /// there, which the list leaves out with `[pa3ds.navigation] hide_door_signs`.
+    /// there, which the list leaves out with `[pa3ds.navigation] hide_door_signs`. `place` is
+    /// what the game calls the place a zone is in, which a leg of P's way into another says.
     pub fn new(field: Rc<dyn FieldSource>, speech: Rc<Speech>, log: Log, options: Options) -> Self {
         let Options {
             bindings,
@@ -335,6 +339,7 @@ impl Navigator {
             touch,
             categories,
             door_sign,
+            place,
         } = options;
         let wording = navigation.unwrap_or_default();
         let names = names.unwrap_or_else(|| Rc::new(Names::default()));
@@ -369,6 +374,7 @@ impl Navigator {
             moves,
             bike,
             acro,
+            place,
         );
         Navigator {
             field,

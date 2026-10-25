@@ -14,9 +14,9 @@ use crate::core::pathfind::{self, Cell, nearest};
 use crate::core::speech::{Backend, Category, Speech, default_interrupts};
 use crate::games::common::field::chunk::{BLOCKED, CHUNK, Chunk, Floor};
 use crate::games::common::field::ground::{
-    CUT, Ground, IceRoom, Of, ROCK_SMASH, RotatingDoor, STRENGTH, SURF, WATERFALL,
+    CUT, Grid, Ground, IceRoom, Of, ROCK_SMASH, RotatingDoor, STRENGTH, SURF, WATERFALL,
 };
-use crate::games::common::field::guide::{FieldSource, Guidance};
+use crate::games::common::field::guide::{FieldSource, Guidance, Place};
 use crate::games::common::field::keys::{
     CATEGORY_NEXT, CATEGORY_PREVIOUS, COORDINATES, DEFAULT_BINDINGS, DIRECTION, EAST, ENEMY_SIDE,
     ITEM_COORDINATES, ITEM_NEXT, ITEM_PREVIOUS, ITEM_READ, LIST, MODE_TOGGLE, NORTH, OUR_SIDE,
@@ -113,6 +113,8 @@ struct FakeField {
     flat: RefCell<HashSet<Cell>>,
     visit: Slot<Option<(i64, i64)>>,
     edit: RefCell<Option<Edit>>,
+    /// The matrix's zones, a block at a time, or none.
+    grid: RefCell<Option<Grid>>,
 }
 
 impl FakeField {
@@ -145,6 +147,7 @@ impl FakeField {
             flat: RefCell::new(HashSet::new()),
             visit: Slot::new(Some((0x08D209B8, 0x6))),
             edit: RefCell::new(None),
+            grid: RefCell::new(None),
         }
     }
 }
@@ -270,6 +273,7 @@ impl FieldSource for FakeField {
             r#where,
             Of {
                 chunks: vec![Rc::new(Chunk::new(origin, words))],
+                grid: self.grid.borrow().clone(),
                 clears: oras::game().clears.clone(),
                 ..Of::default()
             },
@@ -348,6 +352,7 @@ struct Want {
     clock: Rc<dyn Fn() -> f64>,
     navigation: Option<Navigation>,
     door_sign: Option<DoorSign>,
+    place: Option<Place>,
 }
 
 impl Default for Want {
@@ -366,6 +371,7 @@ impl Default for Want {
             clock: Rc::new(|| 0.0),
             navigation: None,
             door_sign: None,
+            place: None,
         }
     }
 }
@@ -421,6 +427,7 @@ fn navigator(want: Want) -> Rig {
             clock: Some(want.clock),
             navigation: want.navigation,
             door_sign: want.door_sign,
+            place: want.place,
             moves: Some(IndexMap::from([
                 (SURF, "Surf".to_string()),
                 (CUT, "Cut".to_string()),
@@ -3211,6 +3218,49 @@ fn test_p_again_that_finds_no_way_keeps_the_way_being_walked_and_says_the_rest()
     );
     step(&mut rig, &[(94, 175), (95, 175)]);
     assert_eq!(last(&rig.backend), "2 north");
+}
+
+/// or_pathfinding_through_multiple_entrances: from Verdanturf Town's east end the way to its
+/// houses goes out onto Route 117 and back, and "10 east" led the player out of the town with
+/// no word of why. Orion asked for "10 east into Route 117" (2026-10-24). A leg between two
+/// zones of one place says nothing more.
+#[test]
+fn test_a_leg_into_another_place_says_it() {
+    let places: IndexMap<i64, &str> = IndexMap::from([
+        (0x6, "Littleroot Town"),
+        (0x2C, "Route 101"),
+        (0x2D, "Route 101"),
+    ]);
+    let here = street();
+    let (door, person) = (here.interactables[0].clone(), here.interactables[1].clone());
+    let mut rig = navigator(Want {
+        blocked: house_front(),
+        place: Some(Rc::new(move |zone| {
+            Ok(places.get(&zone).map(|place| place.to_string()))
+        })),
+        ..on(Field {
+            cell: (102, 175),
+            interactables: vec![door],
+            ..street()
+        })
+    });
+    let zones: IndexMap<i64, i64> = IndexMap::from([(10, 0x2C), (11, 0x2D)]);
+    *rig.field.grid.borrow_mut() = Some(Grid {
+        width: 12,
+        height: 20,
+        zones: (0..12 * 20)
+            .map(|i| zones.get(&(i % 12)).copied().unwrap_or(0x6))
+            .collect(),
+    });
+    rig.press(PATHFIND);
+    assert_eq!(said(&rig.backend), ["7 west into Littleroot Town, 2 north"]);
+    *rig.field.r#where.borrow_mut() = Some(Field {
+        cell: (112, 180),
+        interactables: vec![person],
+        ..street()
+    });
+    rig.press(PATHFIND);
+    assert_eq!(last(&rig.backend), "11 west");
 }
 
 #[test]

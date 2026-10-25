@@ -111,6 +111,7 @@ p-then-cant-continue = その先は進めない
 p-cant-continue = 進めない
 p-in-the-way = { $thing }がじゃまをしている
 p-surface = 浮上して{ $bearing }のダイビングポイントへ
+p-into = { $leg }、{ $place }へ
 p-and-ice-cleared = そして氷はすべて割れる
 p-ice-cleared = 氷が割れた
 p-no-path-to = { $thing }への経路なし

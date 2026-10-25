@@ -111,6 +111,7 @@ p-then-cant-continue = poi impossibile proseguire
 p-cant-continue = impossibile proseguire
 p-in-the-way = { $thing } blocca la strada
 p-surface = riemergi e vai al punto di immersione { $bearing }
+p-into = { $leg } verso { $place }
 p-and-ice-cleared = e il ghiaccio è rotto
 p-ice-cleared = ghiaccio rotto
 p-no-path-to = nessun percorso verso { $thing }

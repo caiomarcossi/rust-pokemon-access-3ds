@@ -30,7 +30,7 @@ use crate::games::common::announce::{Announcements, Speaker};
 use crate::games::common::cursors::reader::CursorReader;
 use crate::games::common::dialogue::{DialogueReader, Shown};
 use crate::games::common::field::ground::Ground;
-use crate::games::common::field::guide::FieldSource;
+use crate::games::common::field::guide::{FieldSource, Place};
 use crate::games::common::field::keys::Bindings;
 use crate::games::common::field::navigate::{
     DoorSign, LeadsTo, Navigator, Options as NavigatorOptions, Sides, Street,
@@ -869,6 +869,7 @@ impl Gen6Profile {
                     })
                 }),
                 leads_to: Some(leads_to_of(text.clone(), field.clone())),
+                place: Some(place_of(text.clone(), field.clone())),
                 street: Some(street_of(text.clone())),
                 door_sign: Some(door_sign_of(text.clone())),
                 moves: Some(text.moves.clone()),
@@ -2031,6 +2032,18 @@ fn leads_to_of(text: Rc<GameText>, field: Rc<RefCell<Rc<FieldReader>>>) -> Leads
             return Ok(None);
         }
         Ok(text.place(theirs))
+    })
+}
+
+/// What the game calls the place `zone` is in, or None.
+fn place_of(text: Rc<GameText>, field: Rc<RefCell<Rc<FieldReader>>>) -> Place {
+    Rc::new(move |zone| {
+        let field = field.borrow().clone();
+        let index = field.zones.place_index(zone)?;
+        match index {
+            Some(index) if text.loaded() => Ok(text.place(index)),
+            _ => Ok(None),
+        }
     })
 }
 

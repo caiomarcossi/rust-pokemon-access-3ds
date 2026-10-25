@@ -112,6 +112,7 @@ p-then-cant-continue = 그다음 더 갈 수 없음
 p-cant-continue = 더 갈 수 없음
 p-in-the-way = 길을 막는 { $thing }
 p-surface = 수면으로 올라가 { $bearing } 다이빙 포인트로
+p-into = { $leg }, { $place }(으)로
 p-and-ice-cleared = 그리고 얼음이 모두 깨짐
 p-ice-cleared = 얼음 깨짐
 p-no-path-to = { $thing }까지 경로 없음

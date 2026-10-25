@@ -75,6 +75,9 @@ Circle Pad, or raise a shield with L.
 
 ## Finding the way
 
+**Into another place.** A step of the way that takes you into another town or route names it:
+"5 north into Route 101".
+
 **Lining up.** The circle pad can leave you between two squares, and the game then refuses some
 steps past the corner of a wall. Where that would stop you, `P` first says which way to step,
 "a little west, then 2 north". Tilt the circle pad gently that way, and pa3ds says "lined up".
