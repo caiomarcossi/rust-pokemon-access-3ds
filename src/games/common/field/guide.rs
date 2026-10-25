@@ -44,12 +44,12 @@ pub const GET_OFF: &str = "get off";
 /// the Rhyhorn smashes rocks with A (spike 238). The game names no such thing.
 pub const SMASH: &str = "smash";
 
-/// What a leg along a climbing wall's face is said with: "climb 6 west" (spike A). The game names
+/// What a leg along a climbing wall's face is said with: "climb 6 west" (spike 244). The game names
 /// no such thing.
 pub const CLIMB: &str = "climb";
 
 /// A leg with handholds climbed in place before it, at its first cell, and after it, at the
-/// way's end: "climb 3 up, 6 east", "climb 3 down, 1 west" (spike A). Up positive.
+/// way's end: "climb 3 up, 6 east", "climb 3 down, 1 west" (spike 244). Up positive.
 ///
 /// Python's `Held(Leg)` is a subclass; here it is what a `Leg` adds, kept in its `held`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

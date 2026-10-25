@@ -313,7 +313,7 @@ pub struct Game {
     /// Route 9 (spike 238).
     pub rides: Option<Rides>,
     /// The walls it lets the player climb, or None in a game with none: X's Cyllage Gym
-    /// (spike A).
+    /// (spike 244).
     pub climbing: Option<Climbing>,
     /// Whether a row of models drawn as nothing, two or more with one script that no drawn record
     /// of their zone has, is an invisible gate: not listed, and in the way. X's Santalune Gym has

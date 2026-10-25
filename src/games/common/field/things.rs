@@ -85,7 +85,7 @@ pub const CURRENT_SOURCE: i64 = 14 << 32;
 /// 12 | z`, its first cell (spike 238).
 pub const RIDE_SOURCE: i64 = 15 << 32;
 
-/// A run of a climbing wall's blue spots: `CLIMB_SOURCE | x << 12 | z`, its first cell (spike A).
+/// A run of a climbing wall's blue spots: `CLIMB_SOURCE | x << 12 | z`, its first cell (spike 244).
 pub const CLIMB_SOURCE: i64 = 16 << 32;
 
 /// A place's `source` from its kind's tag and its own number. The number must leave the tag's

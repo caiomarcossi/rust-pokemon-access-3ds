@@ -155,7 +155,7 @@ how-get-off = get off
 # The step into a rock the ridden Pokémon smashes with A: "smash 1 east" (spike 238).
 how-smash = smash
 # A leg along a climbing wall's face, and the handholds climbed in place before or after one:
-# "climb 3 up, 6 east", "climb 6 west, climb 3 down, 1 west" (spike A).
+# "climb 3 up, 6 east", "climb 6 west, climb 3 down, 1 west" (spike 244).
 how-climb = climb
 p-climb-up = climb { $holds } up
 p-climb-down = climb { $holds } down
@@ -297,7 +297,7 @@ kind-dive-spot = dive spot
 kind-current = current
 kind-flat-ground = flat ground
 # A run of the blue spots a climbing wall is climbed from, and one on a ledge at its side, where
-# the climber steps off it: the Gym's guide says "those blue spots" (spike A).
+# the climber steps off it: the Gym's guide says "those blue spots" (spike 244).
 kind-blue-spot = blue spot
 kind-wall-ledge = wall ledge
 kind-slope = slope

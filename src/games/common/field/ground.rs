@@ -474,7 +474,7 @@ pub struct Ground {
     /// Rhyhorn, needing no HM (spike 238). Nobody stands in them; on foot they are in the way.
     pub smashed: HashSet<Cell>,
     /// The climbing walls: a face's line walked on foot or climbed, onto it only at a blue spot
-    /// and off it sideways onto a ledge only climbing (`climb.Walls`, spike A).
+    /// and off it sideways onto a ledge only climbing (`climb.Walls`, spike 244).
     ///
     /// An `Rc`: the terrain finds them once a matrix and every ground built on it shares them, as
     /// the Python's grounds share the one object.

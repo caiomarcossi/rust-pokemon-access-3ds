@@ -381,7 +381,7 @@ pub fn rides() -> Rides {
 /// were in (26, 32) to (30, 32), and stepped off east from `0x51` at (30, 32) onto the ledge (31,
 /// 32) at 54; then back on, west along it and down at (25, 32) to 3, and off west onto (24, 32). The
 /// step from (26, 17) onto its ledge rises 36, a step's worth on foot, so the kinds, not the heights,
-/// say where a ledge is. X has 0x51 to 0x54 in chunk files 458 and 594 too, never seen (spike A).
+/// say where a ledge is. X has 0x51 to 0x54 in chunk files 458 and 594 too, never seen (spike 244).
 ///
 /// Python's `CLIMBING` constant: a function, since an `IndexMap` is no const.
 pub fn climbing() -> Climbing {

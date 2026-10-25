@@ -3457,7 +3457,7 @@ fn test_flat_ground_is_listed_under_riding_a_patch_at_a_time() -> Result<()> {
     Ok(())
 }
 
-/// Spike A: Cyllage Gym's walls are climbed from the blue spots at their foot, two side by side
+/// Spike 244: Cyllage Gym's walls are climbed from the blue spots at their foot, two side by side
 /// at (25, 32) and (26, 32), and got off onto a ledge at a face's side, (31, 32) at 54; Khai
 /// asked for their "entry point and exit point maybe? in a category" (2026-10-24). The plateau
 /// behind a face's top, open beside it at another height, is neither.
