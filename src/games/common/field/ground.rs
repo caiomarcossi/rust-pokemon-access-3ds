@@ -445,11 +445,6 @@ pub struct Ground {
     /// Sootopolis Gym a Beauty stands in the lower floor's corridor under an invisible blocker in
     /// the corridor above (spike 167).
     pub heights: IndexMap<Cell, Vec<Option<f64>>>,
-    /// The heights of the map's floors other than the player's, nearest theirs first, at which
-    /// the ground can be walked instead (`FieldSource.ground`). A chunk with a deck is walked on
-    /// the floor nearest one height, and from the foot of Route 119 that kept the way under its
-    /// bridge and cut the bridge, the only way north (spike 159).
-    pub decks: Vec<f64>,
     /// The bit of a cell's word that marks a strand the player walks diagonally between
     /// (`slants`); 0 in a game without one. X's Santalune Gym has a floor of them (spike 223).
     pub strands: i64,
@@ -511,7 +506,6 @@ impl Default for Ground {
             level: None,
             ground_height: None,
             heights: IndexMap::new(),
-            decks: Vec::new(),
             strands: 0,
             lanes: Rc::new(IndexMap::new()),
             crowd: HashSet::new(),
@@ -552,7 +546,6 @@ impl fmt::Debug for Ground {
             .field("level", &self.level)
             .field("ground_height", &self.ground_height.is_some())
             .field("heights", &self.heights)
-            .field("decks", &self.decks)
             .field("strands", &self.strands)
             .field("lanes", &self.lanes)
             .field("crowd", &self.crowd)

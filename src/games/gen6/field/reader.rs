@@ -743,10 +743,10 @@ impl FieldReader {
     /// zone under the player at all.
     ///
     /// Where the matrix has a chunk with a deck over its ground, the ground is stacked: walked a
-    /// floor at a time, each step onto the floor beside it it joins (`Ground.climb`). Otherwise a
-    /// chunk with a deck is walked on the floor nearest the player's height, cell by cell
-    /// (`mapblock.flat`, spike 156), or nearest `height` where one is given.
-    pub fn ground(&self, r#where: &Field, height: Option<f64>) -> Result<Ground> {
+    /// floor at a time, each step onto the floor beside it it joins (`Ground.climb`). Where the
+    /// player's height is not read, a chunk with a deck is walked on the first floor open in
+    /// each cell (`mapblock.flat`, spike 156).
+    pub fn ground(&self, r#where: &Field) -> Result<Ground> {
         if r#where.on_rail {
             let corridor = self
                 .rails
@@ -795,12 +795,8 @@ impl FieldReader {
         solid.extend(self.unseen(r#where.zone)?);
         solid.extend(cracked);
         let loaded = || self.chunks_loaded();
-        let stacked = self.height.get().is_some() && self.terrain.stacked(&loaded)?;
-        let level = if height.is_none() || stacked {
-            self.height.get()
-        } else {
-            height
-        };
+        let level = self.height.get();
+        let stacked = level.is_some() && self.terrain.stacked(&loaded)?;
 
         let mut chunks: Vec<Rc<Chunk>> = Vec::new();
         for chunk in self.chunks_loaded()? {
@@ -809,11 +805,6 @@ impl FieldReader {
                 &covered,
             ));
         }
-        let decks = if stacked {
-            Vec::new()
-        } else {
-            self.terrain.decks(level, &loaded)?
-        };
         let ladders = self.ladders_here()?;
         let cliffs = self.terrain.cliffs(level, &ladders)?;
         // From the models, not the listing: guiding asks with nothing listed.
@@ -861,7 +852,6 @@ impl FieldReader {
             Some(Rc::new(move |cell| me.terrain.height(cell)))
         };
         let ground = Ground {
-            decks,
             cliffs,
             ladders,
             doors,

@@ -96,9 +96,6 @@ struct FakeField {
     falls: RefCell<HashSet<Cell>>,
     /// Cells of a current carrying the player west.
     currents: RefCell<HashSet<Cell>>,
-    /// A floor's height -> the blocked cells its deck opens, walked at that height alone. A
-    /// list, since a float is no key in Rust.
-    decks: RefCell<Vec<(f64, HashSet<Cell>)>>,
     surfaces: RefCell<IndexMap<Cell, Rc<HashSet<Cell>>>>,
     /// A stacked ground's cells, each with its lower floor's height and its upper's, None where
     /// that floor is closed; no cell, and the ground is not stacked.
@@ -136,7 +133,6 @@ impl FakeField {
             shore: RefCell::new(HashSet::new()),
             falls: RefCell::new(HashSet::new()),
             currents: RefCell::new(HashSet::new()),
-            decks: RefCell::new(Vec::new()),
             surfaces: RefCell::new(IndexMap::new()),
             floors: RefCell::new(IndexMap::new()),
             bare: RefCell::new(HashSet::new()),
@@ -178,20 +174,11 @@ impl FieldSource for FakeField {
         })
     }
 
-    fn ground(&self, r#where: &Field, height: Option<f64>) -> Result<Ground> {
+    fn ground(&self, r#where: &Field) -> Result<Ground> {
         let origin = (80, 160);
         let cells: Vec<Cell> = (0..CHUNK * CHUNK)
             .map(|i| (origin.0 + i % CHUNK, origin.1 + i / CHUNK))
             .collect();
-        let decks = self.decks.borrow();
-        let opened: HashSet<Cell> = match height {
-            Some(height) => decks
-                .iter()
-                .find(|(known, _)| *known == height)
-                .map(|(_, opened)| opened.clone())
-                .unwrap_or_default(),
-            None => HashSet::new(),
-        };
         let blocked = self.blocked.borrow();
         let bumpy = self.bumpy.borrow();
         let shore = self.shore.borrow();
@@ -226,7 +213,7 @@ impl FieldSource for FakeField {
                     SPIKY
                 } else if flat.contains(cell) {
                     FLAT
-                } else if blocked.contains(cell) && !opened.contains(cell) {
+                } else if blocked.contains(cell) {
                     BLOCKED
                 } else {
                     0
@@ -288,11 +275,6 @@ impl FieldSource for FakeField {
             },
         );
         ground.ice = self.ice.borrow().clone();
-        ground.decks = decks
-            .iter()
-            .map(|(known, _)| *known)
-            .filter(|known| Some(*known) != height)
-            .collect();
         ground.hops = bumpy
             .iter()
             .map(|&cell| (cell, pathfind::NORTH))
@@ -2701,38 +2683,6 @@ fn test_under_the_water_p_goes_to_the_light_whose_sea_reaches_the_things_pocket(
         last(&rig.backend),
         "can't continue, surface and go to the dive spot 20 east 5 south, entrance, 25 east 10 south"
     );
-}
-
-/// Spike 159: from the foot of Route 119 the way north crosses a bridge high over the path,
-/// and its decks walked at the player's height cut it. The way found at the bridge's height is
-/// followed on that ground: at the player's own the bridge is a wall, and every step would
-/// find the way again.
-#[test]
-fn test_where_no_way_is_found_at_the_players_height_the_decks_are_walked_at_another() {
-    let wall: Vec<Cell> = (93..108)
-        .flat_map(|x| (173..188).map(move |z| (x, z)))
-        .filter(|&(x, z)| (x - 100i64).abs().max((z - 180i64).abs()) == 7)
-        .collect();
-    let mut walls = house_front();
-    walls.extend(wall);
-    let mut rig = navigator(Want {
-        blocked: walls,
-        ..on(street())
-    });
-    *rig.field.decks.borrow_mut() = vec![(99.0, HashSet::from([(93, 177)]))];
-    rig.press(CATEGORY_PREVIOUS);
-    rig.press(PATHFIND);
-    assert_eq!(
-        said(&rig.backend),
-        ["people, 1", "2 south, 10 east, 2 south"]
-    );
-    step(&mut rig, &[(90, 176), (90, 177), (91, 177), (91, 178)]);
-    assert_eq!(
-        from(&rig.backend, 2),
-        ["10 east", "1 north, 9 east, 2 south"]
-    );
-    let way = guidance(&rig);
-    assert!(way.is_some() && way.unwrap().borrow().height == Some(99.0));
 }
 
 /// Spike 167: Sootopolis Gym's lower floor lies under the corridor to its way out, and a stair

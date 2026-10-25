@@ -313,8 +313,8 @@ impl FieldSource for FieldReader {
         FieldReader::interactables(self, r#where)
     }
 
-    fn ground(&self, r#where: &Field, height: Option<f64>) -> Result<Ground> {
-        FieldReader::ground(self, r#where, height)
+    fn ground(&self, r#where: &Field) -> Result<Ground> {
+        FieldReader::ground(self, r#where)
     }
 }
 
@@ -1887,8 +1887,8 @@ impl FieldSource for OwnApps {
         }
     }
 
-    fn ground(&self, r#where: &Field, height: Option<f64>) -> Result<Ground> {
-        self.field().ground(r#where, height)
+    fn ground(&self, r#where: &Field) -> Result<Ground> {
+        self.field().ground(r#where)
     }
 }
 

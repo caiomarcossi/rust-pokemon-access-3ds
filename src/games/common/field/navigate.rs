@@ -543,7 +543,6 @@ impl Navigator {
                 "",
                 action == PATHFIND_HM,
                 held,
-                None,
                 false,
                 true,
                 self.push(&item),
@@ -861,9 +860,8 @@ impl Navigator {
         self.chosen = Some(key);
         self.facing = None;
         let tell = self.guide.tell.clone();
-        self.guide.to(
-            r#where, item, &*tell, "", false, None, None, true, false, None,
-        )
+        self.guide
+            .to(r#where, item, &*tell, "", false, None, true, false, None)
     }
 
     /// Put the rename dialog up for whatever is chosen.

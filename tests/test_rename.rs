@@ -127,7 +127,7 @@ impl FieldSource for FakeField {
         })
     }
 
-    fn ground(&self, _where: &Field, _height: Option<f64>) -> Result<Ground> {
+    fn ground(&self, _where: &Field) -> Result<Ground> {
         unimplemented!("FakeField has no ground")
     }
 }

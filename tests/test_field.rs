@@ -1663,7 +1663,7 @@ fn test_a_solid_thing_is_walked_up_to_facing_it_and_an_open_one_onto() -> Result
         &[border(160), house_front()].concat(),
     );
     let r#where = town.r#where()?;
-    let ground = town.reader.ground(&r#where, None)?;
+    let ground = town.reader.ground(&r#where)?;
     let door = r#where
         .of("exits")
         .into_iter()
@@ -1699,7 +1699,7 @@ fn test_a_solid_thing_is_walked_up_to_facing_it_and_an_open_one_onto() -> Result
 fn test_a_warp_is_walked_round_unless_it_is_where_the_path_goes() -> Result<()> {
     let town = Town::new();
     let r#where = town.r#where()?;
-    let ground = town.reader.ground(&r#where, None)?;
+    let ground = town.reader.ground(&r#where)?;
     let other_door = r#where
         .of("exits")
         .into_iter()
@@ -1741,7 +1741,7 @@ fn test_a_conveyor_belt_is_ridden_the_way_it_runs_and_walked_round_against_it() 
             ..game()
         },
     );
-    let ground = town.reader.ground(&town.r#where()?, None)?;
+    let ground = town.reader.ground(&town.r#where()?)?;
     assert!(ground.open((91, 175))? && ground.ledge((91, 175))? == Some(pathfind::SOUTH));
     assert_eq!(ground.ledge((91, 178))?, None);
     let r#box = ground.r#box((91, 174), [(91, 176)])?;
@@ -1807,7 +1807,7 @@ fn test_a_barrier_is_listed_as_one_and_stands_across_the_way_its_model_faces() -
             .iter()
             .any(|item| item.kind == "barrier")
     );
-    let ground = town.reader.ground(&r#where, None)?;
+    let ground = town.reader.ground(&r#where)?;
     for cell in [(99, 175), (101, 175), (104, 174), (104, 176)] {
         assert!(!ground.open(cell)?);
     }
@@ -1835,7 +1835,7 @@ fn test_a_big_boulder_stands_in_four_cells_and_strength_clears_them_all() -> Res
         .find(|item| item.code == oras::BIG_BOULDER)
         .unwrap();
     assert_eq!((boulder.cell, boulder.size), ((100, 175), (2, 2)));
-    let ground = town.reader.ground(&r#where, None)?;
+    let ground = town.reader.ground(&r#where)?;
     let cells = [(100, 175), (101, 175), (100, 176), (101, 176)];
     for cell in cells {
         assert!(!ground.open(cell)?);
@@ -2010,10 +2010,7 @@ fn test_a_hole_is_listed_until_a_big_boulder_fills_it_and_then_both_are_floor() 
         interactables: Vec::new(),
         ..r#where.clone()
     };
-    for ground in [
-        town.reader.ground(&r#where, None)?,
-        town.reader.ground(&bare, None)?,
-    ] {
+    for ground in [town.reader.ground(&r#where)?, town.reader.ground(&bare)?] {
         for cell in full {
             assert!(ground.open(cell)?);
         }
@@ -2081,7 +2078,7 @@ fn test_a_gyms_switches_and_passages_are_listed_and_walked_round_unless_the_goal
         .map(|item| item.code)
         .collect();
     assert_eq!(codes, [0x4, 0x9]);
-    let ground = town.reader.ground(&r#where, None)?;
+    let ground = town.reader.ground(&r#where)?;
     assert!(ground.open((91, 175))? && !ground.passable((91, 175))?);
     let goals = ground.goals(&switch)?;
     let path = pathfind::find(
@@ -2233,14 +2230,14 @@ fn test_a_zone_of_rooms_lists_only_the_room_the_player_stands_in() -> Result<()>
 #[test]
 fn test_the_ground_ends_with_the_matrix_and_is_open_where_no_chunk_is_loaded() -> Result<()> {
     let town = Town::new();
-    let ground = town.reader.ground(&town.r#where()?, None)?;
+    let ground = town.reader.ground(&town.r#where()?)?;
     assert!(!ground.open((79, 172))?);
     assert!(!ground.open((80, 160))?);
     let unloaded = Town::with(false, 5, 7);
     assert!(
         unloaded
             .reader
-            .ground(&unloaded.r#where()?, None)?
+            .ground(&unloaded.r#where()?)?
             .open((80, 160))?
     );
     Ok(())
@@ -2340,7 +2337,7 @@ fn test_the_ground_where_no_chunk_is_loaded_is_the_roms_chunk_the_field_map_list
         },
         game(),
     );
-    let ground = town.reader.ground(&town.r#where()?, None)?;
+    let ground = town.reader.ground(&town.r#where()?)?;
     assert!(!ground.open((80, 160))? && ground.open((99, 160))?);
     assert!(
         ground.open((80, 159))?,
@@ -2387,7 +2384,7 @@ fn test_a_drop_is_not_walked_off_but_by_its_ladder() -> Result<()> {
     town.memory.write(FILE, &data);
     town.memory
         .u32(HOLDER + 8, &[0x11 | (data.len() as i64) << 8]);
-    let ground = town.reader.ground(&town.r#where()?, None)?;
+    let ground = town.reader.ground(&town.r#where()?)?;
     assert!(!ground.joined((94, 170), (94, 171)) && !ground.joined((94, 171), (94, 170)));
     assert!(ground.joined((95, 170), (95, 171)) && ground.joined((95, 171), (95, 170)));
     assert!(ground.joined((94, 170), (95, 170)));
@@ -2403,7 +2400,7 @@ fn test_the_search_is_the_whole_matrix_where_the_roms_chunks_are_read() -> Resul
     let mut town = Town::new();
     let near = town
         .reader
-        .ground(&town.r#where()?, None)?
+        .ground(&town.r#where()?)?
         .r#box((94, 172), [(94, 171)])?;
     assert_eq!(
         near,
@@ -2424,7 +2421,7 @@ fn test_the_search_is_the_whole_matrix_where_the_roms_chunks_are_read() -> Resul
     );
     let whole = town
         .reader
-        .ground(&town.r#where()?, None)?
+        .ground(&town.r#where()?)?
         .r#box((94, 172), [(94, 171)])?;
     assert_eq!(
         whole,
@@ -2561,7 +2558,7 @@ fn test_a_chunk_with_a_deck_at_the_players_height_is_walked_a_floor_at_a_time() 
         .find(|item| item.cell == (105, 172))
         .unwrap()
         .clone();
-    let ground = town.reader.ground(&r#where, None)?;
+    let ground = town.reader.ground(&r#where)?;
     assert!(ground.stacked);
     assert!(ground.open((100, 172))? && !ground.open((100, 171))?);
     let path = ground
@@ -2602,7 +2599,7 @@ fn test_a_chunk_of_x_s_eight_sections_has_its_deck_from_section_six() -> Result<
     );
     town.memory.write(POOL + mmodel::WORLD_Y, &f32s(&[110.0]));
     let r#where = town.r#where()?;
-    let ground = town.reader.ground(&r#where, None)?;
+    let ground = town.reader.ground(&r#where)?;
     assert!(ground.open((100, 172))? && !ground.open((100, 171))?);
     Ok(())
 }
@@ -2630,8 +2627,8 @@ fn test_a_matrix_with_a_deck_is_walked_a_floor_at_a_time() -> Result<()> {
             false,
         ),
     );
-    let ground = town.reader.ground(&town.r#where()?, None)?;
-    assert!(ground.stacked && ground.decks.is_empty());
+    let ground = town.reader.ground(&town.r#where()?)?;
+    assert!(ground.stacked);
     assert!(ground.open((100, 172))?);
     assert_eq!(ground.floors((99, 172))?, [(0, Some(0.0)), (1, Some(99.0))]);
     assert_eq!(ground.climb(1, (99, 172), (100, 172))?, Some(1));
@@ -2705,8 +2702,8 @@ fn test_the_invisible_blocker_is_nobody_and_stands_in_the_way() -> Result<()> {
         .map(|item| item.cell)
         .collect();
     assert_eq!(seen, [(98, 172)]);
-    assert!(!town.reader.ground(&r#where, None)?.open((96, 172))?);
-    assert!(!town.reader.ground(&r#where, None)?.open((97, 172))?);
+    assert!(!town.reader.ground(&r#where)?.open((96, 172))?);
+    assert!(!town.reader.ground(&r#where)?.open((97, 172))?);
     Ok(())
 }
 
@@ -2761,7 +2758,7 @@ fn test_a_spot_a_pokemon_lurks_at_unseen_is_pokemon_and_walked_through() -> Resu
     let r#where = town.r#where()?;
     let cells: Vec<(i64, i64)> = r#where.of("pokémon").iter().map(|item| item.cell).collect();
     assert_eq!(cells, [(100, 170)]);
-    let ground = town.reader.ground(&r#where, None)?;
+    let ground = town.reader.ground(&r#where)?;
     assert!(ground.open((100, 170))? && !ground.stepped.contains(&(100, 170)));
     Ok(())
 }
@@ -2817,7 +2814,7 @@ fn test_a_model_drawn_as_nothing_is_what_it_stands_in_for() -> Result<()> {
         .map(|item| (item.cell, (item.code, item.size)))
         .collect();
     assert_eq!(sized, IndexMap::from([((99, 170), (groudon, (2, 1)))]));
-    assert!(!town.reader.ground(&r#where, None)?.open((106, 171))?);
+    assert!(!town.reader.ground(&r#where)?.open((106, 171))?);
     // Once Groudon itself stands where it can be listed, it is listed and not its stand-ins.
     town.model(5, TOWN, 0, groudon, (100, 165));
     let r#where = town.r#where()?;
@@ -2854,7 +2851,7 @@ fn test_a_row_of_models_drawn_as_nothing_with_a_script_no_drawn_record_has_is_a_
         }
         town.model(7, TOWN, 6, nothing, (104, 170));
         let r#where = town.r#where()?;
-        let ground = town.reader.ground(&r#where, None)?;
+        let ground = town.reader.ground(&r#where)?;
         for &cell in &gate {
             assert!(!ground.open(cell)?);
         }
@@ -3146,28 +3143,15 @@ fn test_a_chunk_still_loading_is_not_read_until_its_block_is_ready() -> Result<(
     town.memory
         .write(TOWN_CHUNK, &chunk_file((80, 160), &border(160)));
     town.memory.u32(TOWN_BLOCK + mapblock::STATE, &[2]);
-    assert!(
-        town.reader
-            .ground(&town.r#where()?, None)?
-            .open((85, 160))?
-    );
+    assert!(town.reader.ground(&town.r#where()?)?.open((85, 160))?);
     town.memory.write(
         TOWN_CHUNK,
         &chunk_file((80, 160), &border_with(160, &[(85, 87)])),
     );
     town.memory
         .u32(TOWN_BLOCK + mapblock::STATE, &[mapblock::READY]);
-    assert!(
-        town.reader
-            .ground(&town.r#where()?, None)?
-            .open((85, 160))?
-    );
-    assert!(
-        !town
-            .reader
-            .ground(&town.r#where()?, None)?
-            .open((88, 160))?
-    );
+    assert!(town.reader.ground(&town.r#where()?)?.open((85, 160))?);
+    assert!(!town.reader.ground(&town.r#where()?)?.open((88, 160))?);
     Ok(())
 }
 
@@ -3610,7 +3594,7 @@ fn test_under_the_water_each_light_is_joined_to_those_the_sea_above_reaches() ->
     reader.track(&town.found())?;
     let r#where = reader.poll()?.expect("the player's field");
     let r#where = reader.interactables(&r#where)?;
-    let surfaces = reader.ground(&r#where, None)?.surfaces;
+    let surfaces = reader.ground(&r#where)?.surfaces;
     let set = |cells: &[(i64, i64)]| -> HashSet<(i64, i64)> { cells.iter().copied().collect() };
     assert_eq!(*surfaces[&(85, 166)], set(&lights[0]));
     let both = set(&[lights[1].clone(), lights[2].clone()].concat());
@@ -3922,13 +3906,7 @@ fn test_a_work_object_is_whoever_it_was_filled_with() -> Result<()> {
     town.memory.u32(rival + mmodel::DRAWN, &[0x7A]);
     let r#where = town.r#where()?;
     assert!(r#where.of("people").is_empty());
-    assert!(
-        !town
-            .reader
-            .ground(&r#where, None)?
-            .standing
-            .contains(&(104, 179))
-    );
+    assert!(!town.reader.ground(&r#where)?.standing.contains(&(104, 179)));
     town.model(1, TOWN, 3, 0x119, (104, 179));
     town.memory.u32(rival + mmodel::DRAWN, &[0x13B]);
     assert_eq!(codes(&town)?, [0x119]);
@@ -4364,7 +4342,7 @@ fn test_a_street_beside_the_grid_is_walked_where_the_world_has_it() -> Result<()
         .flat_map(|x| (158..166).map(move |z| (x, z)))
         .collect();
     town.block(TOWN_BLOCK, TOWN_CHUNK, (80, 160), &walled);
-    let ground = town.reader.ground(&town.r#where()?, None)?;
+    let ground = town.reader.ground(&town.r#where()?)?;
     for x in [99, 100, 101] {
         for z in [160, 162, 163, 164] {
             assert!(ground.open((x, z))?, "({x}, {z})");
@@ -4464,7 +4442,7 @@ fn test_a_diagonal_street_is_one_leg_said_by_the_key_that_walks_it() -> Result<(
     on_one_line(&mut town, &line, start, end, 1);
     town.model(0, TOWN, mmodel::PLAYER_INDEX, 0xAC, (100, 170));
     let r#where = town.r#where()?;
-    let ground = town.reader.ground(&r#where, None)?;
+    let ground = town.reader.ground(&r#where)?;
     let path = ground.find(
         (100, 170),
         &IndexMap::from([((96, 166), None)]),
@@ -4589,7 +4567,7 @@ fn test_on_the_rails_everything_is_in_the_corridor_and_its_walls_are_the_ground(
             .collect::<Vec<_>>(),
         [(2, 3)]
     );
-    let ground = town.reader.ground(&r#where, None)?;
+    let ground = town.reader.ground(&r#where)?;
     assert!(ground.open((0, 0))? && !ground.open((3, 0))? && !ground.open((2, 3))?);
     Ok(())
 }
@@ -4616,7 +4594,7 @@ fn test_a_player_kept_in_the_line_turned_round_is_turned_back() -> Result<()> {
         .write(player + mmodel::FACING_SIN, &f32s(&[0.0, 0.0, -1.0]));
     let r#where = town.r#where()?;
     assert!(r#where.on_rail && r#where.cell == (2, -2) && r#where.heading == Some("north"));
-    assert!(town.reader.ground(&r#where, None)?.open(r#where.cell)?);
+    assert!(town.reader.ground(&r#where)?.open(r#where.cell)?);
     Ok(())
 }
 
@@ -5311,7 +5289,7 @@ fn test_a_bases_crumbled_cliff_is_listed_once_as_one_exit() -> Result<()> {
         .map(|item| (item.kind, item.cell, item.size))
         .collect();
     assert_eq!(cliffs, [("crumbled cliff".to_string(), (104, 166), (3, 2))]);
-    let ground = town.reader.ground(&r#where, None)?;
+    let ground = town.reader.ground(&r#where)?;
     assert!(!ground.open((105, 167))? && ground.open((103, 167))?);
     Ok(())
 }
@@ -5440,7 +5418,7 @@ fn test_p_walks_over_the_stairs_on_the_cliff_and_a_board_over_a_hole() -> Result
     let solid: Vec<(i64, i64)> = [covered.clone(), vec![(95, 172)]].concat();
     let bases = Bases::new(&[], None, &standing, &solid);
     town.reader = field_reader(town.memory.clone(), Given::default(), bases_game(bases));
-    let ground = town.reader.ground(&town.r#where()?, None)?;
+    let ground = town.reader.ground(&town.r#where()?)?;
     for &cell in &covered {
         assert!(ground.open(cell)?, "{cell:?}");
     }
@@ -5551,7 +5529,7 @@ fn test_p_goes_round_a_decoration_the_cell_table_has_as_floor() -> Result<()> {
             ..game()
         },
     );
-    let ground = town.reader.ground(&town.r#where()?, None)?;
+    let ground = town.reader.ground(&town.r#where()?)?;
     assert!(!ground.open((95, 172))? && ground.open((96, 172))?);
     Ok(())
 }
