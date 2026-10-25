@@ -195,6 +195,8 @@ pub struct Climbing {
     pub face: i64,
     /// The kinds of the step off a face sideways onto a ledge, each with its way.
     pub sideways: IndexMap<i64, &'static str>,
+    /// The top of a slide down a wall, open: a slide only where the cells past it fall.
+    pub slide: i64,
 }
 
 /// One game as the gen 6 readers read it.

@@ -3526,6 +3526,61 @@ fn test_climbing_walls_are_listed_a_run_of_blue_spots_or_a_ledge_at_a_time() -> 
     Ok(())
 }
 
+/// Spike 244: in Cyllage Gym the player stepped south onto `0x8a` at (16, 20), at 189, and was
+/// carried down the blocked cells south of it, 171 to 117, onto the floor at 108 (x_gym_2_slide).
+/// X has `0x8a` in other chunks too; where the cells past it do not fall, it is no slide.
+#[test]
+fn test_a_slide_is_found_where_the_cells_past_its_top_fall_to_a_lower_landing() -> Result<()> {
+    let mut town = Town::with(false, 5, 7);
+    let mut files = vec![NO_CHUNK_FILE; 64];
+    files[4 * 8 + 2] = 7;
+    town.memory.write(MAP + MAP_CHUNK_FILES, &le16(&files));
+    let falls: IndexMap<(i64, i64), f64> = (171..175)
+        .map(|z| ((95, z), 189.0 - 18.0 * (z - 170) as f64))
+        .collect();
+    let level = [(100, 171), (100, 172)];
+    let tops = [((95, 170), 0x8A000020), ((100, 170), 0x8A000020)];
+    let mut blocked: Vec<(i64, i64)> = falls.keys().copied().collect();
+    blocked.extend(level);
+    let words = mapblock::cells(&chunk_file_with((80, 160), &blocked, &tops, 7))?.unwrap();
+    let heights: Vec<Option<f64>> = (0..CHUNK * CHUNK)
+        .map(|i| {
+            let cell = (80 + i % CHUNK, 160 + i / CHUNK);
+            Some(falls.get(&cell).copied().unwrap_or(if cell == (95, 175) {
+                108.0
+            } else if cell.1 >= 170 {
+                189.0
+            } else {
+                198.0
+            }))
+        })
+        .collect();
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given {
+            far: Some(Rc::new(move |file| {
+                Ok(if file == 7 { Some(words.clone()) } else { None })
+            })),
+            far_heights: Some(Rc::new(move |file| {
+                Ok(if file == 7 {
+                    Some(heights.clone())
+                } else {
+                    None
+                })
+            })),
+            ..Given::default()
+        },
+        Game {
+            climbing: Some(xy::climbing()),
+            ..game()
+        },
+    );
+    let slides = town.reader.ground(&town.r#where()?)?.walls.slides.clone();
+    let want: IndexMap<(i64, i64), &str> = (170..175).map(|z| ((95, z), pathfind::SOUTH)).collect();
+    assert_eq!(slides, want);
+    Ok(())
+}
+
 /// Spike 238: on Route 9 the Rhyhorn smashes rocks with A, and while the player rode it the list
 /// said "Rhyhorn, here", its model left where it was got on.
 #[test]

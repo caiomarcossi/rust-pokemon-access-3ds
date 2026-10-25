@@ -106,6 +106,7 @@ how-smash = zertrümmern
 how-climb = klettern
 p-climb-up = { $holds } hochklettern
 p-climb-down = { $holds } runterklettern
+how-slide = rutschen
 p-current = mit der Strömung { $bearing }
 p-to-push = um nach { $way } zu schieben:
 p-nudge = ein wenig nach { $way }

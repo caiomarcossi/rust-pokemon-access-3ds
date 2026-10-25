@@ -106,6 +106,7 @@ how-smash = 擊碎
 how-climb = 攀爬
 p-climb-up = 向上攀爬{ $holds }
 p-climb-down = 向下攀爬{ $holds }
+how-slide = 滑下
 p-current = 順著海流{ $bearing }
 p-to-push = 要向{ $way }推：
 p-nudge = 稍微向{ $way }

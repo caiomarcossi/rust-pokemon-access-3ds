@@ -98,7 +98,9 @@ with B. `P` walks you to the Rhyhorn, "Rhyhorn 1 east", across the spikes and of
 **Climbing walls.** In Cyllage Gym, in X and Y, the rock walls are climbed from the blue spots at
 their foot. The climbing category lists the blue spots and each wall ledge, where you step off a
 wall sideways. `P` climbs them: "climb 3 up, 6 east" is up the wall three handholds, then six east
-along it, and "climb 3 down" is back down to the floor.
+along it, and "climb 3 down" is back down to the floor. Some walls are slid down instead: step onto
+the top and the game carries you to the floor below, which `P` says as "slide 5 south". A slide
+only goes down, so `P` takes the way round to go back up.
 
 **Big boulders** say which ways they can be pushed from where they stand, or "immoveable". Hold
 the way for a moment to push one a square. Push one into a hole and both leave the list.

@@ -48,6 +48,11 @@ pub const SMASH: &str = "smash";
 /// no such thing.
 pub const CLIMB: &str = "climb";
 
+/// What a leg down a climbing wall's slide is said with, "slide 5 south": in Cyllage Gym the player
+/// stepped onto one's top and was carried down it (x_gym_2_slide, spike 244). Never said as a current
+/// (`CURRENT`). The game names no such thing.
+pub const SLIDE: &str = "slide";
+
 /// A leg with handholds climbed in place before it, at its first cell, and after it, at the
 /// way's end: "climb 3 up, 6 east", "climb 3 down, 1 west" (spike 244). Up positive.
 ///
@@ -1226,6 +1231,9 @@ impl Guide {
             }
             if pushed.contains(&(cell, step)) {
                 return Ok(PUSH.to_string());
+            }
+            if ground.walls.slides.get(&cell) == Some(&pathfind::towards(cell, step)) {
+                return Ok(SLIDE.to_string());
             }
             if ground.carry(cell)? == Some(pathfind::towards(cell, step)) {
                 return Ok(CURRENT.to_string());

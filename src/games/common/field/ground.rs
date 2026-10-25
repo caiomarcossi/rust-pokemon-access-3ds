@@ -474,7 +474,8 @@ pub struct Ground {
     /// Rhyhorn, needing no HM (spike 238). Nobody stands in them; on foot they are in the way.
     pub smashed: HashSet<Cell>,
     /// The climbing walls: a face's line walked on foot or climbed, onto it only at a blue spot
-    /// and off it sideways onto a ledge only climbing (`climb.Walls`, spike 244).
+    /// and off it sideways onto a ledge only climbing; and their slides, open though blocked, which
+    /// carry the player down them as a current does (`carry`; `climb.Walls`, spike 244).
     ///
     /// An `Rc`: the terrain finds them once a matrix and every ground built on it shares them, as
     /// the Python's grounds share the one object.
@@ -770,7 +771,8 @@ impl Ground {
         Ok((chunk.walkable(cell)?
             || self.filled.contains(&cell)
             || chunk.kind(cell)? == STONE
-            || self.rides.contains(&chunk.kind(cell)?))
+            || self.rides.contains(&chunk.kind(cell)?)
+            || self.walls.slides.contains_key(&cell))
             && (self.surf || !chunk.water(cell)?))
     }
 
@@ -1103,9 +1105,13 @@ impl Ground {
         }
     }
 
-    /// Which way the cell carries a player surfing on it where it is a current, or None:
-    /// the search's `carry` (`CURRENTS`).
+    /// Which way the cell carries a player surfing on it where it is a current, or a player
+    /// on foot down a climbing wall's slide (`Walls.slides`), or None: the search's `carry`
+    /// (`CURRENTS`).
     pub fn carry(&self, cell: Cell) -> Result<Option<&'static str>> {
+        if let Some(&way) = self.walls.slides.get(&cell) {
+            return Ok(Some(way));
+        }
         let chunk = if self.corridor.is_some() {
             None
         } else {

@@ -453,16 +453,17 @@ impl Terrain {
 
     /// Every climbing wall on the matrix (`Walls.found`), off the ROM's chunks with their
     /// ground heights, found once a matrix; none without the ROM's heights. Only chunks with a
-    /// `climbing.face` cell are read whole: Cyllage Gym's one chunk holds all 28 of X's
-    /// (spike 244).
+    /// `climbing.face` or `climbing.slide` cell are read whole: Cyllage Gym's one chunk holds
+    /// all 28 of X's faces and both its slides (spike 244).
     pub fn walls(&self, climbing: &Climbing) -> Result<Rc<Walls>> {
         let files = self.files.borrow().1.clone();
         if self.walls_of.borrow().0.as_ref() != Some(&files) {
+            let kinds = [climbing.face, climbing.slide];
             let mut cells: IndexMap<Cell, (i64, Option<f64>)> = IndexMap::new();
             for ((column, row), (words, heights)) in self.tables()? {
                 if words
                     .iter()
-                    .any(|&word| word >> KIND_SHIFT == climbing.face)
+                    .any(|&word| kinds.contains(&(word >> KIND_SHIFT)))
                 {
                     for (i, &word) in words.iter().enumerate() {
                         let height = *heights
@@ -476,7 +477,12 @@ impl Terrain {
                     }
                 }
             }
-            let walls = Rc::new(Walls::found(&cells, climbing.face, &climbing.sideways));
+            let walls = Rc::new(Walls::found(
+                &cells,
+                climbing.face,
+                &climbing.sideways,
+                climbing.slide,
+            ));
             *self.walls_of.borrow_mut() = (Some(files), walls);
         }
         Ok(self.walls_of.borrow().1.clone())

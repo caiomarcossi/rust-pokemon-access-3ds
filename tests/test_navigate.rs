@@ -1921,8 +1921,12 @@ fn gym_wall(rig: &Rig, level: Option<f64>, wide: bool) {
         })
         .collect();
     let climbing = xy::climbing();
-    *rig.field.walls.borrow_mut() =
-        Rc::new(Walls::found(&table, climbing.face, &climbing.sideways));
+    *rig.field.walls.borrow_mut() = Rc::new(Walls::found(
+        &table,
+        climbing.face,
+        &climbing.sideways,
+        climbing.slide,
+    ));
     let mut blocked = rig.field.blocked.borrow_mut();
     blocked.extend(
         words
@@ -1934,6 +1938,85 @@ fn gym_wall(rig: &Rig, level: Option<f64>, wide: bool) {
     blocked.extend((111..end).map(|x| (x, 173)));
     *rig.field.cliffs.borrow_mut() = HashSet::from([((110, 172), LEDGE), (LEDGE, (110, 172))]);
     rig.field.level.set(level);
+}
+
+/// The top of a slide down one of Cyllage Gym's walls, open (x_gym_2_slide, spike 244).
+const SLIDE: i64 = 0x8A000020;
+
+/// The Gym's two slides south of Grant, its columns 14 to 16 and rows 18 to 33 moved into the
+/// fake chunk (spike 244): the floor at 198, the first slide's top at 189 in row 170 and its
+/// blocked cells falling 18 a row to 117, the floor between at 108, the second's top at 99 in
+/// row 177 and its cells falling to 9, then the floor at 0; walls either side of each slide.
+fn gym_slides(rig: &Rig) {
+    let heights = [
+        198.0, 198.0, 189.0, 171.0, 153.0, 135.0, 117.0, 108.0, 108.0, 99.0, 81.0, 63.0, 45.0,
+        27.0, 9.0, 0.0,
+    ];
+    let rows: HashSet<i64> = (170..175).chain(177..183).collect();
+    let mut table: IndexMap<Cell, (i64, Option<f64>)> = IndexMap::new();
+    for x in 94..97 {
+        for (z, &height) in (168..184).zip(heights.iter()) {
+            let word = if z == 170 || z == 177 {
+                SLIDE
+            } else if rows.contains(&z) {
+                BLOCKED
+            } else {
+                0
+            };
+            table.insert((x, z), (word, Some(height)));
+        }
+    }
+    let climbing = xy::climbing();
+    *rig.field.walls.borrow_mut() = Rc::new(Walls::found(
+        &table,
+        climbing.face,
+        &climbing.sideways,
+        climbing.slide,
+    ));
+    let mut blocked = rig.field.blocked.borrow_mut();
+    blocked.extend(
+        table
+            .iter()
+            .filter(|&(_, &(word, _))| word & BLOCKED != 0)
+            .map(|(&cell, _)| cell),
+    );
+    for x in [93, 97] {
+        blocked.extend(rows.iter().map(|&z| (x, z)));
+    }
+}
+
+/// Cyllage Gym (x_gym_2_slide, spike 244): south of Grant the player stepped onto the top of a
+/// slide at (16, 20) and was carried down it onto the floor at (16, 25), walked on onto the next
+/// and was carried down onto (16, 33), where P had said the long way round. A slide carries the
+/// player one way only, so a way up goes round.
+#[test]
+fn test_p_goes_down_a_gyms_slides_and_never_up_one() {
+    let mut rig = navigator(on(Field {
+        interactables: vec![somebody((96, 186), 0x08D1E9A8)],
+        ..Field::new(street().zone, (96, 168))
+    }));
+    gym_slides(&rig);
+    rig.press(PATHFIND);
+    assert_eq!(
+        last(&rig.backend),
+        "2 south, slide 5 south, 2 south, slide 6 south, 2 south"
+    );
+    let mut rig = navigator(on(Field {
+        interactables: vec![somebody((96, 166), 0x08D1E9A8)],
+        ..Field::new(street().zone, (96, 185))
+    }));
+    gym_slides(&rig);
+    rig.press(PATHFIND);
+    let way = guidance(&rig);
+    let slides = rig.field.walls.borrow().clone();
+    assert!(
+        way.is_some()
+            && !path_of(&way)
+                .iter()
+                .any(|cell| slides.slides.contains_key(cell))
+    );
+    let said = last(&rig.backend);
+    assert!(!said.contains("slide") && !said.contains("can't continue"));
 }
 
 /// X's Cyllage Gym (x_gym_2, spike 244): the player walked from the entrance to the blue spot at

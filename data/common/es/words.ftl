@@ -106,6 +106,7 @@ how-smash = romper
 how-climb = escalar
 p-climb-up = escalar { $holds } arriba
 p-climb-down = escalar { $holds } abajo
+how-slide = deslizarse
 p-current = dejarse llevar por la corriente { $bearing }
 p-to-push = para empujar al { $way }:
 p-nudge = un poco al { $way }

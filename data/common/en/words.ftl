@@ -159,6 +159,9 @@ how-smash = smash
 how-climb = climb
 p-climb-up = climb { $holds } up
 p-climb-down = climb { $holds } down
+# A leg down a climbing wall's slide, which carries the player once they step onto its top:
+# "slide 5 south" (spike 244).
+how-slide = slide
 # The way chosen to push a big boulder, before the way to its side: "to push east: 3 west".
 p-to-push = to push { $way }:
 # A step to line up with the next leg, where a wall's corner would catch the player: "a little

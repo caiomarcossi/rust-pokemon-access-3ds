@@ -1,5 +1,6 @@
 //! Climbing walls: X's Cyllage Gym's rock faces, climbed from the blue spots at their foot, along
-//! the row of cells in front of each, and off onto a ledge at a face's side (spike 244).
+//! the row of cells in front of each, and off onto a ledge at a face's side; and the slides down
+//! them, which carry the player (spike 244).
 //!
 //! Bound by:
 //! - ADR-0006: nothing here names a game's kinds; `gen6.game.Climbing` carries them.
@@ -51,6 +52,11 @@ pub struct Walls {
     /// Each ledge's blue spot, with the cell of the line beside it that the climber steps off the
     /// face from onto it, sideways, and back on: a cliff on foot.
     pub ledges: IndexMap<Cell, Cell>,
+    /// Each cell of a slide, its top and every blocked cell it carries the player through, with the
+    /// way it carries them, a cell at a time, to the open cell past it: a current (`Ground.carry`).
+    /// In x_gym_2_slide the player stepped south onto (16, 20) at 188 and was at (16, 25) at 111
+    /// 0.6 s later, about twice walking speed.
+    pub slides: IndexMap<Cell, &'static str>,
 }
 
 /// `pathfind.STEPS[way]`, for a way the game's kinds name.
@@ -69,16 +75,29 @@ impl Walls {
     /// outermost, broken where a cell is shut or has no wall behind it, and a line of one cell
     /// is none. A cell of a `sideways` kind on a line, beside a spot of the line that way above
     /// its foot, is the step off onto that ledge. In Cyllage Gym the foot is the lowest of a
-    /// face's spots: every ledge stands 36 to 144 over it (spike 244).
+    /// face's spots: every ledge stands 36 to 144 over it (spike 244). A slide is an open cell
+    /// of the `slide` kind from which, one way, the cells are blocked, each lower than the one
+    /// before, for one or more, and then open lower than it: the Gym's two fall 18 a cell, 171
+    /// to 117 onto the floor at 108 from a top at 189, and 81 to 9 onto 0 from 99.
     pub fn found(
         cells: &IndexMap<Cell, (i64, Option<f64>)>,
         face: i64,
         sideways: &IndexMap<i64, &'static str>,
+        slide: i64,
     ) -> Walls {
         let shut = |cell: Cell| -> bool {
             match cells.get(&cell) {
                 None => true,
                 Some(held) => held.0 & BLOCKED != 0,
+            }
+        };
+
+        let lower = |cell: Cell, than: Cell| -> bool {
+            let here = cells.get(&cell).and_then(|held| held.1);
+            let there = cells[&than].1;
+            match (here, there) {
+                (Some(here), Some(there)) => here < there,
+                _ => false,
             }
         };
 
@@ -161,11 +180,35 @@ impl Walls {
                 feet.push(foot);
             }
         }
+        let mut slides: IndexMap<Cell, &'static str> = IndexMap::new();
+        for (&top, &(word, _)) in cells {
+            if word >> KIND_SHIFT != slide || shut(top) {
+                continue;
+            }
+            for (way, (dx, dz)) in pathfind::STEPS {
+                let mut run: Vec<Cell> = vec![top];
+                let mut ahead;
+                loop {
+                    let last = run[run.len() - 1];
+                    ahead = (last.0 + dx, last.1 + dz);
+                    if !(shut(ahead) && lower(ahead, last)) {
+                        break;
+                    }
+                    run.push(ahead);
+                }
+                if run.len() > 1 && !shut(ahead) && lower(ahead, top) {
+                    for cell in run {
+                        slides.insert(cell, way);
+                    }
+                }
+            }
+        }
         Walls {
             lines,
             feet,
             pads,
             ledges,
+            slides,
         }
     }
 

@@ -383,6 +383,14 @@ pub fn rides() -> Rides {
 /// step from (26, 17) onto its ledge rises 36, a step's worth on foot, so the kinds, not the heights,
 /// say where a ledge is. X has 0x51 to 0x54 in chunk files 458 and 594 too, never seen (spike 244).
 ///
+/// Kind 0x8a, open (`0x8a000020`), is the top of a slide down a wall: two rows of three south of
+/// Grant, (14..16, 20) at 189 and (14..16, 27) at 99, each with blocked cells (`0x01000021`) south
+/// of it falling 18 a cell, to 117 and to 9, then the floor, at 108 and at 0, walls either side. In
+/// the tape of x_gym_2_slide the player stepped south from (16, 19) onto (16, 20) and was carried
+/// down to (16, 25) in 0.6 s, walked onto (16, 27) and was carried to (16, 33). X has 0x8a in chunk
+/// files 79, 886 and 1023 too, a row each with one or two blocked cells past it falling to lower
+/// floor, so taken for slides too; never seen.
+///
 /// Python's `CLIMBING` constant: a function, since an `IndexMap` is no const.
 pub fn climbing() -> Climbing {
     Climbing {
@@ -393,6 +401,7 @@ pub fn climbing() -> Climbing {
             (0x53, pathfind::NORTH),
             (0x54, pathfind::SOUTH),
         ]),
+        slide: 0x8A,
     }
 }
 
