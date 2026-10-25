@@ -41,6 +41,8 @@ the Game Boy games. Nothing here is taken from its code.
   category, power, accuracy and description on the move info screen, where the four moves are
   said by number, and when a move is to be forgotten.
 - **The PC Box, the party, the Bag and the Pokédex**, the habitat map included.
+- **The fitting room** in X and Y's boutiques: each category, and each item with its colour and
+  price.
 - **Contests and the Pokéblock Kit**: each move with its appeal and jamming, each entrant's
   place, and your berries and blocks with how many you have.
 - **Where you are**: the place name when you arrive somewhere new.

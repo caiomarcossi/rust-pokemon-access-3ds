@@ -175,6 +175,27 @@ pub fn training_button() -> &'static (i64, IndexMap<&'static str, i64>) {
     static TRAINING_BUTTON: OnceLock<(i64, IndexMap<&'static str, i64>)> = OnceLock::new();
     TRAINING_BUTTON.get_or_init(|| (55, IndexMap::from([("spar_button.bclim", 178)])))
 }
+/// The fitting room's tabs, pictures of what each lists: line N of text file 143 is the tab of the
+/// Nth, "hat", "top", "bottom", "dress", "socks", "shoes", "bag" and "hat accessory", and the tab
+/// lit while its list is shown draws `_wh` (x_cyllage_boutique_fitting_room). The boy's dress tab,
+/// `tab_onepiece`, is drawn dimmed and never lit, so its `_wh` is the others' pattern, unseen.
+pub fn fitting_tabs() -> &'static (i64, IndexMap<&'static str, i64>) {
+    static FITTING_TABS: OnceLock<(i64, IndexMap<&'static str, i64>)> = OnceLock::new();
+    FITTING_TABS.get_or_init(|| {
+        let tabs = [
+            "hat", "tops", "bottoms", "onepiece", "socks", "boots", "bag", "onepoint",
+        ];
+        let mut names = IndexMap::new();
+        for (line, tab) in tabs.iter().enumerate() {
+            for lit in ["", "_wh"] {
+                let image: &'static str =
+                    Box::leak(format!("tab_{tab}{lit}.bclim").into_boxed_str());
+                names.insert(image, line as i64);
+            }
+        }
+        (143, names)
+    })
+}
 
 /// Where X keeps a step's moment (spike 231): the footstep check at `0x00719af8` looks the model's
 /// animation up in 23 movements of three ids (`0x007933b0`), walking 0x04, 0x5c and 0x6f, running
@@ -237,18 +258,23 @@ pub fn rom() -> &'static RomLayout {
         puffs: Some(PUFF_NAMES),
         goods: Some(GOODS_NAMES),
         sounds: Some(SOUND_ARCHIVE.to_string()),
-        touch_words: [training_bags(), training_regimens(), training_button()]
-            .into_iter()
-            .map(|(file, lines)| {
-                (
-                    *file,
-                    lines
-                        .iter()
-                        .map(|(image, &line)| (image.to_string(), line))
-                        .collect(),
-                )
-            })
-            .collect(),
+        touch_words: [
+            training_bags(),
+            training_regimens(),
+            training_button(),
+            fitting_tabs(),
+        ]
+        .into_iter()
+        .map(|(file, lines)| {
+            (
+                *file,
+                lines
+                    .iter()
+                    .map(|(image, &line)| (image.to_string(), line))
+                    .collect(),
+            )
+        })
+        .collect(),
         ..RomLayout::new(
             "X and Y",
             text_archives(),
