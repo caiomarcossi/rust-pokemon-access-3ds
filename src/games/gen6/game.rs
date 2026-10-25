@@ -215,7 +215,7 @@ pub struct Game {
     /// a bush Cut clears, a rock Rock Smash does, a boulder Strength pushes.
     pub clears: IndexMap<i64, i64>,
     /// Where the field's work holds the Dowsing Machine's record (`dowsing`), or None where it has
-    /// not been measured, as in X and Y.
+    /// not been measured.
     pub dowsing: Option<i64>,
     /// (zone, sprite) of the move models that are a barrier's beam, three cells across the way the
     /// model faces (`field`, spike 146). The sprite is an invisible blocker of one cell elsewhere, so

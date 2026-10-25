@@ -3,12 +3,14 @@
 //! The machine is drawn in the player's hands on the field, not on the bottom screen. Its two lights
 //! come on only while the player faces a hidden item near enough, and their colour says how near:
 //! blue, green, yellow, then red with the item in the cell in front (omega_ruby_item-finder.ctm,
-//! 2026-09-29). The game keeps what they show in a small record of no class of its own, reached from
-//! the field's process through the field's work, which has no class either:
+//! 2026-09-29). X's machine shoots two beams the way the player faces instead, in the same four
+//! colours at the same levels (x_route_8_dowsing, spike A). The game keeps what they show in a small
+//! record of no class of its own, reached from the field's process through the field's work, which
+//! has no class either:
 //!
 //! ```text
 //! process (`field::FieldmapProc`)  +0x24 -> the field's work
-//! work                             +0x1d0 -> the record (`Game.dowsing` in ORAS)
+//! work                             +0x1d0 in ORAS, +0x1ac in X -> the record (`Game.dowsing`)
 //! record  +0x00 -> the work    +0x08 u32 1 with the item in front    +0x0c u32 a timer
 //!         +0x10 u32 the lights: 0 off, 1 blue, 2 green, 3 yellow, 4 red
 //!         +0x14 s32 x and +0x18 s32 z, the cell of the item they show; -1 while they are off

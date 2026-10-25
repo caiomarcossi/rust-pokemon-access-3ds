@@ -425,6 +425,10 @@ pub const TRAINING: i64 = 0xC8;
 /// on the PSS's page and Super Training's, and 1 from the bags list on.
 pub const FIELD_MENU: (i64, i64) = (0x70, 0x90);
 
+/// Where X's field's work holds the Dowsing Machine's record (`gen6.field.dowsing`): 0x24 before
+/// ORAS's, the record laid out as ORAS's is (spike A, x_route_8_dowsing).
+pub const DOWSING: i64 = 0x1AC;
+
 /// X and Y as the gen 6 readers read them.
 pub fn game() -> &'static Game {
     static GAME: OnceLock<Game> = OnceLock::new();
@@ -435,6 +439,7 @@ pub fn game() -> &'static Game {
             (BIG_BOULDER, STRENGTH),
             (CRACKED_WALL, ROCK_SMASH),
         ]),
+        dowsing: Some(DOWSING),
         blockers: HashSet::from([STOPPER]),
         ambushes: HashSet::from([TOBI_KUSA]),
         lurkers: HashSet::from([ENEMY3D]),
