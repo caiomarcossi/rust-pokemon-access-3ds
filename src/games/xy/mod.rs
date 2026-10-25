@@ -14,10 +14,11 @@ use std::sync::OnceLock;
 use indexmap::IndexMap;
 
 use crate::core::keyfile::data_path;
+use crate::core::pathfind;
 use crate::games::common::field::ground::{CUT, ROCK_SMASH, STRENGTH};
 use crate::games::gen6::field::camera;
 use crate::games::gen6::field::footsteps::{RUN, Steps, WALK};
-use crate::games::gen6::game::{Data, FurnitureKind, Game, Rides};
+use crate::games::gen6::game::{Climbing, Data, FurnitureKind, Game, Rides};
 use crate::games::gen6::rom::layout::{RomLayout, TownFacilities, owned};
 use crate::games::xy::intro::IntroReader;
 use crate::py::PySet;
@@ -365,6 +366,33 @@ pub fn rides() -> Rides {
         stops: HashSet::from([0x31]),
         mounts: HashSet::from([0x100F]),
         smashes: HashSet::from([0x200D]),
+    }
+}
+
+/// Cyllage City Gym's rock walls (zone 0xa0, chunk file 354 of `a/0/4/1`), climbed "if you start
+/// from one of those blue spots", the Gym guide says. Kind 0x59, blocked (`0x59000001`), is where a
+/// face meets the floor: 28 cells, all in that file, at the face's foot. A blue spot is an open cell
+/// beside one at its height, the face standing the way from it; the spots facing one way along a row
+/// or a column are one face, and the open cells between its outermost spots its line. Kinds 0x51 to
+/// 0x54, open (`0x5N000020`), east, west, north and south, are the step off a face sideways onto a
+/// ledge at its side: each of the 10 is on a line at its foot, beside a spot that way 36 to 144
+/// higher. In the tape of x_gym_2 the player walked from the entrance to (25, 32), a spot at 3, and
+/// climbed in place to 13, 38 and 57 in about 2 s; went east along the face at 54, the cell they
+/// were in (26, 32) to (30, 32), and stepped off east from `0x51` at (30, 32) onto the ledge (31,
+/// 32) at 54; then back on, west along it and down at (25, 32) to 3, and off west onto (24, 32). The
+/// step from (26, 17) onto its ledge rises 36, a step's worth on foot, so the kinds, not the heights,
+/// say where a ledge is. X has 0x51 to 0x54 in chunk files 458 and 594 too, never seen (spike A).
+///
+/// Python's `CLIMBING` constant: a function, since an `IndexMap` is no const.
+pub fn climbing() -> Climbing {
+    Climbing {
+        face: 0x59,
+        sideways: IndexMap::from([
+            (0x51, pathfind::EAST),
+            (0x52, pathfind::WEST),
+            (0x53, pathfind::NORTH),
+            (0x54, pathfind::SOUTH),
+        ]),
     }
 }
 

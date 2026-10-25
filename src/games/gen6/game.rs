@@ -188,6 +188,15 @@ pub struct Rides {
     pub smashes: HashSet<i64>,
 }
 
+/// The cell kinds of the walls a player climbs, as X's Cyllage Gym's (`climb.Walls`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Climbing {
+    /// Where a face meets the floor, blocked.
+    pub face: i64,
+    /// The kinds of the step off a face sideways onto a ledge, each with its way.
+    pub sideways: IndexMap<i64, &'static str>,
+}
+
 /// One game as the gen 6 readers read it.
 ///
 /// Not `PartialEq`: the dataclass compares its callables by identity, which a `fn` pointer does
@@ -303,6 +312,9 @@ pub struct Game {
     /// What the Pokémon it lets the player ride cross, or None in a game with none: X's Rhyhorn on
     /// Route 9 (spike 238).
     pub rides: Option<Rides>,
+    /// The walls it lets the player climb, or None in a game with none: X's Cyllage Gym
+    /// (spike A).
+    pub climbing: Option<Climbing>,
     /// Whether a row of models drawn as nothing, two or more with one script that no drawn record
     /// of their zone has, is an invisible gate: not listed, and in the way. X's Santalune Gym has
     /// five behind Viola, and AZ's room five (spike 223).
@@ -375,6 +387,7 @@ impl Game {
             memories: None,
             strands: 0,
             rides: None,
+            climbing: None,
             gates: false,
             form: None,
             steps: ORAS,

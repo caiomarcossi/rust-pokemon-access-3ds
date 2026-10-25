@@ -12,6 +12,7 @@ use crate::core::pathfind::{self, Box, Cell, EAST, NORTH, SOUTH, WEST};
 use crate::games::common::field::chunk::{
     ANY_FLOOR, BLOCKED, BOARD, CHUNK, CLIMB, COUNTER, Chunk, LAUNCH, SHORE, STONE,
 };
+use crate::games::common::field::climb::Walls;
 use crate::games::common::field::things::{
     Field, Interactable, POKEMON, TRIGGER_SOURCE, WARP_SOURCE,
 };
@@ -472,6 +473,12 @@ pub struct Ground {
     /// and smashed first (`ride`, `toll`), and open from then on: Route 9's rocks, smashed on the
     /// Rhyhorn, needing no HM (spike 238). Nobody stands in them; on foot they are in the way.
     pub smashed: HashSet<Cell>,
+    /// The climbing walls: a face's line walked on foot or climbed, onto it only at a blue spot
+    /// and off it sideways onto a ledge only climbing (`climb.Walls`, spike A).
+    ///
+    /// An `Rc`: the terrain finds them once a matrix and every ground built on it shares them, as
+    /// the Python's grounds share the one object.
+    pub walls: Rc<Walls>,
 }
 
 /// `Ground.lanes`: each cell of a street laid on the grid, with each step its ways allow and the
@@ -514,6 +521,7 @@ impl Default for Ground {
             riding: false,
             mounts: HashSet::new(),
             smashed: HashSet::new(),
+            walls: Rc::new(Walls::default()),
         }
     }
 }
@@ -554,6 +562,7 @@ impl fmt::Debug for Ground {
             .field("riding", &self.riding)
             .field("mounts", &self.mounts)
             .field("smashed", &self.smashed)
+            .field("walls", &self.walls)
             .finish()
     }
 }

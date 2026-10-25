@@ -16,6 +16,7 @@
 //!   player along it.
 
 pub mod chunk;
+pub mod climb;
 pub mod ground;
 pub mod guide;
 pub mod keys;
