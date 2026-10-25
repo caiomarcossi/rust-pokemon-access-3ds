@@ -4,7 +4,7 @@
 //! come on only while the player faces a hidden item near enough, and their colour says how near:
 //! blue, green, yellow, then red with the item in the cell in front (omega_ruby_item-finder.ctm,
 //! 2026-09-29). X's machine shoots two beams the way the player faces instead, in the same four
-//! colours at the same levels (x_route_8_dowsing, spike A). The game keeps what they show in a small
+//! colours at the same levels (x_route_8_dowsing, spike 243). The game keeps what they show in a small
 //! record of no class of its own, reached from the field's process through the field's work, which
 //! has no class either:
 //!
