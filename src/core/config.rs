@@ -976,19 +976,33 @@ pub fn prepare(
     })
 }
 
-/// Set `azahar_folder` in the settings file to `folder`, as the player asked by choosing it:
-/// on its line, commented out or not, or else added to `[pa3ds]`. Nothing else in the file
-/// changes. False when the file cannot be read or written.
+/// Set `azahar_folder` in the settings file to `folder`, as the player asked by choosing it
+/// (`change`).
 pub fn remember_azahar(folder: &Path, home: Option<&Path>) -> Result<bool> {
+    change(
+        &[(
+            "pa3ds.azahar_folder".to_string(),
+            Value::Str(py::path_str(folder)),
+        )],
+        home,
+    )
+}
+
+/// Set each setting in the settings file, named as `EXPLAINED` names it
+/// (`pa3ds.ui.pauses`), as the player asked: on its line, commented out or not, or else added to
+/// its table. Nothing else in the file changes, its comments and order kept (the settings
+/// dialog, docs/plans/pa3ds-window.md). False when the file cannot be read or written.
+pub fn change(settings: &[(String, Value)], home: Option<&Path>) -> Result<bool> {
     let path = config_path(home)?;
-    let (text, _, problem) = toml::load(&path);
+    let (mut text, _, problem) = toml::load(&path);
     if !problem.is_empty() {
         return Ok(false);
     }
-    let line = format!("azahar_folder = {}", toml::quote(&py::path_str(folder)));
-    let changed = toml::replace(&text, "pa3ds", "azahar_folder", &line);
-    toml::write(
-        &path,
-        &changed.unwrap_or_else(|| toml::append(&text, "pa3ds", &[line])),
-    )
+    for (name, setting_value) in settings {
+        let (table, setting) = name.rsplit_once('.').unwrap_or(("", name));
+        let line = format!("{setting} = {}", value(setting_value));
+        text = toml::replace(&text, table, setting, &line)
+            .unwrap_or_else(|| toml::append(&text, table, &[&line]));
+    }
+    toml::write(&path, &text)
 }

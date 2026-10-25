@@ -218,9 +218,24 @@ pub fn replace(text: &str, name: &str, key: &str, line: &str) -> Option<String> 
         }
     }
     let chosen = chosen?;
-    let ending = &rows[chosen][rows[chosen].trim_end_matches(['\r', '\n']).len()..];
-    rows[chosen] = format!("{line}{ending}");
+    let row = &rows[chosen];
+    let bare = row.trim_end_matches(['\r', '\n']);
+    rows[chosen] = format!("{line}{}{}", trailing(bare), &row[bare.len()..]);
     Some(rows.concat())
+}
+
+/// The comment after a setting on its line, `  # slow laptop`, or "": the first `#` with the
+/// setting whole before it, so one inside a quoted value is the value's.
+fn trailing(row: &str) -> &str {
+    let Some(whole) = entry(row) else {
+        return "";
+    };
+    for (at, character) in row.char_indices() {
+        if character == '#' && entry(&row[..at]).as_ref() == Some(&whole) {
+            return &row[row[..at].trim_end().len()..];
+        }
+    }
+    ""
 }
 
 /// `read` of a file the binary carries, by its text: None where the game has no such file, as a
