@@ -18,10 +18,13 @@ publishing.
 ```
 git fetch origin
 git status -sb
+gh issue list --label upstream --state open
 ```
 
-Stop and say why if the branch is not `main`, the tree is not clean, or `main` is not level with
-`origin/main`.
+Stop and say why if the branch is not `main`, the tree is not clean, `main` is not level with
+`origin/main`, or an `upstream` issue is open: a release is cut only with the port level with
+upstream, so that each one closes what upstream had (Orion, 2026-10-25). A branch ported ahead of
+the rest, as pa3ds's window was, waits for that too.
 
 ## 2. Read what changed
 
