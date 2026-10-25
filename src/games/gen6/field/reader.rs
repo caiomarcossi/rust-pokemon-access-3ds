@@ -231,6 +231,13 @@ pub enum Role {
     /// the doors are walked through by, and are not in the way: five were listed as "person 1
     /// west" round Fortree Gym's third door, and P said "person in the way" (spike 161).
     Blocker,
+    /// A work object no script has filled (`mmodel.drawn_as` gives its own id): drawn as
+    /// nothing, neither listed nor in the way. The Contest Spectacular Halls' lobbies stand ten,
+    /// `0x7b` to `0x84` in two rows beside the carpet, listed as "person" until 2026-10-23; none
+    /// was drawn, and the player walked onto one (or_contest_hall_phantom_people; findings, the
+    /// map, 2026-10-23). One whose looks are still loading reads the same, and is left out until
+    /// they have.
+    Empty,
     /// A model drawn as nothing (`mmodel.NONDRAW`): in the way, as on each of Sootopolis City's
     /// locked doors, and in its own zone listed as what it stands in for (`_stand_ins`, spike
     /// 203).
@@ -1867,6 +1874,8 @@ impl FieldReader {
             Role::Barrier
         } else if self.blockers.contains(&code) {
             Role::Blocker
+        } else if mmodel::WORK_OBJECTS.contains(&code) {
+            Role::Empty
         } else if code == mmodel::NONDRAW {
             Role::Nothing
         } else {
@@ -1912,7 +1921,7 @@ impl FieldReader {
             let code =
                 mmodel::drawn_as(&*self.memory, model, &head, self.drawn, self.model_starts)?;
             let role = self.role(&head, code)?;
-            if role == Role::Look || role == Role::Blocker {
+            if role == Role::Look || role == Role::Blocker || role == Role::Empty {
                 continue;
             }
             let mut stood_in = None;

@@ -3858,6 +3858,10 @@ fn test_a_zone_table_no_sweep_finds_is_left_to_the_schedule() -> Result<()> {
 /// Spike 89: the rival's model reads 0x7a at +0x10 in both openings, and the sprite a script
 /// filled it with at +0x898 — May's as the boy, Brendan's as the girl. A work object whose looks
 /// are not in yet is its own id, and any other model is its +0x10 as it always was.
+///
+/// One nobody filled is drawn as nothing, and is neither listed nor in the way: the ten in the
+/// Contest Spectacular Halls' lobbies were "person", and the player walked onto one
+/// (or_contest_hall_phantom_people).
 #[test]
 fn test_a_work_object_is_whoever_it_was_filled_with() -> Result<()> {
     let town = Town::new();
@@ -3872,8 +3876,16 @@ fn test_a_work_object_is_whoever_it_was_filled_with() -> Result<()> {
     };
     town.memory.u32(rival + mmodel::DRAWN, &[0x13A]);
     assert_eq!(codes(&town)?, [0x13A]);
-    town.memory.u32(rival + mmodel::DRAWN, &[0]);
-    assert_eq!(codes(&town)?, [0x7A]);
+    town.memory.u32(rival + mmodel::DRAWN, &[0x7A]);
+    let r#where = town.r#where()?;
+    assert!(r#where.of("people").is_empty());
+    assert!(
+        !town
+            .reader
+            .ground(&r#where, None)?
+            .standing
+            .contains(&(104, 179))
+    );
     town.model(1, TOWN, 3, 0x119, (104, 179));
     town.memory.u32(rival + mmodel::DRAWN, &[0x13B]);
     assert_eq!(codes(&town)?, [0x119]);
@@ -5113,7 +5125,8 @@ fn test_a_secret_bases_pc_flag_and_way_out_are_listed_as_what_they_are() -> Resu
 
 /// A Secret Base keeps the six slots of the player's secret team in the walls of its far
 /// corner while they are empty, and they were listed as six people with no way to them (spike
-/// 154). One with an open cell beside it is still somebody.
+/// 154). One with an open cell beside it is still somebody. The slots are work objects nobody
+/// filled, left out for that as well now; these are people, walled in or not.
 #[test]
 fn test_a_model_walled_in_on_every_side_is_not_on_the_map() -> Result<()> {
     let mut town = Town::new();
@@ -5123,8 +5136,8 @@ fn test_a_model_walled_in_on_every_side_is_not_on_the_map() -> Result<()> {
         .chain([(100, 178)])
         .collect();
     town.block(TOWN_BLOCK, TOWN_CHUNK, (80, 160), &walled);
-    town.model(4, TOWN, 3, 0x7C, (111, 177));
-    town.model(5, TOWN, 4, 0x7D, (100, 178));
+    town.model(4, TOWN, 3, 0x119, (111, 177));
+    town.model(5, TOWN, 4, 0x11A, (100, 178));
     let people: Vec<(i64, i64)> = town
         .r#where()?
         .of("people")
