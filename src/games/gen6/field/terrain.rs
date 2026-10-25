@@ -483,6 +483,31 @@ impl Terrain {
         let Some(level) = level else {
             return Ok(Vec::new());
         };
+        let mut others: Vec<i64> = self
+            .floor_heights(loaded)?
+            .into_iter()
+            .filter(|&height| (height as f64 - level).abs() > mapblock::CLIMB)
+            .collect();
+        others.sort_by(|a, b| {
+            let (a, b) = ((*a as f64 - level).abs(), (*b as f64 - level).abs());
+            a.partial_cmp(&b).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        Ok(others.into_iter().map(|height| height as f64).collect())
+    }
+
+    /// Whether a chunk of the matrix has a deck over its ground: the loaded chunks, and with
+    /// the ROM every chunk of the matrix. Not whether a deck stands apart from the player:
+    /// Mt. Chimney's ground and catwalk both sit at 108 over most of their cells, the ground
+    /// falling to 4 only down the path by the crater, and a player on the summit was walked
+    /// one floor a cell, an item ball on that path 104 below taken for one beside them
+    /// (or_3d_pathfinding, 2026-10-24).
+    pub fn stacked(&self, loaded: &dyn Fn() -> Result<Vec<Rc<Chunk>>>) -> Result<bool> {
+        Ok(!self.floor_heights(loaded)?.is_empty())
+    }
+
+    /// Each floor's height of a chunk with a deck, at the middle of its open cells' heights,
+    /// once a matrix (`decks`).
+    fn floor_heights(&self, loaded: &dyn Fn() -> Result<Vec<Rc<Chunk>>>) -> Result<Vec<i64>> {
         let files = self.files.borrow().1.clone();
         if self.deck_heights.borrow().0.as_ref() != Some(&files) {
             let mut floors: Vec<Floor> = Vec::new();
@@ -525,19 +550,7 @@ impl Terrain {
             heights.dedup();
             *self.deck_heights.borrow_mut() = (Some(files), heights);
         }
-        let mut others: Vec<i64> = self
-            .deck_heights
-            .borrow()
-            .1
-            .iter()
-            .copied()
-            .filter(|&height| (height as f64 - level).abs() > mapblock::CLIMB)
-            .collect();
-        others.sort_by(|a, b| {
-            let (a, b) = ((*a as f64 - level).abs(), (*b as f64 - level).abs());
-            a.partial_cmp(&b).unwrap_or(std::cmp::Ordering::Equal)
-        });
-        Ok(others.into_iter().map(|height| height as f64).collect())
+        Ok(self.deck_heights.borrow().1.clone())
     }
 
     /// The ROM's ground height at a cell of the current matrix, or None where the chunk is not

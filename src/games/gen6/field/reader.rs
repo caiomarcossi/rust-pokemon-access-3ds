@@ -795,7 +795,7 @@ impl FieldReader {
         solid.extend(self.unseen(r#where.zone)?);
         solid.extend(cracked);
         let loaded = || self.chunks_loaded();
-        let stacked = !self.terrain.decks(self.height.get(), &loaded)?.is_empty();
+        let stacked = self.height.get().is_some() && self.terrain.stacked(&loaded)?;
         let level = if height.is_none() || stacked {
             self.height.get()
         } else {

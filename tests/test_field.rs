@@ -2528,9 +2528,12 @@ fn deck_file(
 /// catwalk over the crater a floor of its own, and were turned away whole, so P took the crater
 /// for open ground and said "20 north" into its wall. The ground's table has the crater as a
 /// wall; the catwalk's is open across it, at the height of the ground it starts from. Maxie on
-/// the catwalk is listed, as a person walled in by the ground's table alone was not.
+/// the catwalk is listed, as a person walled in by the ground's table alone was not. Its floors
+/// both at the player's height, it is walked a floor at a time all the same: walked one floor a
+/// cell, an item ball 104 below on the path by the crater was taken for one beside the player
+/// (or_3d_pathfinding).
 #[test]
-fn test_a_chunk_with_a_deck_is_walked_on_the_floor_at_the_players_height() -> Result<()> {
+fn test_a_chunk_with_a_deck_at_the_players_height_is_walked_a_floor_at_a_time() -> Result<()> {
     let town = Town::new();
     let crater: HashSet<(i64, i64)> = (96..111)
         .flat_map(|x| (168..177).map(move |z| (x, z)))
@@ -2549,7 +2552,8 @@ fn test_a_chunk_with_a_deck_is_walked_on_the_floor_at_the_players_height() -> Re
         ),
     );
     town.memory.write(POOL + mmodel::WORLD_Y, &f32s(&[110.0]));
-    town.model(1, TOWN, 0, 0x119, (105, 172));
+    let at = town.model(1, TOWN, 0, 0x119, (105, 172));
+    town.memory.write(at + mmodel::WORLD_Y, &f32s(&[108.0]));
     let r#where = town.r#where()?;
     let maxie = r#where
         .interactables
@@ -2558,16 +2562,18 @@ fn test_a_chunk_with_a_deck_is_walked_on_the_floor_at_the_players_height() -> Re
         .unwrap()
         .clone();
     let ground = town.reader.ground(&r#where, None)?;
+    assert!(ground.stacked);
     assert!(ground.open((100, 172))? && !ground.open((100, 171))?);
-    let goals = ground.goals(&maxie)?;
-    let path = pathfind::find(
-        r#where.cell,
-        &goals,
-        &|cell| ground.passable(cell),
-        ground.r#box(r#where.cell, goals.keys().copied())?,
-        &pathfind::Options::default(),
-    )?
-    .expect("a way to Maxie");
+    let path = ground
+        .find(
+            r#where.cell,
+            &ground.goals(&maxie)?,
+            "",
+            Some(&maxie),
+            false,
+            None,
+        )?
+        .expect("a way to Maxie");
     assert_eq!(pathfind::spoken(&pathfind::legs(&path, None)?), "10 east");
     Ok(())
 }
