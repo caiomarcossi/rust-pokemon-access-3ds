@@ -14,4 +14,5 @@ pub mod summary;
 pub mod townmap;
 
 pub mod amie;
+pub mod partners;
 pub mod training;
