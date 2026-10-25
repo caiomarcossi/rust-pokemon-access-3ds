@@ -4,7 +4,7 @@ use std::cell::{Cell as Slot, RefCell};
 use std::collections::HashSet;
 use std::rc::Rc;
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 
 use crate::core::config::Navigation;
 use crate::core::keyfile;
@@ -13,10 +13,11 @@ use crate::core::names::Names;
 use crate::core::pathfind::{self, Cell, nearest};
 use crate::core::speech::{Backend, Category, Speech, default_interrupts};
 use crate::games::common::field::chunk::{BLOCKED, CHUNK, Chunk, Floor};
+use crate::games::common::field::climb::Walls;
 use crate::games::common::field::ground::{
-    CUT, Ground, IceRoom, Of, ROCK_SMASH, RotatingDoor, STRENGTH, SURF, WATERFALL,
+    CUT, Grid, Ground, IceRoom, Of, ROCK_SMASH, RotatingDoor, STRENGTH, SURF, WATERFALL,
 };
-use crate::games::common::field::guide::{FieldSource, Guidance};
+use crate::games::common::field::guide::{FieldSource, Guidance, Place};
 use crate::games::common::field::keys::{
     CATEGORY_NEXT, CATEGORY_PREVIOUS, COORDINATES, DEFAULT_BINDINGS, DIRECTION, EAST, ENEMY_SIDE,
     ITEM_COORDINATES, ITEM_NEXT, ITEM_PREVIOUS, ITEM_READ, LIST, MODE_TOGGLE, NORTH, OUR_SIDE,
@@ -29,6 +30,7 @@ use crate::games::common::field::things::{
 };
 use crate::games::common::touch::{ROW_NEXT, ROW_PREVIOUS, TAP};
 use crate::games::oras::{self, BIG_BOULDER, BUSH, CRACKED_BOULDER};
+use crate::games::xy;
 use crate::py::{self, Result};
 
 /// Python's `Recorder`: what it was given to say, and whether each was said interrupting. The
@@ -96,9 +98,6 @@ struct FakeField {
     falls: RefCell<HashSet<Cell>>,
     /// Cells of a current carrying the player west.
     currents: RefCell<HashSet<Cell>>,
-    /// A floor's height -> the blocked cells its deck opens, walked at that height alone. A
-    /// list, since a float is no key in Rust.
-    decks: RefCell<Vec<(f64, HashSet<Cell>)>>,
     surfaces: RefCell<IndexMap<Cell, Rc<HashSet<Cell>>>>,
     /// A stacked ground's cells, each with its lower floor's height and its upper's, None where
     /// that floor is closed; no cell, and the ground is not stacked.
@@ -114,8 +113,13 @@ struct FakeField {
     launches: RefCell<HashSet<Cell>>,
     spiky: RefCell<HashSet<Cell>>,
     flat: RefCell<HashSet<Cell>>,
+    walls: RefCell<Rc<Walls>>,
+    /// Steps between open cells a drop apart, as the reader finds them off the ROM's heights.
+    cliffs: RefCell<HashSet<(Cell, Cell)>>,
     visit: Slot<Option<(i64, i64)>>,
     edit: RefCell<Option<Edit>>,
+    /// The matrix's zones, a block at a time, or none.
+    grid: RefCell<Option<Grid>>,
 }
 
 impl FakeField {
@@ -136,7 +140,6 @@ impl FakeField {
             shore: RefCell::new(HashSet::new()),
             falls: RefCell::new(HashSet::new()),
             currents: RefCell::new(HashSet::new()),
-            decks: RefCell::new(Vec::new()),
             surfaces: RefCell::new(IndexMap::new()),
             floors: RefCell::new(IndexMap::new()),
             bare: RefCell::new(HashSet::new()),
@@ -147,8 +150,11 @@ impl FakeField {
             launches: RefCell::new(HashSet::new()),
             spiky: RefCell::new(HashSet::new()),
             flat: RefCell::new(HashSet::new()),
+            walls: RefCell::new(Rc::new(Walls::default())),
+            cliffs: RefCell::new(HashSet::new()),
             visit: Slot::new(Some((0x08D209B8, 0x6))),
             edit: RefCell::new(None),
+            grid: RefCell::new(None),
         }
     }
 }
@@ -178,20 +184,11 @@ impl FieldSource for FakeField {
         })
     }
 
-    fn ground(&self, r#where: &Field, height: Option<f64>) -> Result<Ground> {
+    fn ground(&self, r#where: &Field) -> Result<Ground> {
         let origin = (80, 160);
         let cells: Vec<Cell> = (0..CHUNK * CHUNK)
             .map(|i| (origin.0 + i % CHUNK, origin.1 + i / CHUNK))
             .collect();
-        let decks = self.decks.borrow();
-        let opened: HashSet<Cell> = match height {
-            Some(height) => decks
-                .iter()
-                .find(|(known, _)| *known == height)
-                .map(|(_, opened)| opened.clone())
-                .unwrap_or_default(),
-            None => HashSet::new(),
-        };
         let blocked = self.blocked.borrow();
         let bumpy = self.bumpy.borrow();
         let shore = self.shore.borrow();
@@ -226,7 +223,7 @@ impl FieldSource for FakeField {
                     SPIKY
                 } else if flat.contains(cell) {
                     FLAT
-                } else if blocked.contains(cell) && !opened.contains(cell) {
+                } else if blocked.contains(cell) {
                     BLOCKED
                 } else {
                     0
@@ -283,16 +280,12 @@ impl FieldSource for FakeField {
             r#where,
             Of {
                 chunks: vec![Rc::new(Chunk::new(origin, words))],
+                grid: self.grid.borrow().clone(),
                 clears: oras::game().clears.clone(),
                 ..Of::default()
             },
         );
         ground.ice = self.ice.borrow().clone();
-        ground.decks = decks
-            .iter()
-            .map(|(known, _)| *known)
-            .filter(|known| Some(*known) != height)
-            .collect();
         ground.hops = bumpy
             .iter()
             .map(|&cell| (cell, pathfind::NORTH))
@@ -302,6 +295,14 @@ impl FieldSource for FakeField {
             .map(|&cell| (cell, pathfind::NORTH))
             .collect::<IndexMap<_, _>>();
         ground.surfaces = self.surfaces.borrow().clone();
+        ground.walls = self.walls.borrow().clone();
+        ground.cliffs = self
+            .cliffs
+            .borrow()
+            .iter()
+            .copied()
+            .collect::<IndexSet<_>>();
+        ground.level = self.level.get();
         if !spiky.is_empty() {
             ground = ground.mounted(
                 r#where,
@@ -366,6 +367,7 @@ struct Want {
     clock: Rc<dyn Fn() -> f64>,
     navigation: Option<Navigation>,
     door_sign: Option<DoorSign>,
+    place: Option<Place>,
 }
 
 impl Default for Want {
@@ -384,6 +386,7 @@ impl Default for Want {
             clock: Rc::new(|| 0.0),
             navigation: None,
             door_sign: None,
+            place: None,
         }
     }
 }
@@ -439,6 +442,7 @@ fn navigator(want: Want) -> Rig {
             clock: Some(want.clock),
             navigation: want.navigation,
             door_sign: want.door_sign,
+            place: want.place,
             moves: Some(IndexMap::from([
                 (SURF, "Surf".to_string()),
                 (CUT, "Cut".to_string()),
@@ -907,6 +911,54 @@ fn test_show_y_says_how_high_the_player_and_the_thing_stand_where_known() {
             "x 94, z 171, y 36",
             "sign, 2 of 2, 3 east 1 north",
             "x 97, z 171"
+        ]
+    );
+}
+
+/// A thing further above or below the player than it is walked up to from says how far, in
+/// the game's units, whatever `show_y` says: an item ball under a cliff was "1 north" alone to a
+/// player on top, who could not pick it up (Orion, 2026-10-24). Nearer, or with no height, it
+/// says nothing more.
+#[test]
+fn test_a_thing_more_than_two_cells_above_or_below_says_how_far() {
+    let ball = Interactable {
+        source: 0x08D1E9A8,
+        move_model: true,
+        height: Some(6.0),
+        ..Interactable::new("items", "item ball", (94, 171))
+    };
+    let sign = Interactable {
+        source: 0,
+        ..Interactable::new("signs", "sign", (94, 170))
+    };
+    let door = Interactable {
+        zone: Some(0xDF),
+        source: 0,
+        height: Some(150.0),
+        ..Interactable::new("exits", "door", (97, 171))
+    };
+    let person = Interactable {
+        source: 0x08D1F458,
+        move_model: true,
+        height: Some(140.0),
+        ..Interactable::new("people", "person", (90, 172))
+    };
+    let mut rig = navigator(on(Field {
+        interactables: vec![ball, sign, door, person],
+        height: Some(110.0),
+        ..Field::new(0x6, (94, 172))
+    }));
+    rig.press(ITEM_READ);
+    for _ in 0..3 {
+        rig.press(ITEM_NEXT);
+    }
+    assert_eq!(
+        said(&rig.backend),
+        [
+            "item ball, 1 of 4, 1 north, 104 below",
+            "sign, 2 of 4, 2 north",
+            "door, 3 of 4, 3 east 1 north, 40 above",
+            "person, 4 of 4, 4 west"
         ]
     );
 }
@@ -1816,6 +1868,300 @@ fn test_p_on_foot_takes_a_rock_for_somebody_in_the_way() {
     );
 }
 
+/// Where one of X's Cyllage Gym's rock walls meets the floor, blocked (x_gym_2, spike 245).
+const FACE: i64 = 0x59000001;
+/// The step off a wall's face east onto the ledge at its side, open.
+const OFF_EAST: i64 = 0x51000020;
+const LEDGE: Cell = (111, 172);
+
+fn wall_ledge() -> Interactable {
+    Interactable {
+        source: 0,
+        ..Interactable::new("climbing", "wall ledge", LEDGE)
+    }
+}
+
+/// A person standing in `cell`, by the model `source`.
+fn somebody(cell: Cell, source: i64) -> Interactable {
+    Interactable {
+        source,
+        move_model: true,
+        ..Interactable::new("people", "person", cell)
+    }
+}
+
+/// The Gym's first wall, its rows 31 and 32 moved into the fake chunk (spike 245): blue spots at
+/// (105, 172) and (106, 172) at its foot, 0, and the ledge at its side, (111, 172) at 54, stepped
+/// onto east off (110, 172), a drop on foot; the face along row 171, and the ledge walled in but
+/// for the face. The player stands at `level`. A `wide` ledge goes on to (112, 172), two spots
+/// along the face as (29, 27) and (29, 28) are.
+fn gym_wall(rig: &Rig, level: Option<f64>, wide: bool) {
+    let end = if wide { 113 } else { 112 };
+    let heights: IndexMap<Cell, f64> = (111..end)
+        .flat_map(|x| [((x, 171), 54.0), ((x, 172), 54.0)])
+        .collect();
+    let mut words: IndexMap<Cell, i64> = (105..end)
+        .map(|x| {
+            let word = if x == 105 || x == 106 || x >= 111 {
+                FACE
+            } else {
+                BLOCKED
+            };
+            ((x, 171), word)
+        })
+        .collect();
+    words.extend((105..end).map(|x| ((x, 172), if x == 110 { OFF_EAST } else { 0 })));
+    let table: IndexMap<Cell, (i64, Option<f64>)> = words
+        .iter()
+        .map(|(&cell, &word)| {
+            (
+                cell,
+                (word, Some(heights.get(&cell).copied().unwrap_or(0.0))),
+            )
+        })
+        .collect();
+    let climbing = xy::climbing();
+    *rig.field.walls.borrow_mut() = Rc::new(Walls::found(
+        &table,
+        climbing.face,
+        &climbing.sideways,
+        climbing.slide,
+    ));
+    let mut blocked = rig.field.blocked.borrow_mut();
+    blocked.extend(
+        words
+            .iter()
+            .filter(|&(_, &word)| word & BLOCKED != 0)
+            .map(|(&cell, _)| cell),
+    );
+    blocked.insert((end, 172));
+    blocked.extend((111..end).map(|x| (x, 173)));
+    *rig.field.cliffs.borrow_mut() = HashSet::from([((110, 172), LEDGE), (LEDGE, (110, 172))]);
+    rig.field.level.set(level);
+}
+
+/// The top of a slide down one of Cyllage Gym's walls, open (x_gym_2_slide, spike 245).
+const SLIDE: i64 = 0x8A000020;
+
+/// The Gym's two slides south of Grant, its columns 14 to 16 and rows 18 to 33 moved into the
+/// fake chunk (spike 245): the floor at 198, the first slide's top at 189 in row 170 and its
+/// blocked cells falling 18 a row to 117, the floor between at 108, the second's top at 99 in
+/// row 177 and its cells falling to 9, then the floor at 0; walls either side of each slide.
+fn gym_slides(rig: &Rig) {
+    let heights = [
+        198.0, 198.0, 189.0, 171.0, 153.0, 135.0, 117.0, 108.0, 108.0, 99.0, 81.0, 63.0, 45.0,
+        27.0, 9.0, 0.0,
+    ];
+    let rows: HashSet<i64> = (170..175).chain(177..183).collect();
+    let mut table: IndexMap<Cell, (i64, Option<f64>)> = IndexMap::new();
+    for x in 94..97 {
+        for (z, &height) in (168..184).zip(heights.iter()) {
+            let word = if z == 170 || z == 177 {
+                SLIDE
+            } else if rows.contains(&z) {
+                BLOCKED
+            } else {
+                0
+            };
+            table.insert((x, z), (word, Some(height)));
+        }
+    }
+    let climbing = xy::climbing();
+    *rig.field.walls.borrow_mut() = Rc::new(Walls::found(
+        &table,
+        climbing.face,
+        &climbing.sideways,
+        climbing.slide,
+    ));
+    let mut blocked = rig.field.blocked.borrow_mut();
+    blocked.extend(
+        table
+            .iter()
+            .filter(|&(_, &(word, _))| word & BLOCKED != 0)
+            .map(|(&cell, _)| cell),
+    );
+    for x in [93, 97] {
+        blocked.extend(rows.iter().map(|&z| (x, z)));
+    }
+}
+
+/// Cyllage Gym (x_gym_2_slide, spike 245): south of Grant the player stepped onto the top of a
+/// slide at (16, 20) and was carried down it onto the floor at (16, 25), walked on onto the next
+/// and was carried down onto (16, 33), where P had said the long way round. A slide carries the
+/// player one way only, so a way up goes round.
+#[test]
+fn test_p_goes_down_a_gyms_slides_and_never_up_one() {
+    let mut rig = navigator(on(Field {
+        interactables: vec![somebody((96, 186), 0x08D1E9A8)],
+        ..Field::new(street().zone, (96, 168))
+    }));
+    gym_slides(&rig);
+    rig.press(PATHFIND);
+    assert_eq!(
+        last(&rig.backend),
+        "2 south, slide 5 south, 2 south, slide 6 south, 2 south"
+    );
+    let mut rig = navigator(on(Field {
+        interactables: vec![somebody((96, 166), 0x08D1E9A8)],
+        ..Field::new(street().zone, (96, 185))
+    }));
+    gym_slides(&rig);
+    rig.press(PATHFIND);
+    let way = guidance(&rig);
+    let slides = rig.field.walls.borrow().clone();
+    assert!(
+        way.is_some()
+            && !path_of(&way)
+                .iter()
+                .any(|cell| slides.slides.contains_key(cell))
+    );
+    let said = last(&rig.backend);
+    assert!(!said.contains("slide") && !said.contains("can't continue"));
+}
+
+/// X's Cyllage Gym (x_gym_2, spike 245): the player walked from the entrance to the blue spot at
+/// (25, 32), climbed up in place from 3 to 57, three handholds, went east along the face and
+/// stepped off east onto the ledge (31, 32) at 54, a drop from the floor on foot.
+#[test]
+fn test_p_climbs_a_wall_from_a_blue_spot_onto_the_ledge_at_its_side() {
+    let floor = Field {
+        interactables: vec![wall_ledge()],
+        ..Field::new(street().zone, (100, 179))
+    };
+    let mut rig = navigator(on(floor));
+    gym_wall(&rig, None, false);
+    rig.press(PATHFIND);
+    assert_eq!(last(&rig.backend), "7 north, 5 east, climb 3 up, 6 east");
+}
+
+/// Cyllage Gym's ledge at (29, 27) and (29, 28) is two spots along its face's line (spike 245).
+/// A way that steps off the face onto it and walks on along it climbs up first, and walks the
+/// rest: P said "climb 6 south, 1 south" on the way to Grant, with no handholds.
+#[test]
+fn test_p_climbs_up_onto_a_wide_ledge_and_walks_on_along_it() {
+    let floor = Field {
+        interactables: vec![Interactable {
+            source: 0,
+            ..Interactable::new("climbing", "wall ledge", (112, 172))
+        }],
+        ..Field::new(street().zone, (100, 179))
+    };
+    let mut rig = navigator(on(floor));
+    gym_wall(&rig, None, true);
+    rig.press(PATHFIND);
+    assert_eq!(
+        last(&rig.backend),
+        "7 north, 5 east, climb 3 up, 6 east, 1 east"
+    );
+}
+
+/// Cyllage Gym (spike 245): back from the ledge at 57, the player went west along the face and
+/// climbed down at the blue spot (25, 32) to 3, then walked off west onto (24, 32).
+#[test]
+fn test_p_climbs_down_from_the_ledge_and_says_the_holds_at_the_foot() {
+    let ledge = Field {
+        interactables: vec![somebody((103, 172), 0x08D1E9A8)],
+        ..Field::new(street().zone, LEDGE)
+    };
+    let mut rig = navigator(on(ledge));
+    gym_wall(&rig, Some(57.0), false);
+    rig.press(PATHFIND);
+    assert_eq!(last(&rig.backend), "climb 6 west, climb 3 down, 1 west");
+    let cells: Vec<Cell> = (105..111).rev().map(|x| (x, 172)).collect();
+    step(&mut rig, &cells);
+    assert_eq!(last(&rig.backend), "climb 3 down, 1 west");
+}
+
+/// Guiding says each leg as the player reaches it (ADR-0024), and a climb up is in place: the
+/// cell does not change from 3 to 57 at (25, 32) (spike 245). So its handholds are said with the
+/// leg along the face, as the player reaches the spot, and nothing more until the ledge.
+#[test]
+fn test_p_following_a_climb_says_the_holds_up_as_the_player_reaches_the_blue_spot() {
+    let floor = Field {
+        interactables: vec![wall_ledge()],
+        ..Field::new(street().zone, (100, 179))
+    };
+    let mut rig = navigator(on(floor));
+    gym_wall(&rig, None, false);
+    rig.press(PATHFIND);
+    let way = guidance(&rig).unwrap();
+    let mut cells: Vec<Cell> = (172..179).rev().map(|z| (100, z)).collect();
+    cells.extend((101..106).map(|x| (x, 172)));
+    step(&mut rig, &cells);
+    assert_eq!(from(&rig.backend, 1), ["5 east", "climb 3 up, 6 east"]);
+    let cells: Vec<Cell> = (106..111).map(|x| (x, 172)).collect();
+    step(&mut rig, &cells);
+    assert!(
+        Rc::ptr_eq(&way, rig.nav.guide.guidance.as_ref().unwrap()),
+        "along the face is on the way"
+    );
+    step(&mut rig, &[LEDGE]);
+    assert_eq!(last(&rig.backend), "wall ledge, here");
+}
+
+/// Cyllage Gym (spike 245): a face is got onto at a blue spot, "start from one of those blue
+/// spots", the Gym's guide says, so with both of the wall's taken the ledge is out of reach from
+/// the floor in front of the face.
+#[test]
+fn test_p_never_takes_a_ledge_off_a_face_walked_onto_from_the_side() {
+    let floor = Field {
+        interactables: vec![
+            wall_ledge(),
+            somebody((105, 172), 0x08D1E9A8),
+            somebody((106, 172), 0x08D1F458),
+        ],
+        ..Field::new(street().zone, (110, 175))
+    };
+    let mut rig = navigator(on(floor));
+    gym_wall(&rig, None, false);
+    rig.press(PATHFIND);
+    let way = guidance(&rig);
+    assert!(way.is_some() && *path_of(&way).last().unwrap() != LEDGE);
+    assert!(last(&rig.backend).contains("then can't continue"));
+}
+
+/// Cyllage Gym (spike 245): on the face at 54 the player went along it to the blue spot and
+/// climbed down there, the one place a face is got off but onto a ledge.
+#[test]
+fn test_p_on_the_face_gets_off_only_at_a_blue_spot() {
+    let face = Field {
+        interactables: vec![somebody((106, 175), 0x08D1E9A8)],
+        ..Field::new(street().zone, (108, 172))
+    };
+    let mut rig = navigator(on(face));
+    gym_wall(&rig, Some(54.0), false);
+    rig.press(PATHFIND);
+    assert_eq!(last(&rig.backend), "climb 2 west, climb 3 down, 2 south");
+}
+
+/// Cyllage Gym (spike 245): the step off a face onto its ledge is a drop on foot, and only that.
+/// Past the ledge somebody stands in the one way on, and P says who, as anywhere else (spike
+/// 160), rather than stopping at the face.
+#[test]
+fn test_p_stopped_past_a_walls_ledge_by_somebody_says_who_is_in_the_way() {
+    let floor = Field {
+        interactables: vec![
+            somebody((114, 172), 0x08D1E9A8),
+            somebody((112, 172), 0x08D1F458),
+        ],
+        ..Field::new(street().zone, (100, 179))
+    };
+    let mut rig = navigator(on(floor));
+    gym_wall(&rig, None, false);
+    {
+        let mut blocked = rig.field.blocked.borrow_mut();
+        blocked.remove(&(112, 172));
+        blocked.extend((112..115).flat_map(|x| [(x, 171), (x, 173)]));
+        blocked.insert((115, 172));
+    }
+    rig.press(ITEM_NEXT);
+    rig.press(PATHFIND);
+    assert_eq!(
+        last(&rig.backend),
+        "7 north, 5 east, climb 3 up, 6 east, then can't continue, person in the way"
+    );
+}
+
 /// Ever Grande City: the waterfall is a row of blocked water, and Waterfall carries the player up
 /// over it, from (51, 52) to (51, 50); they came back down over it with no question
 /// (omega_ruby_waterfall.ctm, spike 170). Shift and P climbs it, saying the move, and goes down it
@@ -2655,38 +3001,6 @@ fn test_under_the_water_p_goes_to_the_light_whose_sea_reaches_the_things_pocket(
     );
 }
 
-/// Spike 159: from the foot of Route 119 the way north crosses a bridge high over the path,
-/// and its decks walked at the player's height cut it. The way found at the bridge's height is
-/// followed on that ground: at the player's own the bridge is a wall, and every step would
-/// find the way again.
-#[test]
-fn test_where_no_way_is_found_at_the_players_height_the_decks_are_walked_at_another() {
-    let wall: Vec<Cell> = (93..108)
-        .flat_map(|x| (173..188).map(move |z| (x, z)))
-        .filter(|&(x, z)| (x - 100i64).abs().max((z - 180i64).abs()) == 7)
-        .collect();
-    let mut walls = house_front();
-    walls.extend(wall);
-    let mut rig = navigator(Want {
-        blocked: walls,
-        ..on(street())
-    });
-    *rig.field.decks.borrow_mut() = vec![(99.0, HashSet::from([(93, 177)]))];
-    rig.press(CATEGORY_PREVIOUS);
-    rig.press(PATHFIND);
-    assert_eq!(
-        said(&rig.backend),
-        ["people, 1", "2 south, 10 east, 2 south"]
-    );
-    step(&mut rig, &[(90, 176), (90, 177), (91, 177), (91, 178)]);
-    assert_eq!(
-        from(&rig.backend, 2),
-        ["10 east", "1 north, 9 east, 2 south"]
-    );
-    let way = guidance(&rig);
-    assert!(way.is_some() && way.unwrap().borrow().height == Some(99.0));
-}
-
 /// Spike 167: Sootopolis Gym's lower floor lies under the corridor to its way out, and a stair
 /// climbs from it to the entrance's room. From the lower floor P led the player to the cell
 /// under the way out, and on the corridor the Lass pacing below stood in the player's way.
@@ -3213,6 +3527,49 @@ fn test_p_again_that_finds_no_way_keeps_the_way_being_walked_and_says_the_rest()
     );
     step(&mut rig, &[(94, 175), (95, 175)]);
     assert_eq!(last(&rig.backend), "2 north");
+}
+
+/// or_pathfinding_through_multiple_entrances: from Verdanturf Town's east end the way to its
+/// houses goes out onto Route 117 and back, and "10 east" led the player out of the town with
+/// no word of why. Orion asked for "10 east into Route 117" (2026-10-24). A leg between two
+/// zones of one place says nothing more.
+#[test]
+fn test_a_leg_into_another_place_says_it() {
+    let places: IndexMap<i64, &str> = IndexMap::from([
+        (0x6, "Littleroot Town"),
+        (0x2C, "Route 101"),
+        (0x2D, "Route 101"),
+    ]);
+    let here = street();
+    let (door, person) = (here.interactables[0].clone(), here.interactables[1].clone());
+    let mut rig = navigator(Want {
+        blocked: house_front(),
+        place: Some(Rc::new(move |zone| {
+            Ok(places.get(&zone).map(|place| place.to_string()))
+        })),
+        ..on(Field {
+            cell: (102, 175),
+            interactables: vec![door],
+            ..street()
+        })
+    });
+    let zones: IndexMap<i64, i64> = IndexMap::from([(10, 0x2C), (11, 0x2D)]);
+    *rig.field.grid.borrow_mut() = Some(Grid {
+        width: 12,
+        height: 20,
+        zones: (0..12 * 20)
+            .map(|i| zones.get(&(i % 12)).copied().unwrap_or(0x6))
+            .collect(),
+    });
+    rig.press(PATHFIND);
+    assert_eq!(said(&rig.backend), ["7 west into Littleroot Town, 2 north"]);
+    *rig.field.r#where.borrow_mut() = Some(Field {
+        cell: (112, 180),
+        interactables: vec![person],
+        ..street()
+    });
+    rig.press(PATHFIND);
+    assert_eq!(last(&rig.backend), "11 west");
 }
 
 #[test]

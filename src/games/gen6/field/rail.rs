@@ -843,6 +843,8 @@ pub fn keep(found: Option<i64>, held: Option<i64>) -> Option<i64> {
 /// map's streets out of the ROM, and the corridor the player is in.
 pub struct Rails {
     memory: Rc<dyn Memory>,
+    /// Where the game's camera block keeps where it looks (`Game.camera`).
+    shape: camera::Shape,
     /// Where there is no ROM to read, None, and only the lines the game has loaded are known,
     /// with no joint to turn at.
     streets: Option<Streets>,
@@ -878,9 +880,15 @@ pub struct Rails {
 }
 
 impl Rails {
-    pub fn new(memory: Rc<dyn Memory>, streets: Option<Streets>, records: Records) -> Self {
+    pub fn new(
+        memory: Rc<dyn Memory>,
+        streets: Option<Streets>,
+        records: Records,
+        shape: camera::Shape,
+    ) -> Self {
         Rails {
             memory,
+            shape,
             streets,
             records,
             chunk_files: RefCell::new(Vec::new()),
@@ -898,8 +906,10 @@ impl Rails {
     /// Take in what a sweep found: the camera, and the table of the rails loaded, through the
     /// line the player's model `head` is on.
     pub fn track(&self, found: &Found, head: Option<&[u8]>) -> Result<()> {
-        self.camera
-            .set(keep(camera::find(found, &*self.memory)?, self.camera.get()));
+        self.camera.set(keep(
+            camera::find(found, &*self.memory, &self.shape)?,
+            self.camera.get(),
+        ));
         if let Some(head) = head
             && mmodel::on_rail(head)?
         {
@@ -917,7 +927,7 @@ impl Rails {
     pub fn turn(&self, current: i64) -> Result<i64> {
         let looks = match self.camera.get() {
             None => None,
-            Some(block) => camera::looks(&*self.memory, block)?,
+            Some(block) => camera::looks(&*self.memory, block, &self.shape)?,
         };
         match looks {
             None => Ok(current),
@@ -931,7 +941,7 @@ impl Rails {
     pub fn behind(&self) -> Result<Option<f64>> {
         let yaw = match self.camera.get() {
             None => None,
-            Some(block) => camera::behind(&*self.memory, block)?,
+            Some(block) => camera::behind(&*self.memory, block, &self.shape)?,
         };
         Ok(yaw.map(|yaw| py::modulo_f(180.0 - yaw, 360.0)))
     }
@@ -966,7 +976,7 @@ impl Rails {
         };
         let world = match self.camera.get() {
             None => None,
-            Some(block) => camera::heading(&*self.memory, block)?,
+            Some(block) => camera::heading(&*self.memory, block, &self.shape)?,
         };
         let (across, along) = match world {
             None => {

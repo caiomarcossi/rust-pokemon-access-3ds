@@ -102,11 +102,15 @@ picture-move = move { $number }
 mark-on = { $mark }, on
 mark-off = { $mark }, off
 # A slot the PC Box's pointer rests on where no words are (spikes 129 and 143): a party's by its
-# number, a box's by its row and column under the box's name, "BOX 1, row 2, column 3".
+# number, a box's by its row and column under the box's name, "BOX 1, row 2, column 3", the
+# Battle Box's by its number after its name, "BATTLE BOX 2". While a Pokémon is carried, a slot
+# holding another is said with its name: "BOX 1, row 1, column 2, erza".
 slot-party = Party { $number }
 slot-grid = row { $row }, column { $column }
 slot-titled-grid = { $title }, row { $row }, column { $column }
+slot-titled-list = { $title } { $number }
 slot-empty = { $slot }, empty
+slot-held = { $slot }, { $name }
 # A contest's places, drawn as pictures beside each entrant, said after the entrant: "Raiden &
 # Metagross third place" (Orion, 2026-10-09).
 contest-place-one = first place

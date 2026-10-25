@@ -14,6 +14,7 @@ use crate::games::common::layout_file::{LayoutFile, LayoutFiles};
 use crate::games::common::lyt;
 use crate::games::common::pictures::{EMPTY, words};
 use crate::games::common::screen::{Pictures, ScreenText, distinct, in_rows};
+use crate::games::common::slots::Occupant;
 use crate::py::{self, Result};
 
 /// The biggest side of a picture taken for a cursor. The battle's is 20 by 20; a lone picture the
@@ -39,16 +40,21 @@ pub struct CursorItem {
     /// No details follow it: an empty slot, over which the top screen's summary keeps showing
     /// the Pokémon carried or the one last passed (spike 129).
     pub quiet: bool,
+    /// A pane of the list of rows it is one of, where its cursor knows it (`MenuCursors`), or 0:
+    /// the details kept from moves along one list are not another's.
+    pub rows: i64,
 }
 
 impl CursorItem {
-    /// `CursorItem(cursor, pieces, opened)`: `quiet` left to its default, False.
+    /// `CursorItem(cursor, pieces, opened)`: `quiet` and `rows` left to their defaults, False
+    /// and 0.
     pub fn new(cursor: i64, pieces: Vec<ScreenText>, opened: bool) -> Self {
         CursorItem {
             cursor,
             pieces,
             opened,
             quiet: false,
+            rows: 0,
         }
     }
 }
@@ -111,6 +117,8 @@ pub struct Panes {
     /// What the game calls what a picture draws now, by its image (`gen6.rom.textures`), or
     /// None.
     pub pictures: Option<Pictures>,
+    /// Who is in a PC Box's slot, said while a Pokémon is carried (`slots`), or None.
+    pub occupant: Option<Occupant>,
     /// Whether Sun's cursor pane and its boxes' pointers are read: ORAS and X have none.
     pub cursor_panes: bool,
     /// (root, group) -> the words of the group's first picture's texture, once known.
@@ -125,11 +133,13 @@ impl Panes {
         files: Option<Rc<LayoutFiles>>,
         pictures: Option<Pictures>,
         cursor_panes: bool,
+        occupant: Option<Occupant>,
     ) -> Self {
         Panes {
             layouts,
             files,
             pictures,
+            occupant,
             cursor_panes,
             picture_words: RefCell::new(IndexMap::new()),
             cursor_textures: RefCell::new(IndexMap::new()),
@@ -291,6 +301,25 @@ impl Panes {
         Ok(py::PySet::of([row]).union(&py::PySet::of(alike)))
     }
 
+    /// A row and the rows drawn like it anywhere in its panel, in one column: its class, at
+    /// its x and of its size, each under a pane of its own (`MenuCursors._rows`).
+    pub fn alike_in(&self, root: i64, row: i64, panel: i64) -> Result<py::PySet> {
+        let tree = self.layouts.tree(root);
+        let ((x, _y), (width, height)) = (self.place(row)?, self.size(row)?);
+        let mut alike: Vec<i64> = Vec::new();
+        for &pane in tree.keys() {
+            if class_of(&tree, pane) == class_of(&tree, row)
+                && self.below(pane, panel)?
+                && near(self.place(pane)?.0, x)
+                && near(self.size(pane)?.0, width)
+                && near(self.size(pane)?.1, height)
+            {
+                alike.push(pane);
+            }
+        }
+        Ok(py::PySet::of([row]).union(&py::PySet::of(alike)))
+    }
+
     /// Is this picture or window drawn with a texture its designer named a cursor? A pane
     /// that is neither has no texture in its layout's file, and is not. Without the file, as in
     /// Sun, a picture is a cursor by its place: a box's pointer.
@@ -392,6 +421,19 @@ impl Said {
         r#where: Where,
         quiet: bool,
     ) {
+        self.report_in(cursor, inside, items, r#where, quiet, 0);
+    }
+
+    /// `report(..., rows=rows)`: the item one of the list of rows `rows` is a pane of.
+    pub fn report_in(
+        &self,
+        cursor: i64,
+        inside: Vec<ScreenText>,
+        items: &mut Vec<CursorItem>,
+        r#where: Where,
+        quiet: bool,
+        rows: i64,
+    ) {
         self.under.borrow_mut().insert(cursor, inside.clone());
         if inside.is_empty() {
             return;
@@ -407,6 +449,7 @@ impl Said {
                 pieces: inside,
                 opened: !held.contains_key(&cursor),
                 quiet,
+                rows,
             });
             held.insert(cursor, said);
         }

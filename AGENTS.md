@@ -25,9 +25,13 @@ in a comment or doc here means the Python checkout's. This repository's only doc
 
 ## Talking to upstream
 
-- **What to port** is an open issue in this repository labelled `upstream`, kept up to date by
-  `.github/workflows/upstream.yml`: each push to upstream's main rewrites it with
-  `sync.py status`, and a push here that brings `port.toml` level with upstream closes it.
+- **What to port** is the open issues in this repository labelled `upstream`, kept up to date by
+  `.github/workflows/upstream.yml`: each push to upstream's main rewrites the one nobody has
+  claimed with `sync.py status`, or opens one starting where the claimed one ends, and a push
+  here that brings `port.toml` to an issue's commit closes it. An issue is ported up to the
+  commit its title names, never further, and never closed by hand: a claimed issue rewritten
+  under Khai while he ported nearly closed at the commit his agent had read, leaving what was
+  pushed meanwhile in no issue (Orion, 2026-10-25). Several open, port the oldest first.
 - **Claim an issue before working on it**, the `upstream` one or any other. Orion and Khai port
   from machines of their own, and once nearly cut the same release twice (Orion, 2026-10-18).
   Look first (`gh issue view <n>`): an issue labelled `in progress` is someone else's, so stop and
@@ -106,7 +110,9 @@ python tools/sync.py mark       # port.toml now matches upstream's HEAD
 
 The Python checkout is `PA3DS_PYTHON`, or `../pokemon-access-3ds` beside this one. To sync:
 
-0. Claim the `upstream` issue (*Talking to upstream*, above).
+0. Claim the oldest open `upstream` issue (*Talking to upstream*, above), and check out the
+   commit its title names in the Python checkout: that is HEAD below, whatever upstream's main
+   has moved on to since.
 1. `status`, then for each file listed to port by hand, read its upstream diff
    (`git -C ../pokemon-access-3ds diff <port.toml's commit>..HEAD -- <path>`) and make the same
    change to its Rust file, following `docs/porting.md`. Port the change to its tests too.
@@ -156,8 +162,9 @@ counterpart. It runs only in a build `tools/package.ps1` made (`PA3DS_RELEASE`),
 [README.md](README.md) and the pages it links to in [`manual/`](manual/) are what a player reads,
 and they ship in the release zip: the README the games, what is said, setup and updating;
 `keys.md` the default keys; `settings.md` every setting, the Azahar settings pa3ds writes and the
-player's files; `languages.md` languages and translating. Upstream's are the same manual for the
-Python pa3ds (Orion, 2026-10-06); a sync that changes them changes these to match, in the same
+player's files; `languages.md` languages and translating; `known-issues.md` every known problem
+and gap a player meets, there and not in the other pages (Orion, 2026-10-24). Upstream's are the
+same manual for the Python pa3ds (Orion, 2026-10-06); a sync that changes them changes these to match, in the same
 commit, but for running `pa3ds.exe` where upstream runs uv, and for the Updating section, which
 only the port has. Keep them short, as upstream's AGENTS.md says (Orion, 2026-10-18). They name
 no ADR, finding or spike. Building and releasing are in [BUILDING.md](BUILDING.md), which does

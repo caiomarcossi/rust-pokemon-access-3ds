@@ -663,3 +663,9 @@ place-0xdf-furniture-0 = Azurill Doll
 place-0xe1-furniture-0 = Azurill Doll
 # in the moving truck
 place-0x18f-furniture-0 = Azurill Doll
+# The rocks that evolve Eevee, which no text names: each shows only a message of its own, the
+# same records in every language (spike 211's `same`). Story 378:0, "It's a rock that is covered
+# in ice.", in Shoal Cave's ice room (or_ice_rock)
+place-0x86-furniture-0 = ice rock
+# story 432:45, "The surface is covered with moss.", in Petalburg Woods (or_mossy_rock)
+place-0x52-furniture-2 = moss rock

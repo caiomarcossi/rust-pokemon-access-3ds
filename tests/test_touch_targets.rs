@@ -454,6 +454,54 @@ fn test_a_button_switched_off_whose_picture_is_said_all_the_same_is_offered() {
     );
 }
 
+/// Screen text names pictures as touch mode does: the Bag's party slots were offered as
+/// "Torchic Torchic L14" and the Battle Maison's partners as "May May"
+/// (or_multi_battle_partners).
+#[test]
+fn test_a_picture_screen_text_names_is_said_once() {
+    let memory = FakeMemory::new();
+    let classes = FakeClasses::new(memory.clone());
+    let fake = FakeLayouts::new(&memory, &classes);
+    let (bounding, picture) = (
+        classes.add(lyt::BOUNDING_CLASS),
+        classes.add(lyt::PICTURE_CLASS),
+    );
+    let (_work, group) = fake.screen(0x08200000);
+    let button = group + 0x1000;
+    fake.pane(button, group);
+    fake.pane_with_vtable(button + 0x200, button, Some(bounding));
+    fake.pane_with_vtable(button + 0x400, button, Some(picture));
+    memory.write(
+        button + 0x200 + lyt::WIDTH,
+        &[40.0f32.to_le_bytes(), 40.0f32.to_le_bytes()].concat(),
+    );
+    fake.track().unwrap();
+    let words = vec![ScreenText::new(button + 0x400, "May", false)];
+    let mut targets = TouchTargets::new(
+        fake.layouts.clone(),
+        Rc::new(move || words.clone()),
+        Rc::new(|_box| Ok(String::new())),
+        Rc::new(|_pane| Ok(None)),
+        Rc::new(|_root| None),
+        Rc::new(|_line: &str| {}),
+        Options {
+            picture_name: Some(Rc::new(move |pane| {
+                Ok((pane == button + 0x400).then(|| "May".to_string()))
+            })),
+            ..Options::default()
+        },
+    );
+    assert_eq!(
+        targets
+            .targets()
+            .unwrap()
+            .iter()
+            .map(|t| t.name.as_str())
+            .collect::<Vec<_>>(),
+        ["May"]
+    );
+}
+
 /// The Pokémon-Amie page's PLAY is a picture of its word inside the touch area behind its
 /// menu, which closes it: the backdrop took PLAY's word, and PLAY was left out (spike 198).
 #[test]

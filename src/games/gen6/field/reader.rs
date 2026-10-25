@@ -36,14 +36,16 @@ use crate::games::common::field::chunk::HOLE as BOULDER_HOLE;
 use crate::games::common::field::chunk::{
     BIKE_RAILS, BLOCKED, BUMPY_SLOPES, CHUNK, CURRENTS, Chunk, DIVE, FALLS, SLOPES,
 };
+use crate::games::common::field::climb::Walls;
 use crate::games::common::field::ground::{
-    self as common, BLOCK, CRACKED, Far, Grid, Ground, NO_ZONE, Of, STRENGTH, pushes, riding,
-    walkable,
+    self as common, BLOCK, CRACKED, Far, Grid, Ground, GroundHeight, NO_ZONE, Of, STRENGTH, pushes,
+    riding, walkable,
 };
 use crate::games::common::field::things::{
-    BIKE, BIKE_SOURCE, CURRENT_SOURCE, CURRENTS_CATEGORY, DECORATION_SOURCE, DIVE_SOURCE,
-    EDGE_SOURCE, FURNITURE_SOURCE, Field, Interactable, OBSTACLES, POKEMON, RIDE_SOURCE, RIDING,
-    STAIRS_SOURCE, TILE_SOURCE, TRIGGER_SOURCE, WARP_SOURCE, kind_said, place_source,
+    BIKE, BIKE_SOURCE, CLIMB_SOURCE, CLIMBING, CURRENT_SOURCE, CURRENTS_CATEGORY,
+    DECORATION_SOURCE, DIVE_SOURCE, EDGE_SOURCE, FURNITURE_SOURCE, Field, Interactable, OBSTACLES,
+    POKEMON, RIDE_SOURCE, RIDING, STAIRS_SOURCE, TILE_SOURCE, TRIGGER_SOURCE, WARP_SOURCE,
+    kind_said, place_source,
 };
 use crate::games::gen6::field::features::{
     DoorReader, Feature, HiddenReader, Hiding, IceReader, SecretBaseReader, Tracked,
@@ -61,7 +63,7 @@ use crate::games::gen6::field::zonetable::{
     ZoneTable,
 };
 use crate::games::gen6::field::{fieldmap, mapblock, mmodel};
-use crate::games::gen6::game::{FurnitureKind, Game, Rides};
+use crate::games::gen6::game::{Climbing, FurnitureKind, Game, Rides};
 use crate::games::gen6::rom::archives::GameText;
 use crate::games::gen6::rom::maps::{ChunkSource, StreetSource};
 use crate::py::{self, Error, PySet, Result};
@@ -141,6 +143,12 @@ pub const CURRENT: &str = "current";
 /// What a patch of the flat ground a ridden Pokémon is got on and off on is called, listed at its
 /// cell nearest the player: the game never names it (spike 238).
 pub const FLAT_GROUND: &str = "flat ground";
+
+/// What a run of the blue spots a climbing wall is climbed from is called, and one on a ledge at
+/// its side, where it is got off: the Gym's guide says "start from one of those blue spots", and the
+/// game names neither (spike 245).
+pub const BLUE_SPOT: &str = "blue spot";
+pub const WALL_LEDGE: &str = "wall ledge";
 
 /// Cells apart the places two currents let the player go may be and the two still be listed as
 /// one current. Route 133's currents let the player go at 152 cells, 71 groups of them side by side,
@@ -231,6 +239,13 @@ pub enum Role {
     /// the doors are walked through by, and are not in the way: five were listed as "person 1
     /// west" round Fortree Gym's third door, and P said "person in the way" (spike 161).
     Blocker,
+    /// A work object no script has filled (`mmodel.drawn_as` gives its own id): drawn as
+    /// nothing, neither listed nor in the way. The Contest Spectacular Halls' lobbies stand ten,
+    /// `0x7b` to `0x84` in two rows beside the carpet, listed as "person" until 2026-10-23; none
+    /// was drawn, and the player walked onto one (or_contest_hall_phantom_people; findings, the
+    /// map, 2026-10-23). One whose looks are still loading reads the same, and is left out until
+    /// they have.
+    Empty,
     /// A model drawn as nothing (`mmodel.NONDRAW`): in the way, as on each of Sootopolis City's
     /// locked doors, and in its own zone listed as what it stands in for (`_stand_ins`, spike
     /// 203).
@@ -304,6 +319,9 @@ pub struct FieldReader {
     strands: i64,
     /// What the game's ridden Pokémon cross, or None in a game without one (`Game.rides`).
     rides: Option<Rides>,
+    /// The kinds of the walls the game lets the player climb, or None in a game without them
+    /// (`Game.climbing`).
+    climbing: Option<Climbing>,
     /// Whether a row of models drawn as nothing with a script of its own is a gate
     /// (`Game.gates`).
     gates: bool,
@@ -320,6 +338,9 @@ pub struct FieldReader {
     ambushes: HashSet<i64>,
     /// The sprites of the spots a wild Pokémon waits at unseen (`Game.lurkers`).
     lurkers: HashSet<i64>,
+    /// The sprites of the things other than item balls the player finds an item at
+    /// (`Game.pickups`).
+    pickups: HashSet<i64>,
     /// The matrix out of the ROM, which never touches RAM.
     pub terrain: Terrain,
     /// Underwater zone -> its `Ground.surfaces`, once found.
@@ -471,6 +492,7 @@ impl FieldReader {
             furniture_kinds: game.furniture.clone(),
             strands: game.strands,
             rides: game.rides.clone(),
+            climbing: game.climbing.clone(),
             gates: game.gates,
             secret_bases,
             barriers: game.barriers.clone(),
@@ -478,13 +500,19 @@ impl FieldReader {
             clears: game.clears.clone(),
             ambushes: game.ambushes.clone(),
             lurkers: game.lurkers.clone(),
+            pickups: game.pickups.clone(),
             terrain,
             surfaces_of: RefCell::new(HashMap::new()),
             trigger_boxes: RefCell::new(HashMap::new()),
             height: Slot::new(None),
             ways_of: RefCell::new((None, Vec::new(), Vec::new(), Vec::new(), Vec::new())),
             clock,
-            rails: Rails::new(memory.clone(), streets, text.street_records.clone()),
+            rails: Rails::new(
+                memory.clone(),
+                streets,
+                text.street_records.clone(),
+                game.camera,
+            ),
             belts: game.belts.clone(),
             outdoors: text.outdoors.clone(),
             drawn: game.drawn,
@@ -731,10 +759,10 @@ impl FieldReader {
     /// zone under the player at all.
     ///
     /// Where the matrix has a chunk with a deck over its ground, the ground is stacked: walked a
-    /// floor at a time, each step onto the floor beside it it joins (`Ground.climb`). Otherwise a
-    /// chunk with a deck is walked on the floor nearest the player's height, cell by cell
-    /// (`mapblock.flat`, spike 156), or nearest `height` where one is given.
-    pub fn ground(&self, r#where: &Field, height: Option<f64>) -> Result<Ground> {
+    /// floor at a time, each step onto the floor beside it it joins (`Ground.climb`). Where the
+    /// player's height is not read, a chunk with a deck is walked on the first floor open in
+    /// each cell (`mapblock.flat`, spike 156).
+    pub fn ground(&self, r#where: &Field) -> Result<Ground> {
         if r#where.on_rail {
             let corridor = self
                 .rails
@@ -783,12 +811,8 @@ impl FieldReader {
         solid.extend(self.unseen(r#where.zone)?);
         solid.extend(cracked);
         let loaded = || self.chunks_loaded();
-        let stacked = !self.terrain.decks(self.height.get(), &loaded)?.is_empty();
-        let level = if height.is_none() || stacked {
-            self.height.get()
-        } else {
-            height
-        };
+        let level = self.height.get();
+        let stacked = level.is_some() && self.terrain.stacked(&loaded)?;
 
         let mut chunks: Vec<Rc<Chunk>> = Vec::new();
         for chunk in self.chunks_loaded()? {
@@ -797,11 +821,6 @@ impl FieldReader {
                 &covered,
             ));
         }
-        let decks = if stacked {
-            Vec::new()
-        } else {
-            self.terrain.decks(level, &loaded)?
-        };
         let ladders = self.ladders_here()?;
         let cliffs = self.terrain.cliffs(level, &ladders)?;
         // From the models, not the listing: guiding asks with nothing listed.
@@ -839,8 +858,16 @@ impl FieldReader {
             None
         };
         let belts = self.belts_here(r#where.zone)?;
+        let ground_height: Option<GroundHeight> = if stacked {
+            None
+        } else {
+            let me = self
+                .me
+                .upgrade()
+                .expect("a reader is made in an Rc, which its holders keep");
+            Some(Rc::new(move |cell| me.terrain.height(cell)))
+        };
         let ground = Ground {
-            decks,
             cliffs,
             ladders,
             doors,
@@ -851,8 +878,10 @@ impl FieldReader {
             level,
             ice,
             filled,
+            ground_height,
             strands: self.strands,
             lanes,
+            walls: self.walls()?,
             ..Ground::of(
                 r#where,
                 Of {
@@ -1126,6 +1155,7 @@ impl FieldReader {
         items.extend(self.edges(r#where.zone, !r#where.on_rail)?);
         items.extend(self.use_tiles(r#where.zone)?);
         items.extend(self.ways(r#where.zone, r#where.cell)?);
+        items.extend(self.climbing_spots(r#where.zone)?);
         items.extend(self.stairs_in(r#where.zone)?);
         items.extend(self.base_tiles(r#where.zone)?);
         items.extend(self.placed(r#where.zone)?);
@@ -1867,6 +1897,8 @@ impl FieldReader {
             Role::Barrier
         } else if self.blockers.contains(&code) {
             Role::Blocker
+        } else if mmodel::WORK_OBJECTS.contains(&code) {
+            Role::Empty
         } else if code == mmodel::NONDRAW {
             Role::Nothing
         } else {
@@ -1912,7 +1944,7 @@ impl FieldReader {
             let code =
                 mmodel::drawn_as(&*self.memory, model, &head, self.drawn, self.model_starts)?;
             let role = self.role(&head, code)?;
-            if role == Role::Look || role == Role::Blocker {
+            if role == Role::Look || role == Role::Blocker || role == Role::Empty {
                 continue;
             }
             let mut stood_in = None;
@@ -1957,6 +1989,9 @@ impl FieldReader {
     /// (spike 203); and, in a game with `gates`, the records' indices of the gates, models drawn
     /// as nothing that share a script with one another and with no drawn record: the five behind
     /// Viola in Santalune Gym, shut until the game opens the tent after her battle (spike 223).
+    /// The cells of its furniture are among the warps': each of X's boutiques stands one on its
+    /// fitting room, listed already, and it was listed beside it as "person 1 north"
+    /// (x_cyllage_boutique_fitting_room).
     fn stand_ins(&self) -> Result<StandIns> {
         let Some(data) = self.current()? else {
             return Ok((IndexMap::new(), HashSet::new(), HashSet::new()));
@@ -2005,6 +2040,9 @@ impl FieldReader {
                     doors.insert((x, z));
                 }
             }
+        }
+        for item in read_furniture(&*self.memory, &data)? {
+            doors.extend(item.cells());
         }
         Ok((stand_ins, doors, gates))
     }
@@ -2057,6 +2095,8 @@ impl FieldReader {
         let source = u32(head, mmodel::ZONE)? << 32 | model;
         let (category, kind) = if mmodel::ITEM_BALLS.contains(&code) {
             ("items", "item ball")
+        } else if self.pickups.contains(&code) {
+            ("items", PROP)
         } else if self.ambushes.contains(&code) || self.lurkers.contains(&code) {
             (POKEMON, PROP)
         } else if self.clears.contains_key(&code)
@@ -2304,6 +2344,37 @@ impl FieldReader {
                 home: Some(zone),
                 ..Interactable::new(RIDING, FLAT_GROUND, nearest(&mut patch.iter().copied()))
             });
+        }
+        Ok(out)
+    }
+
+    /// The matrix's climbing walls, off the ROM (`Terrain.walls`); none in a game without
+    /// them.
+    fn walls(&self) -> Result<Rc<Walls>> {
+        match &self.climbing {
+            None => Ok(Rc::new(Walls::default())),
+            Some(climbing) => self.terrain.walls(climbing),
+        }
+    }
+
+    /// The zone's climbing walls' blue spots, each run of them side by side on one face at
+    /// one height a thing, a blue spot where the wall is got onto from the floor and a wall
+    /// ledge where it is got off onto a ledge at its side (`Walls.spots`, spike 245).
+    fn climbing_spots(&self, zone: i64) -> Result<Vec<Interactable>> {
+        let mut out: Vec<Interactable> = Vec::new();
+        for (cells, ledge) in self.walls()?.spots() {
+            for (first, size) in runs(cells) {
+                let at = self.zone_at(first)?;
+                if at.is_some_and(|at| at != zone) {
+                    continue;
+                }
+                out.push(Interactable {
+                    size,
+                    source: place_source(CLIMB_SOURCE, cell_number(first))?,
+                    home: Some(zone),
+                    ..Interactable::new(CLIMBING, if ledge { WALL_LEDGE } else { BLUE_SPOT }, first)
+                });
+            }
         }
         Ok(out)
     }

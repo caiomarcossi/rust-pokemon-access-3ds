@@ -531,6 +531,8 @@ furniture-0x292f = Berry tree
 furniture-0x2930 = Berry tree
 # text 142:85, the 17 zones of the Pokémon Centers' PC
 furniture-0x29d2 = fitting room
+# text 142:225, the 7 boutiques' fitting room, its clerk's word
+furniture-0x29d3 = fitting room
 # text 142:60 and 64, the boutiques' displays
 furniture-0x29d4 = clothes
 # story 398:19, zones 0x88 to 0x8b; French story 204:1

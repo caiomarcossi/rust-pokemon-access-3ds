@@ -408,7 +408,7 @@ impl FieldSource for Sky {
         Ok(r#where.clone())
     }
 
-    fn ground(&self, _where: &Field, _height: Option<f64>) -> Result<Ground> {
+    fn ground(&self, _where: &Field) -> Result<Ground> {
         panic!("no ground in the sky")
     }
 }

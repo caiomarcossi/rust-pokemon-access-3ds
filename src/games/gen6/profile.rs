@@ -30,7 +30,7 @@ use crate::games::common::announce::{Announcements, Speaker};
 use crate::games::common::cursors::reader::CursorReader;
 use crate::games::common::dialogue::{DialogueReader, Shown};
 use crate::games::common::field::ground::Ground;
-use crate::games::common::field::guide::FieldSource;
+use crate::games::common::field::guide::{FieldSource, Place};
 use crate::games::common::field::keys::Bindings;
 use crate::games::common::field::navigate::{
     DoorSign, LeadsTo, Navigator, Options as NavigatorOptions, Sides, Street,
@@ -50,6 +50,7 @@ use crate::games::common::scenes::{
 use crate::games::common::screen::{Pictures, ScreenPoll, ScreenText, ScreenTextReader};
 use crate::games::common::screen_announce::ScreenAnnouncer;
 use crate::games::common::session::Profile;
+use crate::games::common::slots::Occupant;
 use crate::games::common::touch::{
     self, FileOf, Idle, ImageOf, Lists, OnScreen, PictureName, Tap, TextOf, TouchTargets,
 };
@@ -74,10 +75,11 @@ use crate::games::gen6::screens::distribution::{Distribution, DistributionReader
 use crate::games::gen6::screens::habitat::HabitatReader;
 use crate::games::gen6::screens::lists::{CONTROLLER_CLASS, ListReader};
 use crate::games::gen6::screens::mapcursor::MapCursor;
+use crate::games::gen6::screens::partners::Partners;
 use crate::games::gen6::screens::partyicons::PartyIcons;
 use crate::games::gen6::screens::training::{Bags, Goals, Round, TrainingPage};
 use crate::games::gen6::screens::{
-    amie, buttons, distribution, partyicons, summary, townmap, training,
+    amie, boxes, buttons, distribution, partners, partyicons, summary, townmap, training,
 };
 use crate::games::gen6::{frames, gflheap, mystatus};
 use crate::py::{self, Error, Log, PySet, Result};
@@ -92,15 +94,16 @@ use crate::py::{self, Error, Log, PySet, Result};
 /// draws; the party and the icons the Bag draws it with; the Pokémon-Amie page, which says whose
 /// icon its Pokémon is; the texture systems Amie's decorate screen draws its Poké Puffs and items
 /// from, and the layout helpers its item pages point at; Super Training's page, which says whose
-/// each party slot's is; and the balls of its Balloon Bots, which say when a shot is coming; and
-/// the save's trainer record, which says the game's language (`mystatus`). A game's own readers add what they find their objects
-/// by (`Gen6Profile.classes`): ORAS's DexNav, the player's work its hidden Pokémon's record is found
+/// each party slot's is; and the balls of its Balloon Bots, which say when a shot is coming; the
+/// Battle Maison's partner screen, which says whose portrait each picture draws; and the save's
+/// trainer record, which says the game's language (`mystatus`). A game's own readers add what
+/// they find their objects by (`Gen6Profile.classes`): ORAS's DexNav, the player's work its hidden Pokémon's record is found
 /// through.
 ///
 /// Not TextBoxes or cursor windows: walking each layout's tree finds every one that can be placed on
 /// screen (spike 62). And the linear heap is not swept: the battle builds its layouts there, and its
 /// message window leads to their pool (spike 64).
-pub const HEAP_CLASSES: [&str; 31] = [
+pub const HEAP_CLASSES: [&str; 36] = [
     msgwin::CLASSES[0],
     msgwin::CLASSES[1],
     talk::CLASSES[0],
@@ -127,8 +130,13 @@ pub const HEAP_CLASSES: [&str; 31] = [
     amie::G2D_CLASS,
     training::CLASS,
     training::MISSILE,
+    partners::CLASS,
     pokemon::PARAM_CLASS,
     partyicons::ICON_CLASS,
+    partyicons::PARTY_SAVE,
+    partyicons::BATTLE_BOX,
+    boxes::BOXES,
+    boxes::NAMES,
     buttons::MANAGER_CLASS,
     buttons::BAR_CLASS,
     buttons::MENU_CLASS,
@@ -227,6 +235,8 @@ pub struct Gen6Profile {
     pub sparring: RefCell<Round>,
     pub buttons: Rc<RefCell<buttons::Buttons>>,
     pub party_icons: Rc<RefCell<PartyIcons>>,
+    pub partners: Rc<RefCell<Partners>>,
+    pub occupants: Rc<RefCell<boxes::Occupants>>,
     pub standings: Option<Rc<RefCell<dyn StandingsReader>>>,
     pub map_cursor: RefCell<MapCursor>,
     pub footsteps: Option<RefCell<Footsteps>>,
@@ -303,8 +313,8 @@ impl FieldSource for FieldReader {
         FieldReader::interactables(self, r#where)
     }
 
-    fn ground(&self, r#where: &Field, height: Option<f64>) -> Result<Ground> {
-        FieldReader::ground(self, r#where, height)
+    fn ground(&self, r#where: &Field) -> Result<Ground> {
+        FieldReader::ground(self, r#where)
     }
 }
 
@@ -361,6 +371,10 @@ impl Gen6Profile {
                 Rc::new(move || apps.borrow().running.clone())
             },
         )));
+        // The Battle Maison's partners are portraits over names drawn with no TextBox. Made here,
+        // before the screen text reader that asks it, where Python makes it later and reaches it
+        // through `self`; making it reads nothing.
+        let partners = Rc::new(RefCell::new(Partners::new(memory.clone())));
         // The AreaNav's Pokémon Distribution draws each Pokémon's icon, which no file names. Made
         // here, before the screen text reader that asks it, where Python makes it later and
         // reaches it through `self`; making it reads nothing.
@@ -375,14 +389,15 @@ impl Gen6Profile {
         // they are named here for its reader to say whole (or_area_nav, spike 232).
         let on_screen_named: Pictures = {
             let (named_by_image, party_icons) = (named_by_image.clone(), party_icons.clone());
-            let (apps, distribution) = (apps.clone(), distribution.clone());
+            let (apps, distribution, partners) =
+                (apps.clone(), distribution.clone(), partners.clone());
             Rc::new(move |pane: i64| {
                 let by_image = match &named_by_image {
                     Some(named) => named(pane)?,
                     None => None,
                 };
-                // Python's `or`: a name of "" or None goes on to the party's icons, and then to
-                // the Distribution's.
+                // Python's `or`: a name of "" or None goes on to the party's icons, then to the
+                // Distribution's, and then to the Maison's partners.
                 if let Some(name) = by_image
                     && !name.is_empty()
                 {
@@ -393,11 +408,13 @@ impl Gen6Profile {
                 {
                     return Ok(Some(name));
                 }
-                if apps.borrow().running.as_deref() == Some(townmap::APP) {
-                    distribution.borrow().name(pane)
-                } else {
-                    Ok(None)
+                if apps.borrow().running.as_deref() == Some(townmap::APP)
+                    && let Some(name) = distribution.borrow().name(pane)?
+                    && !name.is_empty()
+                {
+                    return Ok(Some(name));
                 }
+                partners.borrow().name(pane)
             })
         };
         let screen = Rc::new(RefCell::new(ScreenTextReader::with(
@@ -578,11 +595,27 @@ impl Gen6Profile {
             }
         }
 
+        // Carrying a Pokémon in the PC Box, the slot it is over says who is in it, from the save.
+        // Made before the block the cursors are made in, where Python makes it inside, just before
+        // them; making it reads nothing.
+        let occupants = Rc::new(RefCell::new(boxes::Occupants::new(
+            memory.clone(),
+            names.clone(),
+            {
+                let party_icons = party_icons.clone();
+                Rc::new(move || party_icons.borrow().party())
+            },
+            {
+                let party_icons = party_icons.clone();
+                Rc::new(move || party_icons.borrow().battle_box())
+            },
+        )));
         // Omega Ruby's boy and girl are portraits the game never names, said in pa3ds's words
         // (`pictures.named`).
         // A cursor over pictures alone says what the game calls them, by the image or by the
         // game's word for the texture, as touch mode does: the AreaNav's tabs, Places to
-        // Berries, which left and right walk (or_area_nav2). Made here, after the words it looks
+        // Berries, which left and right walk (or_area_nav2); and the Battle Maison's partners by
+        // their portraits (or_multi_battle_partners). Made here, after the words it looks
         // pictures up in, where Python makes it before them and reaches them as it runs; in a
         // block of its own, since its `game_word` would hide the module's.
         let cursors = {
@@ -608,23 +641,38 @@ impl Gen6Profile {
                         .map(|image| images[image].clone()))
                 })
             };
+            let partners = partners.clone();
             let cursor_named: Pictures = Rc::new(move |pane: i64| {
                 let by_image = match &named_by_image {
                     Some(named) => named(pane)?,
                     None => None,
                 };
-                // Python's `or`: a name of "" or None goes on to the game's word.
-                match by_image {
-                    Some(name) if !name.is_empty() => Ok(Some(name)),
-                    _ => game_word(pane),
+                // Python's `or`: a name of "" or None goes on to the partners, and then to the
+                // game's word.
+                if let Some(name) = by_image
+                    && !name.is_empty()
+                {
+                    return Ok(Some(name));
                 }
+                if let Some(name) = partners.borrow().name(pane)?
+                    && !name.is_empty()
+                {
+                    return Ok(Some(name));
+                }
+                game_word(pane)
             });
-            CursorReader::with(
+            CursorReader::with_occupant(
                 layouts.clone(),
                 names.clone(),
                 Some(files.clone()),
                 false,
                 Some(cursor_named),
+                Some({
+                    let occupants = occupants.clone();
+                    Rc::new(move |kind: &str, title: Option<&str>, index: i64| {
+                        occupants.borrow().call(kind, title, index)
+                    }) as Occupant
+                }),
             )
         };
         // And the training bags in its page's list, pictures with no touch area of their own.
@@ -652,6 +700,7 @@ impl Gen6Profile {
                 training.clone(),
                 party_icons.clone(),
             );
+            let partners = partners.clone();
             let (puffs, goods) = (puffs.clone(), goods.clone());
             Rc::new(move |pane: i64| {
                 // The AreaNav's navigators are the field's and its own app's: elsewhere they are
@@ -679,6 +728,11 @@ impl Gen6Profile {
                         return Ok(Some(name));
                     }
                     if let Some(name) = training.borrow().name(pane)?
+                        && !name.is_empty()
+                    {
+                        return Ok(Some(name));
+                    }
+                    if let Some(name) = partners.borrow().name(pane)?
                         && !name.is_empty()
                     {
                         return Ok(Some(name));
@@ -815,6 +869,7 @@ impl Gen6Profile {
                     })
                 }),
                 leads_to: Some(leads_to_of(text.clone(), field.clone())),
+                place: Some(place_of(text.clone(), field.clone())),
                 street: Some(street_of(text.clone())),
                 door_sign: Some(door_sign_of(text.clone())),
                 moves: Some(text.moves.clone()),
@@ -944,6 +999,8 @@ impl Gen6Profile {
             sparring: RefCell::new(sparring),
             buttons,
             party_icons,
+            partners,
+            occupants,
             standings,
             map_cursor: RefCell::new(map_cursor),
             footsteps,
@@ -1007,6 +1064,8 @@ impl Gen6Profile {
         self.puffs.borrow_mut().track(&found.heap, adding)?;
         self.goods.borrow_mut().track(&found.heap, adding)?;
         self.training.borrow_mut().track(&found.heap, adding)?;
+        self.partners.borrow_mut().track(&found.heap, adding)?;
+        self.occupants.borrow_mut().track(&found.heap);
         self.sparring.borrow_mut().track(&found.heap, adding)?;
         self.buttons.borrow_mut().track(
             found.of(&[buttons::MANAGER_CLASS]),
@@ -1019,6 +1078,10 @@ impl Gen6Profile {
             found.of(&[partyicons::ICON_CLASS]),
             &|targets: &[i64]| found.holders(targets),
             adding,
+            found
+                .of(&[partyicons::PARTY_SAVE])
+                .into_iter()
+                .chain(found.of(&[partyicons::BATTLE_BOX])),
         )?;
         self.lists.borrow_mut().track(found.of(&[CONTROLLER_CLASS]));
         if let Some(memories) = &self.memories {
@@ -1825,8 +1888,8 @@ impl FieldSource for OwnApps {
         }
     }
 
-    fn ground(&self, r#where: &Field, height: Option<f64>) -> Result<Ground> {
-        self.field().ground(r#where, height)
+    fn ground(&self, r#where: &Field) -> Result<Ground> {
+        self.field().ground(r#where)
     }
 }
 
@@ -1969,6 +2032,18 @@ fn leads_to_of(text: Rc<GameText>, field: Rc<RefCell<Rc<FieldReader>>>) -> Leads
             return Ok(None);
         }
         Ok(text.place(theirs))
+    })
+}
+
+/// What the game calls the place `zone` is in, or None.
+fn place_of(text: Rc<GameText>, field: Rc<RefCell<Rc<FieldReader>>>) -> Place {
+    Rc::new(move |zone| {
+        let field = field.borrow().clone();
+        let index = field.zones.place_index(zone)?;
+        match index {
+            Some(index) if text.loaded() => Ok(text.place(index)),
+            _ => Ok(None),
+        }
     })
 }
 

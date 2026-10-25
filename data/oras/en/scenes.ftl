@@ -732,3 +732,8 @@ epilogue-home-2 = The two of you part, and you walk to your own door.
 # "You're back at last! Welcome home, [name]!"
 epilogue-home-3 = You go inside.
 epilogue-home-4 = You stand by your bed in your room.
+# Arriving in Shoal Cave's entrance room at high tide.
+shoal-cave-high-tide = The tide is in. Sand runs north from the cave mouth between walls of brown rock, as far as the sea water that has flowed into the cave.
+
+# Arriving in Shoal Cave's entrance room at low tide.
+shoal-cave-low-tide = The tide is out. Wet sand runs north from the cave mouth, round a shallow pool the sea has left, to low ledges of brown rock with wooden steps up them, and a dark passage beyond.

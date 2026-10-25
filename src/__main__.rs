@@ -16,6 +16,9 @@ use crate::core::words::{self, ENGLISH, Words, own};
 use crate::core::{config, instance, keyfile, window};
 use crate::games::common::field::keys::{DEFAULT_BINDINGS, EXPLAINED};
 use crate::py::{self, Log, time};
+use crate::ux::folder;
+use crate::ux::settings as settings_dialog;
+use crate::ux::window::Window;
 
 /// Runs whose logs are kept, this one included.
 pub const KEPT_LOGS: usize = 10;
@@ -29,6 +32,23 @@ impl Backend for Silent {
     fn speak(&self, _text: &str, _interrupt: bool) {}
 
     fn braille(&self, _text: &str) {}
+}
+
+thread_local! {
+    /// The screen reader the settings dialog describes through: the window's thread's own, since
+    /// a backend cannot cross threads, where Python's is the one backend.
+    static DESCRIBING: std::cell::OnceCell<Option<Rc<dyn Backend>>> =
+        const { std::cell::OnceCell::new() };
+}
+
+/// What a setting does, after the screen reader has said its control (`ux.settings`).
+fn describe(text: &str) {
+    DESCRIBING.with(|backend| {
+        let backend = backend.get_or_init(|| speech::screen_reader().ok().map(|(found, _)| found));
+        if let Some(backend) = backend {
+            backend.speak(text, false);
+        }
+    });
 }
 
 /// The command line: a flag is only what a developer passes for one run; settings are the
@@ -235,6 +255,26 @@ fn run(args: Args, hooks: &Hooks) -> py::Result<()> {
         backend
     };
 
+    // pa3ds's own window, for a pa3ds double-clicked: alone on its console, never a shell's, and
+    // never a silent run (docs/plans/pa3ds-window.md). Settings applied in its settings dialog
+    // take when pa3ds starts again in its place.
+    let own_window = if !args.silent && instance::alone() {
+        Some(Window::new(Some(Box::new(|owner: isize| {
+            let shown =
+                settings_dialog::show(owner, Rc::new(describe), Rc::new(instance::again), None);
+            if let Err(error) = shown {
+                // What ctypes writes for a callback that raised: the window's procedure, here.
+                eprintln!(
+                    "Exception ignored on calling ctypes callback function:\n{}: {}",
+                    error.kind.name(),
+                    error.message
+                );
+            }
+        })))?)
+    } else {
+        None
+    };
+
     let log_file: Option<Rc<RefCell<File>>> = if args.no_log {
         println!("not logging to a file");
         None
@@ -269,7 +309,15 @@ fn run(args: Args, hooks: &Hooks) -> py::Result<()> {
     if replaced {
         log("replaced the pa3ds that was running, whose log this carries on");
     }
-    let beside = instance::Beside::new(log.clone(), instance::LOOK);
+    let hide_window: Option<Rc<dyn Fn()>> = match &own_window {
+        Some(window) if settings.general.hide_window => {
+            let window = window.clone();
+            Some(Rc::new(move || window.hide()))
+        }
+        _ => None,
+    };
+    let beside = instance::Beside::new(log.clone(), instance::LOOK)
+        .own_window(own_window.is_some(), hide_window);
 
     // A key's answer always interrupts (ADR-0010): `interrupt` adds menus to it. Until
     // 2026-09-24 this passed menus or nothing, and so no key ever cut speech off.
@@ -332,9 +380,13 @@ fn run(args: Args, hooks: &Hooks) -> py::Result<()> {
     }
 
     // Out of sight while Azahar is open, and closed with it (ADR-0039).
-    let until =
-        move || deadline.is_some_and(|deadline| time::monotonic() >= deadline) || beside.closed();
-    (hooks.run)(
+    let ended = own_window.clone();
+    let until = move || {
+        deadline.is_some_and(|deadline| time::monotonic() >= deadline)
+            || beside.closed()
+            || ended.as_ref().is_some_and(Window::exited)
+    };
+    let ran = (hooks.run)(
         rpc,
         speech,
         Settings {
@@ -351,8 +403,12 @@ fn run(args: Args, hooks: &Hooks) -> py::Result<()> {
             ..Settings::default()
         },
         &until,
-        log,
-    )
+        log.clone(),
+    );
+    if own_window.as_ref().is_some_and(Window::exited) {
+        log("ended from pa3ds's window");
+    }
+    ran
 }
 
 /// Ask for the folder of a portable Azahar, whose settings pa3ds could not find, and record
@@ -363,7 +419,8 @@ fn ask_for_azahar(settings: config::Config, notes: &mut Vec<String>) -> py::Resu
     let mut title = own("azahar-folder-ask", &[]);
     loop {
         println!("{title}");
-        let Some(chosen) = choose_folder(&title, notes)? else {
+        let app = keyfile::app_path()?;
+        let Some(chosen) = folder::choose(&title, app.parent().unwrap_or(&app), notes) else {
             notes.push("no Azahar folder chosen".to_string());
             return Ok(settings);
         };
@@ -393,192 +450,6 @@ fn ask_for_azahar(settings: config::Config, notes: &mut Vec<String>) -> py::Resu
             notes: settings.notes.into_iter().chain(again.notes).collect(),
             ..again
         });
-    }
-}
-
-/// A Windows folder picker, which a screen reader reads out with the title; None when the
-/// player cancels or no picker can open.
-fn choose_folder(title: &str, notes: &mut Vec<String>) -> py::Result<Option<PathBuf>> {
-    let app = keyfile::app_path()?;
-    let initial = app.parent().unwrap_or(&app);
-    Ok(match picker::choose(title, initial) {
-        Ok(chosen) => chosen,
-        Err(error) => {
-            notes.push(format!("no folder picker could open: {error}"));
-            None
-        }
-    })
-}
-
-/// Tk's `askdirectory`, which on Windows is the shell's `IFileOpenDialog` picking folders: the
-/// same dialog, reached through COM. windows-sys declares no COM interfaces, so the two used are
-/// declared here, each vtable in `shobjidl_core.h`'s order up to the last slot called.
-#[cfg(windows)]
-mod picker {
-    use std::ffi::{OsString, c_void};
-    use std::os::windows::ffi::{OsStrExt, OsStringExt};
-    use std::path::{Path, PathBuf};
-    use std::ptr::{null, null_mut};
-
-    use windows_sys::Win32::Foundation::{ERROR_CANCELLED, HWND};
-    use windows_sys::Win32::System::Com::{
-        CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE, CoCreateInstance,
-        CoInitializeEx, CoTaskMemFree, CoUninitialize,
-    };
-    use windows_sys::Win32::UI::Shell::{
-        FOS_FORCEFILESYSTEM, FOS_PATHMUSTEXIST, FOS_PICKFOLDERS, FileOpenDialog,
-        SHCreateItemFromParsingName, SIGDN_FILESYSPATH,
-    };
-    use windows_sys::core::{GUID, HRESULT, PCWSTR, PWSTR};
-
-    const IID_IFILEOPENDIALOG: GUID = GUID::from_u128(0xd57c7288_d4ad_4768_be02_9d969532d960);
-    const IID_ISHELLITEM: GUID = GUID::from_u128(0x43826d1e_e718_42ee_bc55_a1e261c37bfe);
-    /// `HRESULT_FROM_WIN32(ERROR_CANCELLED)`, what `Show` returns when the player cancels.
-    const CANCELLED: HRESULT = (0x8007_0000 | ERROR_CANCELLED) as HRESULT;
-
-    type This = *mut c_void;
-
-    #[repr(C)]
-    struct UnknownVtbl {
-        _query_interface: usize,
-        _add_ref: usize,
-        release: unsafe extern "system" fn(This) -> u32,
-    }
-
-    #[repr(C)]
-    struct FileDialogVtbl {
-        _unknown: UnknownVtbl,
-        show: unsafe extern "system" fn(This, HWND) -> HRESULT,
-        _set_file_types: usize,
-        _set_file_type_index: usize,
-        _get_file_type_index: usize,
-        _advise: usize,
-        _unadvise: usize,
-        set_options: unsafe extern "system" fn(This, u32) -> HRESULT,
-        get_options: unsafe extern "system" fn(This, *mut u32) -> HRESULT,
-        _set_default_folder: usize,
-        set_folder: unsafe extern "system" fn(This, This) -> HRESULT,
-        _get_folder: usize,
-        _get_current_selection: usize,
-        _set_file_name: usize,
-        _get_file_name: usize,
-        set_title: unsafe extern "system" fn(This, PCWSTR) -> HRESULT,
-        _set_ok_button_label: usize,
-        _set_file_name_label: usize,
-        get_result: unsafe extern "system" fn(This, *mut This) -> HRESULT,
-    }
-
-    #[repr(C)]
-    struct ShellItemVtbl {
-        _unknown: UnknownVtbl,
-        _bind_to_handler: usize,
-        _get_parent: usize,
-        get_display_name: unsafe extern "system" fn(This, i32, *mut PWSTR) -> HRESULT,
-    }
-
-    /// A COM object, released when dropped.
-    struct Com(This);
-
-    impl Com {
-        /// # Safety
-        /// `V` must be the vtable of the interface this pointer was asked for.
-        unsafe fn vtbl<V>(&self) -> &V {
-            unsafe { &**(self.0 as *const *const V) }
-        }
-    }
-
-    impl Drop for Com {
-        fn drop(&mut self) {
-            unsafe { (self.vtbl::<UnknownVtbl>().release)(self.0) };
-        }
-    }
-
-    /// COM for this thread, let go when dropped where this call is what took it.
-    struct Apartment(bool);
-
-    impl Drop for Apartment {
-        fn drop(&mut self) {
-            if self.0 {
-                unsafe { CoUninitialize() };
-            }
-        }
-    }
-
-    fn check(result: HRESULT) -> Result<(), String> {
-        if result < 0 {
-            return Err(std::io::Error::from_raw_os_error(result).to_string());
-        }
-        Ok(())
-    }
-
-    fn wide(text: &std::ffi::OsStr) -> Vec<u16> {
-        text.encode_wide().chain([0]).collect()
-    }
-
-    /// The folder the player picked, starting in `initial`; None when they cancel.
-    pub fn choose(title: &str, initial: &Path) -> Result<Option<PathBuf>, String> {
-        let flags = (COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) as u32;
-        let _apartment = Apartment(unsafe { CoInitializeEx(null(), flags) } >= 0);
-        let mut made: This = null_mut();
-        check(unsafe {
-            CoCreateInstance(
-                &FileOpenDialog,
-                null_mut(),
-                CLSCTX_INPROC_SERVER,
-                &IID_IFILEOPENDIALOG,
-                &mut made,
-            )
-        })?;
-        let dialog = Com(made);
-        let calls = unsafe { dialog.vtbl::<FileDialogVtbl>() };
-        let mut options = 0;
-        check(unsafe { (calls.get_options)(dialog.0, &mut options) })?;
-        let options = options | FOS_PICKFOLDERS | FOS_PATHMUSTEXIST | FOS_FORCEFILESYSTEM;
-        check(unsafe { (calls.set_options)(dialog.0, options) })?;
-        let title = wide(title.as_ref());
-        check(unsafe { (calls.set_title)(dialog.0, title.as_ptr()) })?;
-        // Tk starts wherever it can when the initial folder will not do, and so does this.
-        let mut folder: This = null_mut();
-        let path = wide(initial.as_os_str());
-        let found = unsafe {
-            SHCreateItemFromParsingName(path.as_ptr(), null_mut(), &IID_ISHELLITEM, &mut folder)
-        };
-        if found >= 0 {
-            let folder = Com(folder);
-            unsafe { (calls.set_folder)(dialog.0, folder.0) };
-        }
-        let shown = unsafe { (calls.show)(dialog.0, null_mut()) };
-        if shown == CANCELLED {
-            return Ok(None);
-        }
-        check(shown)?;
-        let mut picked: This = null_mut();
-        check(unsafe { (calls.get_result)(dialog.0, &mut picked) })?;
-        let picked = Com(picked);
-        let mut name: PWSTR = null_mut();
-        check(unsafe {
-            (picked.vtbl::<ShellItemVtbl>().get_display_name)(
-                picked.0,
-                SIGDN_FILESYSPATH,
-                &mut name,
-            )
-        })?;
-        let chosen = unsafe {
-            let length = (0..).take_while(|&at| *name.add(at) != 0).count();
-            let chosen = OsString::from_wide(std::slice::from_raw_parts(name, length));
-            CoTaskMemFree(name as *const c_void);
-            chosen
-        };
-        Ok(Some(PathBuf::from(chosen)))
-    }
-}
-
-#[cfg(not(windows))]
-mod picker {
-    use std::path::{Path, PathBuf};
-
-    pub fn choose(_title: &str, _initial: &Path) -> Result<Option<PathBuf>, String> {
-        Ok(None)
     }
 }
 

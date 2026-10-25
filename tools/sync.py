@@ -4,7 +4,8 @@ The Python checkout is upstream: features land there first, and this repository 
 Python file has one place here (`rust_path`), so a change upstream maps to a file to change here.
 `port.toml` records the upstream commit the port matches.
 
-    python tools/sync.py status            what changed upstream since the commit port.toml names
+    python tools/sync.py status [<commit>] what changed upstream since the commit port.toml names,
+                                           or since <commit>, where a claimed issue ends
     python tools/sync.py layout            create the Rust file for any Python file without one
     python tools/sync.py mirror            copy the files carried over as they are (data, licence)
     python tools/sync.py tests             every Python test without a Rust test of its name
@@ -83,10 +84,13 @@ def tracked() -> list[str]:
     return [path for path in git("ls-files").splitlines() if path]
 
 
-def status() -> int:
-    upstream = str(manifest()["upstream"])
+def status(since: str | None = None) -> int:
+    pinned = str(manifest()["upstream"])
+    upstream = git("rev-parse", since).strip() if since else pinned
     head = git("rev-parse", "HEAD").strip()
-    print(f"port.toml matches {upstream[:9]}; upstream HEAD is {head[:9]}")
+    print(f"port.toml matches {pinned[:9]}; upstream HEAD is {head[:9]}")
+    if upstream != pinned:
+        print(f"since {upstream[:9]}, where the issue in progress ends")
     if git("status", "--porcelain", "--", "src", "tests"):
         print("upstream has uncommitted changes; they are not counted")
     if head == upstream:
@@ -231,7 +235,7 @@ def main() -> int:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     command = sys.argv[1] if len(sys.argv) > 1 else "status"
     if command == "status":
-        return status()
+        return status(sys.argv[2] if len(sys.argv) > 2 else None)
     if command == "layout":
         return layout()
     if command == "mirror":

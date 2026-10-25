@@ -54,12 +54,12 @@ use std::rc::Rc;
 use indexmap::IndexMap;
 
 use crate::core::config::Navigation;
-use crate::core::dialog::Asker;
 use crate::core::names::Names;
 use crate::core::pathfind::{self, AHEAD, BEHIND, Cell, LEFT, RIGHT};
 use crate::core::speech::{Category, Speech};
 use crate::core::words::own;
-use crate::games::common::field::guide::{Clock, FieldSource, Guide, Key};
+use crate::games::common::field::chunk::CLIMB;
+use crate::games::common::field::guide::{Clock, FieldSource, Guide, Key, Place};
 use crate::games::common::field::keys::{
     Bindings, CATEGORY_NEXT, CATEGORY_PREVIOUS, COORDINATES, DEFAULT_BINDINGS, DIRECTIONS, EAST,
     ENEMY_SIDE, HIDE_UNREACHABLE, ITEM_COORDINATES, ITEM_NEXT, ITEM_PREVIOUS, LIST, MODE_TOGGLE,
@@ -74,10 +74,11 @@ use crate::games::common::touch::ACTIONS as TOUCH_ACTIONS;
 use crate::games::common::touch::NOTHING as TOUCH_NOTHING;
 use crate::games::common::touch::TouchTargets;
 use crate::py::{self, Error, Log, Result};
+use crate::ux::dialog::Asker;
 
 /// `(ALL, *things.CATEGORIES)`.
-pub const CATEGORIES: [&str; 12] = {
-    let mut out = [ALL; 12];
+pub const CATEGORIES: [&str; 13] = {
+    let mut out = [ALL; 13];
     let mut at = 0;
     while at < things::CATEGORIES.len() {
         out[at + 1] = things::CATEGORIES[at];
@@ -168,6 +169,8 @@ pub struct Options {
     /// Whether a slot on a map is a sign that says only the name of a door there, which the
     /// list leaves out with `[pa3ds.navigation] hide_door_signs`.
     pub door_sign: Option<DoorSign>,
+    /// What the game calls the place a zone is in, which a leg of P's way into another says.
+    pub place: Option<Place>,
 }
 
 impl Default for Options {
@@ -190,6 +193,7 @@ impl Default for Options {
             touch: None,
             categories: Vec::new(),
             door_sign: None,
+            place: None,
         }
     }
 }
@@ -314,7 +318,8 @@ pub struct Navigator {
 impl Navigator {
     /// `categories` are those a game's own apps list, after the field's: ORAS's sky's.
     /// `door_sign` says whether a slot on a map is a sign that says only the name of a door
-    /// there, which the list leaves out with `[pa3ds.navigation] hide_door_signs`.
+    /// there, which the list leaves out with `[pa3ds.navigation] hide_door_signs`. `place` is
+    /// what the game calls the place a zone is in, which a leg of P's way into another says.
     pub fn new(field: Rc<dyn FieldSource>, speech: Rc<Speech>, log: Log, options: Options) -> Self {
         let Options {
             bindings,
@@ -334,6 +339,7 @@ impl Navigator {
             touch,
             categories,
             door_sign,
+            place,
         } = options;
         let wording = navigation.unwrap_or_default();
         let names = names.unwrap_or_else(|| Rc::new(Names::default()));
@@ -368,6 +374,7 @@ impl Navigator {
             moves,
             bike,
             acro,
+            place,
         );
         Navigator {
             field,
@@ -542,7 +549,6 @@ impl Navigator {
                 "",
                 action == PATHFIND_HM,
                 held,
-                None,
                 false,
                 true,
                 self.push(&item),
@@ -727,6 +733,9 @@ impl Navigator {
     fn said(&self, r#where: &Field, items: &[Interactable], at: i64) -> Result<()> {
         let item = &items[at as usize];
         let mut way = item.bearing(r#where.cell, r#where.heading)?;
+        if let Some(rise) = rise(r#where, item)? {
+            way += &format!(", {rise}");
+        }
         if let Some(arrival) = item.arrival {
             way += &format!(
                 ", {}",
@@ -857,9 +866,8 @@ impl Navigator {
         self.chosen = Some(key);
         self.facing = None;
         let tell = self.guide.tell.clone();
-        self.guide.to(
-            r#where, item, &*tell, "", false, None, None, true, false, None,
-        )
+        self.guide
+            .to(r#where, item, &*tell, "", false, None, true, false, None)
     }
 
     /// Put the rename dialog up for whatever is chosen.
@@ -1028,6 +1036,24 @@ fn named(called: Option<&str>) -> String {
         Some(called) if !called.is_empty() => own("rename-called", &[("name", &called)]),
         _ => own("rename-not-named", &[]),
     }
+}
+
+/// How far above or below the player `item` stands, "104 below", in the game's units, where
+/// both heights are known and further apart than a thing is walked up to from (`Ground.open`):
+/// an item ball on a path under a cliff, said "1 north" alone, left a player on the cliff top
+/// against it and unable to pick it up (Orion, 2026-10-24).
+fn rise(r#where: &Field, item: &Interactable) -> Result<Option<String>> {
+    let (Some(height), Some(item_height)) = (r#where.height, item.height) else {
+        return Ok(None);
+    };
+    let rise = py::round(item_height - height)?;
+    if rise.abs() as f64 <= 2.0 * CLIMB {
+        return Ok(None);
+    }
+    Ok(Some(own(
+        if rise > 0 { "above" } else { "below" },
+        &[("count", &rise.abs())],
+    )))
 }
 
 /// Where `cells` are, "x 94, z 171", an axis they span by its first and last, "x 80 to 119";

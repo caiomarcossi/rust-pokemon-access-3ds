@@ -508,7 +508,16 @@ impl Town {
         Town::with(true, 5, 7)
     }
 
+    /// `Town(**game)`: the town read by a reader of `game`, with `DexNav` unless it hides its own.
+    pub(crate) fn of(game: Game) -> Self {
+        Town::with_game(true, 5, 7, game)
+    }
+
     pub(crate) fn with(chunks: bool, sections: i64, chunk_sections: i64) -> Self {
+        Town::with_game(chunks, sections, chunk_sections, game())
+    }
+
+    fn with_game(chunks: bool, sections: i64, chunk_sections: i64, chosen: Game) -> Self {
         let memory = FakeMemory::new();
         let classes = FakeClasses::new(memory.clone());
         let vtable = classes.add(MOVE_MODEL_CLASS);
@@ -582,8 +591,8 @@ impl Town {
             memory.clone(),
             Given::default(),
             Game {
-                hidden: Some(dex_nav),
-                ..game()
+                hidden: chosen.hidden.or(Some(dex_nav)),
+                ..chosen
             },
         );
         let _ = ClassNames::new(memory.clone(), CODE);
@@ -1654,7 +1663,7 @@ fn test_a_solid_thing_is_walked_up_to_facing_it_and_an_open_one_onto() -> Result
         &[border(160), house_front()].concat(),
     );
     let r#where = town.r#where()?;
-    let ground = town.reader.ground(&r#where, None)?;
+    let ground = town.reader.ground(&r#where)?;
     let door = r#where
         .of("exits")
         .into_iter()
@@ -1690,7 +1699,7 @@ fn test_a_solid_thing_is_walked_up_to_facing_it_and_an_open_one_onto() -> Result
 fn test_a_warp_is_walked_round_unless_it_is_where_the_path_goes() -> Result<()> {
     let town = Town::new();
     let r#where = town.r#where()?;
-    let ground = town.reader.ground(&r#where, None)?;
+    let ground = town.reader.ground(&r#where)?;
     let other_door = r#where
         .of("exits")
         .into_iter()
@@ -1732,7 +1741,7 @@ fn test_a_conveyor_belt_is_ridden_the_way_it_runs_and_walked_round_against_it() 
             ..game()
         },
     );
-    let ground = town.reader.ground(&town.r#where()?, None)?;
+    let ground = town.reader.ground(&town.r#where()?)?;
     assert!(ground.open((91, 175))? && ground.ledge((91, 175))? == Some(pathfind::SOUTH));
     assert_eq!(ground.ledge((91, 178))?, None);
     let r#box = ground.r#box((91, 174), [(91, 176)])?;
@@ -1798,7 +1807,7 @@ fn test_a_barrier_is_listed_as_one_and_stands_across_the_way_its_model_faces() -
             .iter()
             .any(|item| item.kind == "barrier")
     );
-    let ground = town.reader.ground(&r#where, None)?;
+    let ground = town.reader.ground(&r#where)?;
     for cell in [(99, 175), (101, 175), (104, 174), (104, 176)] {
         assert!(!ground.open(cell)?);
     }
@@ -1826,7 +1835,7 @@ fn test_a_big_boulder_stands_in_four_cells_and_strength_clears_them_all() -> Res
         .find(|item| item.code == oras::BIG_BOULDER)
         .unwrap();
     assert_eq!((boulder.cell, boulder.size), ((100, 175), (2, 2)));
-    let ground = town.reader.ground(&r#where, None)?;
+    let ground = town.reader.ground(&r#where)?;
     let cells = [(100, 175), (101, 175), (100, 176), (101, 176)];
     for cell in cells {
         assert!(!ground.open(cell)?);
@@ -2001,10 +2010,7 @@ fn test_a_hole_is_listed_until_a_big_boulder_fills_it_and_then_both_are_floor() 
         interactables: Vec::new(),
         ..r#where.clone()
     };
-    for ground in [
-        town.reader.ground(&r#where, None)?,
-        town.reader.ground(&bare, None)?,
-    ] {
+    for ground in [town.reader.ground(&r#where)?, town.reader.ground(&bare)?] {
         for cell in full {
             assert!(ground.open(cell)?);
         }
@@ -2072,7 +2078,7 @@ fn test_a_gyms_switches_and_passages_are_listed_and_walked_round_unless_the_goal
         .map(|item| item.code)
         .collect();
     assert_eq!(codes, [0x4, 0x9]);
-    let ground = town.reader.ground(&r#where, None)?;
+    let ground = town.reader.ground(&r#where)?;
     assert!(ground.open((91, 175))? && !ground.passable((91, 175))?);
     let goals = ground.goals(&switch)?;
     let path = pathfind::find(
@@ -2224,14 +2230,14 @@ fn test_a_zone_of_rooms_lists_only_the_room_the_player_stands_in() -> Result<()>
 #[test]
 fn test_the_ground_ends_with_the_matrix_and_is_open_where_no_chunk_is_loaded() -> Result<()> {
     let town = Town::new();
-    let ground = town.reader.ground(&town.r#where()?, None)?;
+    let ground = town.reader.ground(&town.r#where()?)?;
     assert!(!ground.open((79, 172))?);
     assert!(!ground.open((80, 160))?);
     let unloaded = Town::with(false, 5, 7);
     assert!(
         unloaded
             .reader
-            .ground(&unloaded.r#where()?, None)?
+            .ground(&unloaded.r#where()?)?
             .open((80, 160))?
     );
     Ok(())
@@ -2331,7 +2337,7 @@ fn test_the_ground_where_no_chunk_is_loaded_is_the_roms_chunk_the_field_map_list
         },
         game(),
     );
-    let ground = town.reader.ground(&town.r#where()?, None)?;
+    let ground = town.reader.ground(&town.r#where()?)?;
     assert!(!ground.open((80, 160))? && ground.open((99, 160))?);
     assert!(
         ground.open((80, 159))?,
@@ -2378,7 +2384,7 @@ fn test_a_drop_is_not_walked_off_but_by_its_ladder() -> Result<()> {
     town.memory.write(FILE, &data);
     town.memory
         .u32(HOLDER + 8, &[0x11 | (data.len() as i64) << 8]);
-    let ground = town.reader.ground(&town.r#where()?, None)?;
+    let ground = town.reader.ground(&town.r#where()?)?;
     assert!(!ground.joined((94, 170), (94, 171)) && !ground.joined((94, 171), (94, 170)));
     assert!(ground.joined((95, 170), (95, 171)) && ground.joined((95, 171), (95, 170)));
     assert!(ground.joined((94, 170), (95, 170)));
@@ -2394,7 +2400,7 @@ fn test_the_search_is_the_whole_matrix_where_the_roms_chunks_are_read() -> Resul
     let mut town = Town::new();
     let near = town
         .reader
-        .ground(&town.r#where()?, None)?
+        .ground(&town.r#where()?)?
         .r#box((94, 172), [(94, 171)])?;
     assert_eq!(
         near,
@@ -2415,7 +2421,7 @@ fn test_the_search_is_the_whole_matrix_where_the_roms_chunks_are_read() -> Resul
     );
     let whole = town
         .reader
-        .ground(&town.r#where()?, None)?
+        .ground(&town.r#where()?)?
         .r#box((94, 172), [(94, 171)])?;
     assert_eq!(
         whole,
@@ -2519,9 +2525,12 @@ fn deck_file(
 /// catwalk over the crater a floor of its own, and were turned away whole, so P took the crater
 /// for open ground and said "20 north" into its wall. The ground's table has the crater as a
 /// wall; the catwalk's is open across it, at the height of the ground it starts from. Maxie on
-/// the catwalk is listed, as a person walled in by the ground's table alone was not.
+/// the catwalk is listed, as a person walled in by the ground's table alone was not. Its floors
+/// both at the player's height, it is walked a floor at a time all the same: walked one floor a
+/// cell, an item ball 104 below on the path by the crater was taken for one beside the player
+/// (or_3d_pathfinding).
 #[test]
-fn test_a_chunk_with_a_deck_is_walked_on_the_floor_at_the_players_height() -> Result<()> {
+fn test_a_chunk_with_a_deck_at_the_players_height_is_walked_a_floor_at_a_time() -> Result<()> {
     let town = Town::new();
     let crater: HashSet<(i64, i64)> = (96..111)
         .flat_map(|x| (168..177).map(move |z| (x, z)))
@@ -2540,7 +2549,8 @@ fn test_a_chunk_with_a_deck_is_walked_on_the_floor_at_the_players_height() -> Re
         ),
     );
     town.memory.write(POOL + mmodel::WORLD_Y, &f32s(&[110.0]));
-    town.model(1, TOWN, 0, 0x119, (105, 172));
+    let at = town.model(1, TOWN, 0, 0x119, (105, 172));
+    town.memory.write(at + mmodel::WORLD_Y, &f32s(&[108.0]));
     let r#where = town.r#where()?;
     let maxie = r#where
         .interactables
@@ -2548,17 +2558,19 @@ fn test_a_chunk_with_a_deck_is_walked_on_the_floor_at_the_players_height() -> Re
         .find(|item| item.cell == (105, 172))
         .unwrap()
         .clone();
-    let ground = town.reader.ground(&r#where, None)?;
+    let ground = town.reader.ground(&r#where)?;
+    assert!(ground.stacked);
     assert!(ground.open((100, 172))? && !ground.open((100, 171))?);
-    let goals = ground.goals(&maxie)?;
-    let path = pathfind::find(
-        r#where.cell,
-        &goals,
-        &|cell| ground.passable(cell),
-        ground.r#box(r#where.cell, goals.keys().copied())?,
-        &pathfind::Options::default(),
-    )?
-    .expect("a way to Maxie");
+    let path = ground
+        .find(
+            r#where.cell,
+            &ground.goals(&maxie)?,
+            "",
+            Some(&maxie),
+            false,
+            None,
+        )?
+        .expect("a way to Maxie");
     assert_eq!(pathfind::spoken(&pathfind::legs(&path, None)?), "10 east");
     Ok(())
 }
@@ -2587,7 +2599,7 @@ fn test_a_chunk_of_x_s_eight_sections_has_its_deck_from_section_six() -> Result<
     );
     town.memory.write(POOL + mmodel::WORLD_Y, &f32s(&[110.0]));
     let r#where = town.r#where()?;
-    let ground = town.reader.ground(&r#where, None)?;
+    let ground = town.reader.ground(&r#where)?;
     assert!(ground.open((100, 172))? && !ground.open((100, 171))?);
     Ok(())
 }
@@ -2615,8 +2627,8 @@ fn test_a_matrix_with_a_deck_is_walked_a_floor_at_a_time() -> Result<()> {
             false,
         ),
     );
-    let ground = town.reader.ground(&town.r#where()?, None)?;
-    assert!(ground.stacked && ground.decks.is_empty());
+    let ground = town.reader.ground(&town.r#where()?)?;
+    assert!(ground.stacked);
     assert!(ground.open((100, 172))?);
     assert_eq!(ground.floors((99, 172))?, [(0, Some(0.0)), (1, Some(99.0))]);
     assert_eq!(ground.climb(1, (99, 172), (100, 172))?, Some(1));
@@ -2690,8 +2702,8 @@ fn test_the_invisible_blocker_is_nobody_and_stands_in_the_way() -> Result<()> {
         .map(|item| item.cell)
         .collect();
     assert_eq!(seen, [(98, 172)]);
-    assert!(!town.reader.ground(&r#where, None)?.open((96, 172))?);
-    assert!(!town.reader.ground(&r#where, None)?.open((97, 172))?);
+    assert!(!town.reader.ground(&r#where)?.open((96, 172))?);
+    assert!(!town.reader.ground(&r#where)?.open((97, 172))?);
     Ok(())
 }
 
@@ -2728,6 +2740,36 @@ fn test_a_rare_ball_is_an_item_ball_and_grass_a_pokemon_leaps_out_of_is_pokemon(
     Ok(())
 }
 
+/// Petalburg Woods (or_mossy_rock, 2026-10-25): the sparkle a Mega Stone lies at was listed
+/// under interactables, an object called "Mega Stone" by its sprite. It is an item.
+#[test]
+fn test_a_mega_stone_is_an_item() -> Result<()> {
+    let mut town = Town::new();
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given::default(),
+        Game {
+            pickups: HashSet::from([oras::KIRAKIRA]),
+            ..game()
+        },
+    );
+    town.model(2, TOWN, 1, oras::KIRAKIRA, (100, 180));
+    let r#where = town.r#where()?;
+    let items: Vec<_> = r#where
+        .of("items")
+        .iter()
+        .map(|item| (item.cell, item.naming(TOWN)))
+        .collect();
+    assert_eq!(items, [((100, 180), Some(("sprite", oras::KIRAKIRA, 0)))]);
+    assert!(
+        r#where
+            .of("signs")
+            .iter()
+            .all(|item| item.code != oras::KIRAKIRA)
+    );
+    Ok(())
+}
+
 /// Glittering Cave (spike 239): nine models drawn as `ENEMY3D` were people standing in the way,
 /// "22 south, then can't continue". A wild battle begins as the player comes up to one, and after
 /// it they walk straight through its cell.
@@ -2746,7 +2788,7 @@ fn test_a_spot_a_pokemon_lurks_at_unseen_is_pokemon_and_walked_through() -> Resu
     let r#where = town.r#where()?;
     let cells: Vec<(i64, i64)> = r#where.of("pokémon").iter().map(|item| item.cell).collect();
     assert_eq!(cells, [(100, 170)]);
-    let ground = town.reader.ground(&r#where, None)?;
+    let ground = town.reader.ground(&r#where)?;
     assert!(ground.open((100, 170))? && !ground.stepped.contains(&(100, 170)));
     Ok(())
 }
@@ -2802,7 +2844,7 @@ fn test_a_model_drawn_as_nothing_is_what_it_stands_in_for() -> Result<()> {
         .map(|item| (item.cell, (item.code, item.size)))
         .collect();
     assert_eq!(sized, IndexMap::from([((99, 170), (groudon, (2, 1)))]));
-    assert!(!town.reader.ground(&r#where, None)?.open((106, 171))?);
+    assert!(!town.reader.ground(&r#where)?.open((106, 171))?);
     // Once Groudon itself stands where it can be listed, it is listed and not its stand-ins.
     town.model(5, TOWN, 0, groudon, (100, 165));
     let r#where = town.r#where()?;
@@ -2839,7 +2881,7 @@ fn test_a_row_of_models_drawn_as_nothing_with_a_script_no_drawn_record_has_is_a_
         }
         town.model(7, TOWN, 6, nothing, (104, 170));
         let r#where = town.r#where()?;
-        let ground = town.reader.ground(&r#where, None)?;
+        let ground = town.reader.ground(&r#where)?;
         for &cell in &gate {
             assert!(!ground.open(cell)?);
         }
@@ -2859,6 +2901,34 @@ fn test_a_row_of_models_drawn_as_nothing_with_a_script_no_drawn_record_has_is_a_
             ..game()
         })?,
         HashSet::from([(94, 174), (104, 170)])
+    );
+    Ok(())
+}
+
+/// Each of X's boutiques stands a model drawn as nothing on its fitting room, which is
+/// listed, and it was listed beside it as "person 1 north" (x_cyllage_boutique_fitting_room).
+#[test]
+fn test_a_model_drawn_as_nothing_on_a_piece_of_furniture_is_nobody() -> Result<()> {
+    let mut town = Town::new();
+    let data = zone_file(&ZoneSpec {
+        sized: &[(0x29D3, 106, 171, 1, 1)],
+        npcs: &[(mmodel::NONDRAW, 106, 171, 0, None)],
+        info: &town_info(),
+        ..ZoneSpec::default()
+    });
+    town.memory.write(FILE, &data);
+    town.memory
+        .u32(HOLDER, &[FILE, OTHER, 0x11 | (data.len() as i64) << 8]);
+    town.reader = field_reader(town.memory.clone(), Given::default(), game());
+    town.model(1, TOWN, 0, mmodel::NONDRAW, (106, 171));
+    let r#where = town.r#where()?;
+    assert!(r#where.of("people").is_empty());
+    assert!(
+        r#where
+            .of("signs")
+            .iter()
+            .map(|item| item.cell)
+            .any(|cell| cell == (106, 171))
     );
     Ok(())
 }
@@ -3103,28 +3173,15 @@ fn test_a_chunk_still_loading_is_not_read_until_its_block_is_ready() -> Result<(
     town.memory
         .write(TOWN_CHUNK, &chunk_file((80, 160), &border(160)));
     town.memory.u32(TOWN_BLOCK + mapblock::STATE, &[2]);
-    assert!(
-        town.reader
-            .ground(&town.r#where()?, None)?
-            .open((85, 160))?
-    );
+    assert!(town.reader.ground(&town.r#where()?)?.open((85, 160))?);
     town.memory.write(
         TOWN_CHUNK,
         &chunk_file((80, 160), &border_with(160, &[(85, 87)])),
     );
     town.memory
         .u32(TOWN_BLOCK + mapblock::STATE, &[mapblock::READY]);
-    assert!(
-        town.reader
-            .ground(&town.r#where()?, None)?
-            .open((85, 160))?
-    );
-    assert!(
-        !town
-            .reader
-            .ground(&town.r#where()?, None)?
-            .open((88, 160))?
-    );
+    assert!(town.reader.ground(&town.r#where()?)?.open((85, 160))?);
+    assert!(!town.reader.ground(&town.r#where()?)?.open((88, 160))?);
     Ok(())
 }
 
@@ -3430,6 +3487,130 @@ fn test_flat_ground_is_listed_under_riding_a_patch_at_a_time() -> Result<()> {
     Ok(())
 }
 
+/// Spike 245: Cyllage Gym's walls are climbed from the blue spots at their foot, two side by side
+/// at (25, 32) and (26, 32), and got off onto a ledge at a face's side, (31, 32) at 54; Khai
+/// asked for their "entry point and exit point maybe? in a category" (2026-10-24). The plateau
+/// behind a face's top, open beside it at another height, is neither.
+#[test]
+fn test_climbing_walls_are_listed_a_run_of_blue_spots_or_a_ledge_at_a_time() -> Result<()> {
+    let mut town = Town::with(false, 5, 7);
+    let mut files = vec![NO_CHUNK_FILE; 64];
+    files[4 * 8 + 2] = 7;
+    town.memory.write(MAP + MAP_CHUNK_FILES, &le16(&files));
+    let mut tiles: Vec<((i64, i64), i64)> = [105, 106, 111]
+        .iter()
+        .map(|&x| ((x, 171), 0x59000001))
+        .collect();
+    tiles.push(((110, 172), 0x51000020));
+    let mut blocked: Vec<(i64, i64)> = border(160);
+    blocked.extend((107..111).map(|x| (x, 171)));
+    blocked.extend([(112, 172), (111, 173)]);
+    let words = mapblock::cells(&chunk_file_with((80, 160), &blocked, &tiles, 7))?.unwrap();
+    let heights: Vec<Option<f64>> = (0..CHUNK * CHUNK)
+        .map(|i| {
+            let cell = (80 + i % CHUNK, 160 + i / CHUNK);
+            Some(if cell == (111, 171) || cell == (111, 172) {
+                54.0
+            } else if cell == (105, 170) {
+                90.0
+            } else {
+                0.0
+            })
+        })
+        .collect();
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given {
+            far: Some(Rc::new(move |file| {
+                Ok(if file == 7 { Some(words.clone()) } else { None })
+            })),
+            far_heights: Some(Rc::new(move |file| {
+                Ok(if file == 7 {
+                    Some(heights.clone())
+                } else {
+                    None
+                })
+            })),
+            ..Given::default()
+        },
+        Game {
+            climbing: Some(xy::climbing()),
+            ..game()
+        },
+    );
+    let climbing = town.r#where()?.of("climbing");
+    let mut seen: Vec<(String, (i64, i64), (i64, i64))> = climbing
+        .iter()
+        .map(|item| (item.kind.clone(), item.cell, item.size))
+        .collect();
+    seen.sort();
+    assert_eq!(
+        seen,
+        [
+            ("blue spot".to_string(), (105, 172), (2, 1)),
+            ("wall ledge".to_string(), (111, 172), (1, 1))
+        ]
+    );
+    let sources: HashSet<i64> = climbing.iter().map(|item| item.source).collect();
+    assert_eq!(sources.len(), 2);
+    Ok(())
+}
+
+/// Spike 245: in Cyllage Gym the player stepped south onto `0x8a` at (16, 20), at 189, and was
+/// carried down the blocked cells south of it, 171 to 117, onto the floor at 108 (x_gym_2_slide).
+/// X has `0x8a` in other chunks too; where the cells past it do not fall, it is no slide.
+#[test]
+fn test_a_slide_is_found_where_the_cells_past_its_top_fall_to_a_lower_landing() -> Result<()> {
+    let mut town = Town::with(false, 5, 7);
+    let mut files = vec![NO_CHUNK_FILE; 64];
+    files[4 * 8 + 2] = 7;
+    town.memory.write(MAP + MAP_CHUNK_FILES, &le16(&files));
+    let falls: IndexMap<(i64, i64), f64> = (171..175)
+        .map(|z| ((95, z), 189.0 - 18.0 * (z - 170) as f64))
+        .collect();
+    let level = [(100, 171), (100, 172)];
+    let tops = [((95, 170), 0x8A000020), ((100, 170), 0x8A000020)];
+    let mut blocked: Vec<(i64, i64)> = falls.keys().copied().collect();
+    blocked.extend(level);
+    let words = mapblock::cells(&chunk_file_with((80, 160), &blocked, &tops, 7))?.unwrap();
+    let heights: Vec<Option<f64>> = (0..CHUNK * CHUNK)
+        .map(|i| {
+            let cell = (80 + i % CHUNK, 160 + i / CHUNK);
+            Some(falls.get(&cell).copied().unwrap_or(if cell == (95, 175) {
+                108.0
+            } else if cell.1 >= 170 {
+                189.0
+            } else {
+                198.0
+            }))
+        })
+        .collect();
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given {
+            far: Some(Rc::new(move |file| {
+                Ok(if file == 7 { Some(words.clone()) } else { None })
+            })),
+            far_heights: Some(Rc::new(move |file| {
+                Ok(if file == 7 {
+                    Some(heights.clone())
+                } else {
+                    None
+                })
+            })),
+            ..Given::default()
+        },
+        Game {
+            climbing: Some(xy::climbing()),
+            ..game()
+        },
+    );
+    let slides = town.reader.ground(&town.r#where()?)?.walls.slides.clone();
+    let want: IndexMap<(i64, i64), &str> = (170..175).map(|z| ((95, z), pathfind::SOUTH)).collect();
+    assert_eq!(slides, want);
+    Ok(())
+}
+
 /// Spike 238: on Route 9 the Rhyhorn smashes rocks with A, and while the player rode it the list
 /// said "Rhyhorn, here", its model left where it was got on.
 #[test]
@@ -3567,7 +3748,7 @@ fn test_under_the_water_each_light_is_joined_to_those_the_sea_above_reaches() ->
     reader.track(&town.found())?;
     let r#where = reader.poll()?.expect("the player's field");
     let r#where = reader.interactables(&r#where)?;
-    let surfaces = reader.ground(&r#where, None)?.surfaces;
+    let surfaces = reader.ground(&r#where)?.surfaces;
     let set = |cells: &[(i64, i64)]| -> HashSet<(i64, i64)> { cells.iter().copied().collect() };
     assert_eq!(*surfaces[&(85, 166)], set(&lights[0]));
     let both = set(&[lights[1].clone(), lights[2].clone()].concat());
@@ -3858,6 +4039,10 @@ fn test_a_zone_table_no_sweep_finds_is_left_to_the_schedule() -> Result<()> {
 /// Spike 89: the rival's model reads 0x7a at +0x10 in both openings, and the sprite a script
 /// filled it with at +0x898 — May's as the boy, Brendan's as the girl. A work object whose looks
 /// are not in yet is its own id, and any other model is its +0x10 as it always was.
+///
+/// One nobody filled is drawn as nothing, and is neither listed nor in the way: the ten in the
+/// Contest Spectacular Halls' lobbies were "person", and the player walked onto one
+/// (or_contest_hall_phantom_people).
 #[test]
 fn test_a_work_object_is_whoever_it_was_filled_with() -> Result<()> {
     let town = Town::new();
@@ -3872,8 +4057,10 @@ fn test_a_work_object_is_whoever_it_was_filled_with() -> Result<()> {
     };
     town.memory.u32(rival + mmodel::DRAWN, &[0x13A]);
     assert_eq!(codes(&town)?, [0x13A]);
-    town.memory.u32(rival + mmodel::DRAWN, &[0]);
-    assert_eq!(codes(&town)?, [0x7A]);
+    town.memory.u32(rival + mmodel::DRAWN, &[0x7A]);
+    let r#where = town.r#where()?;
+    assert!(r#where.of("people").is_empty());
+    assert!(!town.reader.ground(&r#where)?.standing.contains(&(104, 179)));
     town.model(1, TOWN, 3, 0x119, (104, 179));
     town.memory.u32(rival + mmodel::DRAWN, &[0x13B]);
     assert_eq!(codes(&town)?, [0x119]);
@@ -4309,7 +4496,7 @@ fn test_a_street_beside_the_grid_is_walked_where_the_world_has_it() -> Result<()
         .flat_map(|x| (158..166).map(move |z| (x, z)))
         .collect();
     town.block(TOWN_BLOCK, TOWN_CHUNK, (80, 160), &walled);
-    let ground = town.reader.ground(&town.r#where()?, None)?;
+    let ground = town.reader.ground(&town.r#where()?)?;
     for x in [99, 100, 101] {
         for z in [160, 162, 163, 164] {
             assert!(ground.open((x, z))?, "({x}, {z})");
@@ -4409,7 +4596,7 @@ fn test_a_diagonal_street_is_one_leg_said_by_the_key_that_walks_it() -> Result<(
     on_one_line(&mut town, &line, start, end, 1);
     town.model(0, TOWN, mmodel::PLAYER_INDEX, 0xAC, (100, 170));
     let r#where = town.r#where()?;
-    let ground = town.reader.ground(&r#where, None)?;
+    let ground = town.reader.ground(&r#where)?;
     let path = ground.find(
         (100, 170),
         &IndexMap::from([((96, 166), None)]),
@@ -4480,7 +4667,10 @@ fn test_a_step_in_progress_is_in_the_cell_it_is_heading_for() -> Result<()> {
 fn test_on_the_rails_everything_is_in_the_corridor_and_its_walls_are_the_ground() -> Result<()> {
     use test_rail::{A, B, network};
 
-    let town = Town::new();
+    let town = Town::of(Game {
+        camera: camera::X,
+        ..game()
+    });
     network(&town.memory);
     let player = town.model(0, TOWN, mmodel::PLAYER_INDEX, 0xAC, (94, 172));
     town.memory.u32(player + mmodel::CELL_X, &[B]);
@@ -4531,7 +4721,7 @@ fn test_on_the_rails_everything_is_in_the_corridor_and_its_walls_are_the_ground(
             .collect::<Vec<_>>(),
         [(2, 3)]
     );
-    let ground = town.reader.ground(&r#where, None)?;
+    let ground = town.reader.ground(&r#where)?;
     assert!(ground.open((0, 0))? && !ground.open((3, 0))? && !ground.open((2, 3))?);
     Ok(())
 }
@@ -4558,7 +4748,7 @@ fn test_a_player_kept_in_the_line_turned_round_is_turned_back() -> Result<()> {
         .write(player + mmodel::FACING_SIN, &f32s(&[0.0, 0.0, -1.0]));
     let r#where = town.r#where()?;
     assert!(r#where.on_rail && r#where.cell == (2, -2) && r#where.heading == Some("north"));
-    assert!(town.reader.ground(&r#where, None)?.open(r#where.cell)?);
+    assert!(town.reader.ground(&r#where)?.open(r#where.cell)?);
     Ok(())
 }
 
@@ -4570,7 +4760,10 @@ fn test_on_the_rails_up_walks_the_way_the_camera_looks_not_the_way_the_player_fa
 {
     use test_rail::{B, network};
 
-    let town = Town::new();
+    let town = Town::of(Game {
+        camera: camera::X,
+        ..game()
+    });
     network(&town.memory);
     let player = town.model(0, TOWN, mmodel::PLAYER_INDEX, 0xAC, (94, 172));
     town.memory.u32(player + mmodel::CELL_X, &[B]);
@@ -4584,24 +4777,9 @@ fn test_on_the_rails_up_walks_the_way_the_camera_looks_not_the_way_the_player_fa
         player + mmodel::LINE_SIN,
         &f32s(&[way.sin(), 0.0, way.cos()]),
     );
-    let (block, holder) = (0x08277140, 0x0827855C);
-    town.memory.u32(block, &[ALLOCATION, camera::BLOCK_SIZE]);
-    town.memory.u32(
-        holder,
-        &[FakeClasses::new(town.memory.clone()).add(camera::CLASS)],
-    );
-    town.memory.u32(holder + camera::BLOCK, &[block]);
-    let found = town.found();
-    let mut heap = found.heap.clone();
-    heap.insert(holder, camera::CLASS.to_string());
-    town.reader.track(&Found {
-        pages: found.pages.clone(),
-        heap,
-        partial: false,
-    })?;
+    let block = camera_of(&town, &camera::X)?;
     for (yaw, heading, bearing) in [(127.0f64, "north", 357), (-146.0, "west", 270)] {
-        town.memory
-            .write(block + camera::YAW, &f32s(&[yaw.to_radians()]));
+        town.memory.write(block + X_YAW, &f32s(&[yaw.to_radians()]));
         let r#where = town.reader.poll()?.expect("a field");
         assert_eq!(r#where.heading, Some(heading));
         assert_eq!(py::round(r#where.bearing.unwrap_or(0.0))?, bearing);
@@ -4609,15 +4787,15 @@ fn test_on_the_rails_up_walks_the_way_the_camera_looks_not_the_way_the_player_fa
     Ok(())
 }
 
-/// Spike 230: Parfum Palace's garden, where the camera looks west, a little south, and up
-/// walked Khai west; it swings round to north as he walks up the garden, past the edge of a
-/// quarter only (`pad.HYSTERESIS`).
-#[test]
-fn test_off_the_rails_up_walks_the_way_the_camera_looks() -> Result<()> {
-    let town = Town::new();
-    town.model(0, TOWN, mmodel::PLAYER_INDEX, 0xAC, (94, 172));
+const X_YAW: i64 = match camera::X.yaw {
+    Some(yaw) => yaw,
+    None => 0,
+};
+
+/// A camera block of `shape`'s game, found by the town's reader through a camera object.
+fn camera_of(town: &Town, shape: &camera::Shape) -> Result<i64> {
     let (block, holder) = (0x08277140, 0x0827855C);
-    town.memory.u32(block, &[ALLOCATION, camera::BLOCK_SIZE]);
+    town.memory.u32(block, &[ALLOCATION, shape.size]);
     town.memory.u32(
         holder,
         &[FakeClasses::new(town.memory.clone()).add(camera::CLASS)],
@@ -4631,10 +4809,24 @@ fn test_off_the_rails_up_walks_the_way_the_camera_looks() -> Result<()> {
         heap,
         partial: false,
     })?;
+    Ok(block)
+}
+
+/// Spike 230: Parfum Palace's garden, where the camera looks west, a little south, and up
+/// walked Khai west; it swings round to north as he walks up the garden, past the edge of a
+/// quarter only (`pad.HYSTERESIS`).
+#[test]
+fn test_off_the_rails_up_walks_the_way_the_camera_looks() -> Result<()> {
+    let town = Town::of(Game {
+        camera: camera::X,
+        ..game()
+    });
+    town.model(0, TOWN, mmodel::PLAYER_INDEX, 0xAC, (94, 172));
+    let block = camera_of(&town, &camera::X)?;
     let mut turn = 0;
     for (looks, quarter) in [(-70.0f64, 3), (-130.0, 3), (-166.8, 0), (180.0, 0)] {
         town.memory
-            .write(block + camera::LOOKS, &f32s(&[looks.to_radians()]));
+            .write(block + camera::X.looks, &f32s(&[looks.to_radians()]));
         turn = town.reader.turn(turn)?;
         assert_eq!(turn, quarter, "{looks}");
     }
@@ -4643,31 +4835,45 @@ fn test_off_the_rails_up_walks_the_way_the_camera_looks() -> Result<()> {
     Ok(())
 }
 
+/// The Battle Resort's beach: Omega Ruby's camera looks east there, and its block is 16 bytes
+/// smaller than X's, so it was never found; P said "5 north" and up walked the player east,
+/// into a hut's counter (or_battle_resort_pathfinding_glitch). ORAS keeps no heading behind the
+/// player, so nothing is said from one.
+#[test]
+fn test_oras_camera_turns_the_compass_too() -> Result<()> {
+    let town = Town::new();
+    town.model(0, TOWN, mmodel::PLAYER_INDEX, 0xAC, (94, 172));
+    let block = camera_of(&town, &camera::ORAS)?;
+    town.memory.write(
+        block + camera::ORAS.looks,
+        &f32s(&[std::f64::consts::PI / 2.0]),
+    );
+    town.memory.write(block + X_YAW, &f32s(&[1.0]));
+    assert_eq!(town.reader.turn(0)?, 1);
+    let r#where = town.reader.poll()?.expect("a poll");
+    assert!(r#where.heading.is_none() && !r#where.turning);
+    town.memory
+        .write(block + camera::ORAS.looks, &f32s(&[-std::f64::consts::PI]));
+    assert_eq!(town.reader.turn(1)?, 0);
+    town.memory.u32(block, &[ALLOCATION, camera::X.size]);
+    assert_eq!(town.reader.turn(1)?, 1);
+    Ok(())
+}
+
 /// Spike 239: in Glittering Cave `LOOKS` reads 0, which was taken for south, so P said "22
 /// south" for 22 north, and `YAW`, the heading on a rail, holds where the camera looks: north,
 /// 7.7 degrees west. The ways are said from that heading, and the compass is not turned.
 #[test]
 fn test_under_a_camera_behind_the_player_off_the_rails_the_ways_are_said_from_it() -> Result<()> {
-    let town = Town::new();
+    let town = Town::of(Game {
+        camera: camera::X,
+        ..game()
+    });
     town.model(0, TOWN, mmodel::PLAYER_INDEX, 0xAC, (94, 172));
-    let (block, holder) = (0x08277140, 0x0827855C);
-    town.memory.u32(block, &[ALLOCATION, camera::BLOCK_SIZE]);
-    town.memory.u32(
-        holder,
-        &[FakeClasses::new(town.memory.clone()).add(camera::CLASS)],
-    );
-    town.memory.u32(holder + camera::BLOCK, &[block]);
-    let found = town.found();
-    let mut heap = found.heap.clone();
-    heap.insert(holder, camera::CLASS.to_string());
-    town.reader.track(&Found {
-        pages: found.pages.clone(),
-        heap,
-        partial: false,
-    })?;
+    let block = camera_of(&town, &camera::X)?;
     town.memory
-        .write(block + camera::YAW, &f32s(&[(-172.3f64).to_radians()]));
-    town.memory.write(block + camera::LOOKS, &f32s(&[0.0]));
+        .write(block + X_YAW, &f32s(&[(-172.3f64).to_radians()]));
+    town.memory.write(block + camera::X.looks, &f32s(&[0.0]));
     let r#where = town.reader.poll()?;
     let r#where = r#where.expect("a poll");
     assert!(r#where.heading == Some("north") && r#where.turning);
@@ -4878,7 +5084,10 @@ fn test_the_corridor_stays_laid_out_from_one_line_as_the_player_walks_onto_the_n
 {
     use test_rail::{A, B, network};
 
-    let town = Town::new();
+    let town = Town::of(Game {
+        camera: camera::X,
+        ..game()
+    });
     network(&town.memory);
     let player = town.model(0, TOWN, mmodel::PLAYER_INDEX, 0xAC, (94, 172));
     town.memory.u32(player + mmodel::CELL_X, &[B]);
@@ -5113,7 +5322,8 @@ fn test_a_secret_bases_pc_flag_and_way_out_are_listed_as_what_they_are() -> Resu
 
 /// A Secret Base keeps the six slots of the player's secret team in the walls of its far
 /// corner while they are empty, and they were listed as six people with no way to them (spike
-/// 154). One with an open cell beside it is still somebody.
+/// 154). One with an open cell beside it is still somebody. The slots are work objects nobody
+/// filled, left out for that as well now; these are people, walled in or not.
 #[test]
 fn test_a_model_walled_in_on_every_side_is_not_on_the_map() -> Result<()> {
     let mut town = Town::new();
@@ -5123,8 +5333,8 @@ fn test_a_model_walled_in_on_every_side_is_not_on_the_map() -> Result<()> {
         .chain([(100, 178)])
         .collect();
     town.block(TOWN_BLOCK, TOWN_CHUNK, (80, 160), &walled);
-    town.model(4, TOWN, 3, 0x7C, (111, 177));
-    town.model(5, TOWN, 4, 0x7D, (100, 178));
+    town.model(4, TOWN, 3, 0x119, (111, 177));
+    town.model(5, TOWN, 4, 0x11A, (100, 178));
     let people: Vec<(i64, i64)> = town
         .r#where()?
         .of("people")
@@ -5233,7 +5443,7 @@ fn test_a_bases_crumbled_cliff_is_listed_once_as_one_exit() -> Result<()> {
         .map(|item| (item.kind, item.cell, item.size))
         .collect();
     assert_eq!(cliffs, [("crumbled cliff".to_string(), (104, 166), (3, 2))]);
-    let ground = town.reader.ground(&r#where, None)?;
+    let ground = town.reader.ground(&r#where)?;
     assert!(!ground.open((105, 167))? && ground.open((103, 167))?);
     Ok(())
 }
@@ -5362,7 +5572,7 @@ fn test_p_walks_over_the_stairs_on_the_cliff_and_a_board_over_a_hole() -> Result
     let solid: Vec<(i64, i64)> = [covered.clone(), vec![(95, 172)]].concat();
     let bases = Bases::new(&[], None, &standing, &solid);
     town.reader = field_reader(town.memory.clone(), Given::default(), bases_game(bases));
-    let ground = town.reader.ground(&town.r#where()?, None)?;
+    let ground = town.reader.ground(&town.r#where()?)?;
     for &cell in &covered {
         assert!(ground.open(cell)?, "{cell:?}");
     }
@@ -5473,7 +5683,7 @@ fn test_p_goes_round_a_decoration_the_cell_table_has_as_floor() -> Result<()> {
             ..game()
         },
     );
-    let ground = town.reader.ground(&town.r#where()?, None)?;
+    let ground = town.reader.ground(&town.r#where()?)?;
     assert!(!ground.open((95, 172))? && ground.open((96, 172))?);
     Ok(())
 }

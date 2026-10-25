@@ -12,6 +12,7 @@ use crate::core::pathfind::{self, Box, Cell, EAST, NORTH, SOUTH, WEST};
 use crate::games::common::field::chunk::{
     ANY_FLOOR, BLOCKED, BOARD, CHUNK, CLIMB, COUNTER, Chunk, LAUNCH, SHORE, STONE,
 };
+use crate::games::common::field::climb::{FOOT, Walls};
 use crate::games::common::field::things::{
     Field, Interactable, POKEMON, TRIGGER_SOURCE, WARP_SOURCE,
 };
@@ -329,6 +330,10 @@ impl Grid {
 /// once it was (omega_ruby_surf_2.ctm, spike 136). None without the ROM's chunks to read.
 pub type Far = Rc<dyn Fn(i64, i64) -> Result<Option<Rc<Chunk>>>>;
 
+/// `Callable[[Cell], float | None]`: a cell's height as the ROM's chunks say it
+/// (`Ground.ground_height`).
+pub type GroundHeight = Rc<dyn Fn(Cell) -> Result<Option<f64>>>;
+
 /// Where the player can walk, as far as the map loaded now says: what pathfinding walks on.
 ///
 /// A cell cannot be walked where its chunk's blocked bit is set — a tree, a wall, a door, a sign,
@@ -432,16 +437,15 @@ pub struct Ground {
     pub stacked: bool,
     /// The player's height on a stacked ground, which says the floor they start on.
     pub level: Option<f64>,
+    /// The height of a cell's floor off a stacked ground, where the ROM's chunks are read: a
+    /// thing is walked up to only from a cell within `2 * CLIMB` of its height, as on a stacked
+    /// ground (`open`).
+    pub ground_height: Option<GroundHeight>,
     /// How high each thing in a cell of `standing` stands, None where not known: on a stacked
     /// ground it stands on its cell's floor nearest that, and in nobody's way on the others. In
     /// Sootopolis Gym a Beauty stands in the lower floor's corridor under an invisible blocker in
     /// the corridor above (spike 167).
     pub heights: IndexMap<Cell, Vec<Option<f64>>>,
-    /// The heights of the map's floors other than the player's, nearest theirs first, at which
-    /// the ground can be walked instead (`FieldSource.ground`). A chunk with a deck is walked on
-    /// the floor nearest one height, and from the foot of Route 119 that kept the way under its
-    /// bridge and cut the bridge, the only way north (spike 159).
-    pub decks: Vec<f64>,
     /// The bit of a cell's word that marks a strand the player walks diagonally between
     /// (`slants`); 0 in a game without one. X's Santalune Gym has a floor of them (spike 223).
     pub strands: i64,
@@ -469,6 +473,13 @@ pub struct Ground {
     /// and smashed first (`ride`, `toll`), and open from then on: Route 9's rocks, smashed on the
     /// Rhyhorn, needing no HM (spike 238). Nobody stands in them; on foot they are in the way.
     pub smashed: HashSet<Cell>,
+    /// The climbing walls: a face's line walked on foot or climbed, onto it only at a blue spot
+    /// and off it sideways onto a ledge only climbing; and their slides, open though blocked, which
+    /// carry the player down them as a current does (`carry`; `climb.Walls`, spike 245).
+    ///
+    /// An `Rc`: the terrain finds them once a matrix and every ground built on it shares them, as
+    /// the Python's grounds share the one object.
+    pub walls: Rc<Walls>,
 }
 
 /// `Ground.lanes`: each cell of a street laid on the grid, with each step its ways allow and the
@@ -501,8 +512,8 @@ impl Default for Ground {
             surfaces: IndexMap::new(),
             stacked: false,
             level: None,
+            ground_height: None,
             heights: IndexMap::new(),
-            decks: Vec::new(),
             strands: 0,
             lanes: Rc::new(IndexMap::new()),
             crowd: HashSet::new(),
@@ -511,6 +522,7 @@ impl Default for Ground {
             riding: false,
             mounts: HashSet::new(),
             smashed: HashSet::new(),
+            walls: Rc::new(Walls::default()),
         }
     }
 }
@@ -541,8 +553,8 @@ impl fmt::Debug for Ground {
             .field("surfaces", &self.surfaces)
             .field("stacked", &self.stacked)
             .field("level", &self.level)
+            .field("ground_height", &self.ground_height.is_some())
             .field("heights", &self.heights)
-            .field("decks", &self.decks)
             .field("strands", &self.strands)
             .field("lanes", &self.lanes)
             .field("crowd", &self.crowd)
@@ -551,6 +563,7 @@ impl fmt::Debug for Ground {
             .field("riding", &self.riding)
             .field("mounts", &self.mounts)
             .field("smashed", &self.smashed)
+            .field("walls", &self.walls)
             .finish()
     }
 }
@@ -717,7 +730,9 @@ impl Ground {
     }
 
     /// Whether the player can stand in the cell: on a stacked ground, on any floor of it, or on
-    /// its floor at `height` where one is given (`floor_at`).
+    /// its floor at `height` where one is given (`floor_at`); off one, within `2 * CLIMB` of
+    /// `height` where one is given and the cell's is known (`ground_height`), so a thing at the
+    /// foot of a cliff is not walked up to from its top.
     pub fn open_at(&self, cell: Cell, height: Option<f64>) -> Result<bool> {
         if let Some(corridor) = &self.corridor {
             return Ok(!self.standing.contains(&cell) && corridor.open(cell)?);
@@ -744,6 +759,11 @@ impl Ground {
             }
         } else if self.stands(cell, ANY_FLOOR)? {
             return Ok(false);
+        } else if let (Some(height), Some(ground_height)) = (height, &self.ground_height)
+            && let Some(here) = ground_height(cell)?
+            && (here - height).abs() > 2.0 * CLIMB
+        {
+            return Ok(false);
         }
         let Some(chunk) = self.chunk(cell)? else {
             return Ok(true);
@@ -751,7 +771,8 @@ impl Ground {
         Ok((chunk.walkable(cell)?
             || self.filled.contains(&cell)
             || chunk.kind(cell)? == STONE
-            || self.rides.contains(&chunk.kind(cell)?))
+            || self.rides.contains(&chunk.kind(cell)?)
+            || self.walls.slides.contains_key(&cell))
             && (self.surf || !chunk.water(cell)?))
     }
 
@@ -1003,10 +1024,21 @@ impl Ground {
     /// through what a move clears, up a waterfall, or up a slope from the foot of it on foot,
     /// where the player gets on the bike first, or into a Pokémon waiting to be ridden, faced and
     /// got on with A (`mounts`), or into a thing it smashes, faced and smashed with A
-    /// (`smashed`); through a big boulder or somebody of `crowd`, `SHOVE`; and along a street a
+    /// (`smashed`); through a big boulder or somebody of `crowd`, `SHOVE`; along a street a
     /// way it does not run, which the keys never walk and a way takes only where the cells laid
-    /// on the grid leave it no other (`lanes`).
+    /// on the grid leave it no other (`lanes`); and off a climbing wall's face onto its ledge or
+    /// back, a step's worth a handhold climbed to it (`Walls.toll`), on top of the rest.
     pub fn toll(&self, cell: Cell, step: Cell) -> Result<i64> {
+        let held = if self.walls.ledges.is_empty() {
+            0
+        } else {
+            self.walls.toll(cell, step)?
+        };
+        Ok(held + self._toll(cell, step)?)
+    }
+
+    // Python's `_toll` sits beside the public `toll`, so it keeps its underscore.
+    fn _toll(&self, cell: Cell, step: Cell) -> Result<i64> {
         if self.cleared.get(&step) == Some(&STRENGTH) || self.crowd.contains(&step) {
             return Ok(SHOVE);
         }
@@ -1073,9 +1105,13 @@ impl Ground {
         }
     }
 
-    /// Which way the cell carries a player surfing on it where it is a current, or None:
-    /// the search's `carry` (`CURRENTS`).
+    /// Which way the cell carries a player surfing on it where it is a current, or a player
+    /// on foot down a climbing wall's slide (`Walls.slides`), or None: the search's `carry`
+    /// (`CURRENTS`).
     pub fn carry(&self, cell: Cell) -> Result<Option<&'static str>> {
+        if let Some(&way) = self.walls.slides.get(&cell) {
+            return Ok(Some(way));
+        }
         let chunk = if self.corridor.is_some() {
             None
         } else {
@@ -1084,6 +1120,20 @@ impl Ground {
         match chunk {
             Some(chunk) => chunk.current(cell),
             None => Ok(None),
+        }
+    }
+
+    /// Whether the cell is ice, which a player on foot slides over: the search's `slide`
+    /// (`ICE`).
+    pub fn slide(&self, cell: Cell) -> Result<bool> {
+        let chunk = if self.corridor.is_some() {
+            None
+        } else {
+            self.chunk(cell)?
+        };
+        match chunk {
+            Some(chunk) => chunk.ice(cell),
+            None => Ok(false),
         }
     }
 
@@ -1185,11 +1235,12 @@ impl Ground {
         }
     }
 
-    /// Whether a step from `cell` to the cell beside it can be taken: not off a drop, and into a
-    /// big boulder only a way it moves (`shoves`).
+    /// Whether a step from `cell` to the cell beside it can be taken: not off a drop but
+    /// off a climbing wall's face onto its ledge, which only a climber takes (`_walk`), and
+    /// into a big boulder only a way it moves (`shoves`).
     pub fn joined(&self, cell: Cell, step: Cell) -> bool {
         let ways = self.shoves.get(&step);
-        !self.cliffs.contains(&(cell, step))
+        (!self.cliffs.contains(&(cell, step)) || self.walls.sideways(cell, step))
             && ways.is_none_or(|ways| ways.contains(pathfind::towards(cell, step)))
     }
 
@@ -1486,6 +1537,7 @@ impl Ground {
         };
         let carry = |cell: Cell| self.carry(cell);
         let slants = |cell: Cell, step: Cell| self.slants(cell, step);
+        let slide = |cell: Cell| self.slide(cell);
         pathfind::find(
             start,
             goals,
@@ -1503,6 +1555,7 @@ impl Ground {
                 arrives: if at.is_some() { Some(&arrives) } else { None },
                 carry: Some(&carry),
                 slants: Some(&slants),
+                slide: Some(&slide),
             },
         )
     }
@@ -1538,6 +1591,7 @@ impl Ground {
         let through = |turns: &[i64], cell: Cell, step: Cell| walk.through(turns, cell, step);
         let carry = |cell: Cell| ground.carry(cell);
         let slants = |cell: Cell, step: Cell| self.slants(cell, step);
+        let slide = |cell: Cell| ground.slide(cell);
         let states = pathfind::reached(
             start,
             &|cell: Cell| self.passable(cell),
@@ -1551,6 +1605,7 @@ impl Ground {
                 turns: walk.turns.clone(),
                 through: if walk.active { Some(&through) } else { None },
                 slants: Some(&slants),
+                slide: Some(&slide),
             },
         )?;
         Ok(states
@@ -1582,17 +1637,20 @@ impl Ground {
     }
 
     /// What a search from `start` is given to walk the sea's currents, which carry the player
-    /// their own way; on a ground a ridden Pokémon crosses, whether the player is riding, the
-    /// first of the turns, 1 riding (`ride`); through the ground's rotating doors, where they
-    /// stand now and what each step does to them; and on a stacked ground the floor each step is
-    /// on, the player's first, the last of the turns.
+    /// their own way, and Shoal Cave's ice, which they slide over their own (`slide`); on a
+    /// ground a ridden Pokémon crosses, whether the player is riding, the first of the turns, 1
+    /// riding (`ride`); on a ground with climbing walls, what the player may be doing on a face's
+    /// line, on foot, on the wall or either, after it (`Walls.hold`); through the ground's
+    /// rotating doors, where they stand now and what each step does to them; and on a stacked
+    /// ground the floor each step is on, the player's first, the last of the turns.
     fn walk(&self, start: Cell) -> Result<Walk<'_>> {
-        let ride = !self.rides.is_empty();
-        if self.doors.is_empty() && !self.stacked && !ride {
+        let (ride, walled) = (!self.rides.is_empty(), !self.walls.lines.is_empty());
+        if self.doors.is_empty() && !self.stacked && !ride && !walled {
             return Ok(Walk {
                 ground: self,
                 active: false,
                 ride,
+                walled,
                 turns: Vec::new(),
                 crossings: None,
             });
@@ -1608,6 +1666,9 @@ impl Ground {
         if ride {
             turns.push(self.riding as i64);
         }
+        if walled {
+            turns.push(self.walls.start(start, self.level));
+        }
         turns.extend(self.turns());
         if self.stacked {
             turns.push(self.floor(start, self.level)?);
@@ -1616,6 +1677,7 @@ impl Ground {
             ground: self,
             active: true,
             ride,
+            walled,
             turns,
             crossings,
         })
@@ -1654,6 +1716,8 @@ struct Walk<'a> {
     active: bool,
     /// Whether the first of the turns is whether the player is riding.
     ride: bool,
+    /// Whether the next is what the player may be doing on a climbing wall's line.
+    walled: bool,
     turns: pathfind::Turns,
     crossings: Option<Rc<HashMap<(Cell, Cell), i64>>>,
 }
@@ -1678,6 +1742,15 @@ impl Walk<'_> {
             return Ok(None);
         };
         let rest = if self.ride { &turns[1..] } else { turns };
+        let held = if self.walled {
+            ground.walls.hold(rest[0], cell, step)
+        } else {
+            Some(FOOT)
+        };
+        let Some(held) = held else {
+            return Ok(None);
+        };
+        let rest = if self.walled { &rest[1..] } else { rest };
         let doors = if ground.stacked {
             &rest[..rest.len() - 1]
         } else {
@@ -1696,6 +1769,9 @@ impl Walk<'_> {
                 return Ok(None);
             };
             after.push(floor);
+        }
+        if self.walled {
+            after.insert(0, held);
         }
         if self.ride {
             after.insert(0, rode as i64);

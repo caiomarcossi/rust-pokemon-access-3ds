@@ -4,12 +4,19 @@ Settings are in `user\config.toml`, written with the defaults on the first start
 settings later versions bring, at their defaults, and never changes a line you have. Each setting
 has a comment in the file saying what it does.
 
+The mod settings change them for you: in pa3ds's window, Settings in the **Mod** menu. It has a
+tab for each table below, and Ctrl+Tab and Ctrl+Shift+Tab change the tab from anywhere in it; Tab
+walks a tab's settings, each said with what it does after it. A relative volume is in percent there, 100 as loud as the game. OK and Apply write only the
+settings you changed, and ask whether to restart pa3ds now for them to take effect; otherwise
+they take effect the next time pa3ds starts.
+
 | Setting | Default | What it does |
 |---|---|---|
 | **`[pa3ds]`** | | |
 | `keys` | `true` | Answer pa3ds's keys, and rebind Azahar's buttons as `keys.toml` says. |
 | `poll_rate` | `60` | How many times a second pa3ds reads the game. 30 for a slower machine. |
 | `azahar_folder` | `""` | The folder of a portable Azahar. Empty, pa3ds uses the open Azahar's folder or its own where either is a portable Azahar. pa3ds fills it in when you choose the folder it asks for. |
+| `hide_window` | `true` | Hide the window a double-clicked pa3ds opens while Azahar is open, so it is not in Alt+Tab. `false` keeps it in sight, for OBS to record pa3ds's sounds through it. |
 | **`[pa3ds.ui]`** | | |
 | `pauses` | `false` | Pause between pieces of screen text said together, such as a label and what follows it. |
 | `interrupt` | `false` | Cut off speech when a menu's cursor moves, instead of queueing. pa3ds's own keys always cut off speech. |

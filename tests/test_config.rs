@@ -8,6 +8,7 @@ use super::test_app::ENVIRONMENT;
 use crate::core::config::{self, General, Navigation, Table, Ui, Value};
 use crate::core::keyfile;
 use crate::core::toml as toml_text;
+use crate::core::words::own;
 use crate::py;
 
 /// pytest's `tmp_path`: a folder of this test's own, gone when the test is.
@@ -513,6 +514,36 @@ fn test_choosing_a_folder_brings_back_a_line_commented_out() {
     );
 }
 
+/// Applying writes the settings changed and keeps the player's comments, order and lines
+/// commented out (docs/plans/pa3ds-window.md), a comment after a value on its line too, but not
+/// a # inside a value; a setting the file lacks joins its table.
+#[test]
+fn test_the_settings_dialog_changes_each_setting_on_its_own_line_and_nothing_else() {
+    let tmp_path = TmpPath::new();
+    let home = tmp_path.join("home");
+    fs::create_dir(&home).unwrap();
+    fs::write(
+        home.join("config.toml"),
+        "# mine\n[pa3ds]\npoll_rate = 30 # slow laptop\nazahar_folder = \"C:/#games\"\n\n\
+         [pa3ds.ui]\n# pauses = true\nlanguage = \"fr\"\n\n[pa3ds.audio]\ntones = 1\n",
+    )
+    .unwrap();
+    let settings = [
+        ("pa3ds.poll_rate", Value::Float(60.0)),
+        ("pa3ds.azahar_folder", Value::Str("D:/Azahar".to_string())),
+        ("pa3ds.ui.pauses", Value::Bool(true)),
+        ("pa3ds.audio.footsteps", Value::Float(0.5)),
+    ]
+    .map(|(name, value)| (name.to_string(), value));
+    assert!(config::change(&settings, Some(&home)).unwrap());
+    assert_eq!(
+        read_text(&home.join("config.toml")),
+        "# mine\n[pa3ds]\npoll_rate = 60 # slow laptop\nazahar_folder = \"D:/Azahar\"\n\n\
+         [pa3ds.ui]\npauses = true\nlanguage = \"fr\"\n\n[pa3ds.audio]\ntones = 1\n\
+         footsteps = 0.5\n"
+    );
+}
+
 #[test]
 fn test_a_line_separator_in_a_comment_does_not_end_the_line() {
     let tmp_path = TmpPath::new();
@@ -545,4 +576,17 @@ fn test_a_folder_is_not_kept_in_a_file_that_will_not_parse() {
         read_text(&home.join("config.toml")),
         "[pa3ds.ui]\npauses = yes\n"
     );
+}
+
+/// The settings dialog names each setting and describes it, and the file explains it, all in
+/// pa3ds's own words (docs/plans/pa3ds-window.md): a message missing is said as its id.
+#[test]
+fn test_every_setting_has_a_name_and_says_what_it_does_in_english() {
+    for table in config::TABLES {
+        for (name, _) in config::defaults(table) {
+            let message = config::message(&format!("{table}.{name}"));
+            assert_ne!(own(&message, &[]), message);
+            assert!(own(&format!("{message}-about"), &[]).ends_with('.'));
+        }
+    }
 }

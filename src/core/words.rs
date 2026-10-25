@@ -364,7 +364,36 @@ thread_local! {
 /// Put a game's words in place: every reader asks them from here on. None puts back every
 /// game's English, read again when next asked.
 pub fn r#use(words: Option<Rc<Words>>) {
+    *LAST
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = words
+        .as_ref()
+        .map(|words| (words.language.clone(), words.game.clone()));
     PLACED.with(|placed| *placed.borrow_mut() = Some(words));
+}
+
+/// The language and the game's folder of the words put in place last, by any thread. The words
+/// in place are a thread's own, where Python's are the module's, every thread's alike: a window
+/// opened on its own thread puts the same in place there (`placed_last`).
+static LAST: std::sync::Mutex<Option<(String, Option<PathBuf>)>> = std::sync::Mutex::new(None);
+
+/// The words put in place last, by whichever thread, made again for this one: none where every
+/// game's English was put back, or none was put at all. Without the functions a message may call,
+/// which close over the thread that put them in place, and logging nothing.
+pub fn placed_last() -> Result<Option<Rc<Words>>> {
+    let last = LAST
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone();
+    let Some((language, game)) = last else {
+        return Ok(None);
+    };
+    Ok(Some(Rc::new(Words::new(
+        &language,
+        game.as_deref(),
+        IndexMap::new(),
+        Rc::new(|_line: &str| {}),
+    )?)))
 }
 
 /// The words in place, or every game's English where none has been put.

@@ -14,9 +14,11 @@ use std::sync::OnceLock;
 use indexmap::IndexMap;
 
 use crate::core::keyfile::data_path;
+use crate::core::pathfind;
 use crate::games::common::field::ground::{CUT, ROCK_SMASH, STRENGTH};
+use crate::games::gen6::field::camera;
 use crate::games::gen6::field::footsteps::{RUN, Steps, WALK};
-use crate::games::gen6::game::{Data, FurnitureKind, Game, Rides};
+use crate::games::gen6::game::{Climbing, Data, FurnitureKind, Game, Rides};
 use crate::games::gen6::rom::layout::{RomLayout, TownFacilities, owned};
 use crate::games::xy::intro::IntroReader;
 use crate::py::PySet;
@@ -141,6 +143,10 @@ pub const PUFF_NAMES: i64 = 67;
 /// Pokémon-Amie's wallpapers and interior items, line for line ORAS's file 110
 /// (`oras.GOODS_NAMES`), the English with a plural's ending after each (`garc.singular`).
 pub const GOODS_NAMES: i64 = 92;
+/// The items' names, a line an item by its number as ORAS's file 114 (`oras.ITEM_NAMES`): the Poké
+/// Ball at 4, which the title screen's film throws (x_intro_and_title_screen). File 98 holds the same
+/// lines, and 95 and 97 the plurals.
+pub const ITEM_NAMES: i64 = 96;
 /// Super Training's bags in the list its page opens, as ORAS's (`oras.TRAINING_BAGS`): line N of
 /// text file 23 is the bag of `sand_bagNN.bclim`, HP Bag S at 1, Strength Bag at 19 (spike 228).
 pub fn training_bags() -> &'static (i64, IndexMap<&'static str, i64>) {
@@ -173,6 +179,27 @@ pub fn training_regimens() -> &'static (i64, IndexMap<&'static str, i64>) {
 pub fn training_button() -> &'static (i64, IndexMap<&'static str, i64>) {
     static TRAINING_BUTTON: OnceLock<(i64, IndexMap<&'static str, i64>)> = OnceLock::new();
     TRAINING_BUTTON.get_or_init(|| (55, IndexMap::from([("spar_button.bclim", 178)])))
+}
+/// The fitting room's tabs, pictures of what each lists: line N of text file 143 is the tab of the
+/// Nth, "hat", "top", "bottom", "dress", "socks", "shoes", "bag" and "hat accessory", and the tab
+/// lit while its list is shown draws `_wh` (x_cyllage_boutique_fitting_room). The boy's dress tab,
+/// `tab_onepiece`, is drawn dimmed and never lit, so its `_wh` is the others' pattern, unseen.
+pub fn fitting_tabs() -> &'static (i64, IndexMap<&'static str, i64>) {
+    static FITTING_TABS: OnceLock<(i64, IndexMap<&'static str, i64>)> = OnceLock::new();
+    FITTING_TABS.get_or_init(|| {
+        let tabs = [
+            "hat", "tops", "bottoms", "onepiece", "socks", "boots", "bag", "onepoint",
+        ];
+        let mut names = IndexMap::new();
+        for (line, tab) in tabs.iter().enumerate() {
+            for lit in ["", "_wh"] {
+                let image: &'static str =
+                    Box::leak(format!("tab_{tab}{lit}.bclim").into_boxed_str());
+                names.insert(image, line as i64);
+            }
+        }
+        (143, names)
+    })
 }
 
 /// Where X keeps a step's moment (spike 231): the footstep check at `0x00719af8` looks the model's
@@ -235,19 +262,25 @@ pub fn rom() -> &'static RomLayout {
         battle_models: Some("a/0/0/7".to_string()),
         puffs: Some(PUFF_NAMES),
         goods: Some(GOODS_NAMES),
+        items: Some(ITEM_NAMES),
         sounds: Some(SOUND_ARCHIVE.to_string()),
-        touch_words: [training_bags(), training_regimens(), training_button()]
-            .into_iter()
-            .map(|(file, lines)| {
-                (
-                    *file,
-                    lines
-                        .iter()
-                        .map(|(image, &line)| (image.to_string(), line))
-                        .collect(),
-                )
-            })
-            .collect(),
+        touch_words: [
+            training_bags(),
+            training_regimens(),
+            training_button(),
+            fitting_tabs(),
+        ]
+        .into_iter()
+        .map(|(file, lines)| {
+            (
+                *file,
+                lines
+                    .iter()
+                    .map(|(image, &line)| (image.to_string(), line))
+                    .collect(),
+            )
+        })
+        .collect(),
         ..RomLayout::new(
             "X and Y",
             text_archives(),
@@ -296,6 +329,9 @@ pub const STOPPER: i64 = 0x8A;
 /// Route 6 and three on Route 18, with no script; "Whoa! A wild Audino leaped out of the tall
 /// grass!" (text 124:261, x_route-6.ctm, 2026-10-19).
 pub const TOBI_KUSA: i64 = 0x2002;
+/// A sparkle in each of twelve zones whose case hands over one Mega Stone, items 665 to 683 (text
+/// 96): an item found, listed under items, as ORAS's `KIRAKIRA` is.
+pub const KIRAKIRA2: i64 = 0x2042;
 /// A spot a wild Pokémon waits at unseen, `ENEMY3D`: nine in Glittering Cave (zone 0x12f), records
 /// 3 to 11, all running shared script 0x7d0, drawn as nothing. Walking up the corridor from (32, 72)
 /// the player stopped at (32, 50) under a "!" and a wild battle began, "A wild Onix appeared!"; after
@@ -338,6 +374,42 @@ pub fn rides() -> Rides {
         stops: HashSet::from([0x31]),
         mounts: HashSet::from([0x100F]),
         smashes: HashSet::from([0x200D]),
+    }
+}
+
+/// Cyllage City Gym's rock walls (zone 0xa0, chunk file 354 of `a/0/4/1`), climbed "if you start
+/// from one of those blue spots", the Gym guide says. Kind 0x59, blocked (`0x59000001`), is where a
+/// face meets the floor: 28 cells, all in that file, at the face's foot. A blue spot is an open cell
+/// beside one at its height, the face standing the way from it; the spots facing one way along a row
+/// or a column are one face, and the open cells between its outermost spots its line. Kinds 0x51 to
+/// 0x54, open (`0x5N000020`), east, west, north and south, are the step off a face sideways onto a
+/// ledge at its side: each of the 10 is on a line at its foot, beside a spot that way 36 to 144
+/// higher. In the tape of x_gym_2 the player walked from the entrance to (25, 32), a spot at 3, and
+/// climbed in place to 13, 38 and 57 in about 2 s; went east along the face at 54, the cell they
+/// were in (26, 32) to (30, 32), and stepped off east from `0x51` at (30, 32) onto the ledge (31,
+/// 32) at 54; then back on, west along it and down at (25, 32) to 3, and off west onto (24, 32). The
+/// step from (26, 17) onto its ledge rises 36, a step's worth on foot, so the kinds, not the heights,
+/// say where a ledge is. X has 0x51 to 0x54 in chunk files 458 and 594 too, never seen (spike 245).
+///
+/// Kind 0x8a, open (`0x8a000020`), is the top of a slide down a wall: two rows of three south of
+/// Grant, (14..16, 20) at 189 and (14..16, 27) at 99, each with blocked cells (`0x01000021`) south
+/// of it falling 18 a cell, to 117 and to 9, then the floor, at 108 and at 0, walls either side. In
+/// the tape of x_gym_2_slide the player stepped south from (16, 19) onto (16, 20) and was carried
+/// down to (16, 25) in 0.6 s, walked onto (16, 27) and was carried to (16, 33). X has 0x8a in chunk
+/// files 79, 886 and 1023 too, a row each with one or two blocked cells past it falling to lower
+/// floor, so taken for slides too; never seen.
+///
+/// Python's `CLIMBING` constant: a function, since an `IndexMap` is no const.
+pub fn climbing() -> Climbing {
+    Climbing {
+        face: 0x59,
+        sideways: IndexMap::from([
+            (0x51, pathfind::EAST),
+            (0x52, pathfind::WEST),
+            (0x53, pathfind::NORTH),
+            (0x54, pathfind::SOUTH),
+        ]),
+        slide: 0x8A,
     }
 }
 
@@ -424,6 +496,10 @@ pub const TRAINING: i64 = 0xC8;
 /// on the PSS's page and Super Training's, and 1 from the bags list on.
 pub const FIELD_MENU: (i64, i64) = (0x70, 0x90);
 
+/// Where X's field's work holds the Dowsing Machine's record (`gen6.field.dowsing`): 0x24 before
+/// ORAS's, the record laid out as ORAS's is (spike 243, x_route_8_dowsing).
+pub const DOWSING: i64 = 0x1AC;
+
 /// X and Y as the gen 6 readers read them.
 pub fn game() -> &'static Game {
     static GAME: OnceLock<Game> = OnceLock::new();
@@ -434,9 +510,11 @@ pub fn game() -> &'static Game {
             (BIG_BOULDER, STRENGTH),
             (CRACKED_WALL, ROCK_SMASH),
         ]),
+        dowsing: Some(DOWSING),
         blockers: HashSet::from([STOPPER]),
         ambushes: HashSet::from([TOBI_KUSA]),
         lurkers: HashSet::from([ENEMY3D]),
+        pickups: HashSet::from([KIRAKIRA2]),
         elevators: ELEVATORS.collect(),
         warps: warps().clone(),
         triggers: IndexMap::from([
@@ -471,12 +549,14 @@ pub fn game() -> &'static Game {
         models: Some(MODELS),
         strands: STRAND,
         rides: Some(rides()),
+        climbing: Some(climbing()),
         gates: true,
         steps: STEPS,
         training: TRAINING,
         amie: AMIE,
         field_menu: FIELD_MENU,
         worded: WORDED.iter().map(|texture| texture.to_string()).collect(),
+        camera: camera::X,
         opening: Some(|memory, _language| Box::new(IntroReader::new(memory))),
         ..Game::new("X and Y", [X, Y], DATA, rom().clone(), DRAWN)
     })

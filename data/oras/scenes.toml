@@ -2551,3 +2551,20 @@ id = "epilogue-home-3"
 zone = [0xe0, 0xe2]
 at = 1
 id = "epilogue-home-4"
+
+# Shoal Cave's entrance room, one zone at each tide: Route 125's way in leads into 0x80 from 3 to
+# 9 and from 15 to 21 by the game's clock, and into 0x84 the rest of the day, where the sea has
+# come in across the room north of the cave mouth (screenshots of or_shoal_cave_entrance at
+# 22:20, 2026-10-24), and the low tide's has a shallow pool where the sea was, and wooden steps up
+# its ledges (or_shoal_cave_low_tide's, 2026-10-25). The game names neither tide.
+[[scene]]
+zone = 0x84
+
+[[scene.beat]]
+id = "shoal-cave-high-tide"
+
+[[scene]]
+zone = 0x80
+
+[[scene.beat]]
+id = "shoal-cave-low-tide"

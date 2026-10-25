@@ -422,8 +422,8 @@ impl SunFieldReader {
     /// Where the player can walk in the area loaded, out of the ROM's meshes (`walls`), with
     /// the cells they cannot walk to from where they stand closed: floor runs on under a bed
     /// and a house, walled all round. Nothing is known without the ROM's walls. Always at the
-    /// player's own height, whatever `height` asks: Sun lists no `Ground.decks` to walk.
-    pub fn ground(&self, r#where: &Field, _height: Option<f64>) -> Result<Ground> {
+    /// player's own height.
+    pub fn ground(&self, r#where: &Field) -> Result<Ground> {
         let found = self.r#where()?;
         let (Some(found), Some(walls)) = (found, &self.walls) else {
             return Ok(Ground::of(r#where, Of::default()));

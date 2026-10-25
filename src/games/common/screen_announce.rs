@@ -131,12 +131,17 @@ struct Gathering {
     item: String,
     /// The root of the layout the item is in.
     menu: i64,
+    /// The list of rows the item is one of, where its cursor knows it (`CursorItem.rows`): the
+    /// list its details are of. The fitting room's Change and Back are a list beside its tabs, and
+    /// each move between them read again the card the tabs had changed (Khai,
+    /// x_cyllage_boutique_fitting_room).
+    rows: i64,
 }
 
 impl Gathering {
     /// What the panels its moves change are kept under (`ScreenAnnouncer.detail_panels`).
-    fn kept(&self) -> (i64, i64) {
-        (self.cursor, self.menu)
+    fn kept(&self) -> (i64, i64, i64) {
+        (self.cursor, self.menu, self.rows)
     }
 
     /// `_Gathering(cursor, quiet=quiet, count=count, held=held)`: `polls` at 0 and no panels or
@@ -154,6 +159,7 @@ impl Gathering {
             lead: (0, String::new()),
             item: String::new(),
             menu: 0,
+            rows: 0,
         }
     }
 }
@@ -176,15 +182,16 @@ pub struct ScreenAnnouncer {
     /// place the poll after: the Bag's said "Pokéblock Kit" as it opened and again 0.2 s later
     /// (movie30).
     opened: IndexMap<i64, (String, i64)>,
-    /// (cursor, layout of its item) -> every panel its moves among that layout's items have
+    /// (cursor, layout of its item, its list) -> every panel its moves along that list have
     /// changed. Ember to Scratch changes only the description, and the move's power and accuracy
     /// went unsaid. Kept a layout at a time: the battle's move to forget, changed as the cursor
     /// went onto FORGET, was read again for "return" in the move list beside it
-    /// (or_move-learning, 2026-10-18).
-    detail_panels: IndexMap<(i64, i64), IndexSet<Panel>>,
+    /// (or_move-learning, 2026-10-18); and a list at a time (`_Gathering.rows`).
+    detail_panels: IndexMap<(i64, i64, i64), IndexSet<Panel>>,
     polls: i64,
-    /// Words a cursor said lately -> the poll it said them at (`said_by_cursor`).
-    cursor_said: IndexMap<String, i64>,
+    /// Words a cursor said lately -> the poll it said them at and the cursor
+    /// (`said_by_cursor`).
+    cursor_said: IndexMap<String, (i64, i64)>,
     /// Words said lately -> (the poll they were said at, the root of the layout they came from).
     recent: IndexMap<String, (i64, i64)>,
     /// Layout root -> the poll its words came on screen at, for layouts with words on screen.
@@ -242,8 +249,8 @@ impl ScreenAnnouncer {
         self.cursor_said = self
             .cursor_said
             .iter()
-            .filter(|&(_words, &poll)| self.polls - poll <= CURSOR_HEARD_POLLS)
-            .map(|(words, &poll)| (words.clone(), poll))
+            .filter(|&(_words, &said)| self.polls - said.0 <= CURSOR_HEARD_POLLS)
+            .map(|(words, &said)| (words.clone(), said))
             .collect();
         self.cursor_said.contains_key(text)
     }
@@ -360,7 +367,7 @@ impl ScreenAnnouncer {
                 // stood, the Bag's panel, half written for the next item, read the next item's
                 // name with the last one's count (movie33). Its panels are kept.
                 self.detail_panels
-                    .entry((0, 0))
+                    .entry((0, 0, 0))
                     .or_default()
                     .extend(rewrite.panels.iter().copied());
                 (self.log)(&format!(
@@ -369,7 +376,12 @@ impl ScreenAnnouncer {
                 ));
             }
             let count = if held { text.clone() } else { String::new() };
-            let again = spoken.contains(&text);
+            // Or a poll apart, where one holds an item still being laid out (`MenuCursors`): the
+            // summary's battle page drew Hold Back a poll before its contest page
+            // (or_summary_moves).
+            let by = self.cursor_said.get(&text).copied();
+            let again = spoken.contains(&text)
+                || by.is_some_and(|by| by.1 != item.cursor && self.polls - by.0 <= 1);
             (self.log)(&format!(
                 "cursor {:#010x} {}: {text}{}{}  [layout {:#x}]",
                 item.cursor,
@@ -395,7 +407,8 @@ impl ScreenAnnouncer {
                 );
                 spoken.insert(text.clone());
             }
-            self.cursor_said.insert(text.clone(), self.polls);
+            self.cursor_said
+                .insert(text.clone(), (self.polls, item.cursor));
             cursored.extend(item.pieces.iter().map(|p| p.r#box));
             // Only a move brings up details. A cursor coming on screen comes with whatever else
             // the key changed: the bag's cursor came back with the pocket name, and "MEDICINE"
@@ -411,6 +424,7 @@ impl ScreenAnnouncer {
                 self.gathering = Some(Gathering {
                     item: text.clone(),
                     menu: item.pieces[0].root,
+                    rows: item.rows,
                     ..Gathering::new(item.cursor, item.quiet, count, held)
                 });
             }
@@ -905,7 +919,13 @@ impl ScreenAnnouncer {
             }
         }
         for table in tables {
-            let group = under_their_labels(distinct(by_rows(table)));
+            let groups: IndexSet<(i64, i64)> = table.iter().map(|p| p.group()).collect();
+            let ordered = if groups.len() > 1 {
+                by_rows(table)
+            } else {
+                columns(&table)
+            };
+            let group = under_their_labels(distinct(ordered));
             if !group.is_empty() {
                 let mut text = join(&group, self.pauses);
                 if gathering.held && !gathering.count.is_empty() && texts.is_empty() {
@@ -1038,7 +1058,7 @@ impl ScreenAnnouncer {
         cursored: &HashSet<i64>,
     ) -> HashSet<i64> {
         self.rewrite = None;
-        let kept = self.detail_panels.entry((0, 0)).or_default();
+        let kept = self.detail_panels.entry((0, 0, 0)).or_default();
         kept.extend(rewrite.panels.iter().copied());
         let mut panels = kept.clone();
         panels.extend(rewrite.joined.iter().copied());
@@ -1188,6 +1208,66 @@ fn under_their_labels(pieces: Vec<ScreenText>) -> Vec<ScreenText> {
         above.insert(label + 1, first);
     }
     rows.into_iter().flatten().collect()
+}
+
+/// A group's placed pieces row by row, as a table, unless it is tables side by side: each
+/// column it built, higher up and to the right of the one before, is read with that one row by
+/// row where every row of it is one of that one's, and otherwise after it, as it was built, as
+/// a screen opening reads it (`_speaking_order`). A move's panel builds its labels and then its
+/// values, "Category Power 40"; the PC Box's summary builds its stats and then its moves, between
+/// their rows, and read row by row they came interleaved, "SP. ATK: 68, MOVES LEARNED, SP. DEF:
+/// 58, Bubble Beam", where opening it read each down (Orion, or_organize_boxes, 2026-10-24).
+fn columns(pieces: &[ScreenText]) -> Vec<ScreenText> {
+    let mut columns: Vec<Vec<ScreenText>> = Vec::new();
+    for piece in pieces.iter().filter(|p| p.glyph > 0.0) {
+        let starts = match columns.last() {
+            None => true,
+            Some(last) => {
+                // Python's `max` over floats: the first unless a later one is strictly greater.
+                let mut right = last[0].right;
+                for p in &last[1..] {
+                    if p.right > right {
+                        right = p.right;
+                    }
+                }
+                piece.row - last[last.len() - 1].row >= piece.glyph / 2.0 && piece.left >= right
+            }
+        };
+        if starts {
+            columns.push(vec![piece.clone()]);
+        } else {
+            columns
+                .last_mut()
+                .expect("a column to add to")
+                .push(piece.clone());
+        }
+    }
+    let mut tables: Vec<Vec<Vec<ScreenText>>> = Vec::new();
+    for column in columns {
+        let beside = tables.last().is_some_and(|table: &Vec<Vec<ScreenText>>| {
+            let before = &table[table.len() - 1];
+            column
+                .iter()
+                .all(|b| before.iter().any(|a| side_by_side(a, b)))
+        });
+        if beside {
+            tables.last_mut().expect("checked above").push(column);
+        } else {
+            tables.push(vec![column]);
+        }
+    }
+    if tables.len() < 2 {
+        return by_rows(pieces.to_vec());
+    }
+    let mut out: Vec<ScreenText> = Vec::new();
+    for table in tables {
+        if table.len() > 1 {
+            out.extend(by_rows(table.into_iter().flatten()));
+        } else {
+            out.extend(in_rows(table.into_iter().next().expect("one column")));
+        }
+    }
+    out
 }
 
 /// Python's `min(a, b)` on floats: `a`, unless `b < a`, so a NaN stays where Python puts it.

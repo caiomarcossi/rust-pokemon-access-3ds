@@ -557,7 +557,13 @@ impl TouchTargets {
                             }
                         }
                     }
-                    if let Some(pictured) = pictured {
+                    // Screen text names the picture too where it names pictures: the Bag's party
+                    // slots were "Torchic Torchic L14", the AreaNav's Pokémon "Surskit Surskit"
+                    // and the Battle Maison's partners "May May" (or_multi_battle_partners).
+                    if let Some(pictured) = pictured
+                        && !pictured.is_empty()
+                        && !spoken[&touch].contains(&pictured)
+                    {
                         said = if said.is_empty() {
                             pictured
                         } else {
@@ -627,13 +633,25 @@ impl TouchTargets {
                     names.insert(touch, name.clone());
                 } else if let Some(slot) = {
                     let (x, y) = place(&layouts, touch)?;
-                    slots::slot(&layouts, file.as_deref(), root, x, y, &(self.on_screen)())?
+                    slots::slot(
+                        &layouts,
+                        file.as_deref(),
+                        root,
+                        x,
+                        y,
+                        &(self.on_screen)(),
+                        None,
+                    )?
                 } && slot.0 == touch
                 {
                     // A slot is said as the Box's pointer says it, by its place in the grid, its
                     // number in the party or the mark it shows: by its pictures, the Box's grid
                     // was its wallpaper's, "wave pattern", and a mark "box mark 01". Two of the
                     // grid's slots lie under a placeholder TextBox of another panel (movie22).
+                    if slot.1.is_empty() {
+                        // Behind the Battle Box's, and in the way of its taps (or_battle_box).
+                        continue;
+                    }
                     names.insert(touch, slot.1);
                 } else if !worded && u32(&layouts.pane(touch)?, lyt::PARENT)? != root {
                     // A touch area hanging straight from the root has no button of its own, and

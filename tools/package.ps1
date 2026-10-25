@@ -13,7 +13,7 @@ target\package\pa3ds-<version>-windows.zip holding:
                      the names it ships and its descriptions of scenes, a folder a game and a
                      language a folder inside it, read beside pa3ds.exe
   README.md          the player's manual, its first page
-  manual\            the rest of the manual: keys, settings, languages
+  manual\            the rest of the manual: keys, settings, languages, known issues
   CHANGELOG.md       what changed for players in each release
   licenses\          pa3ds's licence (pa3ds.txt), Prism's (prism.txt), Prism's notice
                      (prism-notice.txt) and those of the libraries built into Prism, one file each

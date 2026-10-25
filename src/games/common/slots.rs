@@ -8,7 +8,9 @@
 //!   columns and five rows, 30 units apart. A slot is said by the words just above the grid, the
 //!   box's name, and its row and column: "BOX 1, row 2, column 3".
 //! - **A list**, the party: the touch areas a panel holds, six in two columns, the second column 20
-//!   units lower than the first, numbered in reading order: "Party 2".
+//!   units lower than the first, numbered in reading order: "Party 2". The Battle Box's six lie so
+//!   under the root, beside the box's thirty still shown behind its picture, and are said by the
+//!   words above them: "BATTLE BOX 2" (or_battle_box).
 //! - **A mark**, of the six a Pokémon can be given: a touch area beside a picture textured
 //!   `box_mark_01` to `box_mark_06`, said by the sign the picture shows and whether it is set: a
 //!   mark set is drawn solid, one not set half-transparent (or/movie11_pokedex_and_box, where
@@ -19,9 +21,11 @@
 //! top screen's summary of what is under the pointer changes as it moves, and is read after the
 //! slot as its details (the user, 2026-09-27: where, then the summary; where, then "empty").
 //! While a Pokémon is carried the summary is the carried one's, whatever slot the pointer is on,
-//! so a slot is said alone.
+//! so a slot is said alone, with the name of the Pokémon in it where the game's own reader knows
+//! it: "BOX 1, row 1, column 2, erza" (Orion, or_organize_boxes).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
+use std::rc::Rc;
 
 use indexmap::IndexMap;
 
@@ -37,9 +41,17 @@ use crate::py::{self, Error, PySet, Result, sorted_by_lt};
 pub const PARTY: &str = "slot-party";
 pub const GRID: &str = "slot-grid";
 pub const TITLED_GRID: &str = "slot-titled-grid";
-/// pa3ds's own words for a slot, "Party 2", "BOX 1, row 2, column 3", and one holding no Pokémon:
-/// the game names neither the party's slots nor a box's rows.
+pub const TITLED_LIST: &str = "slot-titled-list";
 pub const EMPTY_SLOT: &str = "slot-empty";
+/// pa3ds's own words for a slot, "Party 2", "BOX 1, row 2, column 3", "BATTLE BOX 2", one
+/// holding no Pokémon, and one with who is in it: the game names neither the party's slots nor a
+/// box's rows.
+pub const HELD_SLOT: &str = "slot-held";
+/// Which slot: its words' kind (`PARTY`, `GRID`, `TITLED_GRID`, `TITLED_LIST`), the title above
+/// its group, and its place in the group from 0 in reading order.
+pub type Held = (&'static str, Option<String>, i64);
+/// The name of the Pokémon in a slot (`Held`), or None.
+pub type Occupant = Rc<dyn Fn(&str, Option<&str>, i64) -> Result<Option<String>>>;
 /// The alpha from which a mark's picture is drawn as set: 255 set, 127 not (spike 129).
 pub const SET_ALPHA: i64 = 192;
 /// The texture a slot's Pokémon is drawn with.
@@ -59,8 +71,9 @@ fn index_of(items: &[i64], item: i64) -> Result<usize> {
 }
 
 /// The touch area a cursor resting at (x, y) is on, what to say of it, and whether it is said
-/// alone, the summary left unsaid: an empty slot, or any while a Pokémon is carried. None where it
-/// rests on no slot, as on a lone button's touch area.
+/// alone, the summary left unsaid: an empty slot, or any while a Pokémon is carried, said with
+/// who is in it by `occupant`. None where it rests on no slot, as on a lone button's touch area;
+/// no words for a slot behind the Battle Box's, which nothing reaches.
 pub fn slot(
     layouts: &Layouts,
     file: Option<&LayoutFile>,
@@ -68,6 +81,7 @@ pub fn slot(
     x: f64,
     y: f64,
     on_screen: &[ScreenText],
+    occupant: Option<&Occupant>,
 ) -> Result<Option<(i64, String, bool)>> {
     let tree = layouts.tree(root);
     let mut touch: Option<i64> = None;
@@ -100,42 +114,94 @@ pub fn slot(
             group.push(pane);
         }
     }
-    let mut r#where = in_grid(layouts, touch, &group, root, on_screen)?;
-    if r#where.is_none() && parent != root && group.len() > 1 {
-        let mut places: IndexMap<i64, (f64, f64)> = IndexMap::new();
+    let mut places: IndexMap<i64, (f64, f64)> = IndexMap::new();
+    for &pane in &group {
+        places.insert(pane, place(layouts, pane)?);
+    }
+    let mut found: Option<(String, Held)> = None;
+    let mut listed: Vec<i64> = group.clone();
+    if parent != root {
+        found = in_grid(layouts, touch, &places, root, on_screen)?;
+    } else {
+        // The Battle Box's six lie under the root beside the box's thirty, and both stay shown
+        // whichever is drawn, overlapping: a tap on one was taken for the other (or_battle_box).
+        // The one whose slots hold the icons is on screen. ponytail: an empty Battle Box on
+        // screen reads as the box behind it; the wallpaper drawn, `box_wp_battle_box`, would tell.
+        let mut loose: Vec<i64> = Vec::new();
         for &pane in &group {
-            places.insert(pane, place(layouts, pane)?);
+            if grid(&places, pane)?.is_none() {
+                loose.push(pane);
+            }
         }
+        let mut battle = false;
+        if let Some(file) = file {
+            for pane in &loose {
+                if holds_icon(layouts, file, root, places[pane])? {
+                    battle = true;
+                    break;
+                }
+            }
+        }
+        if !loose.contains(&touch) {
+            if battle {
+                return Ok(Some((touch, String::new(), true)));
+            }
+            found = in_grid(layouts, touch, &places, root, on_screen)?;
+        }
+        listed = if battle { loose } else { Vec::new() };
+    }
+    if found.is_none() && listed.len() > 1 && listed.contains(&touch) {
         // The key is `(-y, x)`: a tuple is smaller by its first element that differs.
-        let order = sorted_by_lt(group.clone(), |a, b| {
+        let order = sorted_by_lt(listed.clone(), |a, b| {
             if -places[a].1 != -places[b].1 {
                 return -places[a].1 < -places[b].1;
             }
             places[a].0 < places[b].0
         });
         let number = index_of(&order, touch)? + 1;
-        r#where = Some(own(PARTY, &[("number", &number)]));
+        let title = if parent != root {
+            None
+        } else {
+            let at: Vec<(f64, f64)> = listed.iter().map(|pane| places[pane]).collect();
+            title(&at, self::size(layouts, touch)?.0 / 2.0, root, on_screen)
+        };
+        let index = number as i64 - 1;
+        found = if parent != root {
+            Some((own(PARTY, &[("number", &number)]), (PARTY, None, index)))
+        } else {
+            title.filter(|title| !title.is_empty()).map(|title| {
+                (
+                    own(TITLED_LIST, &[("title", &title), ("number", &number)]),
+                    (TITLED_LIST, Some(title), index),
+                )
+            })
+        };
     }
-    let Some(r#where) = r#where else {
+    let Some((r#where, held)) = found else {
         return Ok(None);
     };
     let place = place(layouts, touch)?;
-    let empty = match file {
-        None => true,
-        Some(file) => !holds_icon(layouts, file, root, place)?,
+    let Some(file) = file else {
+        return Ok(Some((touch, own(EMPTY_SLOT, &[("slot", &r#where)]), true)));
     };
-    let carrying = match file {
-        None => false,
-        Some(file) => holds_icon(layouts, file, root, (place.0, place.1 + CARRIED))?,
+    if !holds_icon(layouts, file, root, place)? {
+        return Ok(Some((touch, own(EMPTY_SLOT, &[("slot", &r#where)]), true)));
+    }
+    if !holds_icon(layouts, file, root, (place.0, place.1 + CARRIED))? {
+        return Ok(Some((touch, r#where, false)));
+    }
+    // The summary is the carried one's, so the Pokémon in the slot is named from the save.
+    let name = match occupant {
+        None => None,
+        Some(occupant) => occupant(held.0, held.1.as_deref(), held.2)?,
     };
     Ok(Some((
         touch,
-        if empty {
-            own(EMPTY_SLOT, &[("slot", &r#where)])
-        } else {
-            r#where
+        match name.filter(|name| !name.is_empty()) {
+            Some(name) => own(HELD_SLOT, &[("slot", &r#where), ("name", &name)]),
+            None => r#where,
         },
-        empty || carrying,
+        true,
     )))
 }
 
@@ -190,27 +256,63 @@ pub fn button(
 }
 
 /// The slot's row and column, in the full grid of touch areas it shares rows and columns with,
-/// after the words just above the grid; None when those make no grid two by two or more.
+/// after the words just above the grid, and which slot it is; None when those make no grid two
+/// by two or more.
 fn in_grid(
     layouts: &Layouts,
     touch: i64,
-    group: &[i64],
+    places: &IndexMap<i64, (f64, f64)>,
     root: i64,
     on_screen: &[ScreenText],
-) -> Result<Option<String>> {
-    let mut places: IndexMap<i64, (f64, f64)> = IndexMap::new();
-    for &pane in group {
-        places.insert(pane, place(layouts, pane)?);
+) -> Result<Option<(String, Held)>> {
+    let Some(grid) = grid(places, touch)? else {
+        return Ok(None);
+    };
+    let mut xs: BTreeSet<i64> = BTreeSet::new();
+    for pane in grid.iter() {
+        xs.insert(py::round(places[&pane].0)?);
     }
-    // `grid` is a set of ints iterated below, so it is kept as the order its members were added
-    // in and laid out as Python lays it out.
+    let mut ys: BTreeSet<i64> = BTreeSet::new();
+    for pane in grid.iter() {
+        ys.insert(py::round(places[&pane].1)?);
+    }
+    let xs: Vec<i64> = xs.into_iter().collect();
+    let ys: Vec<i64> = ys.into_iter().rev().collect();
+    let (x, y) = places[&touch];
+    let row = index_of(&ys, py::round(y)?)? + 1;
+    let column = index_of(&xs, py::round(x)?)? + 1;
+    let at: Vec<(f64, f64)> = grid.iter().map(|pane| places[&pane]).collect();
+    let title = title(&at, size(layouts, touch)?.0 / 2.0, root, on_screen);
+    let titled = title.as_deref().is_some_and(|text| !text.is_empty());
+    let held: Held = (
+        if titled { TITLED_GRID } else { GRID },
+        title.clone(),
+        (row as i64 - 1) * xs.len() as i64 + column as i64 - 1,
+    );
+    Ok(Some(match title.filter(|text| !text.is_empty()) {
+        Some(title) => (
+            own(
+                TITLED_GRID,
+                &[("title", &title), ("row", &row), ("column", &column)],
+            ),
+            held,
+        ),
+        None => (own(GRID, &[("row", &row), ("column", &column)]), held),
+    }))
+}
+
+/// The touch areas sharing rows and columns with this one, where they fill a grid two by two
+/// or more; None where they do not.
+fn grid(places: &IndexMap<i64, (f64, f64)>, touch: i64) -> Result<Option<PySet>> {
+    // `grid` is a set of ints iterated by its callers, so it is kept as the order its members
+    // were added in and laid out as Python lays it out.
     let mut grid: Vec<i64> = vec![touch];
     let mut frontier: Vec<i64> = vec![touch];
     while let Some(next) = frontier.pop() {
         let here = *places
             .get(&next)
             .ok_or_else(|| Error::key(next.to_string()))?;
-        for (&pane, place) in &places {
+        for (&pane, place) in places {
             if !grid.contains(&pane)
                 && ((place.0 - here.0).abs() <= SAME_SPOT || (place.1 - here.1).abs() <= SAME_SPOT)
             {
@@ -219,46 +321,49 @@ fn in_grid(
             }
         }
     }
-    let members: Vec<i64> = PySet::of(grid.iter().copied()).iter().collect();
-    let mut xs: BTreeSet<i64> = BTreeSet::new();
-    for pane in &members {
-        xs.insert(py::round(places[pane].0)?);
+    let members = PySet::of(grid.iter().copied());
+    let mut xs: HashSet<i64> = HashSet::new();
+    let mut ys: HashSet<i64> = HashSet::new();
+    for pane in members.iter() {
+        xs.insert(py::round(places[&pane].0)?);
     }
-    let mut ys: BTreeSet<i64> = BTreeSet::new();
-    for pane in &members {
-        ys.insert(py::round(places[pane].1)?);
+    for pane in members.iter() {
+        ys.insert(py::round(places[&pane].1)?);
     }
-    let xs: Vec<i64> = xs.into_iter().collect();
-    let ys: Vec<i64> = ys.into_iter().rev().collect();
-    if xs.len() < 2 || ys.len() < 2 || xs.len() * ys.len() != grid.len() {
-        return Ok(None);
+    Ok((xs.len() >= 2 && ys.len() >= 2 && xs.len() * ys.len() == grid.len()).then_some(members))
+}
+
+/// The words just above these slots, between their first and last column: the box's name.
+fn title(places: &[(f64, f64)], width: f64, root: i64, on_screen: &[ScreenText]) -> Option<String> {
+    // Python's `min` and `max`: the first unless a later one is strictly less, or greater.
+    let mut left = places[0].0;
+    let mut right = places[0].0;
+    let mut top = places[0].1;
+    for &(x, y) in &places[1..] {
+        if x < left {
+            left = x;
+        }
+        if x > right {
+            right = x;
+        }
+        if y > top {
+            top = y;
+        }
     }
-    let (x, y) = places[&touch];
-    let row = index_of(&ys, py::round(y)?)? + 1;
-    let column = index_of(&xs, py::round(x)?)? + 1;
-    let width = size(layouts, touch)?.0 / 2.0;
-    let mut title: Option<&ScreenText> = None;
+    let (left, right) = (left - width, right + width);
+    let mut above: Option<&ScreenText> = None;
     for piece in on_screen {
         if piece.root == root
             && piece.glyph > 0.0
-            && piece.row > ys[0] as f64
-            && xs[0] as f64 - width <= (piece.left + piece.right) / 2.0
-            && (piece.left + piece.right) / 2.0 <= xs[xs.len() - 1] as f64 + width
-            && title.is_none_or(|first| piece.row < first.row)
+            && piece.row > top
+            && left <= (piece.left + piece.right) / 2.0
+            && (piece.left + piece.right) / 2.0 <= right
+            && above.is_none_or(|first| piece.row < first.row)
         {
-            title = Some(piece);
+            above = Some(piece);
         }
     }
-    let title = title
-        .map(|piece| piece.text.as_str())
-        .filter(|text| !text.is_empty());
-    Ok(Some(match title {
-        Some(title) => own(
-            TITLED_GRID,
-            &[("title", &title), ("row", &row), ("column", &column)],
-        ),
-        None => own(GRID, &[("row", &row), ("column", &column)]),
-    }))
+    above.map(|piece| piece.text.clone())
 }
 
 /// The sign of the mark whose picture lies within this touch area, if one does: beside it in the

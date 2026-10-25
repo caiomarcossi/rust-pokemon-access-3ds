@@ -1,7 +1,11 @@
-# Keeps one open issue labelled `upstream` saying what the port has not caught up with yet.
-# Upstream's own workflow (`.github/workflows/port.yml` there) dispatches `upstream-push` here on
-# every push to its main; a push here that changes port.toml runs this too, and closes the issue
-# once port.toml names upstream's HEAD. PORT_SYNC_TOKEN reads the private upstream repository.
+# Keeps open issues labelled `upstream` saying what the port has not caught up with yet, each
+# ported up to the commit its title names. Upstream's own workflow (`.github/workflows/port.yml`
+# there) dispatches `upstream-push` here on every push to its main; a push here that changes
+# port.toml runs this too, and closes each issue whose commit port.toml has reached. An issue
+# labelled `in progress` is never rewritten: what upstream pushes after it is claimed goes in an
+# issue of its own, from where the claimed one ends. Rewritten under Khai while he ported, the
+# issue nearly closed at the commit his agent had read, leaving what was pushed meanwhile in no
+# issue (Orion, 2026-10-25). PORT_SYNC_TOKEN reads the private upstream repository.
 name: upstream
 
 on:
@@ -30,7 +34,7 @@ jobs:
           token: ${{ secrets.PORT_SYNC_TOKEN }}
           path: upstream
           fetch-depth: 0
-      - name: Open, rewrite or close the issue
+      - name: Close, rewrite or open the issues
         env:
           GH_TOKEN: ${{ github.token }}
           PA3DS_PYTHON: upstream
@@ -38,26 +42,41 @@ jobs:
         run: |
           pinned=$(python -c "import tomllib; print(tomllib.load(open('port.toml', 'rb'))['upstream'])")
           head=$(git -C upstream rev-parse HEAD)
-          number=$(gh issue list --label upstream --state open --json number --jq '.[0].number // empty')
-          if [ "$pinned" = "$head" ]; then
-            [ -n "$number" ] && gh issue close "$number" --comment "port.toml now matches upstream ${head:0:7}."
-            exit 0
-          fi
+          from=$pinned claimed="" free=""
+          # Oldest first: each issue's commit is the last word of its title.
+          gh issue list --label upstream --state open --json number,title,labels --jq \
+            'sort_by(.number)[] | "\(.number) \(.title | split(" ") | last) \(any(.labels[]; .name == "in progress"))"' \
+            > issues.txt
+          while read -r number commit taken; do
+            if git -C upstream merge-base --is-ancestor "$commit" "$pinned" 2>/dev/null; then
+              gh issue close "$number" --comment "port.toml now matches upstream ${pinned:0:7}." </dev/null
+            elif [ "$taken" = true ]; then
+              from=$(git -C upstream rev-parse "$commit") claimed=$number
+            else
+              free=$number
+            fi
+          done < issues.txt
+          # Nothing left to port, or all of it in an issue already claimed.
+          [ "$from" = "$head" ] && exit 0
           {
             echo "Upstream is at $UPSTREAM_REPO@$head; port.toml matches $UPSTREAM_REPO@$pinned."
-            echo "Compare: https://github.com/$UPSTREAM_REPO/compare/$pinned...$head"
+            if [ -n "$claimed" ]; then
+              echo "#$claimed, in progress, ports up to $UPSTREAM_REPO@$from; this issue starts there."
+            fi
+            echo "Compare: https://github.com/$UPSTREAM_REPO/compare/$from...$head"
             echo
-            echo "Port it as AGENTS.md's *Keeping up with upstream* says. This issue closes itself"
-            echo "when a push to the default branch brings port.toml level with upstream."
+            echo "Port it as AGENTS.md's *Keeping up with upstream* says, up to the commit in this"
+            echo "issue's title. It closes itself when a push to the default branch brings port.toml"
+            echo "there; never close it by hand."
             echo
             echo '```'
             # An issue body holds 65536 characters; the whole refactor round's status was 16k.
-            python tools/sync.py status | sed 's#git -C upstream#git -C ../pokemon-access-3ds#' | head -c 60000
+            python tools/sync.py status "$from" | sed 's#git -C upstream#git -C ../pokemon-access-3ds#' | head -c 60000
             echo '```'
           } > body.md
           title="Port upstream up to ${head:0:7}"
-          if [ -n "$number" ]; then
-            gh issue edit "$number" --title "$title" --body-file body.md
+          if [ -n "$free" ]; then
+            gh issue edit "$free" --title "$title" --body-file body.md
           else
             gh issue create --label upstream --title "$title" --body-file body.md
           fi

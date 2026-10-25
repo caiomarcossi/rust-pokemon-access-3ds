@@ -29,6 +29,14 @@
 //! measured, Route 9, Parfum Palace and its garden, Route 7 and a Lumiose building, +0xebc reads
 //! exactly 0 (spike 239, x_glittering_cave). So `behind` tells a camera behind the player on the grid
 //! from the grid's own, which `looks` reads.
+//!
+//! Omega Ruby keeps the same camera with a block 16 bytes smaller, 0x1458, and where it looks 16
+//! bytes sooner, +0xc20, the way from where it is to what it looks at just before it as in X. On
+//! the Battle Resort's beach it reads pi/2, the way (0.77, -0.64, 0): east, and up walked the
+//! player east, into the counter of the hut P said to walk north past; in the Contest Spectacular
+//! Hall -pi, north (spike 241, or_battle_resort_pathfinding_glitch). Until then the size was X's
+//! alone, no block was ever found, and ORAS's compass stayed north. No camera behind the player
+//! has been seen in ORAS, so its `yaw` is read nowhere.
 
 use std::f64::consts::PI;
 
@@ -40,18 +48,38 @@ use crate::py::Result;
 pub const CLASS: &str = "N9xy_system11CCameraULCDE";
 /// Where the camera object points at the block holding its heading.
 pub const BLOCK: i64 = 0x64;
-pub const BLOCK_SIZE: i64 = 0x1468;
-pub const LOOKS: i64 = 0xC30;
-pub const YAW: i64 = 0xEBC;
+
+/// Where one game's camera block keeps what is read of it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Shape {
+    /// The block's size, as its heap's header gives it, which tells it from what reuses it.
+    pub size: i64,
+    /// Where the camera looks (`looks`).
+    pub looks: i64,
+    /// The camera's heading behind the player or on a rail (`heading`), or None where the game
+    /// has not been seen to keep one.
+    pub yaw: Option<i64>,
+}
+
+pub const X: Shape = Shape {
+    size: 0x1468,
+    looks: 0xC30,
+    yaw: Some(0xEBC),
+};
+pub const ORAS: Shape = Shape {
+    size: 0x1458,
+    looks: 0xC20,
+    yaw: None,
+};
 
 /// The block holding the camera's heading, through whichever camera object points at one;
 /// None when no sweep has found one.
-pub fn find(found: &Found, memory: &dyn Memory) -> Result<Option<i64>> {
+pub fn find(found: &Found, memory: &dyn Memory, shape: &Shape) -> Result<Option<i64>> {
     let mut cameras = found.of(&[CLASS]);
     cameras.sort();
     for camera in cameras {
         let block = u32(&memory.read(camera + BLOCK, 4)?, 0)?;
-        if within(HEAP_SPAN, block) && is_block(memory, block)? {
+        if within(HEAP_SPAN, block) && is_block(memory, block, shape)? {
             return Ok(Some(block));
         }
     }
@@ -59,33 +87,37 @@ pub fn find(found: &Found, memory: &dyn Memory) -> Result<Option<i64>> {
 }
 
 /// Whether `block` still starts the camera's block: freed, the heap reuses it.
-pub fn is_block(memory: &dyn Memory, block: i64) -> Result<bool> {
+pub fn is_block(memory: &dyn Memory, block: i64, shape: &Shape) -> Result<bool> {
     let head = memory.read(block, 8)?;
-    Ok(u32(&head, 0)? == ALLOCATION && u32(&head, 4)? == BLOCK_SIZE)
+    Ok(u32(&head, 0)? == ALLOCATION && u32(&head, 4)? == shape.size)
 }
 
 /// The camera's heading in the world, in degrees, or None when the block is not the
-/// camera's any more or holds no angle.
-pub fn heading(memory: &dyn Memory, block: i64) -> Result<Option<f64>> {
-    if !is_block(memory, block)? {
+/// camera's any more, holds no angle, or the game keeps none.
+pub fn heading(memory: &dyn Memory, block: i64, shape: &Shape) -> Result<Option<f64>> {
+    let Some(at) = shape.yaw else {
+        return Ok(None);
+    };
+    if !is_block(memory, block, shape)? {
         return Ok(None);
     }
-    let yaw = angle(memory, block, YAW)?;
+    let yaw = angle(memory, block, at)?;
     Ok(yaw.map(f64::to_degrees))
 }
 
-/// The heading of a camera behind the player, in degrees (`heading`), or None where `YAW`
+/// The heading of a camera behind the player, in degrees (`heading`), or None where `yaw`
 /// reads 0, as it does wherever the camera is the grid's own (spike 239).
-pub fn behind(memory: &dyn Memory, block: i64) -> Result<Option<f64>> {
+pub fn behind(memory: &dyn Memory, block: i64, shape: &Shape) -> Result<Option<f64>> {
     // Python's `heading(...) or None`: 0.0, and -0.0, are false.
-    Ok(heading(memory, block)?.filter(|&yaw| yaw != 0.0))
+    Ok(heading(memory, block, shape)?.filter(|&yaw| yaw != 0.0))
 }
 
-/// Where the camera looks, in radians the way a model faces (`LOOKS`), or None when the block
-/// is not the camera's any more or holds no angle: the way up walks the player off the rails.
-pub fn looks(memory: &dyn Memory, block: i64) -> Result<Option<f64>> {
-    if is_block(memory, block)? {
-        angle(memory, block, LOOKS)
+/// Where the camera looks, in radians the way a model faces (`Shape.looks`), or None when the
+/// block is not the camera's any more or holds no angle: the way up walks the player off the
+/// rails.
+pub fn looks(memory: &dyn Memory, block: i64, shape: &Shape) -> Result<Option<f64>> {
+    if is_block(memory, block, shape)? {
+        angle(memory, block, shape.looks)
     } else {
         Ok(None)
     }

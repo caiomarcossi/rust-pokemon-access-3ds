@@ -46,7 +46,7 @@ use crate::core::keyfile;
 use crate::core::toml;
 use crate::core::touch;
 use crate::core::words::own;
-use crate::py::{self, Error, Result};
+use crate::py::{self, Result};
 
 pub const FILE_NAME: &str = "config.toml";
 pub const EMULATOR_SECTION: &str = "azahar";
@@ -74,6 +74,7 @@ pub struct General {
     pub keys: bool,
     pub poll_rate: f64,
     pub azahar_folder: String,
+    pub hide_window: bool,
 }
 
 impl Default for General {
@@ -82,6 +83,7 @@ impl Default for General {
             keys: true,
             poll_rate: 60.0,
             azahar_folder: String::new(),
+            hide_window: true,
         }
     }
 }
@@ -92,6 +94,7 @@ impl Table for General {
             ("keys", Value::Bool(self.keys)),
             ("poll_rate", Value::Float(self.poll_rate)),
             ("azahar_folder", Value::Str(self.azahar_folder.clone())),
+            ("hide_window", Value::Bool(self.hide_window)),
         ]
     }
 
@@ -101,6 +104,7 @@ impl Table for General {
             ("poll_rate", Value::Int(value)) => self.poll_rate = value as f64,
             ("poll_rate", Value::Float(value)) => self.poll_rate = value,
             ("azahar_folder", Value::Str(value)) => self.azahar_folder = value,
+            ("hide_window", Value::Bool(value)) => self.hide_window = value,
             _ => {}
         }
     }
@@ -272,7 +276,7 @@ pub const MOVED: [((&str, &str), &str); 2] = [
 ];
 
 /// `kind().fields()` for the dataclass `TABLES` names.
-fn defaults(name: &str) -> Vec<(&'static str, Value)> {
+pub(crate) fn defaults(name: &str) -> Vec<(&'static str, Value)> {
     match name {
         "pa3ds" => General::default().fields(),
         "pa3ds.ui" => Ui::default().fields(),
@@ -283,113 +287,17 @@ fn defaults(name: &str) -> Vec<(&'static str, Value)> {
     }
 }
 
-/// What each setting does, as the file's comment above it says it.
-pub const EXPLAINED: [(&str, &str); 19] = [
-    (
-        "pa3ds.keys",
-        "answer pa3ds's keys and bind Azahar's buttons, as keys.toml says",
-    ),
-    (
-        "pa3ds.poll_rate",
-        "how many times a second to read the game: 60, the game's own frame rate; 30 for a slower \
-         machine",
-    ),
-    (
-        "pa3ds.azahar_folder",
-        "the folder a portable Azahar is in, the one with azahar.exe and a user folder; empty for \
-         an Azahar installed in the usual way, whose settings are in AppData. pa3ds fills it in \
-         when you choose the folder it asks for",
-    ),
-    (
-        "pa3ds.ui.pauses",
-        "put pauses between pieces of screen text said together: a colon after a label, as in \
-         \"OT: Raiden\", and a comma between the rest",
-    ),
-    (
-        "pa3ds.ui.interrupt",
-        "cut off speech when a menu's cursor moves, instead of queueing; pa3ds's own keys always \
-         do",
-    ),
-    (
-        "pa3ds.ui.unfocused",
-        "keep saying what the game shows while another window is in front; otherwise pa3ds is \
-         quiet then, but for its own keys and messages",
-    ),
-    (
-        "pa3ds.ui.descriptions",
-        "describe the scenes the game shows without words, as Groudon wakes: pa3ds's own words, \
-         said after the line each scene follows; for the scenes described so far, in English",
-    ),
-    (
-        "pa3ds.ui.language",
-        "the language pa3ds says its own words in, as the name of a folder of its data: en, fr, \
-         de, es, it, ja, ko, zh-CN or zh-TW. Empty follows the game's own language, which pa3ds \
-         reads from the save; set it where that is wrong, as for a fan translation over another \
-         language, and in Sun and Moon, whose save pa3ds cannot read, where it is the game's \
-         language too",
-    ),
-    (
-        "pa3ds.audio.tones",
-        "how loud the short tone is as a map's cursor or touch mode moves, higher the further up \
-         and panned the further right, to say where the cursor is: 1 as loud as the game, 0.5 \
-         half as loud, 1.5 louder, 0 none",
-    ),
-    (
-        "pa3ds.audio.footsteps",
-        "how loud pa3ds's own footsteps are on the ground where the game plays none, as streets, \
-         floors and caves: 1 as loud as the game would play them, 0.5 half as loud, 1.5 louder, 0 \
-         none",
-    ),
-    (
-        "pa3ds.navigation.positions",
-        "say where a thing is in the list, as in \"door, 1 of 3\"",
-    ),
-    (
-        "pa3ds.navigation.position_first",
-        "say the place in the list before the way to it, \"door, 1 of 3, 1 north\"; false says \
-         \"door, 1 north, 1 of 3\"",
-    ),
-    (
-        "pa3ds.navigation.turn_by_turn",
-        "once P has found the way, say each turn as it is reached; false says the way once, and P \
-         again says it from where you stand",
-    ),
-    (
-        "pa3ds.navigation.guide_to_hidden",
-        "when a DexNav search finds the Pokémon searched for, or the DexNav finds one by itself \
-         while it is open and you are in touch mode, find the way to it as P does and keep P on \
-         it, whatever the list was on; one found while the AreaNav is open is left alone",
-    ),
-    (
-        "pa3ds.navigation.track_boulders",
-        "say how far a big boulder has moved from where its room starts it, as in \"big boulder, \
-         2 east, moved 1 north\", so you know which you have pushed; the game shows where each \
-         boulder is, never where it started",
-    ),
-    (
-        "pa3ds.navigation.hide_door_signs",
-        "leave a sign out of the list when all it says is the name of a door beside it, as \
-         Mauville Hills' \"Apt. 13 Wattson's Home\"; a sign that says more, as a Gym's does, stays",
-    ),
-    (
-        "pa3ds.navigation.show_y",
-        "say how high as well, as y after x and z, when C says where you stand and shift and C \
-         where the thing chosen is: \"x 71, z 35, y 20\"; in the game's own units, 18 to a \
-         square's width, and left out where pa3ds does not know it, as in Sun and Moon",
-    ),
-    (
-        "pa3ds.navigation.sort_by_distance",
-        "list mode's list nearest first, which changes as you walk; false keeps each thing in one \
-         place in it, the order the game's own tables have, so you can tell which house you have \
-         been in by where it is; direction mode is nearest first either way",
-    ),
-    (
-        "pa3ds.extras.conditions",
-        "say a Pokémon's contest conditions as numbers where the game draws them as a star, on \
-         the summary and in the Pokéblock Case: the star is shown to everyone but pa3ds cannot \
-         read it, so its numbers are all it can give, and they are more exact than the star",
-    ),
-];
+/// The message naming a setting, `pa3ds.ui.pauses` as `setting-pa3ds-ui-pauses`, in pa3ds's
+/// own words (ADR-0040): its short name in the settings dialog. `-about` after it is what the
+/// setting does, the comment above it in the file and its description in the dialog.
+pub fn message(name: &str) -> String {
+    format!("setting-{}", name.replace('.', "-"))
+}
+
+/// What a setting does, `pa3ds.ui.pauses`'s, in the words in place.
+pub fn explained(name: &str) -> String {
+    own(&format!("{}-about", message(name)), &[])
+}
 
 /// Azahar's settings as pa3ds ships them, each by its name in `qt-config.ini`.
 pub fn azahar() -> IndexMap<&'static str, (Value, &'static str)> {
@@ -494,7 +402,7 @@ pub fn render() -> Result<String> {
     for name in TABLES {
         lines.extend(["".to_string(), format!("[{name}]")]);
         for (setting, value, said) in settings(name)? {
-            lines.extend(setting_lines(setting, &value, said));
+            lines.extend(setting_lines(setting, &value, &said));
         }
     }
     lines.extend([
@@ -510,38 +418,30 @@ pub fn render() -> Result<String> {
         "# alone.".to_string(),
     ]);
     for (setting, value, said) in settings(EMULATOR_SECTION)? {
-        lines.extend(setting_lines(setting, &value, said));
+        lines.extend(setting_lines(setting, &value, &said));
     }
     lines.push("".to_string());
     Ok(lines.join("\n"))
 }
 
 /// A table's settings as the file has them: name, default and what it does.
-fn settings(table: &str) -> Result<Vec<(&'static str, Value, &'static str)>> {
+fn settings(table: &str) -> Result<Vec<(&'static str, Value, String)>> {
     if table == EMULATOR_SECTION {
         return Ok(azahar()
             .into_iter()
-            .map(|(name, (default, said))| (name, default, said))
+            .map(|(name, (default, said))| (name, default, said.to_string()))
             .collect());
     }
-    defaults(table)
+    Ok(defaults(table)
         .into_iter()
-        .map(|(setting, default)| {
-            let key = format!("{table}.{setting}");
-            let said = EXPLAINED
-                .iter()
-                .find(|(explained, _)| *explained == key)
-                .map(|(_, said)| *said)
-                .ok_or_else(|| Error::key(py::repr(&key)))?;
-            Ok((setting, default, said))
-        })
-        .collect()
+        .map(|(setting, default)| (setting, default, explained(&format!("{table}.{setting}"))))
+        .collect())
 }
 
 /// One setting's lines: a blank, what it does, and the setting at its default.
 fn setting_lines(name: &str, value_: &Value, said: &str) -> Vec<String> {
     let mut lines = vec!["".to_string()];
-    lines.extend(explained(said));
+    lines.extend(_explained(said));
     lines.push(format!("{name} = {}", value(value_)));
     lines
 }
@@ -558,7 +458,7 @@ pub fn fill(text: &str) -> Result<(String, Vec<String>)> {
             .get(table)
             .map(|pairs| pairs.iter().map(|(name, _)| name.as_str()).collect())
             .unwrap_or_default();
-        let lacking: Vec<(&str, Value, &str)> = settings(table)?
+        let lacking: Vec<(&str, Value, String)> = settings(table)?
             .into_iter()
             .filter(|(name, _, _)| !named.contains(name))
             .map(|(name, value, said)| (name, carried(&parsed, table, name, value), said))
@@ -607,15 +507,20 @@ fn carried(
 }
 
 /// What a setting does, as a sentence in comment lines short enough for a terminal.
-fn explained(said: &str) -> Vec<String> {
+// Python's `_explained` sits beside a public `explained`, so it keeps its underscore.
+fn _explained(said: &str) -> Vec<String> {
     let mut rest = said.chars();
     let first: String = rest
         .next()
         .map(|first| first.to_uppercase().collect())
         .unwrap_or_default();
-    toml::comment(
-        py::wrap(&format!("{first}{}.", rest.as_str()), 94).expect("94 is a positive width"),
-    )
+    let sentence = format!("{first}{}", rest.as_str());
+    let sentence = if sentence.ends_with('.') {
+        sentence
+    } else {
+        format!("{sentence}.")
+    };
+    toml::comment(py::wrap(&sentence, 94).expect("94 is a positive width"))
 }
 
 fn value(value: &Value) -> String {
@@ -966,19 +871,33 @@ pub fn prepare(
     })
 }
 
-/// Set `azahar_folder` in the settings file to `folder`, as the player asked by choosing it:
-/// on its line, commented out or not, or else added to `[pa3ds]`. Nothing else in the file
-/// changes. False when the file cannot be read or written.
+/// Set `azahar_folder` in the settings file to `folder`, as the player asked by choosing it
+/// (`change`).
 pub fn remember_azahar(folder: &Path, home: Option<&Path>) -> Result<bool> {
+    change(
+        &[(
+            "pa3ds.azahar_folder".to_string(),
+            Value::Str(py::path_str(folder)),
+        )],
+        home,
+    )
+}
+
+/// Set each setting in the settings file, named by its table and itself
+/// (`pa3ds.ui.pauses`), as the player asked: on its line, commented out or not, or else added to
+/// its table. Nothing else in the file changes, its comments and order kept (the settings
+/// dialog, docs/plans/pa3ds-window.md). False when the file cannot be read or written.
+pub fn change(settings: &[(String, Value)], home: Option<&Path>) -> Result<bool> {
     let path = config_path(home)?;
-    let (text, _, problem) = toml::load(&path);
+    let (mut text, _, problem) = toml::load(&path);
     if !problem.is_empty() {
         return Ok(false);
     }
-    let line = format!("azahar_folder = {}", toml::quote(&py::path_str(folder)));
-    let changed = toml::replace(&text, "pa3ds", "azahar_folder", &line);
-    toml::write(
-        &path,
-        &changed.unwrap_or_else(|| toml::append(&text, "pa3ds", &[line])),
-    )
+    for (name, setting_value) in settings {
+        let (table, setting) = name.rsplit_once('.').unwrap_or(("", name));
+        let line = format!("{setting} = {}", value(setting_value));
+        text = toml::replace(&text, table, setting, &line)
+            .unwrap_or_else(|| toml::append(&text, table, &[&line]));
+    }
+    toml::write(&path, &text)
 }

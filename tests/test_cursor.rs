@@ -4,6 +4,7 @@
 // and setting the reader last. Here a struct is built as soon as its fields exist and holds a
 // reader made the plain way until `__init__`'s own line replaces it.
 
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 
@@ -21,8 +22,8 @@ use crate::core::words::{self, ENGLISH, Words};
 use crate::games::common::cursors::reader::CursorReader;
 use crate::games::common::cursors::shared::{CursorItem, CursorPoll};
 use crate::games::common::layout_file::LayoutFiles;
-use crate::games::common::lyt;
 use crate::games::common::screen::{Pictures, ScreenText, join};
+use crate::games::common::{lyt, slots};
 use crate::games::sm::lyt::SHAPE as SUN_SHAPE;
 
 const BASE: i64 = 0x08200000;
@@ -458,6 +459,99 @@ fn test_a_menu_cursors_rows_are_panels_where_its_words_stand_alone_in_theirs() {
             .iter()
             .map(|piece| piece.r#box)
             .collect::<HashSet<i64>>()
+    );
+}
+
+/// ADR-0012: a menu never lists itself. The fitting room's list is a column of cards in one
+/// panel, each card a picture in a pane of its own, the cursor on the middle one: the next
+/// card's name, peeking at the screen's edge, was said as each move's details
+/// (x_cyllage_boutique_fitting_room).
+#[test]
+fn test_a_menu_cursors_rows_are_the_cards_drawn_like_its_own_anywhere_in_their_panel() {
+    let mut menu = Menu::new();
+    let (_work, root) = menu.fake.screen_with(0x08400000, false, false);
+    let column = 0x08401000;
+    menu.fake.pane(column, root);
+    let mut pieces: Vec<ScreenText> = Vec::new();
+    for (i, (text, y)) in [
+        ("Logo Cap black", 180.0),
+        ("Two-Tone Bag red", 60.0),
+        ("Zipped Jacket", -60.0),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let (holder, card) = (0x08402000 + i as i64 * 0x100, 0x08403000 + i as i64 * 0x100);
+        menu.fake.pane(holder, column);
+        menu.fake.pane(card, holder);
+        for (offset, value) in [
+            (lyt::X, -80.0),
+            (lyt::Y, y),
+            (lyt::WIDTH, 178.0),
+            (lyt::HEIGHT, 106.0),
+        ] {
+            put(&menu.memory, card + offset, &[value]);
+        }
+        pieces.push(ScreenText {
+            root,
+            parent: card,
+            panel: column,
+            ..ScreenText::placed(
+                0x08404000 + i as i64 * 0x100,
+                text,
+                false,
+                -120.0,
+                -40.0,
+                y,
+                12.5,
+            )
+        });
+    }
+    menu.fake.track().unwrap();
+    assert_eq!(
+        menu.heard_with(&pieces),
+        said(&[(&["Two-Tone Bag red"], true)])
+    );
+    assert_eq!(
+        menu.reader.last.rows.clone(),
+        pieces
+            .iter()
+            .map(|piece| piece.r#box)
+            .collect::<HashSet<i64>>()
+    );
+}
+
+/// The fitting room writes the next colour into the card under its cursor and shows its
+/// "Wearing" a poll before it hides the price: each move was said half written, "Two-Tone Bag
+/// black $2,900 Wearing", and then again whole (x_cyllage_boutique_fitting_room).
+#[test]
+fn test_words_coming_beside_those_under_a_cursor_that_has_not_moved_wait_a_poll() {
+    let mut menu = Menu::new();
+    let name = label(1, "Two-Tone Bag", -70.0, 66.0);
+    let price = label(2, "$2,900", -70.0, 54.0);
+    let wearing = label(3, "Wearing", -40.0, 54.0);
+    menu.heard_with(&[name.clone(), label(4, "red", -40.0, 66.0), price.clone()]);
+    let black = label(4, "black", -40.0, 66.0);
+    assert_eq!(
+        menu.heard_with(&[name.clone(), black.clone(), price, wearing.clone()]),
+        said(&[])
+    );
+    assert_eq!(
+        menu.heard_with(&[name, black, wearing]),
+        said(&[(&["Two-Tone Bag", "black", "Wearing"], false)])
+    );
+}
+
+/// The Bag's list writes the next item into the row under its cursor as it scrolls, with the
+/// item's description beside the list: held a poll, the item was said after its description had
+/// changed, and the description went unsaid (or_dexnav_chain_linoone).
+#[test]
+fn test_words_rewritten_in_place_under_a_cursor_that_has_not_moved_are_said_at_once() {
+    let mut menu = Menu::new();
+    menu.heard_with(&[label(1, "Icy Rock", -70.0, 60.0)]);
+    assert_eq!(
+        menu.heard_with(&[label(1, "Stardust", -70.0, 60.0)]),
+        said(&[(&["Stardust"], false)])
     );
 }
 
@@ -2533,17 +2627,20 @@ struct BoxGrid {
     cursor: i64,
     reader: Reader,
     title: ScreenText,
+    files: Rc<LayoutFiles>,
 }
 
 impl BoxGrid {
     fn new() -> BoxGrid {
-        BoxGrid::with(false, lyt::ORAS)
+        BoxGrid::with(false, lyt::ORAS, false)
     }
 
     /// `bar` adds the bottom bar many screens share, `touch_bar_lower`, holding a button
     /// `change_box.bclim` where the Box's own layout leaves an empty pane (spike 143, movie12).
-    /// `shape` lays the panes out as that game's NintendoWare does.
-    fn with(bar: bool, shape: lyt::PaneShape) -> BoxGrid {
+    /// `shape` lays the panes out as that game's NintendoWare does. `battle` adds the Battle
+    /// Box's six slots under the root, beside the grid in no row or column of it, as they stay
+    /// shown whichever is drawn (or_battle_box).
+    fn with(bar: bool, shape: lyt::PaneShape, battle: bool) -> BoxGrid {
         let memory = FakeMemory::new();
         let classes = FakeClasses::new(memory.clone());
         let picture = classes.add(lyt::PICTURE_CLASS);
@@ -2552,6 +2649,7 @@ impl BoxGrid {
         let (work, root) = fake.screen_with(GRID, false, false);
         fake.project(work, 320.0);
         let reader = reader_of(&fake, &memory);
+        let memory_of_grid = memory.clone();
         let mut grid = BoxGrid {
             shape,
             memory,
@@ -2563,6 +2661,7 @@ impl BoxGrid {
             cursor: 0,
             reader,
             title: ScreenText::new(0, "", false),
+            files: Rc::new(LayoutFiles::new(memory_of_grid.clone())),
         };
         for row in 0..2 {
             for column in 0..3 {
@@ -2605,6 +2704,21 @@ impl BoxGrid {
                 50.0,
                 40.0,
             );
+        }
+        if battle {
+            for slot in 0..6 {
+                grid.add(
+                    &format!("d{slot}"),
+                    root,
+                    Some(bounding),
+                    b"bnd1",
+                    0,
+                    -80.0 + 50.0 * (slot % 2) as f64,
+                    40.0 - 20.0 * slot as f64,
+                    40.0,
+                    30.0,
+                );
+            }
         }
         for (name, x, y) in [
             ("i0", 80.0, 55.0),
@@ -2782,6 +2896,7 @@ impl BoxGrid {
             files.add_archive(BAR_FILE).unwrap();
         }
         grid.reader = reader_with_files(&grid.fake, &grid.memory, &files);
+        grid.files = files;
         grid.title = ScreenText {
             root: grid.root,
             parent: grid.root,
@@ -2873,7 +2988,7 @@ fn test_a_party_slot_is_said_by_its_number() {
 #[test]
 fn test_a_slot_is_read_through_its_game_s_pane_shape() {
     assert_eq!(
-        BoxGrid::with(false, SUN_SHAPE).rest(80.0, 55.0),
+        BoxGrid::with(false, SUN_SHAPE, false).rest(80.0, 55.0),
         said(&[(&["Party 1"], true)])
     );
 }
@@ -2965,6 +3080,69 @@ fn test_coming_back_to_the_slot_a_group_last_said_says_it_again() {
     assert_eq!(r#box.rest(80.0, 55.0), said(&[(&["Party 1"], false)]));
 }
 
+/// The Battle Box's six are no full grid, and hang from the root, where the party's hang from
+/// a panel: they went unsaid, filled or empty (or_battle_box).
+#[test]
+fn test_the_battle_boxs_slots_are_said_by_the_name_above_them_and_their_number() {
+    let mut r#box = BoxGrid::with(false, lyt::ORAS, true);
+    let icon = r#box
+        .names
+        .iter()
+        .find(|(name, _pane, _kind, _material)| name == "i1")
+        .unwrap()
+        .1;
+    put(&r#box.memory, icon + lyt::X, &[-80.0]);
+    put(&r#box.memory, icon + lyt::Y, &[40.0]);
+    r#box.rest(80.0, 55.0);
+    assert_eq!(r#box.rest(-80.0, 40.0), said(&[(&["BOX 1 1"], false)]));
+    assert_eq!(
+        r#box.rest(-30.0, 20.0),
+        said(&[(&["BOX 1 2, empty"], false)])
+    );
+    // The box's thirty behind it, still shown, are no slot to a tap.
+    let file = r#box
+        .files
+        .matching(&r#box.fake.layouts.pane_names(r#box.root));
+    let found = slots::slot(
+        &r#box.fake.layouts,
+        file.as_deref(),
+        r#box.root,
+        -100.0,
+        25.0,
+        &[r#box.title.clone()],
+        None,
+    )
+    .unwrap();
+    assert!(found.is_some_and(|found| found.1.is_empty()));
+}
+
+/// Under BOX 1 the Battle Box's slots stay shown, holding no icon.
+#[test]
+fn test_the_battle_boxs_slots_are_none_while_a_box_is_drawn() {
+    let mut r#box = BoxGrid::with(false, lyt::ORAS, true);
+    r#box.rest(80.0, 55.0);
+    assert_eq!(
+        r#box.rest(-100.0, 25.0),
+        said(&[(&["BOX 1, row 2, column 2"], false)])
+    );
+    let file = r#box
+        .files
+        .matching(&r#box.fake.layouts.pane_names(r#box.root));
+    assert_eq!(
+        slots::slot(
+            &r#box.fake.layouts,
+            file.as_deref(),
+            r#box.root,
+            -80.0,
+            40.0,
+            &[r#box.title.clone()],
+            None,
+        )
+        .unwrap(),
+        None
+    );
+}
+
 /// The top screen shows the carried Pokémon's summary over every slot, and carrying Umbra over
 /// Blaze's slot said "Party 1" and Umbra's summary (or/movie9_pc_organize_screens).
 #[test]
@@ -2992,6 +3170,76 @@ fn test_a_slot_under_a_pokemon_carried_is_said_without_the_summary() {
         );
     }
     assert_eq!(heard, lines(&[("Party 1", true)]));
+}
+
+/// Carrying Gigas over erza's slot said only "BOX 1, row 1, column 2" (Orion,
+/// or_organize_boxes): the game's reader names who is in it, by the slot's group and place.
+#[test]
+fn test_a_slot_under_a_pokemon_carried_says_who_is_in_it() {
+    let r#box = BoxGrid::new();
+    let file = r#box
+        .files
+        .matching(&r#box.fake.layouts.pane_names(r#box.root));
+    let asked: Rc<RefCell<Vec<(String, Option<String>, i64)>>> = Rc::new(RefCell::new(Vec::new()));
+    let occupant: slots::Occupant = {
+        let asked = asked.clone();
+        Rc::new(move |kind: &str, title: Option<&str>, index: i64| {
+            asked
+                .borrow_mut()
+                .push((kind.to_string(), title.map(String::from), index));
+            Ok(Some("erza".to_string()))
+        })
+    };
+    let carried = r#box
+        .names
+        .iter()
+        .find(|(name, _pane, _kind, _material)| name == "ih")
+        .unwrap()
+        .1;
+    for (x, y) in [(80.0, 55.0), (-100.0, 25.0)] {
+        put(&r#box.memory, carried + lyt::X, &[x]);
+        put(&r#box.memory, carried + lyt::Y, &[y + slots::CARRIED]);
+        r#box.fake.layouts.refresh();
+        let found = slots::slot(
+            &r#box.fake.layouts,
+            file.as_deref(),
+            r#box.root,
+            x,
+            y,
+            std::slice::from_ref(&r#box.title),
+            Some(&occupant),
+        )
+        .unwrap()
+        .expect("a slot");
+        assert!(found.2);
+        assert!(["Party 1, erza", "BOX 1, row 2, column 2, erza"].contains(&found.1.as_str()));
+    }
+    assert_eq!(
+        *asked.borrow(),
+        [
+            (slots::PARTY.to_string(), None, 0),
+            (slots::TITLED_GRID.to_string(), Some("BOX 1".to_string()), 4),
+        ]
+    );
+    // Not carrying, the summary says who it is.
+    put(&r#box.memory, carried + lyt::Y, &[200.0]);
+    r#box.fake.layouts.refresh();
+    let found = slots::slot(
+        &r#box.fake.layouts,
+        file.as_deref(),
+        r#box.root,
+        -100.0,
+        25.0,
+        std::slice::from_ref(&r#box.title),
+        Some(&occupant),
+    )
+    .unwrap()
+    .expect("a slot");
+    assert_eq!(
+        (found.1.as_str(), found.2),
+        ("BOX 1, row 2, column 2", false)
+    );
+    assert_eq!(asked.borrow().len(), 2);
 }
 
 #[test]
@@ -3046,7 +3294,7 @@ fn test_a_mark_is_said_by_its_sign_and_whether_it_is_set() {
 /// layout many screens share, where the Box's own leaves an empty pane (spike 143, movie12).
 #[test]
 fn test_the_bottom_bars_button_under_the_pointer_is_said_by_its_picture() {
-    let mut r#box = BoxGrid::with(true, lyt::ORAS);
+    let mut r#box = BoxGrid::with(true, lyt::ORAS, false);
     r#box.rest(80.0, 55.0);
     assert_eq!(
         r#box.rest(-110.0, -105.0),
@@ -3060,7 +3308,7 @@ fn test_the_bottom_bars_button_under_the_pointer_is_said_by_its_picture() {
 /// 143).
 #[test]
 fn test_with_the_boxs_words_hidden_its_pointer_says_only_another_layouts_button() {
-    let mut r#box = BoxGrid::with(true, lyt::ORAS);
+    let mut r#box = BoxGrid::with(true, lyt::ORAS, false);
     r#box.rest(80.0, 55.0);
     assert_eq!(r#box.rest_with(-100.0, 55.0, false), said(&[]));
     assert_eq!(

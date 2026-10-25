@@ -7,12 +7,14 @@ When one of them is also bound to an Azahar button, pa3ds says so as it starts.
 ## The map's list
 
 pa3ds lists what is on the map in categories: all, exits, interactables, obstacles, people, items,
-berries, ash, bike, riding, currents and pokémon, and while soaring, towns, routes, landmarks and mirage
+berries, ash, bike, riding, climbing, currents and pokémon, and while soaring, towns, routes, landmarks and mirage
 spots. A category with nothing in it is skipped. Each thing is said with where it is from you:
-"door, 1 of 3, 3 east 2 north". North is the way up walks you: where the camera is turned, as in
-Parfum Palace's garden in X, the directions turn with it. Where the camera stays behind you and
-left, right and down turn you, as in X's Glittering Cave, things are said from the way you face,
-"9 ahead 8 left", and `P` says the turns, "turn left, 5 forward".
+"door, 1 of 3, 3 east 2 north". A thing more than two squares' height above or below you says how
+far, in the game's units, 18 to a square: "item ball, 1 north, 90 below". North is the way up
+walks you: where the camera is turned, as in Parfum Palace's garden in X or on the Battle Resort's
+beach, the directions turn with it. Where the camera stays behind you and left, right and down
+turn you, as in X's Glittering Cave, things are said from the way you face, "9 ahead 8 left", and
+`P` says the turns, "turn left, 5 forward".
 
 The list has three **modes**, and the apostrophe steps through them. During a battle or a scene
 the map's keys say "no map", and the thing you had chosen is kept for when the map comes back.
@@ -73,6 +75,9 @@ Circle Pad, or raise a shield with L.
 
 ## Finding the way
 
+**Into another place.** A step of the way that takes you into another town or route names it:
+"5 north into Route 101".
+
 **Lining up.** The circle pad can leave you between two squares, and the game then refuses some
 steps past the corner of a wall. Where that would stop you, `P` first says which way to step,
 "a little west, then 2 north". Tilt the circle pad gently that way, and pa3ds says "lined up".
@@ -80,6 +85,10 @@ steps past the corner of a wall. Where that would stop you, `P` first says which
 **Currents.** When a current catches you while you surf, pa3ds says where it will leave you.
 `P` and `Shift+P` ride a current as one step of the way, and find the way again if one carries
 you off it.
+
+**Ice.** In Shoal Cave at low tide you slide across the ice until a wall or the floor stops you.
+`P` says each slide as one step of the way, "slide 4 north": step that way once and let it carry
+you.
 
 **Jumping stones.** In Pokémon X, `P` crosses a mud pit by its stones: each press of the way hops
 you two squares, onto the next stone.
@@ -89,6 +98,13 @@ category lists each patch of flat ground, where you get on the Rhyhorn by facing
 with B. `P` walks you to the Rhyhorn, "Rhyhorn 1 east", across the spikes and off again, "get off
 3 north". Rocks are obstacles: on the Rhyhorn, face one and press A to smash it, which `P` says as
 "smash 1 east".
+
+**Climbing walls.** In Cyllage Gym, in X and Y, the rock walls are climbed from the blue spots at
+their foot. The climbing category lists the blue spots and each wall ledge, where you step off a
+wall sideways. `P` climbs them: "climb 3 up, 6 east" is up the wall three handholds, then six east
+along it, and "climb 3 down" is back down to the floor. Some walls are slid down instead: step onto
+the top and the game carries you to the floor below, which `P` says as "slide 5 south". A slide
+only goes down, so `P` takes the way round to go back up.
 
 **Big boulders** say which ways they can be pushed from where they stand, or "immoveable". Hold
 the way for a moment to push one a square. Push one into a hole and both leave the list.

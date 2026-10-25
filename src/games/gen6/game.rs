@@ -25,6 +25,7 @@ use crate::games::common::layout::Layouts;
 use crate::games::common::layout_file::LayoutFiles;
 use crate::games::common::screen::ScreenText;
 use crate::games::gen6::apps::RunningApp;
+use crate::games::gen6::field::camera;
 use crate::games::gen6::field::features::{
     DoorReader, Feature, HiddenReader, IceReader, SecretBaseReader,
 };
@@ -187,6 +188,17 @@ pub struct Rides {
     pub smashes: HashSet<i64>,
 }
 
+/// The cell kinds of the walls a player climbs, as X's Cyllage Gym's (`climb.Walls`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Climbing {
+    /// Where a face meets the floor, blocked.
+    pub face: i64,
+    /// The kinds of the step off a face sideways onto a ledge, each with its way.
+    pub sideways: IndexMap<i64, &'static str>,
+    /// The top of a slide down a wall, open: a slide only where the cells past it fall.
+    pub slide: i64,
+}
+
 /// One game as the gen 6 readers read it.
 ///
 /// Not `PartialEq`: the dataclass compares its callables by identity, which a `fn` pointer does
@@ -214,7 +226,7 @@ pub struct Game {
     /// a bush Cut clears, a rock Rock Smash does, a boulder Strength pushes.
     pub clears: IndexMap<i64, i64>,
     /// Where the field's work holds the Dowsing Machine's record (`dowsing`), or None where it has
-    /// not been measured, as in X and Y.
+    /// not been measured.
     pub dowsing: Option<i64>,
     /// (zone, sprite) of the move models that are a barrier's beam, three cells across the way the
     /// model faces (`field`, spike 146). The sprite is an invisible blocker of one cell elsewhere, so
@@ -255,6 +267,10 @@ pub struct Game {
     /// to one and nothing in the way after: listed under pokémon, and walked through. X's
     /// Glittering Cave, `ENEMY3D` (spike 239).
     pub lurkers: HashSet<i64>,
+    /// The sprites, other than an item ball's, of the things the player finds an item at, listed
+    /// under items: ORAS's Mega Stones, `KIRAKIRA`, an "object" among the signs in Petalburg Woods
+    /// (Orion, or_mossy_rock, 2026-10-25), and X's, `KIRAKIRA2`.
+    pub pickups: HashSet<i64>,
     /// The sprites of its invisible blockers, move models drawn as nothing that stand in the way:
     /// listed as nobody, and solid but where they stand in for a rotating door's arm. Not where a
     /// sprite is a barrier (`barriers`).
@@ -302,6 +318,9 @@ pub struct Game {
     /// What the Pokémon it lets the player ride cross, or None in a game with none: X's Rhyhorn on
     /// Route 9 (spike 238).
     pub rides: Option<Rides>,
+    /// The walls it lets the player climb, or None in a game with none: X's Cyllage Gym
+    /// (spike 245).
+    pub climbing: Option<Climbing>,
     /// Whether a row of models drawn as nothing, two or more with one script that no drawn record
     /// of their zone has, is an invisible gate: not listed, and in the way. X's Santalune Gym has
     /// five behind Viola, and AZ's room five (spike 223).
@@ -326,6 +345,9 @@ pub struct Game {
     /// set while an app has the input (`buttons`): ORAS's +0x7C and +0x9C, X's +0x70 and +0x90
     /// (spike 228).
     pub field_menu: (i64, i64),
+    /// Where its field camera's block keeps where the camera looks (`camera.Shape`): ORAS's, or
+    /// X's (spikes 230 and 239).
+    pub camera: camera::Shape,
 }
 
 impl Game {
@@ -357,6 +379,7 @@ impl Game {
             ice: None,
             ambushes: HashSet::new(),
             lurkers: HashSet::new(),
+            pickups: HashSet::new(),
             blockers: HashSet::new(),
             elevators: HashSet::new(),
             player_looks: HashSet::new(),
@@ -371,6 +394,7 @@ impl Game {
             memories: None,
             strands: 0,
             rides: None,
+            climbing: None,
             gates: false,
             form: None,
             steps: ORAS,
@@ -378,6 +402,7 @@ impl Game {
             amie: NUMBER,
             worded: IndexSet::new(),
             field_menu: MENU,
+            camera: camera::ORAS,
         }
     }
 }

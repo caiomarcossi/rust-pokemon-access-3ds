@@ -15,10 +15,6 @@ use std::time::Duration;
 use indexmap::IndexMap;
 
 use super::fake_speech::Recorder;
-use crate::core::dialog::{
-    ATOM_BUTTON, ATOM_EDIT, ATOM_STATIC, Ask, Asker, IDC_CHECK, IDC_EDIT, IDC_LABEL, IDCANCEL,
-    IDOK, template,
-};
 use crate::core::names::Names;
 use crate::core::speech::Speech;
 use crate::games::common::field::ground::Ground;
@@ -32,6 +28,10 @@ use crate::games::common::field::things::{
 };
 use crate::games::oras::field::hidden::HIDDEN_POKEMON;
 use crate::py::{self, Result};
+use crate::ux::dialog::{
+    ATOM_BUTTON, ATOM_EDIT, ATOM_STATIC, Ask, Asker, Class, IDC_CHECK, IDC_EDIT, IDC_LABEL,
+    IDCANCEL, IDOK, template,
+};
 
 const NORMAN: i64 = 0x13F;
 const MART: i64 = 0x1AF;
@@ -127,7 +127,7 @@ impl FieldSource for FakeField {
         })
     }
 
-    fn ground(&self, _where: &Field, _height: Option<f64>) -> Result<Ground> {
+    fn ground(&self, _where: &Field) -> Result<Ground> {
         unimplemented!("FakeField has no ground")
     }
 }
@@ -827,13 +827,13 @@ fn test_a_person_with_no_record_has_no_box_to_tick() {
 
 // ---------------------------------------------------------------- the template
 
-/// A dialog template read back: its title, and each item as (id, class atom, text).
+/// A dialog template read back: its title, and each item as (id, class atom or name, text).
 ///
 /// Windows does not forgive a template that is a byte out — it builds the wrong controls, or
 /// none — and nothing here can see the window that comes out. Reading the bytes back the way
 /// Windows reads them is the next best thing: if this parser finds four items with the right
 /// classes in the right order, so will `DialogBoxIndirectParamW`.
-fn read_template(built: &[u8]) -> (String, Vec<(i64, i64, String)>) {
+pub(super) fn read_template(built: &[u8]) -> (String, Vec<(i64, Class, String)>) {
     fn wstr(built: &[u8], at: &mut usize) -> String {
         let mut end = *at;
         while built[end..end + 2] != [0, 0] {
@@ -858,9 +858,16 @@ fn read_template(built: &[u8]) -> (String, Vec<(i64, i64, String)>) {
     for _ in 0..count {
         at += py::modulo(-(at as i64), 4) as usize; // every item starts on a 4-byte boundary
         let ident = word(at + 16);
-        assert_eq!(built[at + 18..at + 20], [0xff, 0xff]); // a predefined class, by atom
-        let atom = word(at + 20);
-        at += 22;
+        let atom = if built[at + 18..at + 20] == [0xff, 0xff] {
+            // a predefined class, by atom
+            let atom = Class::Atom(word(at + 20));
+            at += 22;
+            atom
+        } else {
+            // a class by its name, as a common control's
+            at += 18;
+            Class::Name(wstr(built, &mut at))
+        };
         items.push((ident, atom, wstr(built, &mut at)));
         at += 2; // no creation data
     }
@@ -880,12 +887,12 @@ fn test_the_dialog_template_builds_a_real_dialog() {
         [
             (
                 IDC_LABEL,
-                ATOM_STATIC,
+                Class::Atom(ATOM_STATIC),
                 "sign, 1 north. Called: Signpost 1".to_string()
             ),
-            (IDC_EDIT, ATOM_EDIT, String::new()),
-            (IDOK, ATOM_BUTTON, "OK".to_string()),
-            (IDCANCEL, ATOM_BUTTON, "Cancel".to_string()),
+            (IDC_EDIT, Class::Atom(ATOM_EDIT), String::new()),
+            (IDOK, Class::Atom(ATOM_BUTTON), "OK".to_string()),
+            (IDCANCEL, Class::Atom(ATOM_BUTTON), "Cancel".to_string()),
         ]
     );
 }
@@ -898,11 +905,19 @@ fn test_the_checkbox_comes_after_the_edit_and_before_the_buttons() {
     assert_eq!(
         items,
         [
-            (IDC_LABEL, ATOM_STATIC, "person, 1 east".to_string()),
-            (IDC_EDIT, ATOM_EDIT, String::new()),
-            (IDC_CHECK, ATOM_BUTTON, "Only this one".to_string()),
-            (IDOK, ATOM_BUTTON, "OK".to_string()),
-            (IDCANCEL, ATOM_BUTTON, "Cancel".to_string()),
+            (
+                IDC_LABEL,
+                Class::Atom(ATOM_STATIC),
+                "person, 1 east".to_string()
+            ),
+            (IDC_EDIT, Class::Atom(ATOM_EDIT), String::new()),
+            (
+                IDC_CHECK,
+                Class::Atom(ATOM_BUTTON),
+                "Only this one".to_string()
+            ),
+            (IDOK, Class::Atom(ATOM_BUTTON), "OK".to_string()),
+            (IDCANCEL, Class::Atom(ATOM_BUTTON), "Cancel".to_string()),
         ]
     );
 }

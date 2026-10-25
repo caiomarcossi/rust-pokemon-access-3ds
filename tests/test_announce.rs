@@ -1875,6 +1875,40 @@ fn test_moving_on_drops_the_last_items_details_unsaid() {
     assert_eq!(screen.on(&everything), ["Category Power 40 Accuracy 100"]);
 }
 
+/// The fitting room's tabs change the card beside them, and each move between Change and Back,
+/// a list of their own, read the card again (Khai, 2026-10-24, x_cyllage_boutique_fitting_room).
+#[test]
+fn test_an_item_of_another_list_keeps_no_details_from_this_ones_moves() {
+    let mut screen = Screen::new();
+    let panel = move_panel("40");
+    let tab = vec![piece(1, "bag", -120.0, 70.0, MENU)];
+    let everything = cat(&[&tab, &panel]);
+    screen.say(args(
+        &[changed(&panel[3])],
+        vec![CursorItem::new(0x0C, tab.clone(), false)],
+        &everything,
+    ));
+    assert_eq!(screen.on(&everything), NOTHING);
+    assert_eq!(screen.on(&everything), ["Category Power 40 Accuracy 100"]);
+    for word in ["Change", "Back"] {
+        let moved = vec![piece(2, word, -120.0, 70.0, MENU)];
+        let everything = cat(&[&moved, &panel]);
+        assert_eq!(
+            screen.say(args(
+                &[],
+                vec![CursorItem {
+                    rows: 0x40,
+                    ..CursorItem::new(0x0C, moved.clone(), false)
+                }],
+                &everything
+            )),
+            [word]
+        );
+        let heard: Vec<Vec<String>> = (0..3).map(|_| screen.on(&everything)).collect();
+        assert_eq!(heard, vec![Vec::<String>::new(); 3], "{word}");
+    }
+}
+
 #[test]
 fn test_details_wait_for_words_being_written_no_longer_than_their_most_polls() {
     let mut screen = Screen::new();
@@ -2632,6 +2666,58 @@ fn test_a_group_of_its_own_rows_is_not_read_into_a_table_beside_one_of_them() {
 }
 
 #[test]
+fn test_details_of_a_screen_of_two_columns_are_read_as_it_was_shown() {
+    // The PC Box's summary is one group of two columns, the stats and the moves, and its details
+    // were read across both, "SP. ATK: 68, MOVES LEARNED, SP. DEF: 58, Bubble Beam", and
+    // "Intimidate: Sweet Scent, ABILITY", where opening it read each column down (Orion,
+    // or_organize_boxes, 2026-10-24). Places are the summary's.
+    let mut screen = Screen::with(true);
+    let slot = vec![piece(1, "BATTLE BOX 1", 80.0, 90.0, MENU)];
+    let kw = |parent: i64| Kw {
+        parent,
+        with_layout: false,
+        ..PLAIN
+    };
+    let mut summary = vec![piece_kw(10, "bubbles", -170.0, 110.0, PANEL, kw(6))];
+    for (r#box, (text, x, y)) in [
+        ("♀", -70.0, 110.0),
+        ("Lv.33", -34.0, 120.0),
+        ("SP. ATK", -190.0, -10.0),
+        ("68", -74.0, -10.0),
+        ("SP. DEF", -190.0, -30.0),
+        ("58", -74.0, -30.0),
+        ("ABILITY", -190.0, -90.0),
+        ("Intimidate", -110.0, -80.0),
+        ("MOVES LEARNED", 40.0, -20.0),
+        ("Bubble Beam", 50.0, -40.0),
+        ("Sweet Scent", 50.0, -80.0),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        summary.push(piece_kw(r#box as i64 + 11, text, x, y, PANEL, kw(5)));
+    }
+    let everything = cat(&[&slot, &summary]);
+    let texts: Vec<ScreenText> = summary.iter().map(changed).collect();
+    let mut said = screen.say(args(
+        &texts,
+        vec![CursorItem::new(0x0C, slot.clone(), false)],
+        &everything,
+    ));
+    for _ in 0..DETAIL_POLLS {
+        said.extend(screen.on(&everything));
+    }
+    assert_eq!(
+        said,
+        [
+            "BATTLE BOX 1",
+            "bubbles, ♀, Lv.33, SP. ATK: 68, SP. DEF: 58, ABILITY: Intimidate, MOVES LEARNED, \
+             Bubble Beam, Sweet Scent"
+        ]
+    );
+}
+
+#[test]
 fn test_two_groups_beside_each_other_on_one_row_are_read_apart() {
     // The PC Box's summary draws a Pokémon's name and its level, a little higher, side by side,
     // and read as one table it put the level first, "Lv.5 Umbra" (movie6).
@@ -2970,6 +3056,30 @@ fn test_two_cursors_over_one_item_say_it_once() {
         &r#move,
     ));
     assert_eq!(said, ["Hold Back"]);
+}
+
+/// A menu cursor holds an item still being laid out a poll, and the summary's battle page
+/// said Hold Back a poll after its contest page had (or_summary_moves).
+#[test]
+fn test_two_cursors_over_one_item_a_poll_apart_say_it_once() {
+    let mut screen = Screen::new();
+    let r#move = vec![piece(1, "Hold Back", -1.0, 100.0, MENU)];
+    assert_eq!(
+        screen.say(args(
+            &[],
+            vec![CursorItem::new(0x0D, r#move.clone(), true)],
+            &r#move
+        )),
+        ["Hold Back"]
+    );
+    assert_eq!(
+        screen.say(args(
+            &[],
+            vec![CursorItem::new(0x0C, r#move.clone(), false)],
+            &r#move
+        )),
+        Vec::<String>::new()
+    );
 }
 
 #[test]

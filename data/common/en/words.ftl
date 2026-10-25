@@ -30,6 +30,10 @@ steps = { $count } { $way }
 leg-with = { $how } { $steps } { $way }
 # Where something is when it is where the player stands.
 here = here
+# How far a thing stands above or below the player, in the game's units, 18 to a cell, where
+# it is more than two cells' height: "ladder, 2 west, 54 above".
+above = { $count } above
+below = { $count } below
 # A leg on Lumiose's rails, where up walks the way the camera looks and left and right turn the
 # player (spike 105): "hold right, 5 forward, 3 back".
 rail-forward = { $steps } forward
@@ -58,6 +62,7 @@ category-berries = berries
 category-ash = ash
 category-bike = bike
 category-riding = riding
+category-climbing = climbing
 category-currents = currents
 category-pokemon = pokémon
 # A category chosen, with how many things are in it.
@@ -149,6 +154,14 @@ p-current = ride the current { $bearing }
 how-get-off = get off
 # The step into a rock the ridden Pokémon smashes with A: "smash 1 east" (spike 238).
 how-smash = smash
+# A leg along a climbing wall's face, and the handholds climbed in place before or after one:
+# "climb 3 up, 6 east", "climb 6 west, climb 3 down, 1 west" (spike 245).
+how-climb = climb
+p-climb-up = climb { $holds } up
+p-climb-down = climb { $holds } down
+# A leg down a climbing wall's slide, which carries the player once they step onto its top:
+# "slide 5 south" (spike 245).
+how-slide = slide
 # The way chosen to push a big boulder, before the way to its side: "to push east: 3 west".
 p-to-push = to push { $way }:
 # A step to line up with the next leg, where a wall's corner would catch the player: "a little
@@ -162,6 +175,9 @@ p-cant-continue = can't continue
 p-in-the-way = { $thing } in the way
 # Under the sea, where the way goes on from another dive spot (spike 165).
 p-surface = surface and go to the dive spot { $bearing }
+# A leg that crosses into another place, said with it: "10 east into Route 117" (Orion,
+# 2026-10-24).
+p-into = { $leg } into { $place }
 # A way over a room of thin ice, which cracks every tile on the way (spike 167).
 p-and-ice-cleared = and the ice is cleared
 p-ice-cleared = ice cleared
@@ -230,6 +246,85 @@ app-reader-error = Reader error
 # The rename box's buttons.
 dialog-ok = OK
 dialog-cancel = Cancel
+# pa3ds's own window, opened when pa3ds is double-clicked: its title, and its menus and their
+# items. The letter after & is the one that opens it, underlined, with Alt on a menu.
+window-title = Pokémon Access 3DS
+window-menu-mod = &Mod
+# The Rust port's alone, which updates itself; the Python has no updater.
+window-updates = Check for &updates
+window-exit = E&xit
+window-menu-azahar = &Azahar
+window-azahar-portable = Download Azahar (&portable)
+window-azahar-installer = Download Azahar (&installer)
+window-menu-help = &Help
+# Each opens a page of the manual in the browser.
+window-documentation = &Documentation...
+window-keys = &Key commands...
+window-known-issues = Known &issues...
+window-translating = &Translating...
+window-changelog = &Changelog...
+window-settings-guide = &Settings guide...
+window-issues = &Report an issue on GitHub
+
+## The settings: each one's name in the settings dialog, and what it does, said after the
+## name there and above the setting in config.toml
+setting-pa3ds-keys = Answer mod keys
+setting-pa3ds-keys-about = Answer pa3ds's keys and bind Azahar's buttons, as keys.toml says.
+setting-pa3ds-poll_rate = Reads per second
+setting-pa3ds-poll_rate-about = How many times a second to read the game: 60, the game's own frame rate; 30 for a slower machine.
+setting-pa3ds-azahar_folder = Portable Azahar folder
+setting-pa3ds-azahar_folder-about = The folder a portable Azahar is in, the one with azahar.exe and a user folder; empty for an Azahar installed in the usual way, whose settings are in AppData. pa3ds fills it in when you choose the folder it asks for.
+setting-pa3ds-hide_window = Hide the mod window while Azahar is open
+setting-pa3ds-hide_window-about = Hide pa3ds's window, the one a double-clicked pa3ds opens, while Azahar is open, so nothing of pa3ds's sits in Alt+Tab between you and the game; false keeps it in sight, for OBS to record pa3ds's sounds through it.
+setting-pa3ds-ui-pauses = Pauses in screen text
+setting-pa3ds-ui-pauses-about = Put pauses between pieces of screen text said together: a colon after a label, as in "OT: Raiden", and a comma between the rest.
+setting-pa3ds-ui-interrupt = Menus interrupt speech
+setting-pa3ds-ui-interrupt-about = Cut off speech when a menu's cursor moves, instead of queueing; pa3ds's own keys always do.
+setting-pa3ds-ui-unfocused = Speak while Azahar is in the background
+setting-pa3ds-ui-unfocused-about = Keep saying what the game shows while another window is in front; otherwise pa3ds is quiet then, but for its own keys and messages.
+setting-pa3ds-ui-descriptions = Scene descriptions
+setting-pa3ds-ui-descriptions-about = Describe the scenes the game shows without words, such as Groudon waking. Each description is said after the line of text the scene follows. Only some scenes are described so far, and only in English.
+setting-pa3ds-ui-language = Language
+setting-pa3ds-ui-language-about = The language pa3ds says its own words in, as the name of a folder of its data: en, fr, de, es, it, ja, ko, zh-CN or zh-TW. Empty follows the game's own language, which pa3ds reads from the save; set it where that is wrong, as for a fan translation over another language, and in Sun and Moon, whose save pa3ds cannot read, where it is the game's language too.
+setting-pa3ds-audio-tones = Relative volume for tones
+setting-pa3ds-audio-tones-about = How loud the short tone is as a map's cursor or touch mode moves, higher the further up and panned the further right, to say where the cursor is: 1 as loud as the game, 0.5 half as loud, 1.5 louder, 0 none; in the settings dialog, in percent, 100 as loud as the game.
+setting-pa3ds-audio-footsteps = Relative volume for footsteps
+setting-pa3ds-audio-footsteps-about = How loud pa3ds's own footsteps are on the ground where the game plays none, as streets, floors and caves: 1 as loud as the game would play them, 0.5 half as loud, 1.5 louder, 0 none; in the settings dialog, in percent, 100 as loud as the game.
+setting-pa3ds-navigation-positions = Announce list position
+setting-pa3ds-navigation-positions-about = Say where a thing is in the list, as in "door, 1 of 3".
+setting-pa3ds-navigation-position_first = List position before directions
+setting-pa3ds-navigation-position_first-about = Say the place in the list before the way to it, "door, 1 of 3, 1 north"; false says "door, 1 north, 1 of 3".
+setting-pa3ds-navigation-turn_by_turn = Turn-by-turn directions
+setting-pa3ds-navigation-turn_by_turn-about = Once P has found the way, say each turn as it is reached; false says the way once, and P again says it from where you stand.
+setting-pa3ds-navigation-guide_to_hidden = Guide to DexNav finds
+setting-pa3ds-navigation-guide_to_hidden-about = When a DexNav search finds the Pokémon searched for, or the DexNav finds one by itself while it is open and you are in touch mode, find the way to it as P does and keep P on it, whatever the list was on; one found while the AreaNav is open is left alone.
+setting-pa3ds-navigation-track_boulders = Track boulder movement
+setting-pa3ds-navigation-track_boulders-about = Say how far a big boulder has moved from where its room starts it, as in "big boulder, 2 east, moved 1 north", so you know which you have pushed; the game shows where each boulder is, never where it started.
+setting-pa3ds-navigation-hide_door_signs = Hide door signs
+setting-pa3ds-navigation-hide_door_signs-about = Leave a sign out of the list when all it says is the name of a door beside it, as Mauville Hills' "Apt. 13 Wattson's Home"; a sign that says more, as a Gym's does, stays.
+setting-pa3ds-navigation-show_y = Announce height
+setting-pa3ds-navigation-show_y-about = Say how high as well, as y after x and z, when C says where you stand and shift and C where the thing chosen is: "x 71, z 35, y 20"; in the game's own units, 18 to a square's width, and left out where pa3ds does not know it, as in Sun and Moon.
+setting-pa3ds-navigation-sort_by_distance = Sort by distance
+setting-pa3ds-navigation-sort_by_distance-about = List mode's list nearest first, which changes as you walk; false keeps each thing in one place in it, the order the game's own tables have, so you can tell which house you have been in by where it is; direction mode is nearest first either way.
+setting-pa3ds-extras-conditions = Contest conditions as numbers
+setting-pa3ds-extras-conditions-about = Say a Pokémon's contest conditions as numbers where the game draws them as a star, on the summary and in the Pokéblock Case: the star is shown to everyone but pa3ds cannot read it, so its numbers are all it can give, and they are more exact than the star.
+# The settings dialog: its title, its pages, and what is not a setting's.
+settings-title = Mod settings
+settings-page-general = General
+settings-page-speech = Speech
+settings-page-audio = Audio
+settings-page-navigation = Navigation
+settings-page-extras = Extras
+settings-browse = &Browse...
+# The first of the languages pa3ds can speak in: none chosen.
+settings-language-game = The game's own language
+# Asked once settings are applied.
+settings-restart = Restart pa3ds now for these settings to take effect? If you choose No, they take effect the next time pa3ds starts.
+settings-unwritten = pa3ds could not write { $path }, so nothing has changed.
+dialog-apply = &Apply
+window-settings = &Settings...
+# This language's own name, in itself, as the settings dialog lists it among the others.
+language-name = English
 
 ## As pa3ds starts: its keys, its settings and Azahar's
 
@@ -283,6 +378,10 @@ kind-hole = hole
 kind-dive-spot = dive spot
 kind-current = current
 kind-flat-ground = flat ground
+# A run of the blue spots a climbing wall is climbed from, and one on a ledge at its side, where
+# the climber steps off it: the Gym's guide says "those blue spots" (spike 245).
+kind-blue-spot = blue spot
+kind-wall-ledge = wall ledge
 kind-slope = slope
 kind-bumpy-slope = bumpy slope
 kind-rail = rail

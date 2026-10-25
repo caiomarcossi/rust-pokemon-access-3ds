@@ -585,6 +585,9 @@ pub const UNDERWATER_134: i64 = 0xA0;
 pub const UNDERWATER_134_SOUTH: i64 = 0xA1;
 pub const MOVING_TRUCK: i64 = 0x18F;
 pub const LITTLEROOT_TOWN: i64 = 0x6;
+pub const ROUTE_125: i64 = 0x36;
+pub const SHOAL_CAVE_LOW: i64 = 0x80;
+pub const SHOAL_CAVE_HIGH: i64 = 0x84;
 
 /// Mauville Gym's triggers, by their scripts (spike 146): its five floor switches, each one cell,
 /// the two by the entrance at (58, 38) and (66, 38), the three by Wattson at (5, 40), (13, 36) and
@@ -636,6 +639,14 @@ pub const LITTLEROOT_TOWN: i64 = 0x6;
 /// Its case ends in the script's one call into Littleroot Town's outdoors, `0x6`, at (100, 172),
 /// between the two houses' doors at (94, 171) and (106, 171). Until 2026-10-18 the truck listed its
 /// five signs and no exit (or_desc and or_desc2, the boy's opening and the girl's).
+///
+/// Shoal Cave, off Route 125, is two pairs of zones, one for each tide, with no warp from the route
+/// into either: Route 125's only trigger, script 2, one cell at (240, 103) in front of the cave
+/// mouth, ends in a call into `0x80` at low tide, the hours from 3 to 9 and from 15 to 21 by the
+/// game's clock, and into `0x84` at high tide, both at (21, 34). Each entrance room's only trigger,
+/// script 2, one cell at (21, 34), leads back to (240, 103). `0x80` leads on to `0x81` and the floors
+/// below it, `0x84` only to `0x85`. The player walked in at 22:20 and stood in `0x84`, and walked out
+/// (or_shoal_cave_entrance, 2026-10-24); the list held neither way.
 ///
 /// Python's value is `tuple[str, str] | tuple[str, str, int]`: the zone is the third item, None
 /// where the tuple has two.
@@ -708,6 +719,20 @@ pub fn triggers() -> &'static IndexMap<(i64, i64), (String, String, Option<i64>)
                 Some(LITTLEROOT_TOWN),
             ),
         );
+        out.insert(
+            (ROUTE_125, 0x2),
+            (
+                "exits".to_string(),
+                "entrance".to_string(),
+                Some(SHOAL_CAVE_HIGH),
+            ),
+        );
+        for zone in [SHOAL_CAVE_LOW, SHOAL_CAVE_HIGH] {
+            out.insert(
+                (zone, 0x2),
+                ("exits".to_string(), "way out".to_string(), Some(ROUTE_125)),
+            );
+        }
         for &zone in secret_bases_zones() {
             out.insert((zone, WAY_OUT), owned(("exits", "way out")));
         }
@@ -793,6 +818,9 @@ fn ice_floors(memory: Rc<dyn Memory>) -> Rc<dyn IceReader> {
 /// Seafloor Cavern stands six more. Their records sit in a square off the map, (36, 70) in
 /// Sootopolis Gym, and the Gym's module sets them in place.
 pub const STOPPER: i64 = 0x8A;
+/// The sparkle at each of the 28 places a Mega Stone lies, a script each from 0x41f to 0x43a
+/// (or_mega_stone: "Raiden found a Sablenite!"): an item found, listed under items.
+pub const KIRAKIRA: i64 = 0x203D;
 
 /// `STOPPER`, and `STOPPER3` everywhere but Mauville Gym, where it is the barriers: in Seafloor
 /// Cavern ten round the submarine, whose furniture records are what the player reads; on each Regi
@@ -840,6 +868,7 @@ pub fn game() -> &'static Game {
         doors: Some(rotating_doors),
         ice: Some(ice_floors),
         blockers: HashSet::from(BLOCKERS),
+        pickups: HashSet::from([KIRAKIRA]),
         elevators: ELEVATORS.collect(),
         player_looks: PLAYER_LOOKS.collect(),
         stairs: HashSet::from([SOOTOPOLIS_GYM]),

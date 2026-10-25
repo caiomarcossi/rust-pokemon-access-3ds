@@ -1,6 +1,6 @@
 //! The matrix the player is on, as the player's ROM has it: every chunk's cell table, floors and
 //! ground heights by the file the field map lists for it, and what is read off them: where the
-//! ground drops, which way a bumpy slope or a waterfall rises, the heights of the decks, and which
+//! ground drops, which way a bumpy slope or a waterfall rises, whether it has a deck, and which
 //! deep water the sea above joins (spikes 136, 156, 159, 160, 165, 170). Nothing here reads RAM:
 //! the field reader says which files the matrix lists (`files`), and asks.
 
@@ -12,7 +12,9 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::core::pathfind::{self, Cell};
 use crate::games::common::field::chunk::{BLOCKED, CHUNK, Chunk, DIVE, Floor, KIND_SHIFT, SHORE};
+use crate::games::common::field::climb::Walls;
 use crate::games::gen6::field::mapblock;
+use crate::games::gen6::game::Climbing;
 use crate::py::{self, Error, Result};
 
 /// What the list has where the matrix has no chunk: most of Route 109's 12 by 10 (spike 136).
@@ -75,19 +77,6 @@ fn sea(start: Cell, word: &Word) -> Result<HashSet<Cell>> {
     Ok(seen)
 }
 
-/// `statistics.median`: the middle of the sorted values, or the mean of the two middle ones.
-fn median(values: &mut [f64]) -> f64 {
-    // `sorted`: a height read from a freed mesh can be NaN, which only CPython's sort places
-    // as Python does.
-    py::sort_by_lt(values, |a, b| a < b);
-    let (n, i) = (values.len(), values.len() / 2);
-    if n % 2 == 1 {
-        values[i]
-    } else {
-        (values[i - 1] + values[i]) / 2.0
-    }
-}
-
 /// `pathfind.STEPS[way]`.
 fn step_of(way: &str) -> Cell {
     pathfind::STEPS
@@ -104,6 +93,9 @@ fn beside(cell: Cell) -> [Cell; 4] {
 
 /// The chunk files the ways up a kind's cells were found for, and the ways (`rises`).
 type Rises = (Rc<Vec<i64>>, IndexMap<Cell, &'static str>);
+
+/// Each ROM chunk of the matrix with its ground heights, by its key (`Terrain::tables`).
+type Tables = IndexMap<(i64, i64), (Vec<i64>, Vec<Option<f64>>)>;
 
 /// The ROM's chunks of the matrix the field map lists, read a file at a time and kept.
 pub struct Terrain {
@@ -127,8 +119,10 @@ pub struct Terrain {
     ///
     /// Python keys it by a `frozenset`; a `BTreeSet` is equal where the frozenset is.
     rises_of: RefCell<IndexMap<BTreeSet<i64>, Rises>>,
-    /// The chunk files the floors' heights were read for, and the heights (`decks`).
-    deck_heights: RefCell<(Option<Rc<Vec<i64>>>, Vec<i64>)>,
+    /// The chunk files the climbing walls were found for, and the walls (`walls`).
+    walls_of: RefCell<(Option<Rc<Vec<i64>>>, Rc<Walls>)>,
+    /// The chunk files the floors were read for, and whether one has a deck (`stacked`).
+    stacked: RefCell<(Option<Rc<Vec<i64>>>, bool)>,
 }
 
 impl Terrain {
@@ -150,7 +144,8 @@ impl Terrain {
             flat: RefCell::new(HashMap::new()),
             drops: RefCell::new(HashMap::new()),
             rises_of: RefCell::new(IndexMap::new()),
-            deck_heights: RefCell::new((None, Vec::new())),
+            walls_of: RefCell::new((None, Rc::new(Walls::default()))),
+            stacked: RefCell::new((None, false)),
         }
     }
 
@@ -276,8 +271,8 @@ impl Terrain {
     /// `ladders`: Fortree City's platforms stand 108 over the ground beside them in one cell
     /// table, and P walked the player off one, "9 south" into nothing, where the game lets them
     /// down only by a ladder (spike 160). Read off the ROM's chunks of one floor across the whole
-    /// matrix, a chunk with a deck on the floor each cell is walked on at `level`, the height the
-    /// decks are walked at; none without the ROM.
+    /// matrix, a chunk with a deck on the floor each cell is walked on at `level`, the player's
+    /// height; none without the ROM.
     pub fn cliffs(
         &self,
         level: Option<f64>,
@@ -393,10 +388,7 @@ impl Terrain {
     /// west for three (spike 159), and Ever Grande City's waterfall has the sea at 0 below and
     /// the water at 234 above (spike 170). None without the ROM's heights.
     pub fn rises(&self, kinds: &[i64]) -> Result<IndexMap<Cell, &'static str>> {
-        let (wide, files) = {
-            let held = self.files.borrow();
-            (held.0, held.1.clone())
-        };
+        let files = self.files.borrow().1.clone();
         let key: BTreeSet<i64> = kinds.iter().copied().collect();
         if let Some(cached) = self.rises_of.borrow().get(&key)
             && cached.0 == files
@@ -404,18 +396,7 @@ impl Terrain {
             return Ok(cached.1.clone());
         }
         let mut out: IndexMap<Cell, &'static str> = IndexMap::new();
-        let mut tables: IndexMap<(i64, i64), (Vec<i64>, Vec<Option<f64>>)> = IndexMap::new();
-        for (at, &file) in files.iter().enumerate() {
-            let at = at as i64;
-            let chunk = self.far(py::modulo(at, wide), py::floordiv(at, wide))?;
-            let heights = match &self.heights {
-                None => None,
-                Some(heights) => heights(file)?,
-            };
-            if let (Some(chunk), Some(heights)) = (chunk, heights) {
-                tables.insert(chunk.key(), (chunk.words.clone(), heights));
-            }
-        }
+        let tables = self.tables()?;
 
         let read = |cell: Cell| -> Result<Option<(i64, Option<f64>)>> {
             let table = tables.get(&(py::floordiv(cell.0, CHUNK), py::floordiv(cell.1, CHUNK)));
@@ -470,21 +451,74 @@ impl Terrain {
         Ok(self.rises_of.borrow()[&key].1.clone())
     }
 
-    /// Every floor's height on the matrix but the one at `level`, nearest it first: each floor of
-    /// a chunk with a deck, at the middle of its open cells' heights: the `loaded` chunks', and
-    /// with the ROM every chunk's of the matrix (spike 159).
-    ///
-    /// The heights are whole numbers, as `round` makes them, and so are the ground's `decks`.
-    pub fn decks(
-        &self,
-        level: Option<f64>,
-        loaded: &dyn Fn() -> Result<Vec<Rc<Chunk>>>,
-    ) -> Result<Vec<f64>> {
-        let Some(level) = level else {
-            return Ok(Vec::new());
-        };
+    /// Every climbing wall on the matrix (`Walls.found`), off the ROM's chunks with their
+    /// ground heights, found once a matrix; none without the ROM's heights. Only chunks with a
+    /// `climbing.face` or `climbing.slide` cell are read whole: Cyllage Gym's one chunk holds
+    /// all 28 of X's faces and both its slides (spike 245).
+    pub fn walls(&self, climbing: &Climbing) -> Result<Rc<Walls>> {
         let files = self.files.borrow().1.clone();
-        if self.deck_heights.borrow().0.as_ref() != Some(&files) {
+        if self.walls_of.borrow().0.as_ref() != Some(&files) {
+            let kinds = [climbing.face, climbing.slide];
+            let mut cells: IndexMap<Cell, (i64, Option<f64>)> = IndexMap::new();
+            for ((column, row), (words, heights)) in self.tables()? {
+                if words
+                    .iter()
+                    .any(|&word| kinds.contains(&(word >> KIND_SHIFT)))
+                {
+                    for (i, &word) in words.iter().enumerate() {
+                        let height = *heights
+                            .get(i)
+                            .ok_or_else(|| Error::index("tuple index out of range"))?;
+                        let i = i as i64;
+                        cells.insert(
+                            (column * CHUNK + i % CHUNK, row * CHUNK + i / CHUNK),
+                            (word, height),
+                        );
+                    }
+                }
+            }
+            let walls = Rc::new(Walls::found(
+                &cells,
+                climbing.face,
+                &climbing.sideways,
+                climbing.slide,
+            ));
+            *self.walls_of.borrow_mut() = (Some(files), walls);
+        }
+        Ok(self.walls_of.borrow().1.clone())
+    }
+
+    /// Each ROM chunk of the matrix with its ground heights, by its key: its cell table and
+    /// a height a cell (`rises`, `walls`).
+    fn tables(&self) -> Result<Tables> {
+        let (wide, files) = {
+            let held = self.files.borrow();
+            (held.0, held.1.clone())
+        };
+        let mut tables: Tables = IndexMap::new();
+        for (at, &file) in files.iter().enumerate() {
+            let at = at as i64;
+            let chunk = self.far(py::modulo(at, wide), py::floordiv(at, wide))?;
+            let heights = match &self.heights {
+                None => None,
+                Some(heights) => heights(file)?,
+            };
+            if let (Some(chunk), Some(heights)) = (chunk, heights) {
+                tables.insert(chunk.key(), (chunk.words.clone(), heights));
+            }
+        }
+        Ok(tables)
+    }
+
+    /// Whether a chunk of the matrix has a deck over its ground, a floor with a cell open at
+    /// a height: the loaded chunks, and with the ROM every chunk of the matrix, once a matrix.
+    /// Not whether a deck stands apart from the player: Mt. Chimney's ground and catwalk both
+    /// sit at 108 over most of their cells, the ground falling to 4 only down the path by the
+    /// crater, and a player on the summit was walked one floor a cell, an item ball on that path
+    /// 104 below taken for one beside them (or_3d_pathfinding, 2026-10-24).
+    pub fn stacked(&self, loaded: &dyn Fn() -> Result<Vec<Rc<Chunk>>>) -> Result<bool> {
+        let files = self.files.borrow().1.clone();
+        if self.stacked.borrow().0.as_ref() != Some(&files) {
             let mut floors: Vec<Floor> = Vec::new();
             for chunk in loaded()? {
                 floors.extend(chunk.floors.iter().cloned());
@@ -497,8 +531,16 @@ impl Terrain {
                     floors.extend(far_floors(file)?);
                 }
             }
-            let mut heights: Vec<i64> = Vec::new();
-            for floor in &floors {
+            // `any(...)` over `zip(..., strict=True)`: it stops at the first open cell, and a
+            // floor whose two lists differ in length raises only once the shorter runs out.
+            let mut any = false;
+            'floors: for floor in &floors {
+                for (&word, &height) in floor.words.iter().zip(&floor.heights) {
+                    if height.is_some() && word & BLOCKED == 0 {
+                        any = true;
+                        break 'floors;
+                    }
+                }
                 if floor.words.len() != floor.heights.len() {
                     return Err(Error::value(format!(
                         "zip() argument 2 is {} than argument 1",
@@ -509,35 +551,10 @@ impl Terrain {
                         }
                     )));
                 }
-                let mut open: Vec<f64> = Vec::new();
-                for (&word, &height) in floor.words.iter().zip(&floor.heights) {
-                    if let Some(height) = height
-                        && word & BLOCKED == 0
-                    {
-                        open.push(height);
-                    }
-                }
-                if !open.is_empty() {
-                    heights.push(py::round(median(&mut open))?);
-                }
             }
-            heights.sort();
-            heights.dedup();
-            *self.deck_heights.borrow_mut() = (Some(files), heights);
+            *self.stacked.borrow_mut() = (Some(files), any);
         }
-        let mut others: Vec<i64> = self
-            .deck_heights
-            .borrow()
-            .1
-            .iter()
-            .copied()
-            .filter(|&height| (height as f64 - level).abs() > mapblock::CLIMB)
-            .collect();
-        others.sort_by(|a, b| {
-            let (a, b) = ((*a as f64 - level).abs(), (*b as f64 - level).abs());
-            a.partial_cmp(&b).unwrap_or(std::cmp::Ordering::Equal)
-        });
-        Ok(others.into_iter().map(|height| height as f64).collect())
+        Ok(self.stacked.borrow().1)
     }
 
     /// The ROM's ground height at a cell of the current matrix, or None where the chunk is not

@@ -21,6 +21,7 @@ the Game Boy games. Nothing here is taken from its code.
 - [Keys](manual/keys.md): pa3ds's keys, the map's list, finding the way, and naming things.
 - [Settings](manual/settings.md): every setting, the Azahar settings pa3ds changes, and your files.
 - [Languages](manual/languages.md): the language pa3ds speaks, and translating it.
+- [Known issues](manual/known-issues.md): what pa3ds gets wrong or leaves out for now.
 
 ## Games
 
@@ -40,6 +41,8 @@ the Game Boy games. Nothing here is taken from its code.
   category, power, accuracy and description on the move info screen, where the four moves are
   said by number, and when a move is to be forgotten.
 - **The PC Box, the party, the Bag and the Pokédex**, the habitat map included.
+- **The fitting room** in X and Y's boutiques: each category, and each item with its colour and
+  price.
 - **Contests and the Pokéblock Kit**: each move with its appeal and jamming, each entrant's
   place, and your berries and blocks with how many you have.
 - **Where you are**: the place name when you arrive somewhere new.
@@ -49,17 +52,14 @@ the Game Boy games. Nothing here is taken from its code.
   PokéNav's and PlayNav's apps and the AreaNav's places among them.
 - **The AreaNav**: each place, and the Pokémon seen there, as the DexNav says them.
 - **The DexNav**: the area's Pokémon, which are met on the water or by fishing, and which you
-  have caught, searching, and a hidden Pokémon's details. A Pokémon met in seaweed under water
-  is said as one met walking, and as met in grass in the Pokédex, because the game itself shows
-  it that way.
+  have caught, searching, and a hidden Pokémon's details.
 - **The Dowsing Machine**, **soaring** on Latios or Latias, and **Secret Bases**, decorating
   them included.
 - **Pictures the game never names**: the boy and the girl to choose from as a game begins, and
   the Trainer Passport's photos in Sun and Moon, described in pa3ds's own words.
 - **Scenes without words**, described when the `descriptions` setting is on: many in Omega Ruby
-  and Alpha Sapphire, each one's intro and title screen among them, and one in Sun so far. A
-  scene you skip goes undescribed from there, and in Omega Ruby and Alpha Sapphire a description
-  waits while the emulator is paused.
+  and Alpha Sapphire, each one's intro and title screen among them, X's and Y's intro and title
+  screen, and one in Sun so far.
 - **Footsteps** where Omega Ruby, Alpha Sapphire, X and Y play none, as on streets, floors and in
   caves: the game's own step sound, as loud as the game and Azahar would play it.
 
@@ -103,8 +103,12 @@ when Azahar is open or pa3ds is in the same folder. Otherwise pa3ds asks the fir
 folder `azahar.exe` is in. Choose it, and pa3ds remembers it. Cancel instead if Azahar is
 installed the usual way.
 
-Started by double-clicking or from a shortcut, pa3ds hides its window while Azahar is open, so
-it is not in Alt+Tab. While another window is in front of Azahar, pa3ds says nothing of the
+Started by double-clicking or from a shortcut, pa3ds opens a window, Pokémon Access 3DS, which
+is only a menu bar: press Alt for its menus. **Mod** has Settings, Check for updates and Exit,
+**Azahar** downloads Azahar's latest portable zip or its installer, and **Help** opens a page of
+this manual in your browser, or reports an issue on GitHub. Settings opens the mod settings
+([Settings](manual/settings.md)). It hides the window while Azahar is open, so it is not in
+Alt+Tab; `hide_window` keeps it in sight. While another window is in front of Azahar, pa3ds says nothing of the
 game, but still answers its keys.
 
 ## Updating
@@ -112,7 +116,8 @@ game, but still answers its keys.
 When pa3ds starts, it checks for a newer version. If there is one, a window asks whether to
 update. Yes downloads it, replaces `pa3ds.exe`, the `data` folder, the manual, `CHANGELOG.md` and
 the licences, and starts the new pa3ds; your `user` folder is kept. No starts the version you
-have, and pa3ds asks again on its next start.
+have, and pa3ds asks again on its next start. Check for updates, in the **Mod** menu of
+pa3ds's window, asks the same at any time, or says you have the latest.
 
 What changed in each version is in `CHANGELOG.md` beside `pa3ds.exe`, and on the
 [releases page](https://github.com/pa3ds/rust-pokemon-access-3ds/releases).
@@ -125,14 +130,7 @@ What changed in each version is in `CHANGELOG.md` beside `pa3ds.exe`, and on the
 - **pa3ds has gone quiet or stopped answering its keys**: start pa3ds again.
 
 To report a problem, send `user\logs\pa3ds.log` from the run where it happened, and say what you
-were doing.
-
-## Known problems
-
-- **Some touch-screen apps are only partly read**: the DexNav, Pokémon-Amie, Super Training and
-  the PSS. Super Training's regimen descriptions read their two columns run together, and
-  turning a PlayNav page with its arrows says nothing of the new page.
-- **X, Y, Sun and Moon** are read less completely than Omega Ruby and Alpha Sapphire.
+were doing. What is already known is in [Known issues](manual/known-issues.md).
 
 ## For developers
 

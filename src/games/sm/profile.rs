@@ -163,8 +163,8 @@ impl FieldSource for SunFieldReader {
         SunFieldReader::interactables(self, r#where)
     }
 
-    fn ground(&self, r#where: &Field, height: Option<f64>) -> Result<Ground> {
-        SunFieldReader::ground(self, r#where, height)
+    fn ground(&self, r#where: &Field) -> Result<Ground> {
+        SunFieldReader::ground(self, r#where)
     }
 }
 

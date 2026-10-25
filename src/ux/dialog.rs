@@ -113,7 +113,7 @@ pub struct Answer {
 }
 
 /// A null-terminated UTF-16 string, as every string in a dialog template is.
-fn wstr(text: &str) -> Vec<u8> {
+pub fn wstr(text: &str) -> Vec<u8> {
     let mut out: Vec<u8> = text.encode_utf16().flat_map(u16::to_le_bytes).collect();
     out.extend_from_slice(&[0, 0]);
     out
@@ -121,7 +121,7 @@ fn wstr(text: &str) -> Vec<u8> {
 
 /// Each item of a template starts on a 4-byte boundary. Windows does not forgive this: a
 /// template one byte out builds the wrong controls, or none.
-fn align(data: &mut Vec<u8>) {
+pub fn align(data: &mut Vec<u8>) {
     while !data.len().is_multiple_of(4) {
         data.push(0);
     }
@@ -154,7 +154,29 @@ fn uint(value: i64) -> Result<[u8; 4]> {
         .map_err(|_| Error::unpack("'I' format requires 0 <= number <= 4294967295"))
 }
 
-fn item(
+/// A control's class in a template, Python's `int | str`: a predefined one's atom, or a class's
+/// name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Class {
+    Atom(i64),
+    Name(String),
+}
+
+impl From<i64> for Class {
+    fn from(atom: i64) -> Self {
+        Class::Atom(atom)
+    }
+}
+
+impl From<&str> for Class {
+    fn from(name: &str) -> Self {
+        Class::Name(name.to_string())
+    }
+}
+
+/// One control: its class a predefined one's atom, or a class's name, as a common
+/// control's, `SysTabControl32`, has no atom.
+pub fn item(
     data: &mut Vec<u8>,
     style: i64,
     ex_style: i64,
@@ -163,7 +185,7 @@ fn item(
     cx: i64,
     cy: i64,
     ident: i64,
-    atom: i64,
+    atom: impl Into<Class>,
     text: &str,
 ) -> Result<()> {
     align(data);
@@ -173,8 +195,13 @@ fn item(
         data.extend_from_slice(&short(number)?);
     }
     data.extend_from_slice(&ushort(ident)?);
-    data.extend_from_slice(&ushort(0xFFFF)?);
-    data.extend_from_slice(&ushort(atom)?);
+    match atom.into() {
+        Class::Atom(atom) => {
+            data.extend_from_slice(&ushort(0xFFFF)?);
+            data.extend_from_slice(&ushort(atom)?);
+        }
+        Class::Name(name) => data.extend_from_slice(&wstr(&name)),
+    }
     data.extend_from_slice(&wstr(text));
     data.extend_from_slice(&ushort(0)?); // no creation data
     Ok(())
@@ -256,14 +283,34 @@ pub fn template(title: &str, label: &str, check: &str, width: i64) -> Result<Vec
         ATOM_BUTTON,
         &cancel,
     )?;
+    frame(
+        DS_MODALFRAME | WS_SYSMENU,
+        0,
+        if check.is_empty() { 4 } else { 5 },
+        width,
+        buttons + 21,
+        title,
+        &items,
+    )
+}
 
+/// A DLGTEMPLATE round `count` items already built: a visible, captioned, centred popup in
+/// Segoe UI, with `style` and `ex_style` added.
+pub fn frame(
+    style: i64,
+    ex_style: i64,
+    count: i64,
+    width: i64,
+    height: i64,
+    title: &str,
+    items: &[u8],
+) -> Result<Vec<u8>> {
     let mut data = Vec::new();
-    let style =
-        DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE;
+    let style = style | DS_SETFONT | DS_CENTER | WS_POPUP | WS_CAPTION | WS_VISIBLE;
     data.extend_from_slice(&uint(style & 0xFFFFFFFF)?);
-    data.extend_from_slice(&uint(0)?);
-    data.extend_from_slice(&ushort(if check.is_empty() { 4 } else { 5 })?);
-    for number in [0, 0, width, buttons + 21] {
+    data.extend_from_slice(&uint(ex_style)?);
+    data.extend_from_slice(&ushort(count)?);
+    for number in [0, 0, width, height] {
         data.extend_from_slice(&short(number)?);
     }
     data.extend_from_slice(&ushort(0)?); // no menu
@@ -272,7 +319,7 @@ pub fn template(title: &str, label: &str, check: &str, width: i64) -> Result<Vec
     data.extend_from_slice(&ushort(9)?); // DS_SETFONT: point size, then the typeface
     data.extend_from_slice(&wstr("Segoe UI"));
     align(&mut data);
-    data.extend_from_slice(&items);
+    data.extend_from_slice(items);
     Ok(data)
 }
 

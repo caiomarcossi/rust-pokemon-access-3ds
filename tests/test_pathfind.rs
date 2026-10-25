@@ -444,6 +444,98 @@ fn test_a_current_carries_the_player_its_way_until_that_way_is_shut() {
     );
 }
 
+/// Shoal Cave: on its ice the player slides the way they stepped onto it, a cell at a time,
+/// onto the floor past it or against a wall, where they stop on the ice (or_shoal_cave_ice_cavern,
+/// spike 246). A way turns only where a slide stops, and ends only there.
+#[test]
+fn test_on_ice_the_player_slides_the_way_they_came_until_a_wall_or_the_floor_stops_them() {
+    let rows = ["#.#.##", ".~~~~.", "......"];
+    let (walkable, box_) = drawn(&rows);
+    let cells = grid(&rows);
+    let slide =
+        move |cell: Cell| -> Result<bool> { Ok(cells[cell.1 as usize][cell.0 as usize] == b'~') };
+    let sliding = Options {
+        slide: Some(&slide),
+        ..plain()
+    };
+    // West along the ice the player slides past the gap at (1, 0) onto the floor at (0, 1), so
+    // the way goes round below and slides north into the gap.
+    assert_eq!(
+        said(
+            find(
+                (5, 1),
+                &goals(&[((1, 0), None)]),
+                &*walkable,
+                box_,
+                &sliding
+            )
+            .unwrap()
+        )
+        .as_deref(),
+        Some("1 south, 4 west, 2 north")
+    );
+    assert_eq!(
+        said(
+            find(
+                (5, 1),
+                &goals(&[((1, 0), None)]),
+                &*walkable,
+                box_,
+                &plain()
+            )
+            .unwrap()
+        )
+        .as_deref(),
+        Some("4 west, 1 north")
+    );
+    // (2, 1) is stopped on only against the wall north of it, from the floor below.
+    assert_eq!(
+        said(
+            find(
+                (5, 1),
+                &goals(&[((2, 1), None)]),
+                &*walkable,
+                box_,
+                &sliding
+            )
+            .unwrap()
+        )
+        .as_deref(),
+        Some("1 south, 3 west, 1 north")
+    );
+    let ends = reached(
+        (5, 1),
+        &*walkable,
+        box_,
+        &Reach {
+            slide: Some(&slide),
+            ..Reach::default()
+        },
+    )
+    .unwrap();
+    assert!(ends.contains_key(&(2, 1)) && ends.contains_key(&(4, 1)));
+    // Without the floor below, the ice is only slid along, end to end, past both gaps.
+    let along = reached(
+        (0, 1),
+        &*walkable,
+        Box {
+            west: 0,
+            north: 0,
+            east: 5,
+            south: 1,
+        },
+        &Reach {
+            slide: Some(&slide),
+            ..Reach::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        along.keys().copied().collect::<HashSet<Cell>>(),
+        HashSet::from([(0, 1), (5, 1)])
+    );
+}
+
 /// Going onto water to surf costs more than a step: the way on foot is taken unless the
 /// way over the water saves more than the toll.
 #[test]
