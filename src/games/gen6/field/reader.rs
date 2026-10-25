@@ -1971,6 +1971,9 @@ impl FieldReader {
     /// (spike 203); and, in a game with `gates`, the records' indices of the gates, models drawn
     /// as nothing that share a script with one another and with no drawn record: the five behind
     /// Viola in Santalune Gym, shut until the game opens the tent after her battle (spike 223).
+    /// The cells of its furniture are among the warps': each of X's boutiques stands one on its
+    /// fitting room, listed already, and it was listed beside it as "person 1 north"
+    /// (x_cyllage_boutique_fitting_room).
     fn stand_ins(&self) -> Result<StandIns> {
         let Some(data) = self.current()? else {
             return Ok((IndexMap::new(), HashSet::new(), HashSet::new()));
@@ -2019,6 +2022,9 @@ impl FieldReader {
                     doors.insert((x, z));
                 }
             }
+        }
+        for item in read_furniture(&*self.memory, &data)? {
+            doors.extend(item.cells());
         }
         Ok((stand_ins, doors, gates))
     }

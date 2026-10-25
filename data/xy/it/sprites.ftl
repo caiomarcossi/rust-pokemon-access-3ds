@@ -473,6 +473,8 @@ furniture-0x292f = albero di bacche
 furniture-0x2930 = albero di bacche
 # fitting room: text 142:85, the 17 zones of the Pokémon Centers' PC
 furniture-0x29d2 = camerino
+# fitting room: text 142:85, the 7 boutiques' fitting room, called as the Pokémon Centers' is
+furniture-0x29d3 = camerino
 # clothes: text 142:60 and 64, the boutiques' displays
 furniture-0x29d4 = abiti
 # bed: story 398:19, zones 0x88 to 0x8b; French story 204:1

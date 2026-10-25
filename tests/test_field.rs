@@ -2872,6 +2872,34 @@ fn test_a_row_of_models_drawn_as_nothing_with_a_script_no_drawn_record_has_is_a_
     Ok(())
 }
 
+/// Each of X's boutiques stands a model drawn as nothing on its fitting room, which is
+/// listed, and it was listed beside it as "person 1 north" (x_cyllage_boutique_fitting_room).
+#[test]
+fn test_a_model_drawn_as_nothing_on_a_piece_of_furniture_is_nobody() -> Result<()> {
+    let mut town = Town::new();
+    let data = zone_file(&ZoneSpec {
+        sized: &[(0x29D3, 106, 171, 1, 1)],
+        npcs: &[(mmodel::NONDRAW, 106, 171, 0, None)],
+        info: &town_info(),
+        ..ZoneSpec::default()
+    });
+    town.memory.write(FILE, &data);
+    town.memory
+        .u32(HOLDER, &[FILE, OTHER, 0x11 | (data.len() as i64) << 8]);
+    town.reader = field_reader(town.memory.clone(), Given::default(), game());
+    town.model(1, TOWN, 0, mmodel::NONDRAW, (106, 171));
+    let r#where = town.r#where()?;
+    assert!(r#where.of("people").is_empty());
+    assert!(
+        r#where
+            .of("signs")
+            .iter()
+            .map(|item| item.cell)
+            .any(|cell| cell == (106, 171))
+    );
+    Ok(())
+}
+
 /// Seafloor Cavern's submarine is four furniture records with one script, two 4 by 4 and an
 /// end of 1 by 2 at each side, and was listed as four signs; an elevator's door is two records
 /// side by side with a shared script each, and was two (Orion, movie44). Each is one thing over

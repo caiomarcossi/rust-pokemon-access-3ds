@@ -474,6 +474,8 @@ furniture-0x292f = 树果树
 furniture-0x2930 = 树果树
 # fitting room: text 142:85, the 17 zones of the Pokémon Centers' PC
 furniture-0x29d2 = 试衣间
+# fitting room: text 142:85, the 7 boutiques' fitting room, called as the Pokémon Centers' is
+furniture-0x29d3 = 试衣间
 # clothes: text 142:60 and 64, the boutiques' displays
 furniture-0x29d4 = 衣服
 # bed: story 398:19, zones 0x88 to 0x8b; French story 204:1
