@@ -585,6 +585,9 @@ pub const UNDERWATER_134: i64 = 0xA0;
 pub const UNDERWATER_134_SOUTH: i64 = 0xA1;
 pub const MOVING_TRUCK: i64 = 0x18F;
 pub const LITTLEROOT_TOWN: i64 = 0x6;
+pub const ROUTE_125: i64 = 0x36;
+pub const SHOAL_CAVE_LOW: i64 = 0x80;
+pub const SHOAL_CAVE_HIGH: i64 = 0x84;
 
 /// Mauville Gym's triggers, by their scripts (spike 146): its five floor switches, each one cell,
 /// the two by the entrance at (58, 38) and (66, 38), the three by Wattson at (5, 40), (13, 36) and
@@ -636,6 +639,14 @@ pub const LITTLEROOT_TOWN: i64 = 0x6;
 /// Its case ends in the script's one call into Littleroot Town's outdoors, `0x6`, at (100, 172),
 /// between the two houses' doors at (94, 171) and (106, 171). Until 2026-10-18 the truck listed its
 /// five signs and no exit (or_desc and or_desc2, the boy's opening and the girl's).
+///
+/// Shoal Cave, off Route 125, is two pairs of zones, one for each tide, with no warp from the route
+/// into either: Route 125's only trigger, script 2, one cell at (240, 103) in front of the cave
+/// mouth, ends in a call into `0x80` at low tide, the hours from 3 to 9 and from 15 to 21 by the
+/// game's clock, and into `0x84` at high tide, both at (21, 34). Each entrance room's only trigger,
+/// script 2, one cell at (21, 34), leads back to (240, 103). `0x80` leads on to `0x81` and the floors
+/// below it, `0x84` only to `0x85`. The player walked in at 22:20 and stood in `0x84`, and walked out
+/// (or_shoal_cave_entrance, 2026-10-24); the list held neither way.
 ///
 /// Python's value is `tuple[str, str] | tuple[str, str, int]`: the zone is the third item, None
 /// where the tuple has two.
@@ -708,6 +719,20 @@ pub fn triggers() -> &'static IndexMap<(i64, i64), (String, String, Option<i64>)
                 Some(LITTLEROOT_TOWN),
             ),
         );
+        out.insert(
+            (ROUTE_125, 0x2),
+            (
+                "exits".to_string(),
+                "entrance".to_string(),
+                Some(SHOAL_CAVE_HIGH),
+            ),
+        );
+        for zone in [SHOAL_CAVE_LOW, SHOAL_CAVE_HIGH] {
+            out.insert(
+                (zone, 0x2),
+                ("exits".to_string(), "way out".to_string(), Some(ROUTE_125)),
+            );
+        }
         for &zone in secret_bases_zones() {
             out.insert((zone, WAY_OUT), owned(("exits", "way out")));
         }
