@@ -37,8 +37,8 @@ use crate::games::common::field::chunk::{
     BIKE_RAILS, BLOCKED, BUMPY_SLOPES, CHUNK, CURRENTS, Chunk, DIVE, FALLS, SLOPES,
 };
 use crate::games::common::field::ground::{
-    self as common, BLOCK, CRACKED, Far, Grid, Ground, NO_ZONE, Of, STRENGTH, pushes, riding,
-    walkable,
+    self as common, BLOCK, CRACKED, Far, Grid, Ground, GroundHeight, NO_ZONE, Of, STRENGTH, pushes,
+    riding, walkable,
 };
 use crate::games::common::field::things::{
     BIKE, BIKE_SOURCE, CURRENT_SOURCE, CURRENTS_CATEGORY, DECORATION_SOURCE, DIVE_SOURCE,
@@ -851,6 +851,15 @@ impl FieldReader {
             None
         };
         let belts = self.belts_here(r#where.zone)?;
+        let ground_height: Option<GroundHeight> = if stacked {
+            None
+        } else {
+            let me = self
+                .me
+                .upgrade()
+                .expect("a reader is made in an Rc, which its holders keep");
+            Some(Rc::new(move |cell| me.terrain.height(cell)))
+        };
         let ground = Ground {
             decks,
             cliffs,
@@ -863,6 +872,7 @@ impl FieldReader {
             level,
             ice,
             filled,
+            ground_height,
             strands: self.strands,
             lanes,
             ..Ground::of(

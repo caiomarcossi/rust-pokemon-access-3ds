@@ -329,6 +329,10 @@ impl Grid {
 /// once it was (omega_ruby_surf_2.ctm, spike 136). None without the ROM's chunks to read.
 pub type Far = Rc<dyn Fn(i64, i64) -> Result<Option<Rc<Chunk>>>>;
 
+/// `Callable[[Cell], float | None]`: a cell's height as the ROM's chunks say it
+/// (`Ground.ground_height`).
+pub type GroundHeight = Rc<dyn Fn(Cell) -> Result<Option<f64>>>;
+
 /// Where the player can walk, as far as the map loaded now says: what pathfinding walks on.
 ///
 /// A cell cannot be walked where its chunk's blocked bit is set — a tree, a wall, a door, a sign,
@@ -432,6 +436,10 @@ pub struct Ground {
     pub stacked: bool,
     /// The player's height on a stacked ground, which says the floor they start on.
     pub level: Option<f64>,
+    /// The height of a cell's floor off a stacked ground, where the ROM's chunks are read: a
+    /// thing is walked up to only from a cell within `2 * CLIMB` of its height, as on a stacked
+    /// ground (`open`).
+    pub ground_height: Option<GroundHeight>,
     /// How high each thing in a cell of `standing` stands, None where not known: on a stacked
     /// ground it stands on its cell's floor nearest that, and in nobody's way on the others. In
     /// Sootopolis Gym a Beauty stands in the lower floor's corridor under an invisible blocker in
@@ -501,6 +509,7 @@ impl Default for Ground {
             surfaces: IndexMap::new(),
             stacked: false,
             level: None,
+            ground_height: None,
             heights: IndexMap::new(),
             decks: Vec::new(),
             strands: 0,
@@ -541,6 +550,7 @@ impl fmt::Debug for Ground {
             .field("surfaces", &self.surfaces)
             .field("stacked", &self.stacked)
             .field("level", &self.level)
+            .field("ground_height", &self.ground_height.is_some())
             .field("heights", &self.heights)
             .field("decks", &self.decks)
             .field("strands", &self.strands)
@@ -717,7 +727,9 @@ impl Ground {
     }
 
     /// Whether the player can stand in the cell: on a stacked ground, on any floor of it, or on
-    /// its floor at `height` where one is given (`floor_at`).
+    /// its floor at `height` where one is given (`floor_at`); off one, within `2 * CLIMB` of
+    /// `height` where one is given and the cell's is known (`ground_height`), so a thing at the
+    /// foot of a cliff is not walked up to from its top.
     pub fn open_at(&self, cell: Cell, height: Option<f64>) -> Result<bool> {
         if let Some(corridor) = &self.corridor {
             return Ok(!self.standing.contains(&cell) && corridor.open(cell)?);
@@ -743,6 +755,11 @@ impl Ground {
                 return Ok(false);
             }
         } else if self.stands(cell, ANY_FLOOR)? {
+            return Ok(false);
+        } else if let (Some(height), Some(ground_height)) = (height, &self.ground_height)
+            && let Some(here) = ground_height(cell)?
+            && (here - height).abs() > 2.0 * CLIMB
+        {
             return Ok(false);
         }
         let Some(chunk) = self.chunk(cell)? else {
