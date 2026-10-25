@@ -210,6 +210,7 @@ kind-current = 海流
 kind-flat-ground = 平らな地面
 kind-blue-spot = 青い足場
 kind-wall-ledge = 壁の岩棚
+kind-gym-leader-spot = ジムリーダーの場所
 kind-slope = 坂
 kind-bumpy-slope = でこぼこの坂
 kind-rail = レール

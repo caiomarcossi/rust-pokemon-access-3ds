@@ -210,6 +210,7 @@ kind-current = courant
 kind-flat-ground = sol plat
 kind-blue-spot = point bleu
 kind-wall-ledge = rebord du mur
+kind-gym-leader-spot = place du champion d'arène
 kind-slope = pente
 kind-bumpy-slope = pente cahoteuse
 kind-rail = rail

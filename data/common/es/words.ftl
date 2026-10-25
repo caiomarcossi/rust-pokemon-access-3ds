@@ -210,6 +210,7 @@ kind-current = corriente
 kind-flat-ground = suelo llano
 kind-blue-spot = punto azul
 kind-wall-ledge = saliente del muro
+kind-gym-leader-spot = lugar del líder de gimnasio
 kind-slope = pendiente
 kind-bumpy-slope = pendiente escarpada
 kind-rail = raíl

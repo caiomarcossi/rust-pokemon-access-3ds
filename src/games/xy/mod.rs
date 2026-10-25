@@ -440,6 +440,12 @@ pub const GRINDING: Grinding = Grinding {
     end: 0x8B,
 };
 
+pub const SHALOUR_GYM: i64 = 0xAF;
+/// The script of Shalour Gym's two triggers at the centre's edges, (35, 38) and (45, 38), each 1
+/// wide and 5 deep, work 0x40f7: where Korrina's scene starts, her model, sprite 0x11, loaded only
+/// then (spike A).
+pub const KORRINA: i64 = 0x7;
+
 pub const SANTALUNE_LOBBY: i64 = 0x37;
 pub const SANTALUNE_WEB: i64 = 0x38;
 /// Santalune Gym's two poles, a furniture record each way: the lobby's at (20, 24) and the web
@@ -560,6 +566,10 @@ pub fn game() -> &'static Game {
                     "stairs up".to_string(),
                     Some(SANTALUNE_LOBBY),
                 ),
+            ),
+            (
+                (SHALOUR_GYM, KORRINA),
+                ("signs".to_string(), "gym leader spot".to_string(), None),
             ),
         ]),
         furniture: IndexMap::from([

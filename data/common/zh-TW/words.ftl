@@ -210,6 +210,7 @@ kind-current = 海流
 kind-flat-ground = 平地
 kind-blue-spot = 藍色落腳點
 kind-wall-ledge = 岩壁平台
+kind-gym-leader-spot = 道館館主的位置
 kind-slope = 斜坡
 kind-bumpy-slope = 崎嶇斜坡
 kind-rail = 軌道

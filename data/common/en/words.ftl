@@ -386,6 +386,8 @@ kind-flat-ground = flat ground
 # the climber steps off it: the Gym's guide says "those blue spots" (spike 245).
 kind-blue-spot = blue spot
 kind-wall-ledge = wall ledge
+# Where Shalour Gym's leader comes out to meet the player, at the centre's edges (spike A).
+kind-gym-leader-spot = gym leader's spot
 kind-slope = slope
 kind-bumpy-slope = bumpy slope
 kind-rail = rail

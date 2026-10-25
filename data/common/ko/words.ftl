@@ -211,6 +211,7 @@ kind-current = 해류
 kind-flat-ground = 평평한 땅
 kind-blue-spot = 파란 발판
 kind-wall-ledge = 벽의 턱
+kind-gym-leader-spot = 체육관 관장 자리
 kind-slope = 비탈
 kind-bumpy-slope = 울퉁불퉁한 비탈
 kind-rail = 레일

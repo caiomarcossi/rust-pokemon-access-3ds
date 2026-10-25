@@ -210,6 +210,7 @@ kind-current = corrente
 kind-flat-ground = terreno piano
 kind-blue-spot = punto blu
 kind-wall-ledge = sporgenza della parete
+kind-gym-leader-spot = posto del capopalestra
 kind-slope = pendio
 kind-bumpy-slope = pendio accidentato
 kind-rail = binario

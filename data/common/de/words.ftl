@@ -210,6 +210,7 @@ kind-current = Strömung
 kind-flat-ground = flacher Boden
 kind-blue-spot = blauer Punkt
 kind-wall-ledge = Felsvorsprung
+kind-gym-leader-spot = Platz des Arenaleiters
 kind-slope = Hang
 kind-bumpy-slope = holpriger Hang
 kind-rail = Schiene
