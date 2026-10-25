@@ -549,7 +549,13 @@ impl TouchTargets {
                             }
                         }
                     }
-                    if let Some(pictured) = pictured {
+                    // Screen text names the picture too where it names pictures: the Bag's party
+                    // slots were "Torchic Torchic L14", the AreaNav's Pokémon "Surskit Surskit"
+                    // and the Battle Maison's partners "May May" (or_multi_battle_partners).
+                    if let Some(pictured) = pictured
+                        && !pictured.is_empty()
+                        && !spoken[&touch].contains(&pictured)
+                    {
                         said = if said.is_empty() {
                             pictured
                         } else {
