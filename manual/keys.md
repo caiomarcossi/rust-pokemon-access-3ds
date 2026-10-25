@@ -106,6 +106,11 @@ along it, and "climb 3 down" is back down to the floor. Some walls are slid down
 the top and the game carries you to the floor below, which `P` says as "slide 5 south". A slide
 only goes down, so `P` takes the way round to go back up.
 
+**Grind rails.** In Shalour Gym, in X and Y, you skate along the rails on roller skates. `P` says
+the way to a rail's end, then the ride as one step of the way, "3 east, grind the rail 17 east":
+skate onto the rail with the circle pad and it carries you to the far end. The interactables list
+the Gym leader's spot, where Korrina comes out to meet you.
+
 **Big boulders** say which ways they can be pushed from where they stand, or "immoveable". Hold
 the way for a moment to push one a square. Push one into a hole and both leave the list.
 

@@ -44,6 +44,13 @@ What pa3ds gets wrong or leaves out for now. To report one that is not here, see
   facing east or west, "north" and "south" along the wall may not be the keys that climb it.
 - **Slides** have been tried in Cyllage Gym only. `P` also slides down a few short drops outside
   it that look the same, in Cyllage City and on Routes 8 and 10 among them, which nobody has tried.
+- **Shalour Gym's rails** have been ridden one way only, north from the entrance. The rest, and
+  riding any of them back, nobody has tried. `P` takes the rail out of the Gym as going one way,
+  from the centre to the entrance. The way into the centre opens as you beat the Gym's trainers,
+  which nobody has tried with `P`. Skating onto a rail with the D-pad has not been tried.
+- **Rails outside Shalour Gym**, on Routes 5, 13 and 18 and in Dendemille and Couriway Towns, are
+  found the same way and nobody has tried them. A rail broken in the middle, as Route 5's over the
+  water is, is not taken by `P`.
 
 ## Sun and Moon
 
