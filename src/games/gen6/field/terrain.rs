@@ -12,7 +12,9 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::core::pathfind::{self, Cell};
 use crate::games::common::field::chunk::{BLOCKED, CHUNK, Chunk, DIVE, Floor, KIND_SHIFT, SHORE};
+use crate::games::common::field::climb::Walls;
 use crate::games::gen6::field::mapblock;
+use crate::games::gen6::game::Climbing;
 use crate::py::{self, Error, Result};
 
 /// What the list has where the matrix has no chunk: most of Route 109's 12 by 10 (spike 136).
@@ -92,6 +94,9 @@ fn beside(cell: Cell) -> [Cell; 4] {
 /// The chunk files the ways up a kind's cells were found for, and the ways (`rises`).
 type Rises = (Rc<Vec<i64>>, IndexMap<Cell, &'static str>);
 
+/// Each ROM chunk of the matrix with its ground heights, by its key (`Terrain::tables`).
+type Tables = IndexMap<(i64, i64), (Vec<i64>, Vec<Option<f64>>)>;
+
 /// The ROM's chunks of the matrix the field map lists, read a file at a time and kept.
 pub struct Terrain {
     cells: Option<FarCells>,
@@ -114,6 +119,8 @@ pub struct Terrain {
     ///
     /// Python keys it by a `frozenset`; a `BTreeSet` is equal where the frozenset is.
     rises_of: RefCell<IndexMap<BTreeSet<i64>, Rises>>,
+    /// The chunk files the climbing walls were found for, and the walls (`walls`).
+    walls_of: RefCell<(Option<Rc<Vec<i64>>>, Rc<Walls>)>,
     /// The chunk files the floors were read for, and whether one has a deck (`stacked`).
     stacked: RefCell<(Option<Rc<Vec<i64>>>, bool)>,
 }
@@ -137,6 +144,7 @@ impl Terrain {
             flat: RefCell::new(HashMap::new()),
             drops: RefCell::new(HashMap::new()),
             rises_of: RefCell::new(IndexMap::new()),
+            walls_of: RefCell::new((None, Rc::new(Walls::default()))),
             stacked: RefCell::new((None, false)),
         }
     }
@@ -380,10 +388,7 @@ impl Terrain {
     /// west for three (spike 159), and Ever Grande City's waterfall has the sea at 0 below and
     /// the water at 234 above (spike 170). None without the ROM's heights.
     pub fn rises(&self, kinds: &[i64]) -> Result<IndexMap<Cell, &'static str>> {
-        let (wide, files) = {
-            let held = self.files.borrow();
-            (held.0, held.1.clone())
-        };
+        let files = self.files.borrow().1.clone();
         let key: BTreeSet<i64> = kinds.iter().copied().collect();
         if let Some(cached) = self.rises_of.borrow().get(&key)
             && cached.0 == files
@@ -391,18 +396,7 @@ impl Terrain {
             return Ok(cached.1.clone());
         }
         let mut out: IndexMap<Cell, &'static str> = IndexMap::new();
-        let mut tables: IndexMap<(i64, i64), (Vec<i64>, Vec<Option<f64>>)> = IndexMap::new();
-        for (at, &file) in files.iter().enumerate() {
-            let at = at as i64;
-            let chunk = self.far(py::modulo(at, wide), py::floordiv(at, wide))?;
-            let heights = match &self.heights {
-                None => None,
-                Some(heights) => heights(file)?,
-            };
-            if let (Some(chunk), Some(heights)) = (chunk, heights) {
-                tables.insert(chunk.key(), (chunk.words.clone(), heights));
-            }
-        }
+        let tables = self.tables()?;
 
         let read = |cell: Cell| -> Result<Option<(i64, Option<f64>)>> {
             let table = tables.get(&(py::floordiv(cell.0, CHUNK), py::floordiv(cell.1, CHUNK)));
@@ -455,6 +449,63 @@ impl Terrain {
         }
         self.rises_of.borrow_mut().insert(key.clone(), (files, out));
         Ok(self.rises_of.borrow()[&key].1.clone())
+    }
+
+    /// Every climbing wall on the matrix (`Walls.found`), off the ROM's chunks with their
+    /// ground heights, found once a matrix; none without the ROM's heights. Only chunks with a
+    /// `climbing.face` cell are read whole: Cyllage Gym's one chunk holds all 28 of X's
+    /// (spike A).
+    pub fn walls(&self, climbing: &Climbing) -> Result<Rc<Walls>> {
+        let files = self.files.borrow().1.clone();
+        if self.walls_of.borrow().0.as_ref() != Some(&files) {
+            let mut cells: IndexMap<Cell, (i64, Option<f64>)> = IndexMap::new();
+            for ((column, row), (words, heights)) in self.tables()? {
+                if words
+                    .iter()
+                    .any(|&word| word >> KIND_SHIFT == climbing.face)
+                {
+                    for (i, &word) in words.iter().enumerate() {
+                        let height = *heights
+                            .get(i)
+                            .ok_or_else(|| Error::index("tuple index out of range"))?;
+                        let i = i as i64;
+                        cells.insert(
+                            (column * CHUNK + i % CHUNK, row * CHUNK + i / CHUNK),
+                            (word, height),
+                        );
+                    }
+                }
+            }
+            let walls = if cells.is_empty() {
+                Rc::new(Walls::default())
+            } else {
+                Rc::new(Walls::found(&cells, climbing.face, &climbing.sideways))
+            };
+            *self.walls_of.borrow_mut() = (Some(files), walls);
+        }
+        Ok(self.walls_of.borrow().1.clone())
+    }
+
+    /// Each ROM chunk of the matrix with its ground heights, by its key: its cell table and
+    /// a height a cell (`rises`, `walls`).
+    fn tables(&self) -> Result<Tables> {
+        let (wide, files) = {
+            let held = self.files.borrow();
+            (held.0, held.1.clone())
+        };
+        let mut tables: Tables = IndexMap::new();
+        for (at, &file) in files.iter().enumerate() {
+            let at = at as i64;
+            let chunk = self.far(py::modulo(at, wide), py::floordiv(at, wide))?;
+            let heights = match &self.heights {
+                None => None,
+                Some(heights) => heights(file)?,
+            };
+            if let (Some(chunk), Some(heights)) = (chunk, heights) {
+                tables.insert(chunk.key(), (chunk.words.clone(), heights));
+            }
+        }
+        Ok(tables)
     }
 
     /// Whether a chunk of the matrix has a deck over its ground, a floor with a cell open at

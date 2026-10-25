@@ -12,6 +12,8 @@
 //! - `ground`: **`Ground`**, where the player can walk: the cells of the chunks loaded, less where
 //!   the matrix has no zone (gen 6's `Grid`), or a rail's corridor instead (X's Lumiose,
 //!   `gen6.field.rail`); rooms of thin ice and rotating doors.
+//! - `climb`: **`Walls`**, the climbing walls of X's Cyllage Gym, which the ground's search climbs
+//!   and the list shows the blue spots of.
 //! - `navigate` answers the navigation keys (`keys`), and `guide` finds the way and follows the
 //!   player along it.
 

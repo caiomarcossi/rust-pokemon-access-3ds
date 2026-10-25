@@ -22,8 +22,9 @@ fn hex(n: i64) -> String {
 /// sign renamed the door, and the ROM's name for the door was said for the sign), and an edge's
 /// `zone << 16` reached the bit a use tile was marked with, `1 << 24`, for any zone from `0x100` up
 /// (the same day). The tag sits above 32 bits because every number under it is built from u16s the
-/// game holds — a zone shifted by 16 at most — so nothing read from the game can reach it.
-pub const SOURCE_KIND: i64 = 0xF << 32;
+/// game holds — a zone shifted by 16 at most — so nothing read from the game can reach it. Five bits
+/// since the seventeenth kind, `CLIMB_SOURCE` (2026-10-24).
+pub const SOURCE_KIND: i64 = 0x1F << 32;
 
 /// A furniture record's source is its bare index: the tag the first names were keyed under.
 pub const FURNITURE_SOURCE: i64 = 0 << 32;
@@ -83,6 +84,9 @@ pub const CURRENT_SOURCE: i64 = 14 << 32;
 /// A patch of flat ground's source, where a ridden Pokémon is got on and off: `RIDE_SOURCE | x <<
 /// 12 | z`, its first cell (spike 238).
 pub const RIDE_SOURCE: i64 = 15 << 32;
+
+/// A run of a climbing wall's blue spots: `CLIMB_SOURCE | x << 12 | z`, its first cell (spike A).
+pub const CLIMB_SOURCE: i64 = 16 << 32;
 
 /// A place's `source` from its kind's tag and its own number. The number must leave the tag's
 /// bits clear, and no u16 the game holds can reach them, so one that does is a new encoding
@@ -152,8 +156,12 @@ pub const CURRENTS_CATEGORY: &str = "currents";
 /// can get off rhyhorn so that prob need its own category" (Khai, 2026-10-22).
 pub const RIDING: &str = "riding";
 
+/// The blue spots climbing walls are got on at and the ledges they are got off onto, a category of
+/// its own: "mark its entry point and exit point maybe? in a category" (Khai, 2026-10-24).
+pub const CLIMBING: &str = "climbing";
+
 /// In the order they are walked and logged.
-pub const CATEGORIES: [&str; 11] = [
+pub const CATEGORIES: [&str; 12] = [
     "exits",
     "signs",
     OBSTACLES,
@@ -163,6 +171,7 @@ pub const CATEGORIES: [&str; 11] = [
     ASH,
     BIKE,
     RIDING,
+    CLIMBING,
     CURRENTS_CATEGORY,
     POKEMON,
 ];
@@ -171,14 +180,14 @@ pub const CATEGORIES: [&str; 11] = [
 #[derive(Debug, Clone, PartialEq)]
 pub struct Interactable {
     /// One of `CATEGORIES`: `exits`, `signs`, `obstacles`, `people`, `items`, `berries`, `ash`,
-    /// `bike`, `riding`, `currents` or `pokémon`, or in the sky `towns`, `routes`, `landmarks` or
-    /// `mirage spots`.
+    /// `bike`, `riding`, `climbing`, `currents` or `pokémon`, or in the sky `towns`, `routes`,
+    /// `landmarks` or `mirage spots`.
     pub category: String,
     /// What it is, in pa3ds's own words: `door`, `sign`, `PC`, `person`, `item ball`, `edge`,
     /// `berry spot`, `ash pile`, `hidden Pokémon`, `barrier`, `switch`, `passage`, `trapdoor`,
     /// `geyser`, `lift`, `teleporter`, `dive spot`, `stairs`, `stairs up`, `stairs down`, `ladder
-    /// up`, `ladder down`, `entrance`, `slope`, `bumpy slope`, `rail`, `current`, a `flock` in the
-    /// sky; or in the sky, the game's own name for a place.
+    /// up`, `ladder down`, `entrance`, `slope`, `bumpy slope`, `rail`, `current`, `blue spot`,
+    /// `wall ledge`, a `flock` in the sky; or in the sky, the game's own name for a place.
     pub kind: String,
     pub cell: (i64, i64),
     pub size: (i64, i64),

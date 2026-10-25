@@ -34,6 +34,11 @@ What pa3ds gets wrong or leaves out for now. To report one that is not here, see
 - **A Pokémon met in seaweed under water** is said as one met walking, and as met in grass in the
   Pokédex, because the game itself shows it that way.
 
+## X and Y
+
+- **Cyllage Gym's climbs** have been tried on one wall, the one nearest the entrance. On the walls
+  facing east or west, "north" and "south" along the wall may not be the keys that climb it.
+
 ## Sun and Moon
 
 - **Your save's language** cannot be read: set it yourself (see [Languages](languages.md)).

@@ -7,7 +7,7 @@ When one of them is also bound to an Azahar button, pa3ds says so as it starts.
 ## The map's list
 
 pa3ds lists what is on the map in categories: all, exits, interactables, obstacles, people, items,
-berries, ash, bike, riding, currents and pokémon, and while soaring, towns, routes, landmarks and mirage
+berries, ash, bike, riding, climbing, currents and pokémon, and while soaring, towns, routes, landmarks and mirage
 spots. A category with nothing in it is skipped. Each thing is said with where it is from you:
 "door, 1 of 3, 3 east 2 north". A thing more than two squares' height above or below you says how
 far, in the game's units, 18 to a square: "item ball, 1 north, 90 below". North is the way up
@@ -94,6 +94,11 @@ category lists each patch of flat ground, where you get on the Rhyhorn by facing
 with B. `P` walks you to the Rhyhorn, "Rhyhorn 1 east", across the spikes and off again, "get off
 3 north". Rocks are obstacles: on the Rhyhorn, face one and press A to smash it, which `P` says as
 "smash 1 east".
+
+**Climbing walls.** In Cyllage Gym, in X and Y, the rock walls are climbed from the blue spots at
+their foot. The climbing category lists the blue spots and each wall ledge, where you step off a
+wall sideways. `P` climbs them: "climb 3 up, 6 east" is up the wall three handholds, then six east
+along it, and "climb 3 down" is back down to the floor.
 
 **Big boulders** say which ways they can be pushed from where they stand, or "immoveable". Hold
 the way for a moment to push one a square. Push one into a hole and both leave the list.

@@ -484,6 +484,7 @@ fn test_every_kind_of_slot_has_a_word() {
         things::MODEL_SOURCE,
         things::CURRENT_SOURCE,
         things::RIDE_SOURCE,
+        things::CLIMB_SOURCE,
     ]
     .map(|value| value >> 32)
     .to_vec();

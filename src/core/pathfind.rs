@@ -27,6 +27,7 @@ use std::hash::Hash;
 use indexmap::IndexMap;
 
 use crate::core::words::{own, said};
+use crate::games::common::field::guide::Held;
 use crate::py::{self, Error, Result};
 
 pub type Cell = (i64, i64);
@@ -140,6 +141,10 @@ pub struct Leg {
     pub end: i64,
     /// What the leg is walked with, said before it: "Surf". "" on foot.
     pub how: String,
+    /// The handholds climbed in place before and after it, where it is the guide's subclass
+    /// `Held`: None for a plain `Leg`. A field here, as Python's `isinstance(leg, Held)` is
+    /// `held.is_some()`, so a list of legs can hold both.
+    pub held: Option<Held>,
 }
 
 impl Leg {
@@ -150,12 +155,16 @@ impl Leg {
             steps,
             end,
             how: String::new(),
+            held: None,
         }
     }
 }
 
 impl fmt::Display for Leg {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(held) = &self.held {
+            return write!(f, "{}", held.said(self));
+        }
         if !self.how.is_empty() {
             return write!(
                 f,
@@ -920,6 +929,7 @@ pub fn legs_with(
                     steps: last.steps + 1,
                     end: i as i64,
                     how: walked,
+                    held: None,
                 };
             }
             _ => out.push(Leg {
@@ -927,6 +937,7 @@ pub fn legs_with(
                 steps: 1,
                 end: i as i64,
                 how: walked,
+                held: None,
             }),
         }
     }

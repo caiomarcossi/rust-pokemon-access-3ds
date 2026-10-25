@@ -3457,6 +3457,75 @@ fn test_flat_ground_is_listed_under_riding_a_patch_at_a_time() -> Result<()> {
     Ok(())
 }
 
+/// Spike A: Cyllage Gym's walls are climbed from the blue spots at their foot, two side by side
+/// at (25, 32) and (26, 32), and got off onto a ledge at a face's side, (31, 32) at 54; Khai
+/// asked for their "entry point and exit point maybe? in a category" (2026-10-24). The plateau
+/// behind a face's top, open beside it at another height, is neither.
+#[test]
+fn test_climbing_walls_are_listed_a_run_of_blue_spots_or_a_ledge_at_a_time() -> Result<()> {
+    let mut town = Town::with(false, 5, 7);
+    let mut files = vec![NO_CHUNK_FILE; 64];
+    files[4 * 8 + 2] = 7;
+    town.memory.write(MAP + MAP_CHUNK_FILES, &le16(&files));
+    let mut tiles: Vec<((i64, i64), i64)> = [105, 106, 111]
+        .iter()
+        .map(|&x| ((x, 171), 0x59000001))
+        .collect();
+    tiles.push(((110, 172), 0x51000020));
+    let mut blocked: Vec<(i64, i64)> = border(160);
+    blocked.extend((107..111).map(|x| (x, 171)));
+    blocked.extend([(112, 172), (111, 173)]);
+    let words = mapblock::cells(&chunk_file_with((80, 160), &blocked, &tiles, 7))?.unwrap();
+    let heights: Vec<Option<f64>> = (0..CHUNK * CHUNK)
+        .map(|i| {
+            let cell = (80 + i % CHUNK, 160 + i / CHUNK);
+            Some(if cell == (111, 171) || cell == (111, 172) {
+                54.0
+            } else if cell == (105, 170) {
+                90.0
+            } else {
+                0.0
+            })
+        })
+        .collect();
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given {
+            far: Some(Rc::new(move |file| {
+                Ok(if file == 7 { Some(words.clone()) } else { None })
+            })),
+            far_heights: Some(Rc::new(move |file| {
+                Ok(if file == 7 {
+                    Some(heights.clone())
+                } else {
+                    None
+                })
+            })),
+            ..Given::default()
+        },
+        Game {
+            climbing: Some(xy::climbing()),
+            ..game()
+        },
+    );
+    let climbing = town.r#where()?.of("climbing");
+    let mut seen: Vec<(String, (i64, i64), (i64, i64))> = climbing
+        .iter()
+        .map(|item| (item.kind.clone(), item.cell, item.size))
+        .collect();
+    seen.sort();
+    assert_eq!(
+        seen,
+        [
+            ("blue spot".to_string(), (105, 172), (2, 1)),
+            ("wall ledge".to_string(), (111, 172), (1, 1))
+        ]
+    );
+    let sources: HashSet<i64> = climbing.iter().map(|item| item.source).collect();
+    assert_eq!(sources.len(), 2);
+    Ok(())
+}
+
 /// Spike 238: on Route 9 the Rhyhorn smashes rocks with A, and while the player rode it the list
 /// said "Rhyhorn, here", its model left where it was got on.
 #[test]

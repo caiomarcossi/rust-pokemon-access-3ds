@@ -36,14 +36,16 @@ use crate::games::common::field::chunk::HOLE as BOULDER_HOLE;
 use crate::games::common::field::chunk::{
     BIKE_RAILS, BLOCKED, BUMPY_SLOPES, CHUNK, CURRENTS, Chunk, DIVE, FALLS, SLOPES,
 };
+use crate::games::common::field::climb::Walls;
 use crate::games::common::field::ground::{
     self as common, BLOCK, CRACKED, Far, Grid, Ground, GroundHeight, NO_ZONE, Of, STRENGTH, pushes,
     riding, walkable,
 };
 use crate::games::common::field::things::{
-    BIKE, BIKE_SOURCE, CURRENT_SOURCE, CURRENTS_CATEGORY, DECORATION_SOURCE, DIVE_SOURCE,
-    EDGE_SOURCE, FURNITURE_SOURCE, Field, Interactable, OBSTACLES, POKEMON, RIDE_SOURCE, RIDING,
-    STAIRS_SOURCE, TILE_SOURCE, TRIGGER_SOURCE, WARP_SOURCE, kind_said, place_source,
+    BIKE, BIKE_SOURCE, CLIMB_SOURCE, CLIMBING, CURRENT_SOURCE, CURRENTS_CATEGORY,
+    DECORATION_SOURCE, DIVE_SOURCE, EDGE_SOURCE, FURNITURE_SOURCE, Field, Interactable, OBSTACLES,
+    POKEMON, RIDE_SOURCE, RIDING, STAIRS_SOURCE, TILE_SOURCE, TRIGGER_SOURCE, WARP_SOURCE,
+    kind_said, place_source,
 };
 use crate::games::gen6::field::features::{
     DoorReader, Feature, HiddenReader, Hiding, IceReader, SecretBaseReader, Tracked,
@@ -61,7 +63,7 @@ use crate::games::gen6::field::zonetable::{
     ZoneTable,
 };
 use crate::games::gen6::field::{fieldmap, mapblock, mmodel};
-use crate::games::gen6::game::{FurnitureKind, Game, Rides};
+use crate::games::gen6::game::{Climbing, FurnitureKind, Game, Rides};
 use crate::games::gen6::rom::archives::GameText;
 use crate::games::gen6::rom::maps::{ChunkSource, StreetSource};
 use crate::py::{self, Error, PySet, Result};
@@ -141,6 +143,12 @@ pub const CURRENT: &str = "current";
 /// What a patch of the flat ground a ridden Pokémon is got on and off on is called, listed at its
 /// cell nearest the player: the game never names it (spike 238).
 pub const FLAT_GROUND: &str = "flat ground";
+
+/// What a run of the blue spots a climbing wall is climbed from is called, and one on a ledge at
+/// its side, where it is got off: the Gym's guide says "start from one of those blue spots", and the
+/// game names neither (spike A).
+pub const BLUE_SPOT: &str = "blue spot";
+pub const WALL_LEDGE: &str = "wall ledge";
 
 /// Cells apart the places two currents let the player go may be and the two still be listed as
 /// one current. Route 133's currents let the player go at 152 cells, 71 groups of them side by side,
@@ -311,6 +319,9 @@ pub struct FieldReader {
     strands: i64,
     /// What the game's ridden Pokémon cross, or None in a game without one (`Game.rides`).
     rides: Option<Rides>,
+    /// The kinds of the walls the game lets the player climb, or None in a game without them
+    /// (`Game.climbing`).
+    climbing: Option<Climbing>,
     /// Whether a row of models drawn as nothing with a script of its own is a gate
     /// (`Game.gates`).
     gates: bool,
@@ -478,6 +489,7 @@ impl FieldReader {
             furniture_kinds: game.furniture.clone(),
             strands: game.strands,
             rides: game.rides.clone(),
+            climbing: game.climbing.clone(),
             gates: game.gates,
             secret_bases,
             barriers: game.barriers.clone(),
@@ -865,6 +877,7 @@ impl FieldReader {
             ground_height,
             strands: self.strands,
             lanes,
+            walls: self.walls()?,
             ..Ground::of(
                 r#where,
                 Of {
@@ -1138,6 +1151,7 @@ impl FieldReader {
         items.extend(self.edges(r#where.zone, !r#where.on_rail)?);
         items.extend(self.use_tiles(r#where.zone)?);
         items.extend(self.ways(r#where.zone, r#where.cell)?);
+        items.extend(self.climbing_spots(r#where.zone)?);
         items.extend(self.stairs_in(r#where.zone)?);
         items.extend(self.base_tiles(r#where.zone)?);
         items.extend(self.placed(r#where.zone)?);
@@ -2323,6 +2337,36 @@ impl FieldReader {
                 source: place_source(RIDE_SOURCE, cell_number(patch[0]))?,
                 home: Some(zone),
                 ..Interactable::new(RIDING, FLAT_GROUND, nearest(&mut patch.iter().copied()))
+            });
+        }
+        Ok(out)
+    }
+
+    /// The matrix's climbing walls, off the ROM (`Terrain.walls`); none in a game without
+    /// them.
+    fn walls(&self) -> Result<Rc<Walls>> {
+        match &self.climbing {
+            None => Ok(Rc::new(Walls::default())),
+            Some(climbing) => self.terrain.walls(climbing),
+        }
+    }
+
+    /// The zone's climbing walls' blue spots, each run of them side by side on one face at
+    /// one height a thing, a blue spot where the wall is got onto from the floor and a wall
+    /// ledge where it is got off onto a ledge at its side (`Walls.spots`, spike A).
+    fn climbing_spots(&self, zone: i64) -> Result<Vec<Interactable>> {
+        let mut out: Vec<Interactable> = Vec::new();
+        for (cells, ledge) in self.walls()?.spots() {
+            let at = self.zone_at(cells[0])?;
+            if at.is_some_and(|at| at != zone) {
+                continue;
+            }
+            let (first, size) = spread(&cells);
+            out.push(Interactable {
+                size,
+                source: place_source(CLIMB_SOURCE, cell_number(first))?,
+                home: Some(zone),
+                ..Interactable::new(CLIMBING, if ledge { WALL_LEDGE } else { BLUE_SPOT }, first)
             });
         }
         Ok(out)

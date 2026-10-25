@@ -531,6 +531,7 @@ pub fn game() -> &'static Game {
         models: Some(MODELS),
         strands: STRAND,
         rides: Some(rides()),
+        climbing: Some(climbing()),
         gates: true,
         steps: STEPS,
         training: TRAINING,
