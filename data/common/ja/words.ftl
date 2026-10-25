@@ -224,3 +224,5 @@ battle-share = { $percent }%
 ## Scenes
 
 narration = ナレーション
+# This language's own name, in itself, as the settings dialog lists it among the others.
+language-name = 日本語

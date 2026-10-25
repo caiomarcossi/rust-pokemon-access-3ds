@@ -225,3 +225,5 @@ battle-share = { $percent }%
 ## Scenes
 
 narration = 내레이션
+# This language's own name, in itself, as the settings dialog lists it among the others.
+language-name = 한국어
