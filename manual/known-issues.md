@@ -15,6 +15,10 @@ What pa3ds gets wrong or leaves out for now. To report one that is not here, see
 - **How far above or below** a thing is, is in the game's units, 18 to a square, as `C` and
   `Shift+C` say heights: a thing 54 below is three squares down, and a slope or stairs can take
   you there in three steps.
+- **A part of a town or route joined to the rest only through the next one** can list two or
+  more exits to the same place, and `P` walks you out and back in. Step off the way while you are
+  out, and pa3ds says the thing you chose is gone, since it can read only the place you are in:
+  walk in through the entrance `P` directed you to earlier, then press `P` again.
 
 ## The PC Box
 
