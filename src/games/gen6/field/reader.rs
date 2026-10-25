@@ -338,6 +338,9 @@ pub struct FieldReader {
     ambushes: HashSet<i64>,
     /// The sprites of the spots a wild Pokémon waits at unseen (`Game.lurkers`).
     lurkers: HashSet<i64>,
+    /// The sprites of the things other than item balls the player finds an item at
+    /// (`Game.pickups`).
+    pickups: HashSet<i64>,
     /// The matrix out of the ROM, which never touches RAM.
     pub terrain: Terrain,
     /// Underwater zone -> its `Ground.surfaces`, once found.
@@ -497,6 +500,7 @@ impl FieldReader {
             clears: game.clears.clone(),
             ambushes: game.ambushes.clone(),
             lurkers: game.lurkers.clone(),
+            pickups: game.pickups.clone(),
             terrain,
             surfaces_of: RefCell::new(HashMap::new()),
             trigger_boxes: RefCell::new(HashMap::new()),
@@ -2091,6 +2095,8 @@ impl FieldReader {
         let source = u32(head, mmodel::ZONE)? << 32 | model;
         let (category, kind) = if mmodel::ITEM_BALLS.contains(&code) {
             ("items", "item ball")
+        } else if self.pickups.contains(&code) {
+            ("items", PROP)
         } else if self.ambushes.contains(&code) || self.lurkers.contains(&code) {
             (POKEMON, PROP)
         } else if self.clears.contains_key(&code)

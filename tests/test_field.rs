@@ -2740,6 +2740,36 @@ fn test_a_rare_ball_is_an_item_ball_and_grass_a_pokemon_leaps_out_of_is_pokemon(
     Ok(())
 }
 
+/// Petalburg Woods (or_mossy_rock, 2026-10-25): the sparkle a Mega Stone lies at was listed
+/// under interactables, an object called "Mega Stone" by its sprite. It is an item.
+#[test]
+fn test_a_mega_stone_is_an_item() -> Result<()> {
+    let mut town = Town::new();
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given::default(),
+        Game {
+            pickups: HashSet::from([oras::KIRAKIRA]),
+            ..game()
+        },
+    );
+    town.model(2, TOWN, 1, oras::KIRAKIRA, (100, 180));
+    let r#where = town.r#where()?;
+    let items: Vec<_> = r#where
+        .of("items")
+        .iter()
+        .map(|item| (item.cell, item.naming(TOWN)))
+        .collect();
+    assert_eq!(items, [((100, 180), Some(("sprite", oras::KIRAKIRA, 0)))]);
+    assert!(
+        r#where
+            .of("signs")
+            .iter()
+            .all(|item| item.code != oras::KIRAKIRA)
+    );
+    Ok(())
+}
+
 /// Glittering Cave (spike 239): nine models drawn as `ENEMY3D` were people standing in the way,
 /// "22 south, then can't continue". A wild battle begins as the player comes up to one, and after
 /// it they walk straight through its cell.

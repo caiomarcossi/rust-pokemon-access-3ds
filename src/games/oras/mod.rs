@@ -818,6 +818,9 @@ fn ice_floors(memory: Rc<dyn Memory>) -> Rc<dyn IceReader> {
 /// Seafloor Cavern stands six more. Their records sit in a square off the map, (36, 70) in
 /// Sootopolis Gym, and the Gym's module sets them in place.
 pub const STOPPER: i64 = 0x8A;
+/// The sparkle at each of the 28 places a Mega Stone lies, a script each from 0x41f to 0x43a
+/// (or_mega_stone: "Raiden found a Sablenite!"): an item found, listed under items.
+pub const KIRAKIRA: i64 = 0x203D;
 
 /// `STOPPER`, and `STOPPER3` everywhere but Mauville Gym, where it is the barriers: in Seafloor
 /// Cavern ten round the submarine, whose furniture records are what the player reads; on each Regi
@@ -865,6 +868,7 @@ pub fn game() -> &'static Game {
         doors: Some(rotating_doors),
         ice: Some(ice_floors),
         blockers: HashSet::from(BLOCKERS),
+        pickups: HashSet::from([KIRAKIRA]),
         elevators: ELEVATORS.collect(),
         player_looks: PLAYER_LOOKS.collect(),
         stairs: HashSet::from([SOOTOPOLIS_GYM]),

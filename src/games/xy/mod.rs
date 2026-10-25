@@ -329,6 +329,9 @@ pub const STOPPER: i64 = 0x8A;
 /// Route 6 and three on Route 18, with no script; "Whoa! A wild Audino leaped out of the tall
 /// grass!" (text 124:261, x_route-6.ctm, 2026-10-19).
 pub const TOBI_KUSA: i64 = 0x2002;
+/// A sparkle in each of twelve zones whose case hands over one Mega Stone, items 665 to 683 (text
+/// 96): an item found, listed under items, as ORAS's `KIRAKIRA` is.
+pub const KIRAKIRA2: i64 = 0x2042;
 /// A spot a wild Pokémon waits at unseen, `ENEMY3D`: nine in Glittering Cave (zone 0x12f), records
 /// 3 to 11, all running shared script 0x7d0, drawn as nothing. Walking up the corridor from (32, 72)
 /// the player stopped at (32, 50) under a "!" and a wild battle began, "A wild Onix appeared!"; after
@@ -511,6 +514,7 @@ pub fn game() -> &'static Game {
         blockers: HashSet::from([STOPPER]),
         ambushes: HashSet::from([TOBI_KUSA]),
         lurkers: HashSet::from([ENEMY3D]),
+        pickups: HashSet::from([KIRAKIRA2]),
         elevators: ELEVATORS.collect(),
         warps: warps().clone(),
         triggers: IndexMap::from([
