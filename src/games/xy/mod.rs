@@ -18,7 +18,7 @@ use crate::core::pathfind;
 use crate::games::common::field::ground::{CUT, ROCK_SMASH, STRENGTH};
 use crate::games::gen6::field::camera;
 use crate::games::gen6::field::footsteps::{RUN, Steps, WALK};
-use crate::games::gen6::game::{Climbing, Data, FurnitureKind, Game, Rides};
+use crate::games::gen6::game::{Climbing, Data, FurnitureKind, Game, Grinding, Rides};
 use crate::games::gen6::rom::layout::{RomLayout, TownFacilities, owned};
 use crate::games::xy::intro::IntroReader;
 use crate::py::PySet;
@@ -413,6 +413,33 @@ pub fn climbing() -> Climbing {
     }
 }
 
+/// Shalour City Gym's rails (zone 0xaf), skated along on roller skates: "charge at it", the
+/// walkthroughs say, and the player is carried across. Its four chunks, at (0, 0), (0, 40), (40, 0)
+/// and (40, 40), have three floors each, the ground table floor 0's. Kind 0x8c, blocked
+/// (`0x8c000021`), is a rail's cell: 74 on floor 0 and 42 on floor 1, each rail a chain of them a cell
+/// beside the next or at a corner, bending a cell at a time. Kind 0x8b, open (`0x8b000020`), is the
+/// cell past a rail's end, in a row of three across it, 32 cells, all on floor 0; the one meant is
+/// the middle, in line with the rail. In the tape of x_gym_3 the player skated north from (67, 64)
+/// onto (67, 62), 0x8b, along (67, 61) to (67, 53), 0x8c, rising from 108 to 120 and falling to 102,
+/// and onto (67, 52), 0x8b, and the floor at 102, in about 1.7 s: the one rail ridden there. The
+/// cells either side of it at row 61 are ledges dropping south, so it is the one way north. Floor 0
+/// has four more: west into the centre from (17, 40) along row 40 to (34, 40), east from (46, 40) to
+/// (63, 40), and two bending diagonally, from (35, 26) to (50, 33) and from (30, 49) to (50, 55).
+/// Floor 1 has the way out, from (40, 47) south to (40, 66) and bending east along row 71 to
+/// (62, 71), falling from 117 to 18: an end only at its top, (40, 46) on floor 0 by the centre, and
+/// open floor at 0 past its other, (63, 71), by the entrance; after Korrina "take the south rail
+/// out", the walkthroughs say. It is taken as ridden one way, from its end, never seen. The rail from
+/// (30, 49) crosses it at (40, 55), a cell of both on two floors. Six invisible blockers stand on
+/// the end cells (17, 39..41) and (63, 39..41), the bridge that is put together as the four trainers
+/// are beaten, never seen. X has 0x8b and 0x8c on Route 5, Route 13, Route 18, Dendemille Town and
+/// Couriway Town too, never seen; Route 5's rail over the water, (695..707, 455), is broken in the
+/// middle by (701, 455), `0x90000021`, blocked, and is no rail: 0x90 is in one other cell of X's,
+/// mid-rail on Route 13 (spike A).
+pub const GRINDING: Grinding = Grinding {
+    rail: 0x8C,
+    end: 0x8B,
+};
+
 pub const SANTALUNE_LOBBY: i64 = 0x37;
 pub const SANTALUNE_WEB: i64 = 0x38;
 /// Santalune Gym's two poles, a furniture record each way: the lobby's at (20, 24) and the web
@@ -550,6 +577,7 @@ pub fn game() -> &'static Game {
         strands: STRAND,
         rides: Some(rides()),
         climbing: Some(climbing()),
+        grinding: Some(GRINDING),
         gates: true,
         steps: STEPS,
         training: TRAINING,

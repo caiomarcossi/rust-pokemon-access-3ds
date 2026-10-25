@@ -13,6 +13,7 @@ use crate::games::common::field::chunk::{
     ANY_FLOOR, BLOCKED, BOARD, CHUNK, CLIMB, COUNTER, Chunk, LAUNCH, SHORE, STONE,
 };
 use crate::games::common::field::climb::{FOOT, Walls};
+use crate::games::common::field::grind::{GrindRails, OFF};
 use crate::games::common::field::things::{
     Field, Interactable, POKEMON, TRIGGER_SOURCE, WARP_SOURCE,
 };
@@ -480,6 +481,12 @@ pub struct Ground {
     /// An `Rc`: the terrain finds them once a matrix and every ground built on it shares them, as
     /// the Python's grounds share the one object.
     pub walls: Rc<Walls>,
+    /// The grind rails: open though blocked, got onto only from an end cell in line, and ridden
+    /// end to end with no other step, diagonally where a rail bends (`slants`; `grind.GrindRails`,
+    /// spike A).
+    ///
+    /// An `Rc`, as `walls` is.
+    pub grind_rails: Rc<GrindRails>,
 }
 
 /// `Ground.lanes`: each cell of a street laid on the grid, with each step its ways allow and the
@@ -523,6 +530,7 @@ impl Default for Ground {
             mounts: HashSet::new(),
             smashed: HashSet::new(),
             walls: Rc::new(Walls::default()),
+            grind_rails: Rc::new(GrindRails::default()),
         }
     }
 }
@@ -564,6 +572,7 @@ impl fmt::Debug for Ground {
             .field("mounts", &self.mounts)
             .field("smashed", &self.smashed)
             .field("walls", &self.walls)
+            .field("grind_rails", &self.grind_rails)
             .finish()
     }
 }
@@ -772,7 +781,8 @@ impl Ground {
             || self.filled.contains(&cell)
             || chunk.kind(cell)? == STONE
             || self.rides.contains(&chunk.kind(cell)?)
-            || self.walls.slides.contains_key(&cell))
+            || self.walls.slides.contains_key(&cell)
+            || self.grind_rails.cells.contains(&cell))
             && (self.surf || !chunk.water(cell)?))
     }
 
@@ -1186,8 +1196,12 @@ impl Ground {
     /// cells whose diagonal strands the player walked in one move each, (17, 65) to (18, 66)
     /// and (17, 63) to (18, 62) to (17, 61); across X's ROM 111 corner joins carry the bit on
     /// both cells, and the 177 without it are the corners of ordinary walls (spike 223). And
-    /// along or across a street that runs so, where both cells are its (`lanes`).
+    /// along or across a street that runs so, where both cells are its (`lanes`), and along a
+    /// grind rail where it bends, as Shalour Gym's do a cell at a time (`grind_rails`).
     pub fn slants(&self, cell: Cell, step: Cell) -> Result<bool> {
+        if self.grind_rails.steps.contains(&(cell, step)) {
+            return Ok(true);
+        }
         if self.lanes.contains_key(&cell) && self.lanes.contains_key(&step) {
             return Ok(!self.off_lane(cell, step));
         }
@@ -1640,17 +1654,20 @@ impl Ground {
     /// their own way, and Shoal Cave's ice, which they slide over their own (`slide`); on a
     /// ground a ridden Pokémon crosses, whether the player is riding, the first of the turns, 1
     /// riding (`ride`); on a ground with climbing walls, what the player may be doing on a face's
-    /// line, on foot, on the wall or either, after it (`Walls.hold`); through the ground's
-    /// rotating doors, where they stand now and what each step does to them; and on a stacked
-    /// ground the floor each step is on, the player's first, the last of the turns.
+    /// line, on foot, on the wall or either, after it (`Walls.hold`); on a ground with grind
+    /// rails, the ride the player is on, or none, after that (`GrindRails.hold`); through the
+    /// ground's rotating doors, where they stand now and what each step does to them; and on a
+    /// stacked ground the floor each step is on, the player's first, the last of the turns.
     fn walk(&self, start: Cell) -> Result<Walk<'_>> {
         let (ride, walled) = (!self.rides.is_empty(), !self.walls.lines.is_empty());
-        if self.doors.is_empty() && !self.stacked && !ride && !walled {
+        let grinding = !self.grind_rails.rails.is_empty();
+        if self.doors.is_empty() && !self.stacked && !ride && !walled && !grinding {
             return Ok(Walk {
                 ground: self,
                 active: false,
                 ride,
                 walled,
+                grinding,
                 turns: Vec::new(),
                 crossings: None,
             });
@@ -1669,6 +1686,9 @@ impl Ground {
         if walled {
             turns.push(self.walls.start(start, self.level));
         }
+        if grinding {
+            turns.push(OFF);
+        }
         turns.extend(self.turns());
         if self.stacked {
             turns.push(self.floor(start, self.level)?);
@@ -1678,6 +1698,7 @@ impl Ground {
             active: true,
             ride,
             walled,
+            grinding,
             turns,
             crossings,
         })
@@ -1718,6 +1739,8 @@ struct Walk<'a> {
     ride: bool,
     /// Whether the next is what the player may be doing on a climbing wall's line.
     walled: bool,
+    /// Whether the next is the grind rail's ride the player is on, or none.
+    grinding: bool,
     turns: pathfind::Turns,
     crossings: Option<Rc<HashMap<(Cell, Cell), i64>>>,
 }
@@ -1751,6 +1774,15 @@ impl Walk<'_> {
             return Ok(None);
         };
         let rest = if self.walled { &rest[1..] } else { rest };
+        let grind = if self.grinding {
+            ground.grind_rails.hold(rest[0], cell, step)
+        } else {
+            Some(OFF)
+        };
+        let Some(grind) = grind else {
+            return Ok(None);
+        };
+        let rest = if self.grinding { &rest[1..] } else { rest };
         let doors = if ground.stacked {
             &rest[..rest.len() - 1]
         } else {
@@ -1765,10 +1797,20 @@ impl Walk<'_> {
             return Ok(None);
         };
         if ground.stacked {
-            let Some(floor) = ground.climb(rest[rest.len() - 1], cell, step)? else {
+            // A rail is on no floor the search walks: its cells are blocked on all of them,
+            // and the cell it lands on is stepped onto from any (`climb`).
+            let floor = if ground.grind_rails.cells.contains(&step) {
+                Some(ANY_FLOOR)
+            } else {
+                ground.climb(rest[rest.len() - 1], cell, step)?
+            };
+            let Some(floor) = floor else {
                 return Ok(None);
             };
             after.push(floor);
+        }
+        if self.grinding {
+            after.insert(0, grind);
         }
         if self.walled {
             after.insert(0, held);

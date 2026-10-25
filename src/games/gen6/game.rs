@@ -199,6 +199,16 @@ pub struct Climbing {
     pub slide: i64,
 }
 
+/// The cell kinds of the rails a player on roller skates grinds along, as X's Shalour City
+/// Gym's (`grind.GrindRails`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Grinding {
+    /// A cell of a rail, blocked.
+    pub rail: i64,
+    /// The cell past a rail's end that it is skated onto from, open.
+    pub end: i64,
+}
+
 /// One game as the gen 6 readers read it.
 ///
 /// Not `PartialEq`: the dataclass compares its callables by identity, which a `fn` pointer does
@@ -321,6 +331,9 @@ pub struct Game {
     /// The walls it lets the player climb, or None in a game with none: X's Cyllage Gym
     /// (spike 245).
     pub climbing: Option<Climbing>,
+    /// The rails it lets the player grind along on roller skates, or None in a game with none:
+    /// X's Shalour City Gym (spike A).
+    pub grinding: Option<Grinding>,
     /// Whether a row of models drawn as nothing, two or more with one script that no drawn record
     /// of their zone has, is an invisible gate: not listed, and in the way. X's Santalune Gym has
     /// five behind Viola, and AZ's room five (spike 223).
@@ -395,6 +408,7 @@ impl Game {
             strands: 0,
             rides: None,
             climbing: None,
+            grinding: None,
             gates: false,
             form: None,
             steps: ORAS,

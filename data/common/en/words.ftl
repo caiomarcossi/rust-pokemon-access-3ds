@@ -162,6 +162,10 @@ p-climb-down = climb { $holds } down
 # A leg down a climbing wall's slide, which carries the player once they step onto its top:
 # "slide 5 south" (spike 245).
 how-slide = slide
+# A leg along a grind rail, skated onto from the end cell before it, and a run of them, by
+# where it lands the player: "3 east, grind the rail 17 east" (spike A).
+how-grind-the-rail = grind the rail
+p-grind = grind the rail { $bearing }
 # The way chosen to push a big boulder, before the way to its side: "to push east: 3 west".
 p-to-push = to push { $way }:
 # A step to line up with the next leg, where a wall's corner would catch the player: "a little

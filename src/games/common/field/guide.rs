@@ -54,6 +54,24 @@ pub const CLIMB: &str = "climb";
 /// slides along once on it (`Ground.slide`, spike 246). The game names no such thing.
 pub const SLIDE: &str = "slide";
 
+/// What a leg along a grind rail is said with, a run of them as one by where it lands the player,
+/// from the end cell they skate onto it at: "3 east, grind the rail 17 east". In Shalour City Gym
+/// the player skated north onto (67, 62) and was carried along the rail onto (67, 52) in about 1.7 s
+/// (x_gym_3, spike A). The game names no such thing.
+pub const GRIND: &str = "grind the rail";
+
+/// The legs a player is carried along rather than walks, each with the message a run of them is
+/// said by, where it leaves them (`_spoken`).
+pub const CARRIED: [(&str, &str); 2] = [(CURRENT, "p-current"), (GRIND, "p-grind")];
+
+/// `CARRIED.get(how)`: the message a run of legs carried so is said by, or None for a leg walked.
+fn carried(how: &str) -> Option<&'static str> {
+    CARRIED
+        .iter()
+        .find(|(known, _)| *known == how)
+        .map(|&(_, message)| message)
+}
+
 /// A leg with handholds climbed in place before it, at its first cell, and after it, at the
 /// way's end: "climb 3 up, 6 east", "climb 3 down, 1 west" (spike 245). Up positive.
 ///
@@ -786,8 +804,8 @@ fn crossings(
 
 /// Legs as the player's keys walk them: by the compass on the grid, and on a rail or under a
 /// camera behind the player, where the keys work from it, from the way it looks (spikes 105 and
-/// A). A run of legs a current carries the player along is said as one, by where it leaves them
-/// (`CURRENT`). A leg into another place says it (`_crossings`).
+/// A). A run of legs a current or a grind rail carries the player along is said as one, by
+/// where it leaves them (`CARRIED`). A leg into another place says it (`_crossings`).
 fn spoken(legs: &[Leg], r#where: &Field, crossings: &IndexMap<i64, String>) -> Result<String> {
     if let Some(heading) = r#where.heading {
         let angled = match r#where.bearing {
@@ -797,25 +815,25 @@ fn spoken(legs: &[Leg], r#where: &Field, crossings: &IndexMap<i64, String>) -> R
         return pathfind::turned(legs, heading, angled, r#where.turning);
     }
     let mut parts: Vec<String> = Vec::new();
-    let mut drift = (0, 0);
+    let (mut drift, mut how) = ((0, 0), "");
     for leg in legs.iter().map(Some).chain([None]) {
+        if drift != (0, 0) && leg.is_none_or(|leg| leg.how != how) {
+            let message = carried(how).ok_or_else(|| Error::key(py::repr(how)))?;
+            parts.push(own(message, &[("bearing", &field::bearing((0, 0), drift))]));
+            drift = (0, 0);
+        }
         if let Some(leg) = leg
-            && leg.how == CURRENT
+            && carried(&leg.how).is_some()
         {
             let (dx, dz) = pathfind::STEPS
                 .iter()
+                .chain(pathfind::DIAGONALS.iter())
                 .find(|(known, _)| *known == leg.direction)
                 .map(|&(_, step)| step)
                 .ok_or_else(|| Error::key(py::repr(leg.direction)))?;
             drift = (drift.0 + dx * leg.steps, drift.1 + dz * leg.steps);
+            how = &leg.how;
             continue;
-        }
-        if drift != (0, 0) {
-            parts.push(own(
-                "p-current",
-                &[("bearing", &field::bearing((0, 0), drift))],
-            ));
-            drift = (0, 0);
         }
         if let Some(leg) = leg {
             parts.push(match crossings.get(&leg.end) {
@@ -1233,6 +1251,9 @@ impl Guide {
             if pushed.contains(&(cell, step)) {
                 return Ok(PUSH.to_string());
             }
+            if ground.grind_rails.steps.contains(&(cell, step)) {
+                return Ok(GRIND.to_string());
+            }
             if ground.walls.slides.get(&cell) == Some(&pathfind::towards(cell, step))
                 || ground.slide(cell)?
                 || ground.slide(step)?
@@ -1440,19 +1461,20 @@ impl Guide {
             .position(|leg| leg.end > at)
             .expect("a leg ends past the cell") as i64;
         if leg != guidance.borrow().leg {
-            // A current's run of legs was said whole as it began, where it leaves the player.
+            // A current's or a rail's run of legs was said whole as it began, where it leaves the
+            // player.
             let riding = {
                 let guidance = guidance.borrow();
                 py::slice(&guidance.legs, guidance.leg, leg + 1)
                     .iter()
-                    .all(|one| one.how == CURRENT)
+                    .all(|one| carried(&one.how).is_some())
             };
             let (now, rest) = {
                 let mut guidance = guidance.borrow_mut();
                 guidance.leg = leg;
                 guidance.camera = r#where.bearing;
                 let now = guidance.legs[leg as usize].clone();
-                let rest: Vec<Leg> = if now.how == CURRENT {
+                let rest: Vec<Leg> = if carried(&now.how).is_some() {
                     py::slice_from(&guidance.legs, leg + 1).to_vec()
                 } else {
                     Vec::new()
@@ -1460,7 +1482,7 @@ impl Guide {
                 (now, rest)
             };
             let mut run = vec![self::rest(&now, at)];
-            run.extend(rest.into_iter().take_while(|one| one.how == CURRENT));
+            run.extend(rest.into_iter().take_while(|one| one.how == now.how));
             if !riding {
                 let text = spoken(&run, r#where, &guidance.borrow().crossings)?;
                 (self.tell)(&text);
@@ -1707,6 +1729,10 @@ impl Guide {
         if ground.drift(r#where.cell)?.len() > 1 {
             // A current is carrying the player where they cannot turn, and the way is found
             // where it leaves them: on Route 133 a new way was said at every cell of 63 (movie43).
+            return Ok(());
+        }
+        if ground.grind_rails.cells.contains(&r#where.cell) {
+            // So is a grind rail, from end to end, and no search starts on one (`GrindRails.hold`).
             return Ok(());
         }
         let ahead = pathfind::STEPS

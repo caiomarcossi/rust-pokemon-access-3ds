@@ -13,8 +13,9 @@ use indexmap::{IndexMap, IndexSet};
 use crate::core::pathfind::{self, Cell};
 use crate::games::common::field::chunk::{BLOCKED, CHUNK, Chunk, DIVE, Floor, KIND_SHIFT, SHORE};
 use crate::games::common::field::climb::Walls;
+use crate::games::common::field::grind::GrindRails;
 use crate::games::gen6::field::mapblock;
-use crate::games::gen6::game::Climbing;
+use crate::games::gen6::game::{Climbing, Grinding};
 use crate::py::{self, Error, Result};
 
 /// What the list has where the matrix has no chunk: most of Route 109's 12 by 10 (spike 136).
@@ -121,6 +122,8 @@ pub struct Terrain {
     rises_of: RefCell<IndexMap<BTreeSet<i64>, Rises>>,
     /// The chunk files the climbing walls were found for, and the walls (`walls`).
     walls_of: RefCell<(Option<Rc<Vec<i64>>>, Rc<Walls>)>,
+    /// The chunk files the grind rails were found for, and the rails (`grind_rails`).
+    grinds_of: RefCell<(Option<Rc<Vec<i64>>>, Rc<GrindRails>)>,
     /// The chunk files the floors were read for, and whether one has a deck (`stacked`).
     stacked: RefCell<(Option<Rc<Vec<i64>>>, bool)>,
 }
@@ -145,6 +148,7 @@ impl Terrain {
             drops: RefCell::new(HashMap::new()),
             rises_of: RefCell::new(IndexMap::new()),
             walls_of: RefCell::new((None, Rc::new(Walls::default()))),
+            grinds_of: RefCell::new((None, Rc::new(GrindRails::default()))),
             stacked: RefCell::new((None, false)),
         }
     }
@@ -486,6 +490,78 @@ impl Terrain {
             *self.walls_of.borrow_mut() = (Some(files), walls);
         }
         Ok(self.walls_of.borrow().1.clone())
+    }
+
+    /// Every grind rail on the matrix (`GrindRails.found`), off the ROM's chunks, every floor
+    /// of each, found once a matrix; none without the ROM. Only chunks with a `grinding.rail`
+    /// cell on a floor are read, and the chunks round them for the cells past a rail's ends:
+    /// Shalour Gym's way out is on its floor 1, and on Route 5 a rail runs on into file 57,
+    /// which holds 21 of its cells and no end (spike A).
+    pub fn grind_rails(&self, grinding: &Grinding) -> Result<Rc<GrindRails>> {
+        let (wide, files) = {
+            let held = self.files.borrow();
+            (held.0, held.1.clone())
+        };
+        if self.grinds_of.borrow().0.as_ref() != Some(&files) {
+            let mut chunks: IndexMap<(i64, i64), Rc<Chunk>> = IndexMap::new();
+            for at in 0..files.len() as i64 {
+                if let Some(chunk) = self.far(py::modulo(at, wide), py::floordiv(at, wide))? {
+                    chunks.insert(chunk.key(), chunk);
+                }
+            }
+
+            // A chunk with a deck keeps its ground as its first floor.
+            fn tables(chunk: &Chunk) -> Vec<&Vec<i64>> {
+                if chunk.floors.is_empty() {
+                    vec![&chunk.words]
+                } else {
+                    chunk.floors.iter().map(|floor| &floor.words).collect()
+                }
+            }
+
+            let held: HashSet<(i64, i64)> = chunks
+                .iter()
+                .filter(|(_, chunk)| {
+                    tables(chunk).iter().any(|table| {
+                        table
+                            .iter()
+                            .any(|&word| word >> KIND_SHIFT == grinding.rail)
+                    })
+                })
+                .map(|(&key, _)| key)
+                .collect();
+            let near: HashSet<(i64, i64)> = held
+                .iter()
+                .flat_map(|&(column, row)| {
+                    [-1, 0, 1].into_iter().flat_map(move |dx| {
+                        [-1, 0, 1]
+                            .into_iter()
+                            .map(move |dz| (column + dx, row + dz))
+                    })
+                })
+                .collect();
+            let mut keys: Vec<(i64, i64)> = near
+                .into_iter()
+                .filter(|key| chunks.contains_key(key))
+                .collect();
+            keys.sort();
+            let mut floors: Vec<IndexMap<Cell, i64>> = Vec::new();
+            for key in keys {
+                for (k, table) in tables(&chunks[&key]).into_iter().enumerate() {
+                    if k == floors.len() {
+                        floors.push(IndexMap::new());
+                    }
+                    for (i, &word) in table.iter().enumerate() {
+                        let i = i as i64;
+                        floors[k]
+                            .insert((key.0 * CHUNK + i % CHUNK, key.1 * CHUNK + i / CHUNK), word);
+                    }
+                }
+            }
+            let rails = Rc::new(GrindRails::found(&floors, grinding.rail, grinding.end));
+            *self.grinds_of.borrow_mut() = (Some(files), rails);
+        }
+        Ok(self.grinds_of.borrow().1.clone())
     }
 
     /// Each ROM chunk of the matrix with its ground heights, by its key: its cell table and

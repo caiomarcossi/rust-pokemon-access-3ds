@@ -37,6 +37,7 @@ use crate::games::common::field::chunk::{
     BIKE_RAILS, BLOCKED, BUMPY_SLOPES, CHUNK, CURRENTS, Chunk, DIVE, FALLS, SLOPES,
 };
 use crate::games::common::field::climb::Walls;
+use crate::games::common::field::grind::GrindRails;
 use crate::games::common::field::ground::{
     self as common, BLOCK, CRACKED, Far, Grid, Ground, GroundHeight, NO_ZONE, Of, STRENGTH, pushes,
     riding, walkable,
@@ -63,7 +64,7 @@ use crate::games::gen6::field::zonetable::{
     ZoneTable,
 };
 use crate::games::gen6::field::{fieldmap, mapblock, mmodel};
-use crate::games::gen6::game::{Climbing, FurnitureKind, Game, Rides};
+use crate::games::gen6::game::{Climbing, FurnitureKind, Game, Grinding, Rides};
 use crate::games::gen6::rom::archives::GameText;
 use crate::games::gen6::rom::maps::{ChunkSource, StreetSource};
 use crate::py::{self, Error, PySet, Result};
@@ -322,6 +323,9 @@ pub struct FieldReader {
     /// The kinds of the walls the game lets the player climb, or None in a game without them
     /// (`Game.climbing`).
     climbing: Option<Climbing>,
+    /// The kinds of the rails the game lets the player grind along, or None in a game without
+    /// them (`Game.grinding`).
+    grinding: Option<Grinding>,
     /// Whether a row of models drawn as nothing with a script of its own is a gate
     /// (`Game.gates`).
     gates: bool,
@@ -493,6 +497,7 @@ impl FieldReader {
             strands: game.strands,
             rides: game.rides.clone(),
             climbing: game.climbing.clone(),
+            grinding: game.grinding,
             gates: game.gates,
             secret_bases,
             barriers: game.barriers.clone(),
@@ -882,6 +887,7 @@ impl FieldReader {
             strands: self.strands,
             lanes,
             walls: self.walls()?,
+            grind_rails: self.grind_rails()?,
             ..Ground::of(
                 r#where,
                 Of {
@@ -2354,6 +2360,15 @@ impl FieldReader {
         match &self.climbing {
             None => Ok(Rc::new(Walls::default())),
             Some(climbing) => self.terrain.walls(climbing),
+        }
+    }
+
+    /// The matrix's grind rails, off the ROM (`Terrain.grind_rails`); none in a game without
+    /// them.
+    fn grind_rails(&self) -> Result<Rc<GrindRails>> {
+        match &self.grinding {
+            None => Ok(Rc::new(GrindRails::default())),
+            Some(grinding) => self.terrain.grind_rails(grinding),
         }
     }
 

@@ -14,11 +14,14 @@
 //!   `gen6.field.rail`); rooms of thin ice and rotating doors.
 //! - `climb`: **`Walls`**, the climbing walls of X's Cyllage Gym, which the ground's search climbs
 //!   and the list shows the blue spots of.
+//! - `grind`: **`GrindRails`**, the grind rails of X's Shalour City Gym, which the ground's search
+//!   rides end to end.
 //! - `navigate` answers the navigation keys (`keys`), and `guide` finds the way and follows the
 //!   player along it.
 
 pub mod chunk;
 pub mod climb;
+pub mod grind;
 pub mod ground;
 pub mod guide;
 pub mod keys;

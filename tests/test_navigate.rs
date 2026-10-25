@@ -14,6 +14,7 @@ use crate::core::pathfind::{self, Cell, nearest};
 use crate::core::speech::{Backend, Category, Speech, default_interrupts};
 use crate::games::common::field::chunk::{BLOCKED, CHUNK, Chunk, Floor};
 use crate::games::common::field::climb::Walls;
+use crate::games::common::field::grind::GrindRails;
 use crate::games::common::field::ground::{
     CUT, Grid, Ground, IceRoom, Of, ROCK_SMASH, RotatingDoor, STRENGTH, SURF, WATERFALL,
 };
@@ -114,6 +115,7 @@ struct FakeField {
     spiky: RefCell<HashSet<Cell>>,
     flat: RefCell<HashSet<Cell>>,
     walls: RefCell<Rc<Walls>>,
+    grinds: RefCell<Rc<GrindRails>>,
     /// Steps between open cells a drop apart, as the reader finds them off the ROM's heights.
     cliffs: RefCell<HashSet<(Cell, Cell)>>,
     visit: Slot<Option<(i64, i64)>>,
@@ -151,6 +153,7 @@ impl FakeField {
             spiky: RefCell::new(HashSet::new()),
             flat: RefCell::new(HashSet::new()),
             walls: RefCell::new(Rc::new(Walls::default())),
+            grinds: RefCell::new(Rc::new(GrindRails::default())),
             cliffs: RefCell::new(HashSet::new()),
             visit: Slot::new(Some((0x08D209B8, 0x6))),
             edit: RefCell::new(None),
@@ -303,6 +306,7 @@ impl FieldSource for FakeField {
             .copied()
             .collect::<IndexSet<_>>();
         ground.level = self.level.get();
+        ground.grind_rails = self.grinds.borrow().clone();
         if !spiky.is_empty() {
             ground = ground.mounted(
                 r#where,
@@ -2017,6 +2021,139 @@ fn test_p_goes_down_a_gyms_slides_and_never_up_one() {
     );
     let said = last(&rig.backend);
     assert!(!said.contains("slide") && !said.contains("can't continue"));
+}
+
+/// A cell of one of Shalour City Gym's grind rails, blocked (x_gym_3, spike A).
+const RAIL: i64 = 0x8C000021;
+/// The cell past a rail's end, open, that it is skated onto from.
+const RAIL_END: i64 = 0x8B000020;
+
+/// Grind rails laid in the fake chunk, a table of words a floor, their cells blocked. `across`
+/// walls off columns 91 to 101 but for what the floors open there, so the rails are the one way
+/// across, as the entrance's rail is the one way north in Shalour Gym (spike A).
+///
+/// Python's `across` defaults to True.
+fn gym_rails(rig: &Rig, floors: &[IndexMap<Cell, i64>], across: bool) {
+    *rig.field.grinds.borrow_mut() = Rc::new(GrindRails::found(
+        floors,
+        xy::GRINDING.rail,
+        xy::GRINDING.end,
+    ));
+    let mut blocked = rig.field.blocked.borrow_mut();
+    let words = || floors.iter().flat_map(|floor| floor.iter());
+    blocked.extend(
+        words()
+            .filter(|&(_, &word)| word & BLOCKED != 0)
+            .map(|(&cell, _)| cell),
+    );
+    let opened: HashSet<Cell> = words()
+        .filter(|&(_, &word)| word & BLOCKED == 0)
+        .map(|(&cell, _)| cell)
+        .collect();
+    if across {
+        for x in 91..102 {
+            for z in 160..200 {
+                if !opened.contains(&(x, z)) {
+                    blocked.insert((x, z));
+                }
+            }
+        }
+    }
+}
+
+/// A row of a rail's cells, `RAIL` each, from `xs`.
+fn rail_row(xs: std::ops::Range<i64>, z: i64) -> impl Iterator<Item = (Cell, i64)> {
+    xs.map(move |x| ((x, z), RAIL))
+}
+
+/// Shalour City Gym (x_gym_3, spike A): the player skated north onto the rail's end cell and
+/// was carried along it to the far end in about 1.7 s. Its rails bend a cell at a time, so a ride
+/// is said by where it lands, from the end cell it is skated onto at.
+#[test]
+fn test_p_rides_a_grind_rail_end_to_end_and_says_it_as_one_leg() {
+    let mut rail: IndexMap<Cell, i64> = IndexMap::from([((90, 180), RAIL_END)]);
+    rail.extend(rail_row(91..97, 180));
+    rail.extend([((97, 181), RAIL), ((98, 182), RAIL)]);
+    rail.extend(rail_row(99..102, 182));
+    rail.insert((102, 182), RAIL_END);
+    let mut rig = navigator(on(Field {
+        interactables: vec![somebody((105, 182), 0x08D1E9A8)],
+        ..Field::new(street().zone, (87, 180))
+    }));
+    gym_rails(&rig, &[rail], true);
+    rig.press(PATHFIND);
+    assert_eq!(
+        last(&rig.backend),
+        "3 east, grind the rail 12 east 2 south, 2 east"
+    );
+}
+
+/// Shalour Gym's entrance rail runs up a corridor of open floor either side (spike A): a rail
+/// is got onto only from its end cell, in line, and left only at its far end, so a way across it
+/// goes round by an end cell.
+#[test]
+fn test_p_never_gets_onto_a_grind_rail_sideways_nor_off_one_halfway() {
+    let mut rail: IndexMap<Cell, i64> = IndexMap::from([((90, 180), RAIL_END)]);
+    rail.extend(rail_row(91..102, 180));
+    rail.insert((102, 180), RAIL_END);
+    let mut rig = navigator(on(Field {
+        interactables: vec![somebody((95, 182), 0x08D1E9A8)],
+        ..Field::new(street().zone, (95, 179))
+    }));
+    gym_rails(&rig, &[rail], false);
+    rig.press(PATHFIND);
+    let way = guidance(&rig);
+    let rails = rig.field.grinds.borrow().clone();
+    assert!(way.is_some() && !path_of(&way).iter().any(|cell| rails.cells.contains(cell)));
+    let said = last(&rig.backend);
+    assert!(!said.contains("grind") && !said.contains("can't continue"));
+}
+
+/// Shalour Gym's way out has an end cell only at its top, by the centre, and lands on the
+/// floor by the entrance: "take the south rail out" (spike A). It is ridden from that end alone.
+#[test]
+fn test_p_rides_a_rail_with_one_end_cell_only_from_it() {
+    let mut rail: IndexMap<Cell, i64> = IndexMap::from([((90, 175), RAIL_END)]);
+    rail.extend(rail_row(91..102, 175));
+    rail.insert((102, 175), 0);
+    let mut rig = navigator(on(Field {
+        interactables: vec![somebody((105, 175), 0x08D1E9A8)],
+        ..Field::new(street().zone, (87, 175))
+    }));
+    gym_rails(&rig, std::slice::from_ref(&rail), true);
+    rig.press(PATHFIND);
+    assert_eq!(last(&rig.backend), "3 east, grind the rail 12 east, 2 east");
+    let mut rig = navigator(on(Field {
+        interactables: vec![somebody((85, 175), 0x08D1E9A8)],
+        ..Field::new(street().zone, (104, 175))
+    }));
+    gym_rails(&rig, &[rail], true);
+    rig.press(PATHFIND);
+    let way = guidance(&rig);
+    let rails = rig.field.grinds.borrow().clone();
+    assert!(way.is_some() && !path_of(&way).iter().any(|cell| rails.cells.contains(cell)));
+}
+
+/// Shalour Gym's rail from (30, 49) crosses its way out at (40, 55), one on floor 0 and one on
+/// floor 1 (spike A): a ride goes on along the rail it is on, so the pocket only the other rail
+/// lands in is out of reach from this one.
+#[test]
+fn test_p_never_changes_rails_where_two_cross() {
+    let mut floor: IndexMap<Cell, i64> = IndexMap::from([((90, 178), RAIL_END)]);
+    floor.extend(rail_row(91..102, 178));
+    floor.insert((102, 178), RAIL_END);
+    floor.extend((184..187).map(|z| ((96, z), 0)));
+    let mut upper: IndexMap<Cell, i64> = IndexMap::from([((96, 172), RAIL_END)]);
+    upper.extend((173..184).map(|z| ((96, z), RAIL)));
+    let mut rig = navigator(on(Field {
+        interactables: vec![somebody((96, 187), 0x08D1E9A8)],
+        ..Field::new(street().zone, (87, 178))
+    }));
+    gym_rails(&rig, &[floor, upper], true);
+    rig.press(PATHFIND);
+    let way = guidance(&rig);
+    assert!(way.is_some() && !path_of(&way).contains(&(96, 179)));
+    assert!(last(&rig.backend).contains("can't continue"));
 }
 
 /// X's Cyllage Gym (x_gym_2, spike 245): the player walked from the entrance to the blue spot at

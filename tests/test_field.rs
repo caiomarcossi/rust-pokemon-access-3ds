@@ -16,6 +16,7 @@ use crate::core::memory::Memory;
 use crate::core::pathfind;
 use crate::core::rtti::ClassNames;
 use crate::games::common::field::chunk::{BLOCKED, CHUNK, COUNTER, Chunk, Floor, KIND_SHIFT};
+use crate::games::common::field::grind::GrindRail;
 use crate::games::common::field::ground::{BLOCK, Ground, NO_ZONE, Of, RotatingDoor, pushes};
 use crate::games::common::field::things::{
     ASH_SOURCE, BERRY_SOURCE, DECORATION_SOURCE, EDGE_SOURCE, FURNITURE_SOURCE, Field,
@@ -3608,6 +3609,82 @@ fn test_a_slide_is_found_where_the_cells_past_its_top_fall_to_a_lower_landing() 
     let slides = town.reader.ground(&town.r#where()?)?.walls.slides.clone();
     let want: IndexMap<(i64, i64), &str> = (170..175).map(|z| ((95, z), pathfind::SOUTH)).collect();
     assert_eq!(slides, want);
+    Ok(())
+}
+
+/// Spike A: Shalour Gym's way out is a rail on its floor 1, skated onto from an end cell on
+/// floor 0 by the centre, landing on the floor by the entrance, which is no end cell: ridden that
+/// one way. On Route 5 a rail over the water is broken in the middle by `0x90`, blocked, and
+/// neither half of it lands anywhere.
+#[test]
+fn test_grind_rails_are_found_on_every_floor_and_never_past_a_blocked_cell() -> Result<()> {
+    let mut town = Town::with(false, 5, 7);
+    let mut files = vec![NO_CHUNK_FILE; 64];
+    files[4 * 8 + 2] = 7;
+    town.memory.write(MAP + MAP_CHUNK_FILES, &le16(&files));
+    let mut ground: IndexMap<(i64, i64), i64> = IndexMap::from([((85, 170), 0x8B000020)]);
+    ground.extend([86, 87, 88].map(|x| ((x, 170), 0x8C000021)));
+    ground.insert((89, 170), 0x90000021);
+    ground.extend([90, 91, 92].map(|x| ((x, 170), 0x8C000021)));
+    ground.insert((93, 170), 0x8B000020);
+    ground.insert((100, 170), 0x8B000020);
+    let upper: IndexMap<(i64, i64), i64> = (171..176).map(|z| ((100, z), 0x8C000021)).collect();
+    let cells: Vec<(i64, i64)> = (0..CHUNK * CHUNK)
+        .map(|i| (80 + i % CHUNK, 160 + i / CHUNK))
+        .collect();
+    let words: Vec<i64> = cells
+        .iter()
+        .map(|cell| ground.get(cell).copied().unwrap_or(0))
+        .collect();
+    let floors = vec![
+        Floor {
+            words: words.clone(),
+            heights: vec![Some(0.0); cells.len()],
+        },
+        Floor {
+            words: cells
+                .iter()
+                .map(|cell| upper.get(cell).copied().unwrap_or(BLOCKED))
+                .collect(),
+            heights: vec![None; cells.len()],
+        },
+    ];
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given {
+            far: Some(Rc::new(move |file| {
+                Ok(if file == 7 { Some(words.clone()) } else { None })
+            })),
+            far_floors: Some(Rc::new(move |file| {
+                Ok(if file == 7 {
+                    floors.clone()
+                } else {
+                    Vec::new()
+                })
+            })),
+            ..Given::default()
+        },
+        Game {
+            grinding: Some(xy::GRINDING),
+            ..game()
+        },
+    );
+    let rails = town
+        .reader
+        .ground(&town.r#where()?)?
+        .grind_rails
+        .rails
+        .clone();
+    let mut want = vec![(100, 170)];
+    want.extend(upper.keys().copied());
+    want.push((100, 176));
+    assert_eq!(
+        rails,
+        [GrindRail {
+            cells: want,
+            both: false
+        }]
+    );
     Ok(())
 }
 
