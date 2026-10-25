@@ -13,9 +13,11 @@
 //! taskbar and goes on running, as NUtils hides a window for a streamer.
 //!
 //! **What it is.** A modeless dialog, the system's `#32770` as the rename box is, so a screen reader
-//! reads it as a dialog and Tab walks its buttons: report an issue, and download Azahar's latest
-//! zip or its installer (Orion), each opening the browser, the downloads straight at the file; and
-//! Exit, which ends pa3ds as Azahar closing does. Closing the window ends pa3ds too;
+//! reads it as a dialog: its title and a menu bar, and no more, so a window left in sight for OBS
+//! takes as little of the screen as a window can (Orion, 2026-10-25). Alt opens the menus, as any
+//! program's: **pa3ds**, whose Exit ends pa3ds as Azahar closing does; **Azahar**, to download its
+//! latest zip or its installer (Orion), the browser straight at the file; and **Help**, to report
+//! an issue, the browser at the port's issues. Closing the window ends pa3ds too;
 //! Escape does nothing, so a stray press never ends it. It runs on a thread of its own with its own
 //! message loop, as long as pa3ds does, and the poll loop never waits on it.
 //!
@@ -30,10 +32,7 @@ use regex::Regex;
 
 use crate::core::words::own;
 use crate::py::Result;
-use crate::ux::dialog::{
-    ATOM_BUTTON, BS_DEFPUSHBUTTON, WS_CHILD, WS_GROUP, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, frame,
-    item,
-};
+use crate::ux::dialog::{WS_SYSMENU, frame};
 
 /// Where a player reports an issue: the port's, which is what players run (ADR-0033).
 pub const ISSUES: &str = "https://github.com/pa3ds/rust-pokemon-access-3ds/issues";
@@ -52,13 +51,25 @@ pub const IDC_ISSUES: i64 = 201;
 pub const IDC_PORTABLE: i64 = 202;
 pub const IDC_INSTALLER: i64 = 203;
 pub const IDC_EXIT: i64 = 204;
-/// The buttons, in tab order, by their ids and messages.
-pub const BUTTONS: [(i64, &str); 4] = [
-    (IDC_ISSUES, "window-issues"),
-    (IDC_PORTABLE, "window-azahar-portable"),
-    (IDC_INSTALLER, "window-azahar-installer"),
-    (IDC_EXIT, "window-exit"),
+/// The menu bar, in order: each menu's message, and its items' ids and messages.
+pub const MENUS: [(&str, &[(i64, &str)]); 3] = [
+    ("window-menu-pa3ds", &[(IDC_EXIT, "window-exit")]),
+    (
+        "window-menu-azahar",
+        &[
+            (IDC_PORTABLE, "window-azahar-portable"),
+            (IDC_INSTALLER, "window-azahar-installer"),
+        ],
+    ),
+    ("window-menu-help", &[(IDC_ISSUES, "window-issues")]),
 ];
+
+/// Whether `ident` is one of the menus' items (Python's `COMMANDS`).
+pub fn command(ident: i64) -> bool {
+    MENUS
+        .iter()
+        .any(|(_, items)| items.iter().any(|(item, _)| *item == ident))
+}
 
 pub const WS_MINIMIZEBOX: i64 = 0x00020000;
 /// On the taskbar and in Alt+Tab, as a program's main window is, though it has no owner.
@@ -66,40 +77,42 @@ pub const WS_EX_APPWINDOW: i64 = 0x00040000;
 pub const WM_CLOSE: i64 = 0x0010;
 pub const SW_HIDE: i64 = 0;
 pub const SW_SHOWNORMAL: i64 = 1;
+pub const MF_POPUP: i64 = 0x10;
 pub const WIDTH: i64 = 160;
-pub const ROW: i64 = 18;
+/// In dialog units: no more than the menu bar takes as the window opens, so nothing is under
+/// it.
+pub const HEIGHT: i64 = 4;
 
-/// The window as a DLGTEMPLATE: its buttons one under another, the first the default.
+/// The window as a DLGTEMPLATE: its title and nothing in it, the menu bar set as it opens.
 pub fn template() -> Result<Vec<u8>> {
-    let mut items = Vec::new();
-    for (n, (ident, message)) in BUTTONS.iter().enumerate() {
-        let first = if n == 0 {
-            WS_GROUP | BS_DEFPUSHBUTTON
-        } else {
-            0
-        };
-        item(
-            &mut items,
-            WS_CHILD | WS_VISIBLE | WS_TABSTOP | first,
-            0,
-            7,
-            7 + ROW * n as i64,
-            WIDTH - 14,
-            14,
-            *ident,
-            ATOM_BUTTON,
-            &own(message, &[]),
-        )?;
-    }
     frame(
         WS_SYSMENU | WS_MINIMIZEBOX,
         WS_EX_APPWINDOW,
-        BUTTONS.len() as i64,
+        0,
         WIDTH,
-        7 + ROW * BUTTONS.len() as i64 + 3,
+        HEIGHT,
         &own("window-title", &[]),
-        &items,
+        &[],
     )
+}
+
+/// One menu of the bar in the player's language: its words, and its items' ids and words.
+pub type Menu = (String, Vec<(i64, String)>);
+
+/// The menu bar in the player's language: each menu's words, and its items' ids and words.
+pub fn menus() -> Vec<Menu> {
+    MENUS
+        .iter()
+        .map(|(menu, items)| {
+            (
+                own(menu, &[]),
+                items
+                    .iter()
+                    .map(|(ident, message)| (*ident, own(message, &[])))
+                    .collect(),
+            )
+        })
+        .collect()
 }
 
 /// The link to the file of GitHub's latest-release JSON whose name is `name`, or None.
@@ -150,8 +163,9 @@ mod win {
     use windows_sys::Win32::Foundation::{HWND, LPARAM, WPARAM};
     use windows_sys::Win32::UI::Shell::ShellExecuteW;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        CreateDialogIndirectParamW, DLGTEMPLATE, DestroyWindow, DispatchMessageW, GetMessageW,
-        IsDialogMessageW, MSG, PostQuitMessage, ShowWindowAsync, TranslateMessage,
+        AppendMenuW, CreateDialogIndirectParamW, CreateMenu, CreatePopupMenu, DLGTEMPLATE,
+        DestroyWindow, DispatchMessageW, GetMessageW, IsDialogMessageW, MSG, PostQuitMessage,
+        SetMenu, ShowWindowAsync, TranslateMessage,
     };
 
     use crate::ux::dialog::{IDCANCEL, WM_COMMAND, WM_INITDIALOG};
@@ -185,6 +199,28 @@ mod win {
         /// What the window's procedure sets as the player ends pa3ds: Python's procedure closed
         /// over it.
         static EXITED: RefCell<Option<Arc<AtomicBool>>> = const { RefCell::new(None) };
+        /// The menu bar's words, built where the words are (`Window::new`), for the procedure
+        /// to set as the window opens.
+        static MENU_BAR: RefCell<Vec<Menu>> = const { RefCell::new(Vec::new()) };
+    }
+
+    /// Give the window its menu bar (`menus`).
+    fn menu_bar(window: HWND) {
+        MENU_BAR.with(|bar_words| {
+            // SAFETY: each menu is made here and handed to the window, which then owns it, and
+            // every string is NUL-terminated and outlives its call.
+            unsafe {
+                let bar = CreateMenu();
+                for (words, items) in bar_words.borrow().iter() {
+                    let popup = CreatePopupMenu();
+                    for (ident, said) in items {
+                        AppendMenuW(popup, 0, *ident as usize, wide(said).as_ptr());
+                    }
+                    AppendMenuW(bar, MF_POPUP as u32, popup as usize, wide(words).as_ptr());
+                }
+                SetMenu(window, bar);
+            }
+        });
     }
 
     fn end(window: HWND) {
@@ -208,7 +244,8 @@ mod win {
     ) -> isize {
         let message = message as i64;
         if message == WM_INITDIALOG {
-            return 1; // focus on the first button
+            menu_bar(window);
+            return 1;
         }
         if message == WM_CLOSE {
             end(window);
@@ -232,15 +269,15 @@ mod win {
             } else if command == IDC_EXIT {
                 end(window);
             }
-            let known = BUTTONS.iter().any(|(ident, _)| *ident == command) || command == IDCANCEL;
-            return known as isize;
+            return (super::command(command) || command == IDCANCEL) as isize;
         }
         0
     }
 
     /// Open the window and run its message loop until it is closed.
-    pub fn show(built: Vec<u8>, exited: Arc<AtomicBool>, opened: Arc<AtomicIsize>) {
+    pub fn show(built: Vec<u8>, bar: Vec<Menu>, exited: Arc<AtomicBool>, opened: Arc<AtomicIsize>) {
         EXITED.with(|slot| *slot.borrow_mut() = Some(exited));
+        MENU_BAR.with(|slot| *slot.borrow_mut() = bar);
         // The template must start on a 4-byte boundary, as in `dialog::ask`.
         let mut held = vec![0u32; built.len().div_ceil(4)];
         for (word, bytes) in held.iter_mut().zip(built.chunks(4)) {
@@ -294,19 +331,20 @@ impl Window {
             exited: Arc::new(AtomicBool::new(false)),
             opened: Arc::new(AtomicIsize::new(0)),
         };
-        // The words in place are this thread's, not the window's: the template is built here,
-        // where the Python's thread builds it from the one module's words.
+        // The words in place are this thread's, not the window's: the template and the menus
+        // are built here, where the Python's thread builds them from the one module's words.
         let built = template()?;
+        let bar = menus();
         #[cfg(windows)]
         {
             let (exited, opened) = (window.exited.clone(), window.opened.clone());
             let _ = std::thread::Builder::new()
                 .name("window".to_string())
-                .spawn(move || win::show(built, exited, opened));
+                .spawn(move || win::show(built, bar, exited, opened));
         }
         #[cfg(not(windows))]
         {
-            let _ = built;
+            let _ = (built, bar);
             eprintln!("Exception in thread window:\nOSError: a window needs Windows");
         }
         Ok(window)
