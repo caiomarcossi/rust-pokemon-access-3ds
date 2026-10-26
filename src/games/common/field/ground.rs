@@ -453,6 +453,10 @@ pub struct Ground {
     /// The cells of streets laid on the grid, each with the steps its street's ways allow, as
     /// (dx, dz), a diagonal among them, and the key that takes each (`rail.Rails.lanes`).
     pub lanes: Rc<Lanes>,
+    /// Whether a step along a street is said by its lane's key (`key`), rather than by the way it
+    /// goes, as every other step is: not where the streets are floors of their own, whose keys
+    /// follow cameras looking every way (spike 248).
+    pub keyed: bool,
     /// Cells people stand in on a ground that leaves them out of `standing`, a step into one
     /// costing as much as a boulder's (`SHOVE`): the way as if nobody stood anywhere still goes
     /// round whoever it can, so who it meets first is somebody in the way (`Guide._up_to`).
@@ -523,6 +527,7 @@ impl Default for Ground {
             heights: IndexMap::new(),
             strands: 0,
             lanes: Rc::new(IndexMap::new()),
+            keyed: true,
             crowd: HashSet::new(),
             rides: HashSet::new(),
             stops: HashSet::new(),
@@ -1326,8 +1331,12 @@ impl Ground {
     /// The key that walks a step along or across a street, where it is one: up walks Route
     /// 7's north-west (`lanes`). None off the streets, where a way is walked by the compass.
     pub fn key(&self, cell: Cell, step: Cell) -> Option<&'static str> {
-        let lane = self.lanes.get(&cell)?;
-        lane.get(&(step.0 - cell.0, step.1 - cell.1)).copied()
+        let lane = if self.keyed {
+            self.lanes.get(&cell)
+        } else {
+            None
+        };
+        lane?.get(&(step.0 - cell.0, step.1 - cell.1)).copied()
     }
 
     /// Whether a step between two cells of a street goes none of its ways.

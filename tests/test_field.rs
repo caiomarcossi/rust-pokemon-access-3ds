@@ -2676,6 +2676,38 @@ fn test_a_stair_is_where_the_ground_meets_a_floor_over_it() {
     assert_eq!(mapblock::joins(&chunk), IndexMap::from([((43, 6), 189.0)]));
 }
 
+/// Khai, playing x_tower_of_mastery's save (spike 248): every street of the Tower of Mastery
+/// is measured east, and its lane's key said "east" for a step north up the ramp, "8 west, 16
+/// east" for a way west and then north. Where the streets are floors of their own a step is
+/// said by the way it goes, as everywhere off a street.
+#[test]
+fn test_a_step_up_a_ramp_is_said_by_the_way_it_goes_not_its_streets_key() -> Result<()> {
+    let lanes: IndexMap<(i64, i64), IndexMap<(i64, i64), &'static str>> = (0..5)
+        .map(|z| {
+            (
+                (0, z),
+                IndexMap::from([((0, -1), "east"), ((0, 1), "east")]),
+            )
+        })
+        .collect();
+    for (keyed, said) in [(true, "4 east"), (false, "4 north")] {
+        let ground = Ground {
+            lanes: Rc::new(lanes.clone()),
+            keyed,
+            ..Ground::default()
+        };
+        let path = ground.find((0, 4), &goals_of(&[((0, 0), None)]), "", None, false, None)?;
+        let path = path.expect("a way");
+        let key = |cell, step| ground.key(cell, step);
+        assert_eq!(
+            pathfind::spoken(&pathfind::legs_with(&path, None, Some(&key))?),
+            said,
+            "keyed {keyed}"
+        );
+    }
+    Ok(())
+}
+
 /// The ROM's map chunks for one chunk, file 0: the ground open along z 8 at 0, from x 0 to
 /// 4 and again from 10 to 13, walled between as the Tower of Mastery's is under its ramp past
 /// the ramp's foot, and a landing at 90 at its end, x 14 to 16, a floor of its own.

@@ -739,13 +739,15 @@ impl FieldReader {
     /// found them: where the camera looks (`Rails.turn`), and north on a rail, where the keys
     /// walk the corridor or a street's lanes and the camera's own heading reads 0 (spike 230),
     /// and under a camera behind the player, where the ways are said from `Field.heading`
-    /// (spike 239).
+    /// (spike 239). Not on a rail where the streets are floors of their own: the Tower of
+    /// Mastery's fourteen cameras each look their own way over the ramp, up walking the player
+    /// east down its first lap's east side and south along its landings, and north was said
+    /// for all of them, "8 west, 16 east" for a way west and then north (spike 248).
     pub fn turn(&self, current: i64) -> Result<i64> {
-        if self.on_rail.get() || self.behind.get() {
-            Ok(0)
-        } else {
-            self.rails.turn(current)
+        if self.behind.get() || (self.on_rail.get() && !self.terrain.raised()?) {
+            return Ok(0);
         }
+        self.rails.turn(current)
     }
 
     /// The player's model and the zone it was built in, as the last poll read them.
@@ -890,6 +892,7 @@ impl FieldReader {
             ground_height,
             strands: self.strands,
             lanes,
+            keyed: !self.terrain.raised()?,
             walls: self.walls()?,
             grind_rails: self.grind_rails()?,
             ..Ground::of(
