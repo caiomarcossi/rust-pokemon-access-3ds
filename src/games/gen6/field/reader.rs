@@ -449,6 +449,10 @@ impl FieldReader {
         furniture: Option<&IndexMap<i64, String>>,
     ) -> Rc<FieldReader> {
         let chunks: Option<Rc<dyn ChunkSource>> = text.map_chunks.clone();
+        let streets: Option<rail::Streets> =
+            text.streets.clone().map(|streets: Rc<dyn StreetSource>| {
+                Rc::new(move |chunks: &[i64]| streets.network(chunks)) as rail::Streets
+            });
         let terrain = Terrain::new(
             chunks
                 .clone()
@@ -460,11 +464,8 @@ impl FieldReader {
                 .clone()
                 .map(|chunks| Rc::new(move |file: i64| chunks.heights(file)) as FarHeights),
             chunks.map(|chunks| Rc::new(move |number: i64| chunks.matrix(number)) as FarMatrices),
+            streets.clone(),
         );
-        let streets: Option<rail::Streets> =
-            text.streets.clone().map(|streets: Rc<dyn StreetSource>| {
-                Rc::new(move |chunks: &[i64]| streets.network(chunks)) as rail::Streets
-            });
         let mut words: IndexMap<i64, String> = tiles.cloned().unwrap_or_default();
         if let Some(pc) = text.pc.clone()
             && !pc.is_empty()
@@ -801,8 +802,11 @@ impl FieldReader {
         }
         let files = self.terrain.files.borrow().1.clone();
         let lanes = self.rails.lanes(&files)?;
+        // Where the streets are floors of their own, a cell they open is open on its own floor.
         let mut covered = self.covered(r#where.zone)?;
-        covered.extend(lanes.keys().copied());
+        if !self.terrain.raised()? {
+            covered.extend(lanes.keys().copied());
+        }
         let mut solid: IndexMap<Cell, Option<f64>> = IndexMap::new();
         if let Some(bases) = bases
             && bases.zones().contains(&r#where.zone)
@@ -2670,6 +2674,7 @@ fn laid(
     stacked: bool,
     level: Option<f64>,
 ) -> Result<Rc<Chunk>> {
+    let chunk = &terrain.with_streets(chunk)?;
     if stacked && !chunk.floors.is_empty() {
         let flat = terrain.flattened(chunk, None, false)?;
         return Ok(Rc::new(Chunk {

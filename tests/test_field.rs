@@ -34,7 +34,7 @@ use crate::games::gen6::field::reader::{
     ASKS, FieldReader, MOVE_MODEL_CLASS, TABLE_ASKS, TABLE_EVERY,
 };
 use crate::games::gen6::field::terrain::NO_CHUNK_FILE;
-use crate::games::gen6::field::terrain::{FarCells, FarFloors, FarHeights, FarMatrices};
+use crate::games::gen6::field::terrain::{FarCells, FarFloors, FarHeights, FarMatrices, Terrain};
 use crate::games::gen6::field::zonedata::{
     ENTITY_HEADER, FURNITURE, NPC, WARP, WARP_DOOR, npc_trainers, zone_header,
 };
@@ -2676,6 +2676,121 @@ fn test_a_stair_is_where_the_ground_meets_a_floor_over_it() {
     assert_eq!(mapblock::joins(&chunk), IndexMap::from([((43, 6), 189.0)]));
 }
 
+/// The ROM's map chunks for one chunk, file 0: the ground open along z 8 at 0, from x 0 to
+/// 4 and again from 10 to 13, walled between as the Tower of Mastery's is under its ramp past
+/// the ramp's foot, and a landing at 90 at its end, x 14 to 16, a floor of its own.
+///
+/// Python's `RampChunks` class; here its ground and landing, which `ramp_terrain` hands the
+/// terrain as its methods would be.
+fn ramp_chunks() -> (Floor, Floor) {
+    let cells: Vec<(i64, i64)> = (0..CHUNK * CHUNK).map(|i| (i % CHUNK, i / CHUNK)).collect();
+    let ground: HashSet<(i64, i64)> = (0..5).chain(10..14).map(|x| (x, 8)).collect();
+    let landing: HashSet<(i64, i64)> = (14..17).map(|x| (x, 8)).collect();
+    let words = |open: &HashSet<(i64, i64)>| -> Vec<i64> {
+        cells
+            .iter()
+            .map(|cell| {
+                if open.contains(cell) {
+                    0x20
+                } else {
+                    0x01000021
+                }
+            })
+            .collect()
+    };
+    (
+        Floor {
+            words: words(&ground),
+            heights: vec![Some(0.0); (CHUNK * CHUNK) as usize],
+        },
+        Floor {
+            words: words(&landing),
+            heights: cells
+                .iter()
+                .map(|cell| landing.contains(cell).then_some(90.0))
+                .collect(),
+        },
+    )
+}
+
+/// A terrain reading `ramp_chunks` as the ROM's, with `streets` its streets.
+fn ramp_terrain(streets: Option<rail::Streets>) -> Terrain {
+    let (ground, landing) = ramp_chunks();
+    let (cells, heights) = (ground.words.clone(), ground.heights.clone());
+    let floors = vec![ground, landing];
+    Terrain::new(
+        Some(Rc::new(move |_file| Ok(Some(cells.clone()))) as FarCells),
+        Some(Rc::new(move |_file| Ok(floors.clone())) as FarFloors),
+        Some(Rc::new(move |_file| Ok(Some(heights.clone()))) as FarHeights),
+        Some(Rc::new(|_number| Ok(None)) as FarMatrices),
+        streets,
+    )
+}
+
+/// x_tower_of_mastery (spike A): the Tower of Mastery's ramp winds up round the ring of
+/// floor under it, and is in its chunk's streets alone, each point with its height. Its chunk's
+/// floors are the ground and the landings, so P walked the ground under the ramp and said "then
+/// can't continue" to every stair. Its street is a floor of its own now, climbed a cell at a
+/// time from the ground to the landing at its top, and the ground under its top is not.
+#[test]
+fn test_a_ramp_in_the_streets_is_climbed_from_the_ground_to_the_landing_it_reaches() -> Result<()> {
+    let (foot, top) = (0x11, 0x12);
+    let street = rail::Network {
+        lines: IndexMap::from([(
+            0x8011,
+            rail::Line {
+                way: rail::WAY_EAST,
+                ..rail::Line::new(0x8011, foot, top, 9, 1, vec![0x20; 10])
+            },
+        )]),
+        places: IndexMap::from([
+            (foot, (4.5 * 18.0, 8.5 * 18.0)),
+            (top, (13.5 * 18.0, 8.5 * 18.0)),
+        ]),
+        cameras: 0,
+        heights: IndexMap::from([(foot, 0.0), (top, 90.0)]),
+        sides: IndexMap::from([(foot, (0.0, 9.0)), (top, (0.0, 9.0))]),
+    };
+    let streets: rail::Streets = Rc::new(move |_files: &[i64]| Ok(street.clone()));
+
+    let goal = goals_of(&[((16, 8), None)]);
+    for (read, found) in [(Some(streets), true), (None, false)] {
+        let terrain = ramp_terrain(read);
+        *terrain.files.borrow_mut() = (1, Rc::new(vec![0]));
+        let far = terrain.far(0, 0)?.expect("the chunk");
+        let chunk = terrain.with_streets(&far)?;
+        let laid = Chunk {
+            floors: chunk.floors.clone(),
+            ..(*terrain.flattened(&chunk, None, false)?).clone()
+        };
+        let ground = Ground {
+            chunks: vec![Rc::new(laid)],
+            stacked: terrain.stacked(&|| Ok(Vec::new()))?,
+            level: Some(0.0),
+            ..Ground::default()
+        };
+        let path = ground.find((1, 8), &goal, "", None, false, None)?;
+        assert_eq!(path.is_some(), found, "found {found}");
+        if let Some(path) = path {
+            let mut heights = Vec::new();
+            for (&cell, floor) in path.iter().zip(ground.walked(&path)?) {
+                let floors = ground.floors(cell)?;
+                let (_, height) = floors
+                    .iter()
+                    .find(|(k, _)| *k == floor)
+                    .expect("the floor walked");
+                heights.push(height.unwrap_or(0.0));
+            }
+            assert_eq!(heights[..4], [0.0, 0.0, 0.0, 0.0]);
+            assert_eq!(heights.last(), Some(&90.0));
+            let mut sorted = heights.clone();
+            py::sort_by_lt(&mut sorted, |a, b| a < b);
+            assert_eq!(heights, sorted);
+        }
+    }
+    Ok(())
+}
+
 /// Spike 167: Sootopolis Gym's invisible blockers, sprite 0x8a, rows of three across the
 /// corridors up from its rooms, were listed as nameless people. Nobody is listed there, and the
 /// cell is still in the way. So is `STOPPER3`, ten of them round Seafloor Cavern's submarine and
@@ -4498,6 +4613,7 @@ fn on_one_line(
         lines: IndexMap::from([(line.id, line.clone())]),
         places: IndexMap::from([(1, start), (2, end)]),
         cameras,
+        ..Default::default()
     };
     town.reader = field_reader(
         town.memory.clone(),
@@ -4627,6 +4743,7 @@ fn test_a_map_changed_since_the_sweep_has_one_maps_streets_read_until_the_next()
         lines: IndexMap::from([(line.id, line.clone())]),
         places: IndexMap::from([(1, (0.0, 0.0)), (2, (0.0, (4 * 18) as f64))]),
         cameras: 0,
+        ..Default::default()
     };
     let asked: Rc<RefCell<Vec<Vec<i64>>>> = Rc::new(RefCell::new(Vec::new()));
     let mut town = Town::new();
@@ -5027,6 +5144,7 @@ fn test_a_door_on_a_line_the_game_has_not_loaded_is_listed_from_the_rom() -> Res
             },
             places: IndexMap::new(),
             cameras: 0,
+            ..Default::default()
         })
     };
     town.reader = field_reader(

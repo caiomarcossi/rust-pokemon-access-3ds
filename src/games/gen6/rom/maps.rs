@@ -116,6 +116,8 @@ impl Streets {
         }
         let mut lines: IndexMap<i64, rail::Line> = IndexMap::new();
         let mut places: IndexMap<i64, (f64, f64)> = IndexMap::new();
+        let mut heights: IndexMap<i64, f64> = IndexMap::new();
+        let mut sides: IndexMap<i64, (f64, f64)> = IndexMap::new();
         let mut cameras = 0;
         // `dict.fromkeys(chunks)`: each chunk once, in the order first named.
         let once: IndexSet<i64> = chunks.iter().copied().collect();
@@ -132,12 +134,20 @@ impl Streets {
             for (&point, &place) in &network.places {
                 places.entry(point).or_insert(place);
             }
+            for (&point, &height) in &network.heights {
+                heights.entry(point).or_insert(height);
+            }
+            for (&point, &side) in &network.sides {
+                sides.entry(point).or_insert(side);
+            }
             cameras += network.cameras;
         }
         Ok(rail::Network {
             lines,
             places,
             cameras,
+            heights,
+            sides,
         })
     }
 

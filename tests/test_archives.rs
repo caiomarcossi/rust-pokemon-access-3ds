@@ -1181,7 +1181,8 @@ fn test_the_streets_of_a_maps_chunks_are_read_out_of_the_rom() {
         rail::Network {
             lines: IndexMap::from([(C, line)]),
             places: IndexMap::new(),
-            cameras: 0
+            cameras: 0,
+            ..Default::default()
         }
     );
     assert_eq!(
@@ -1191,7 +1192,8 @@ fn test_the_streets_of_a_maps_chunks_are_read_out_of_the_rom() {
         rail::Network {
             lines: IndexMap::new(),
             places: IndexMap::new(),
-            cameras: 0
+            cameras: 0,
+            ..Default::default()
         }
     );
 }
