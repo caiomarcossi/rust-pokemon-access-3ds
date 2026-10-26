@@ -588,6 +588,8 @@ pub const LITTLEROOT_TOWN: i64 = 0x6;
 pub const ROUTE_125: i64 = 0x36;
 pub const SHOAL_CAVE_LOW: i64 = 0x80;
 pub const SHOAL_CAVE_HIGH: i64 = 0x84;
+pub const UNDER_SEA_MAUVILLE: i64 = 0x94;
+pub const CONTROL_ROOM: i64 = 0x9A;
 
 /// Mauville Gym's triggers, by their scripts (spike 146): its five floor switches, each one cell,
 /// the two by the entrance at (58, 38) and (66, 38), the three by Wattson at (5, 40), (13, 36) and
@@ -633,6 +635,13 @@ pub const SHOAL_CAVE_HIGH: i64 = 0x84;
 /// player in `0xa1` at (19, 6), and `0xa1`'s at (16, 5) puts them back at (19, 35). Diving down
 /// into `0xa0`, the list held nothing but the dive spot; the player swam south and came up in
 /// `0xa1` at (19, 6) (movie44, 2026-10-13).
+///
+/// Under Sea Mauville, `0x94`, the same again: its only trigger, script 1, five wide at (17, 31),
+/// calls into `0x9a`, the sunken control room, at (19, 30), whose trigger 1 at (17, 28) leads back.
+/// Diving there, the list held two dive spots and no way in
+/// (or_sea_mauville_underwater_control_room, 2026-10-25). The room's other two triggers are the
+/// Scanner, which the game calls "something glimmering faintly in the water", and a mysterious ring;
+/// neither is listed yet.
 ///
 /// The moving truck the opening leaves the player in, `0x18f`, has no warp record either: its only
 /// trigger, script 4, three cells deep at (9, 3) and walked onto going east, is the open back door.
@@ -709,6 +718,22 @@ pub fn triggers() -> &'static IndexMap<(i64, i64), (String, String, Option<i64>)
                 PASSAGE.0.to_string(),
                 PASSAGE.1.to_string(),
                 Some(UNDERWATER_134),
+            ),
+        );
+        out.insert(
+            (UNDER_SEA_MAUVILLE, 0x1),
+            (
+                "exits".to_string(),
+                "entrance".to_string(),
+                Some(CONTROL_ROOM),
+            ),
+        );
+        out.insert(
+            (CONTROL_ROOM, 0x1),
+            (
+                "exits".to_string(),
+                "way out".to_string(),
+                Some(UNDER_SEA_MAUVILLE),
             ),
         );
         out.insert(
