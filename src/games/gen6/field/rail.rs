@@ -92,7 +92,7 @@ pub const POINT_PLACE: i64 = 0x10;
 /// as long as the line between its ends, square to that line (spike A).
 pub const POINT_SIDE: i64 = 0x64;
 pub const JOINT_PLACE: i64 = 0x28;
-/// Places a cell along a ramp's curve that it is laid from, each with its row's cells across.
+/// Places a cell along a street's curve that it is laid from, each with its row's cells across.
 pub const SAMPLES: i64 = 4;
 /// World units a map chunk is across: 40 cells of 18.
 pub const CHUNK_UNITS: i64 = 720;
@@ -737,11 +737,11 @@ pub fn section_streets(section: &[u8]) -> Result<Network> {
 }
 
 /// The streets as floors of their own, where a **ramp** is among them, a street standing off
-/// the ground: more than `CLIMB` from every height `ground` has at a cell of it. Each floor is
-/// each cell of its streets' lanes with its height there (`_laid`). The Tower of Mastery's ramp
-/// winds twice round the ring of floor under it, from 2 to 720, each lap over the one before in
-/// the grid and 360 above it, and its chunk's floors are the ground at 0 and the landings
-/// alone, so P found no way off the ground: "then can't continue" to every stair
+/// the ground: a point of it more than `CLIMB` from every height `ground` has at its cell. Each
+/// floor is each cell of its streets' lanes with its height there (`_laid`). The Tower of
+/// Mastery's ramp winds twice round the ring of floor under it, from 2 to 720, each lap over the
+/// one before in the grid and 360 above it, and its chunk's floors are the ground at 0 and the
+/// landings alone, so P found no way off the ground: "then can't continue" to every stair
 /// (x_tower_of_mastery, spike A). Coumarine's and Anistar's streets run over cells their chunks
 /// wall, as Route 7's do, and up to 770 over them. Every street is a floor there, its cells open
 /// on it alone: a cell a street opens on no floor is any floor, and a way through one stepped
@@ -753,25 +753,34 @@ pub fn street_floors(
     network: &Network,
     ground: &dyn Fn(Cell) -> Result<Vec<f64>>,
 ) -> Result<Vec<IndexMap<Cell, f64>>> {
+    // The points alone: laying Lumiose's 294 streets, some 67 cells across, takes seconds.
+    let off = |point: i64, height: f64| -> Result<bool> {
+        let under = match network.places.get(&point) {
+            None => Vec::new(),
+            Some(&(x, z)) => {
+                let cell = zonedata::CELL as f64;
+                ground((py::floor(x / cell)?, py::floor(z / cell)?))?
+            }
+        };
+        Ok(!under.is_empty() && under.iter().all(|&one| (height - one).abs() > CLIMB))
+    };
+
+    let mut any = false;
+    for (&point, &height) in &network.heights {
+        if off(point, height)? {
+            any = true;
+            break;
+        }
+    }
+    if !any {
+        return Ok(Vec::new());
+    }
     let mut lanes: Vec<IndexMap<Cell, f64>> = Vec::new();
     for line in network.lines.values() {
         let lane = laid(line, network)?;
         if !lane.is_empty() {
             lanes.push(lane);
         }
-    }
-    let mut off = false;
-    'lanes: for lane in &lanes {
-        for (&cell, &height) in lane {
-            let under = ground(cell)?;
-            if !under.is_empty() && under.iter().all(|&one| (height - one).abs() > CLIMB) {
-                off = true;
-                break 'lanes;
-            }
-        }
-    }
-    if !off {
-        return Ok(Vec::new());
     }
     let mut floors: Vec<IndexMap<Cell, f64>> = Vec::new();
     for lane in &lanes {
@@ -802,9 +811,9 @@ pub fn street_floors(
 /// fast as the line between them is long, its height rising evenly along it, and a cell open
 /// where the row and column of the line's walls at its middle are. A straight street's sides
 /// are square to the line between its ends, and the Tower of Mastery's streets, arcs round its
-/// statue, bulge two cells out from that line, where the player walked: laid so, 175 of the 177
-/// cells x_tower_of_mastery stood on lie on a floor at their height (spike A). None where the
-/// world does not place both its ends or say how high they are.
+/// statue, bulge two cells out from that line, where the player walked: laid so, all 177 cells
+/// x_tower_of_mastery stood on lie on a floor at their height (spike A). None where the world
+/// does not place both its ends or say how high they are.
 // `t ** 3` and `t ** 2` are `powf`, the C library's `pow` as Python's are, never `powi`.
 fn laid(line: &Line, network: &Network) -> Result<IndexMap<Cell, f64>> {
     let (start, end) = (
