@@ -46,8 +46,9 @@ What pa3ds gets wrong or leaves out for now. To report one that is not here, see
   it that look the same, in Cyllage City and on Routes 8 and 10 among them, which nobody has tried.
 - **Shalour Gym's rails**: `P` takes the rail out of the Gym only from the centre down to the
   entrance, never back up it. Skating onto a rail with the D-pad has not been tried.
-- **The Tower of Mastery's ramp**: `P`'s directions along it have not been heard in play yet,
-  and the camera turns as you climb, so "west" may not be the key that walks it. One place each
+- **The Tower of Mastery's ramp**: the camera turns as you climb, and `P` says the way in the
+  keys of the camera you are under, so the legs past the next turn of the camera change once you
+  reach it. Listen for the next leg there. One place each
   in Coumarine City and Anistar City has ways high over the ground like it, walked the same way,
   and nobody has tried them.
 - **Rails outside Shalour Gym**, on Routes 5, 13 and 18 and in Dendemille and Couriway Towns, are
