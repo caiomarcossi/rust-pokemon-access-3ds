@@ -112,8 +112,9 @@ skate onto the rail with the circle pad and it carries you to the far end. The i
 the Gym leader's spot, where Korrina comes out to meet you.
 
 **Ramps.** In the Tower of Mastery, in X and Y, a ramp winds up round the tower twice, past the
-stairs on each landing to the top. `P` walks it like any floor: the way to a stair high up goes
-round and up the ramp, and the way to someone on the ground goes back down it first.
+stairs on each landing to the top. `P` says each stretch of it as one step of the way, "8 west,
+up the ramp 22 east": hold that key and the ramp carries you round its curve to the next
+landing. The way to someone on the ground goes back down it first, "down the ramp 16 west".
 
 **Big boulders** say which ways they can be pushed from where they stand, or "immoveable". Hold
 the way for a moment to push one a square. Push one into a hole and both leave the list.
