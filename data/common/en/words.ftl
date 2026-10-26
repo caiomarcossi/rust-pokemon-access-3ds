@@ -316,6 +316,12 @@ setting-pa3ds-navigation-sort_by_distance = Sort by distance
 setting-pa3ds-navigation-sort_by_distance-about = List mode's list nearest first, which changes as you walk; false keeps each thing in one place in it, the order the game's own tables have, so you can tell which house you have been in by where it is; direction mode is nearest first either way.
 setting-pa3ds-extras-conditions = Contest conditions as numbers
 setting-pa3ds-extras-conditions-about = Say a Pokémon's contest conditions as numbers where the game draws them as a star, on the summary and in the Pokéblock Case: the star is shown to everyone but pa3ds cannot read it, so its numbers are all it can give, and they are more exact than the star.
+setting-pa3ds-extras-hidden_items = Hidden items
+setting-pa3ds-extras-hidden_items-about = List the hidden items still to be found, as "hidden item", among the items: under the sea alone ("underwater"), where the Dowsing Machine cannot be used and a sighted player may see a glint among the rocks and the weed, or everywhere ("all"), which tells what the game keeps from everyone; "off" lists none.
+# What each of the hidden items setting's words is called in the settings dialog.
+setting-pa3ds-extras-hidden_items-off = Off
+setting-pa3ds-extras-hidden_items-underwater = Under the sea
+setting-pa3ds-extras-hidden_items-all = Everywhere
 # The settings dialog: its title, its pages, and what is not a setting's.
 settings-title = Mod settings
 settings-page-general = General
@@ -381,6 +387,8 @@ kind-flag = flag
 kind-object = object
 kind-person = person
 kind-item-ball = item ball
+# What the Dowsing Machine finds, listed under the hidden items setting.
+kind-hidden-item = hidden item
 kind-barrier = barrier
 kind-hole = hole
 kind-dive-spot = dive spot

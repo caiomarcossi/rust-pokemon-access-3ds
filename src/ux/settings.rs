@@ -14,6 +14,8 @@
 //! - on or off: a checkbox
 //! - the language: a list to choose from, the game's own first, then each language pa3ds has words
 //!   in, each by its own name
+//! - one of a few words, as the hidden items' (`config.CHOICES`): a list of them, each by its
+//!   message
 //! - a number: a box to type it into, whose arrows step it; a loudness in percent, 100 as loud as
 //!   the game, where the file has 1
 //! - the folder of a portable Azahar: a box to type it into, and Browse, the folder picker
@@ -60,13 +62,15 @@ pub const CHOICE: &str = "choice";
 pub const NUMBER: &str = "number";
 pub const PERCENT: &str = "percent";
 pub const FOLDER: &str = "folder";
-/// Each setting that is not on or off, by its control.
-pub const KINDS: [(&str, &str); 5] = [
+/// Each setting that is not on or off, by its control. The last is Python's
+/// `**dict.fromkeys(config.CHOICES, CHOICE)`, a const array having no spread.
+pub const KINDS: [(&str, &str); 6] = [
     ("pa3ds.ui.language", CHOICE),
     ("pa3ds.azahar_folder", FOLDER),
     ("pa3ds.poll_rate", NUMBER),
     ("pa3ds.audio.tones", PERCENT),
     ("pa3ds.audio.footsteps", PERCENT),
+    (config::CHOICES[0].0, CHOICE),
 ];
 /// What a number's arrows step between: reads a second, and a loudness in percent, ten times as
 /// loud as the game the most anyone will want.
@@ -156,6 +160,23 @@ pub fn languages() -> Result<Vec<(String, String)>> {
         out.push((code, said));
     }
     Ok(out)
+}
+
+/// A list's choices, (what the file has, what it is called): the languages, or one of
+/// `config.CHOICES`' words each by its message, `setting-pa3ds-extras-hidden_items-off`.
+pub fn choices(name: &str) -> Result<Vec<(String, String)>> {
+    let Some((_, words)) = config::CHOICES.iter().find(|(setting, _)| *setting == name) else {
+        return languages();
+    };
+    Ok(words
+        .iter()
+        .map(|word| {
+            (
+                word.to_string(),
+                own(&format!("{}-{word}", config::message(name)), &[]),
+            )
+        })
+        .collect())
 }
 
 /// Each setting's value, by its name in the file.
@@ -501,7 +522,7 @@ mod win {
     /// functions here.
     struct Showing {
         every: Vec<Field>,
-        choices: Vec<(String, String)>,
+        lists: IndexMap<String, Vec<(String, String)>>,
         before: RefCell<IndexMap<String, Value>>,
         /// Each page's windows, labels, arrows and Browse among them, to show and hide.
         controls: RefCell<IndexMap<i64, Vec<isize>>>,
@@ -586,8 +607,9 @@ mod win {
                 )
             } else if each.kind == CHOICE {
                 let chosen = send(dialog_item(window, each.ident), CB_GETCURSEL, 0, 0) as i64;
-                if 0 <= chosen && (chosen as usize) < showing.choices.len() {
-                    Value::Str(showing.choices[chosen as usize].0.clone())
+                let listed = &showing.lists[&each.name];
+                if 0 <= chosen && (chosen as usize) < listed.len() {
+                    Value::Str(listed[chosen as usize].0.clone())
                 } else {
                     was
                 }
@@ -688,12 +710,11 @@ mod win {
                 // SAFETY: `window` is the dialog, and the id one of its controls.
                 unsafe { CheckDlgButton(window, each.ident as i32, checked as u32) };
             } else if each.kind == CHOICE {
-                for (_code, said) in &showing.choices {
+                for (_code, said) in &showing.lists[&each.name] {
                     let said = wide(said);
                     send(control, CB_ADDSTRING, 0, said.as_ptr() as isize);
                 }
-                let at = showing
-                    .choices
+                let at = showing.lists[&each.name]
                     .iter()
                     .position(|(code, _said)| before[&each.name] == Value::Str(code.clone()))
                     .unwrap_or(0);
@@ -900,7 +921,10 @@ mod win {
         // session put in place are put here too, as Python's are the one module's.
         words::r#use(words::placed_last()?);
         let every = fields();
-        let choices = languages()?;
+        let mut lists: IndexMap<String, Vec<(String, String)>> = IndexMap::new();
+        for each in every.iter().filter(|each| each.kind == CHOICE) {
+            lists.insert(each.name.clone(), choices(&each.name)?);
+        }
         let before = values(&config::prepare(home, None, false, true)?);
         let about = every
             .iter()
@@ -914,7 +938,7 @@ mod win {
         SHOWING.with(|slot| {
             *slot.borrow_mut() = Some(Rc::new(Showing {
                 every,
-                choices,
+                lists,
                 before: RefCell::new(before),
                 controls: RefCell::new(IndexMap::new()),
                 about,
