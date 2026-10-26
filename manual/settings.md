@@ -37,6 +37,7 @@ they take effect the next time pa3ds starts.
 | `show_y` | `false` | `C` and `Shift+C` say how high as well, after x and z, in the game's units: 18 to a square. |
 | **`[pa3ds.extras]`** | | See [Extras](#extras). |
 | `conditions` | `false` | Say a Pokémon's contest conditions as numbers, on its summary and in the Pokéblock Case. |
+| `hidden_items` | `"off"` | List the hidden items you have not found yet among the items, as "hidden item": `"underwater"` under the sea alone, `"all"` everywhere. Omega Ruby and Alpha Sapphire only. |
 | **`[azahar]`** | | See [Azahar settings pa3ds needs](#azahar-settings-pa3ds-needs). |
 
 If `config.toml` or `keys.toml` has a mistake pa3ds cannot read past, pa3ds uses its defaults,
@@ -50,6 +51,10 @@ in a way pa3ds cannot otherwise put into words. Each is off until you turn it on
 
 - **`conditions`**: the game draws a Pokémon's contest conditions as a star. pa3ds cannot read
   the star, so it says the numbers the star is drawn from.
+- **`hidden_items`**: under the sea the Dowsing Machine cannot be used, and a hidden item is
+  something a sighted player may spot among the rocks and weed, so `"underwater"` lists those.
+  `"all"` lists every hidden item, which the game keeps from everyone: on land, the Dowsing
+  Machine finds them.
 
 ## Command-line options
 

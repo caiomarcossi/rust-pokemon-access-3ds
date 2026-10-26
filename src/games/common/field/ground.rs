@@ -1447,7 +1447,8 @@ impl Ground {
     /// Where a path to `item` ends, each with the way to face there, or None for any way.
     ///
     /// A thing with any cell the player can stand in is walked onto: an edge's gap, the mat out
-    /// of a building. A thing that is solid all over — a door, a sign, a person, a PC — is
+    /// of a building; but one `faced`, a hidden item, is walked up to. A thing that is solid all
+    /// over — a door, a sign, a person, a PC — is
     /// walked up to, to an open cell beside it, facing it, since that is where the player
     /// presses A or walks in from (the user, 2026-09-24); or across a counter from it, as the
     /// Nurse and a Poké Mart's clerk are talked to (`COUNTER`). A warp walked into one way is
@@ -1458,7 +1459,8 @@ impl Ground {
         // A bush or a rock is walked up to and cleared from there, with HMs or not.
         let mut onto: IndexMap<Cell, Option<&'static str>> = IndexMap::new();
         for &cell in &cells {
-            if self.open_at(cell, item.height)?
+            if !item.faced
+                && self.open_at(cell, item.height)?
                 && !self.cleared.contains_key(&cell)
                 && !self.smashed.contains(&cell)
             {

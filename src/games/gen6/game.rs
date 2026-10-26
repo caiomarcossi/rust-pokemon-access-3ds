@@ -260,6 +260,9 @@ pub struct Game {
     /// The reader of its Secret Bases, given the executable's image to find every spot in, or None
     /// in a game with none: ORAS's (`games.oras.field.secret_base`).
     pub secret_bases: Option<SecretBaseFactory>,
+    /// The event flag before the first hidden item's, each item's its number past it, or None in
+    /// a game whose hidden items are not read: Omega Ruby's `0x44c` (`gen6.field.hidden_items`).
+    pub hidden_items: Option<i64>,
     /// The readers of what else it has on its field to list, each in its own words: ORAS's berry
     /// spots and Route 113's ash piles (`games.oras.field.berries`, `games.oras.field.ash`).
     pub features: Vec<FeatureFactory>,
@@ -387,6 +390,7 @@ impl Game {
             triggers: IndexMap::new(),
             furniture: IndexMap::new(),
             secret_bases: None,
+            hidden_items: None,
             features: Vec::new(),
             doors: None,
             ice: None,

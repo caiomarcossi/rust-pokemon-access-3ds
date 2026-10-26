@@ -243,6 +243,7 @@ pub(crate) fn field_reader(memory: Rc<FakeMemory>, given: Given, game: Game) -> 
         clock.unwrap_or_else(|| Rc::new(py::time::monotonic)),
         tiles.as_ref(),
         furniture_words.as_ref(),
+        crate::core::config::HIDDEN_OFF,
     )
 }
 
@@ -1691,6 +1692,24 @@ fn test_a_solid_thing_is_walked_up_to_facing_it_and_an_open_one_onto() -> Result
             ((110, 176), Some("west")),
             ((109, 177), Some("north")),
             ((108, 176), Some("east")),
+        ])
+    );
+    // A hidden item lies on open ground and is found facing it, as a person is talked to.
+    let hidden = Interactable {
+        category: "items".to_string(),
+        kind: "hidden item".to_string(),
+        cell: (105, 165),
+        size: (1, 1),
+        faced: true,
+        ..edge.clone()
+    };
+    assert_eq!(
+        ground.goals(&hidden)?,
+        goals_of(&[
+            ((105, 164), Some("south")),
+            ((106, 165), Some("west")),
+            ((105, 166), Some("north")),
+            ((104, 165), Some("east")),
         ])
     );
     Ok(())

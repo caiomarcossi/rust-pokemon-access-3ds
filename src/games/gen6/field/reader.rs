@@ -28,6 +28,7 @@ use std::rc::{Rc, Weak};
 use indexmap::{IndexMap, IndexSet};
 
 use crate::core::binary::{s16, u16, u32};
+use crate::core::config::{HIDDEN_ALL, HIDDEN_UNDERWATER};
 use crate::core::discovery::{Found, HEAP_SPAN, within};
 use crate::core::memory::Memory;
 use crate::core::pathfind::{self, Cell};
@@ -51,6 +52,7 @@ use crate::games::common::field::things::{
 use crate::games::gen6::field::features::{
     DoorReader, Feature, HiddenReader, Hiding, IceReader, SecretBaseReader, Tracked,
 };
+use crate::games::gen6::field::hidden_items::{HiddenItems, Only};
 use crate::games::gen6::field::rail::{self, Rails, keep};
 use crate::games::gen6::field::terrain::{FarCells, FarFloors, FarHeights, FarMatrices, Terrain};
 use crate::games::gen6::field::zonedata::{
@@ -331,6 +333,8 @@ pub struct FieldReader {
     gates: bool,
     /// The game's Secret Bases, or None in a game without them.
     secret_bases: Option<Rc<dyn SecretBaseReader>>,
+    /// The hidden items still to be found, where the Extra lists them (spike A).
+    hidden_items: Option<HiddenItems>,
     /// (zone, sprite) of the move models that are a barrier's beam (`Game.barriers`).
     barriers: HashSet<(i64, i64)>,
     /// (zone, a trigger's script) -> the category and kind it is listed as, and for an exit into
@@ -436,8 +440,10 @@ impl common::Corridor for rail::Corridor {
 impl FieldReader {
     /// `game` says what one gen 6 game has of its own, `text` is what was read from the player's
     /// ROM, or `NO_TEXT` without one, and `image` the executable, where ORAS lists its Secret
-    /// Bases' spots. `tiles` and `furniture` are what the shipped table says each kind of use tile
-    /// is, and each piece of furniture by the shared script it runs (`Names.words`).
+    /// Bases' spots and its hidden items. `tiles` and `furniture` are what the shipped table says
+    /// each kind of use tile is, and each piece of furniture by the shared script it runs
+    /// (`Names.words`). `hidden_items` is `[pa3ds.extras] hidden_items`, Python's default
+    /// `HIDDEN_OFF`.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         memory: Rc<dyn Memory>,
@@ -447,6 +453,7 @@ impl FieldReader {
         clock: Rc<dyn Fn() -> f64>,
         tiles: Option<&IndexMap<i64, String>>,
         furniture: Option<&IndexMap<i64, String>>,
+        hidden_items: &str,
     ) -> Rc<FieldReader> {
         let chunks: Option<Rc<dyn ChunkSource>> = text.map_chunks.clone();
         let streets: Option<rail::Streets> =
@@ -481,8 +488,28 @@ impl FieldReader {
             Some(make) if !image.is_empty() => Some(make(memory.clone(), image)),
             _ => None,
         };
+        let listing = hidden_items == HIDDEN_UNDERWATER || hidden_items == HIDDEN_ALL;
+        let underwater = hidden_items == HIDDEN_UNDERWATER;
+        let hidden_memory = memory.clone();
+        let hidden_items = move |me: &Weak<FieldReader>| match game.hidden_items {
+            Some(flags) if listing && !image.is_empty() => {
+                // `self.zones.underwater`, through the reader being made.
+                let only: Option<Only> = underwater.then(|| {
+                    let me = me.clone();
+                    Rc::new(move |zone: i64| {
+                        me.upgrade()
+                            .expect("a reader is made in an Rc, which its holders keep")
+                            .zones
+                            .underwater(zone)
+                    }) as Only
+                });
+                Some(HiddenItems::new(hidden_memory, image, flags, only))
+            }
+            _ => None,
+        };
         Rc::new_cyclic(|me| FieldReader {
             me: me.clone(),
+            hidden_items: hidden_items(me),
             zones: ZoneTable::new(memory.clone(), text.zone_table.clone()),
             warp_words: game.warps.clone(),
             features,
@@ -568,6 +595,9 @@ impl FieldReader {
         }
         if let Some(hidden) = &self.hidden {
             out.push(&**hidden);
+        }
+        if let Some(hidden_items) = &self.hidden_items {
+            out.push(hidden_items);
         }
         if let Some(doors) = &self.doors {
             out.push(&**doors);
@@ -1192,6 +1222,9 @@ impl FieldReader {
         }
         if let Some(hidden) = &self.hidden {
             items.extend(hidden.listed(r#where.zone, &zone_at)?);
+        }
+        if let Some(hidden_items) = &self.hidden_items {
+            items.extend(hidden_items.listed(r#where.zone, &zone_at)?);
         }
         // A boulder in a hole is floor now, and neither it nor the hole is anything to find.
         let holes = self.holes(r#where.zone)?;

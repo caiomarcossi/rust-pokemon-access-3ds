@@ -88,6 +88,10 @@ pub const RIDE_SOURCE: i64 = 15 << 32;
 /// A run of a climbing wall's blue spots: `CLIMB_SOURCE | x << 12 | z`, its first cell (spike 245).
 pub const CLIMB_SOURCE: i64 = 16 << 32;
 
+/// A hidden item's source: `HIDDEN_SOURCE | number`, its number in the executable's table (spike
+/// A).
+pub const HIDDEN_SOURCE: i64 = 17 << 32;
+
 /// A place's `source` from its kind's tag and its own number. The number must leave the tag's
 /// bits clear, and no u16 the game holds can reach them, so one that does is a new encoding
 /// written wider than the tag allows for: a programmer's error, refused here rather than keyed as
@@ -240,6 +244,9 @@ pub struct Interactable {
     /// street, a row of cells the box round it holds a square of, and a way to it ended a step to
     /// one side (x_route-6-2.ctm, 2026-10-20). Empty for the box.
     pub shape: Vec<Cell>,
+    /// Whether it is taken from beside it, facing it, though its cell can be stood in: a hidden
+    /// item, which A finds from the cell before it (spike 145).
+    pub faced: bool,
 }
 
 impl Interactable {
@@ -263,6 +270,7 @@ impl Interactable {
             pushes: None,
             way_in: None,
             shape: Vec::new(),
+            faced: false,
         }
     }
 

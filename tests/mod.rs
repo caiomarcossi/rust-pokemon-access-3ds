@@ -30,6 +30,7 @@ mod test_field;
 mod test_footsteps;
 mod test_gdb;
 mod test_heaps;
+mod test_hidden_items;
 mod test_instance;
 mod test_keyfile;
 mod test_layout;

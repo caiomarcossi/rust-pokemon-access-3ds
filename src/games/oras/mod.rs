@@ -873,6 +873,10 @@ pub const ELEVATORS: std::ops::Range<i64> = 0x27DA..0x27EC;
 /// Python's is a frozenset of the range; a `Range` here, collected where a set is wanted.
 pub const PLAYER_LOOKS: std::ops::Range<i64> = 0xAB..0xB3;
 
+/// The event flag before the first hidden item's: the Dowsing Machine's search checks `0x44c`
+/// plus an item's number (spike A; `gen6.field.hidden_items`).
+pub const HIDDEN_ITEMS: i64 = 0x44C;
+
 /// Omega Ruby and Alpha Sapphire as the gen 6 readers read them.
 pub fn game() -> &'static Game {
     static GAME: OnceLock<Game> = OnceLock::new();
@@ -889,6 +893,7 @@ pub fn game() -> &'static Game {
         triggers: triggers().clone(),
         furniture: furniture().clone(),
         secret_bases: Some(secret_bases),
+        hidden_items: Some(HIDDEN_ITEMS),
         features: vec![BerrySpots::of, ash_piles],
         doors: Some(rotating_doors),
         ice: Some(ice_floors),
