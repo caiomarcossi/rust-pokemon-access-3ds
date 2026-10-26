@@ -37,7 +37,7 @@ they take effect the next time pa3ds starts.
 | `show_y` | `false` | `C` and `Shift+C` say how high as well, after x and z, in the game's units: 18 to a square. |
 | **`[pa3ds.extras]`** | | See [Extras](#extras). |
 | `conditions` | `false` | Say a Pokémon's contest conditions as numbers, on its summary and in the Pokéblock Case. |
-| `hidden_items` | `"off"` | List the hidden items you have not found yet among the items, as "hidden item": `"underwater"` under the sea alone, `"all"` everywhere. Omega Ruby and Alpha Sapphire only. |
+| `hidden_items` | `"off"` | List the hidden items you have not found yet among the items, as "hidden item": `"underwater"` under the sea alone, `"all"` everywhere. |
 | **`[azahar]`** | | See [Azahar settings pa3ds needs](#azahar-settings-pa3ds-needs). |
 
 If `config.toml` or `keys.toml` has a mistake pa3ds cannot read past, pa3ds uses its defaults,

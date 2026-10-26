@@ -491,21 +491,22 @@ impl FieldReader {
         let listing = hidden_items == HIDDEN_UNDERWATER || hidden_items == HIDDEN_ALL;
         let underwater = hidden_items == HIDDEN_UNDERWATER;
         let hidden_memory = memory.clone();
-        let hidden_items = move |me: &Weak<FieldReader>| match game.hidden_items {
-            Some(flags) if listing && !image.is_empty() => {
-                // `self.zones.underwater`, through the reader being made.
-                let only: Option<Only> = underwater.then(|| {
-                    let me = me.clone();
-                    Rc::new(move |zone: i64| {
-                        me.upgrade()
-                            .expect("a reader is made in an Rc, which its holders keep")
-                            .zones
-                            .underwater(zone)
-                    }) as Only
-                });
-                Some(HiddenItems::new(hidden_memory, image, flags, only))
+        let flags = game.hidden_items;
+        let hidden_items = move |me: &Weak<FieldReader>| {
+            if !listing || image.is_empty() {
+                return None;
             }
-            _ => None,
+            // `self.zones.underwater`, through the reader being made.
+            let only: Option<Only> = underwater.then(|| {
+                let me = me.clone();
+                Rc::new(move |zone: i64| {
+                    me.upgrade()
+                        .expect("a reader is made in an Rc, which its holders keep")
+                        .zones
+                        .underwater(zone)
+                }) as Only
+            });
+            Some(HiddenItems::new(hidden_memory, image, flags, only))
         };
         Rc::new_cyclic(|me| FieldReader {
             me: me.clone(),
