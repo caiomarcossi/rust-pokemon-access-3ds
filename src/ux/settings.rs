@@ -6,9 +6,10 @@
 //! anywhere in it, as Windows' own property sheets do (Orion, 2026-10-25: a list of pages said its
 //! item twice, a list box raising focus for itself and for the item). Each control is named by its
 //! setting's short name, which is what Tab says. What the setting does is said after it by pa3ds's
-//! own speech as the control has the focus, without interrupting, so the screen reader says the
-//! name, the control and its value first (Orion: a description Windows gives the control is read
-//! between the control and its value, which is clumsier).
+//! own speech a tenth of a second after the control has the focus, without interrupting, so the
+//! screen reader says the name, the control and its value first (Orion: a description Windows gives
+//! the control is read between the control and its value, which is clumsier; and sent the moment
+//! the control had the focus, NVDA said pa3ds's first, 2026-10-26).
 //!
 //! - on or off: a checkbox
 //! - the language: a list to choose from, the game's own first, then each language pa3ds has words
@@ -454,6 +455,11 @@ pub const FOCUSED: [i64; 3] = [BN_SETFOCUS, CBN_SETFOCUS, EN_SETFOCUS];
 pub const SW_HIDE: i64 = 0;
 pub const SW_SHOW: i64 = 5;
 pub const BUFFER: usize = 1024;
+pub const WM_TIMER: i64 = 0x0113;
+/// The timer a setting's description waits on.
+pub const DESCRIBE: usize = 1;
+/// How long it waits, in milliseconds, for the screen reader to start on the control.
+pub const DESCRIBE_AFTER: u32 = 100;
 
 /// How the dialog speaks a setting's description, without interrupting, and starts pa3ds again
 /// for settings applied to take. Python's are any callables; these live on the window's thread.
@@ -477,8 +483,8 @@ mod win {
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetKeyState;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, CreateWindowExW, DLGTEMPLATE, DialogBoxIndirectParamW, EndDialog,
-        GetDlgItem, GetDlgItemTextW, MSG, MessageBoxW, SendMessageW, SetDlgItemTextW,
-        SetForegroundWindow, SetWindowsHookExW, ShowWindow, UnhookWindowsHookEx,
+        GetDlgItem, GetDlgItemTextW, KillTimer, MSG, MessageBoxW, SendMessageW, SetDlgItemTextW,
+        SetForegroundWindow, SetTimer, SetWindowsHookExW, ShowWindow, UnhookWindowsHookEx,
     };
 
     use super::*;
@@ -505,6 +511,8 @@ mod win {
         home: Option<PathBuf>,
         /// The dialog, once open, for Ctrl+Tab's hook.
         dialog: Cell<isize>,
+        /// The description the timer will say.
+        waiting: RefCell<String>,
     }
 
     thread_local! {
@@ -792,13 +800,23 @@ mod win {
             }
             return Ok(0);
         }
+        if message == WM_TIMER && wparam == DESCRIBE {
+            // SAFETY: `window` is the dialog the timer was set on.
+            unsafe { KillTimer(window, DESCRIBE) };
+            let waiting = showing.waiting.borrow().clone();
+            (showing.say)(&waiting);
+            return Ok(1);
+        }
         if message == WM_COMMAND {
             let (command, note) = (wparam as i64 & 0xFFFF, wparam as i64 >> 16 & 0xFFFF);
             if FOCUSED.contains(&note)
                 && let Some(about) = showing.about.get(&command)
             {
-                // Queued behind what the screen reader says of the control.
-                (showing.say)(about);
+                // Queued behind what the screen reader has started to say of the control; a
+                // control left before the timer runs out is not described.
+                *showing.waiting.borrow_mut() = about.clone();
+                // SAFETY: `window` is the dialog; a timer with no procedure posts WM_TIMER to it.
+                unsafe { SetTimer(window, DESCRIBE, DESCRIBE_AFTER, None) };
                 return Ok(0);
             }
             if command == IDOK || command == IDC_APPLY {
@@ -904,6 +922,7 @@ mod win {
                 restart,
                 home: home.map(Path::to_path_buf),
                 dialog: Cell::new(0),
+                waiting: RefCell::new(String::new()),
             }))
         });
 
