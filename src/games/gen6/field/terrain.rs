@@ -679,6 +679,7 @@ impl Terrain {
             vec![Floor {
                 words: chunk.words.clone(),
                 heights,
+                ramp: false,
             }]
         } else {
             chunk.floors.clone()
@@ -700,7 +701,7 @@ impl Terrain {
         let files = self.files.borrow().1.clone();
         if self.streets_of.borrow().0.as_ref() != Some(&files) {
             let mut found: IndexMap<(i64, i64), Vec<Floor>> = IndexMap::new();
-            let mut floors: Vec<IndexMap<Cell, f64>> = Vec::new();
+            let mut floors: Vec<(IndexMap<Cell, f64>, bool)> = Vec::new();
             if let Some(streets) = &self.streets
                 && self.known()
             {
@@ -711,7 +712,7 @@ impl Terrain {
                     .collect();
                 floors = rail::street_floors(&streets(&listed)?, &|cell| self.ground(cell))?;
             }
-            for floor in &floors {
+            for (floor, ramp) in &floors {
                 let keys: BTreeSet<(i64, i64)> = floor
                     .keys()
                     .map(|&(x, z)| (py::floordiv(x, CHUNK), py::floordiv(z, CHUNK)))
@@ -739,12 +740,16 @@ impl Terrain {
                         });
                         heights.push(floor.get(&cell).copied());
                     }
-                    found.entry(key).or_default().push(Floor { words, heights });
+                    found.entry(key).or_default().push(Floor {
+                        words,
+                        heights,
+                        ramp: *ramp,
+                    });
                 }
             }
             let cells: HashSet<Cell> = floors
                 .iter()
-                .flat_map(|floor| floor.keys().copied())
+                .flat_map(|(floor, _)| floor.keys().copied())
                 .collect();
             *self.streets_of.borrow_mut() = (Some(files), (Rc::new(found), Rc::new(cells)));
         }

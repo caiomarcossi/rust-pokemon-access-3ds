@@ -892,7 +892,7 @@ impl FieldReader {
             ground_height,
             strands: self.strands,
             lanes,
-            keyed: !self.terrain.raised()?,
+            raised: self.terrain.raised()?,
             walls: self.walls()?,
             grind_rails: self.grind_rails()?,
             ..Ground::of(

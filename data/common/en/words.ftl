@@ -166,6 +166,10 @@ how-slide = slide
 # where it lands the player: "3 east, grind the rail 17 east" (spike 247).
 how-grind-the-rail = grind the rail
 p-grind = grind the rail { $bearing }
+# A run of steps up or down a ramp, said as one leg by the way it starts, the key held all along
+# it: "up the ramp 25 south-east" (spike 248).
+how-up-the-ramp = up the ramp
+how-down-the-ramp = down the ramp
 # The way chosen to push a big boulder, before the way to its side: "to push east: 3 west".
 p-to-push = to push { $way }:
 # A step to line up with the next leg, where a wall's corner would catch the player: "a little

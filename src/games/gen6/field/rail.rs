@@ -92,6 +92,9 @@ pub const POINT_PLACE: i64 = 0x10;
 /// as long as the line between its ends, square to that line (spike 248).
 pub const POINT_SIDE: i64 = 0x64;
 pub const JOINT_PLACE: i64 = 0x28;
+/// How far apart a street's ends stand for it to be a ramp's: the Tower of Mastery's landings'
+/// points stand level to the unit, at 180, 361, 540 and 720 (spike 248).
+pub const SLOPE: f64 = 1.0;
 /// Places a cell along a street's curve that it is laid from, each with its row's cells across.
 pub const SAMPLES: i64 = 4;
 /// World units a map chunk is across: 40 cells of 18.
@@ -748,11 +751,13 @@ pub fn section_streets(section: &[u8]) -> Result<Network> {
 /// from one lap onto the next. None where every street lies on the ground, as Route 7's, Parfum
 /// Palace's and Lumiose's do, walked as the grid's ground (`Rails.lanes`). Streets are packed
 /// into as few floors as keep apart every two cells, the same or side by side, more than `CLIMB`
-/// from each other's height: a lap and the lap over it are two.
+/// from each other's height: a lap and the lap over it are two. A ramp's streets, whose ends
+/// stand more than `SLOPE` apart, are packed apart from level ones, and each floor says which it
+/// is: a run up a ramp is said as one leg (`guide.RAMP_UP`).
 pub fn street_floors(
     network: &Network,
     ground: &dyn Fn(Cell) -> Result<Vec<f64>>,
-) -> Result<Vec<IndexMap<Cell, f64>>> {
+) -> Result<Vec<(IndexMap<Cell, f64>, bool)>> {
     // The points alone: laying Lumiose's 294 streets, some 67 cells across, takes seconds.
     let off = |point: i64, height: f64| -> Result<bool> {
         let under = match network.places.get(&point) {
@@ -775,15 +780,15 @@ pub fn street_floors(
     if !any {
         return Ok(Vec::new());
     }
-    let mut lanes: Vec<IndexMap<Cell, f64>> = Vec::new();
+    let mut floors: Vec<(IndexMap<Cell, f64>, bool)> = Vec::new();
     for line in network.lines.values() {
         let lane = laid(line, network)?;
-        if !lane.is_empty() {
-            lanes.push(lane);
+        if lane.is_empty() {
+            continue;
         }
-    }
-    let mut floors: Vec<IndexMap<Cell, f64>> = Vec::new();
-    for lane in &lanes {
+        // Both ends have heights, or `laid` laid nothing.
+        let sloped = (network.heights[&line.end] - network.heights[&line.start]).abs() > SLOPE;
+
         let fits = |floor: &IndexMap<Cell, f64>| {
             lane.iter().all(|(&(x, z), &height)| {
                 [(x, z), (x + 1, z), (x - 1, z), (x, z + 1), (x, z - 1)]
@@ -792,14 +797,17 @@ pub fn street_floors(
                     .all(|&there| (there - height).abs() <= CLIMB)
             })
         };
-        let floor = match floors.iter().position(fits) {
-            Some(at) => &mut floors[at],
+        let floor = match floors
+            .iter()
+            .position(|(cells, ramp)| *ramp == sloped && fits(cells))
+        {
+            Some(at) => &mut floors[at].0,
             None => {
-                floors.push(IndexMap::new());
-                floors.last_mut().expect("the floor just pushed")
+                floors.push((IndexMap::new(), sloped));
+                &mut floors.last_mut().expect("the floor just pushed").0
             }
         };
-        for (&cell, &height) in lane {
+        for (&cell, &height) in &lane {
             floor.entry(cell).or_insert(height);
         }
     }

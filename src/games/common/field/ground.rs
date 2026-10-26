@@ -453,10 +453,11 @@ pub struct Ground {
     /// The cells of streets laid on the grid, each with the steps its street's ways allow, as
     /// (dx, dz), a diagonal among them, and the key that takes each (`rail.Rails.lanes`).
     pub lanes: Rc<Lanes>,
-    /// Whether a step along a street is said by its lane's key (`key`), rather than by the way it
-    /// goes, as every other step is: not where the streets are floors of their own, whose keys
-    /// follow cameras looking every way (spike 248).
-    pub keyed: bool,
+    /// Whether the streets are floors of their own (`Terrain.raised`): a step along one is said by
+    /// the way it goes, as every other step is, not by its lane's key (`key`), since the keys follow
+    /// cameras looking every way, and a run up or down a ramp is one leg (`guide.RAMP_UP`, spike
+    /// 248).
+    pub raised: bool,
     /// Cells people stand in on a ground that leaves them out of `standing`, a step into one
     /// costing as much as a boulder's (`SHOVE`): the way as if nobody stood anywhere still goes
     /// round whoever it can, so who it meets first is somebody in the way (`Guide._up_to`).
@@ -527,7 +528,7 @@ impl Default for Ground {
             heights: IndexMap::new(),
             strands: 0,
             lanes: Rc::new(IndexMap::new()),
-            keyed: true,
+            raised: false,
             crowd: HashSet::new(),
             rides: HashSet::new(),
             stops: HashSet::new(),
@@ -830,6 +831,18 @@ impl Ground {
             .filter(|floor| floor.1.is_some())
             .collect();
         Ok(if held.is_empty() { out } else { held })
+    }
+
+    /// Whether the cell, walked on `floor`, is on a ramp's floor (`Floor.ramp`).
+    pub fn on_ramp(&self, cell: Cell, floor: i64) -> Result<bool> {
+        let chunk = if self.stacked {
+            self.chunk(cell)?
+        } else {
+            None
+        };
+        Ok(chunk.is_some_and(|chunk| {
+            0 <= floor && floor < chunk.floors.len() as i64 && chunk.floors[floor as usize].ramp
+        }))
     }
 
     /// The cell's open floor nearest `height`, or `ANY_FLOOR` where there is none to choose: no
@@ -1331,10 +1344,10 @@ impl Ground {
     /// The key that walks a step along or across a street, where it is one: up walks Route
     /// 7's north-west (`lanes`). None off the streets, where a way is walked by the compass.
     pub fn key(&self, cell: Cell, step: Cell) -> Option<&'static str> {
-        let lane = if self.keyed {
-            self.lanes.get(&cell)
-        } else {
+        let lane = if self.raised {
             None
+        } else {
+            self.lanes.get(&cell)
         };
         lane?.get(&(step.0 - cell.0, step.1 - cell.1)).copied()
     }

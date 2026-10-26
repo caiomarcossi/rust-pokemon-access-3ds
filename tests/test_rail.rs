@@ -492,9 +492,10 @@ fn test_streets_are_floors_of_their_own_where_one_stands_off_the_ground() -> Res
         sides: sides.clone(),
     };
     let floors = rail::street_floors(&network(&heights), &ground)?;
-    let [lap, over] = &floors[..] else {
+    let [(lap, ramp), (over, _)] = &floors[..] else {
         panic!("two floors, not {}", floors.len());
     };
+    assert!(ramp);
     assert_eq!(
         (0..9).map(|x| lap[&(x, 0)]).collect::<Vec<f64>>(),
         (0..9).map(|x| 10.0 * x as f64).collect::<Vec<f64>>()

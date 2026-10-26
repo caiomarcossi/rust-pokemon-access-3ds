@@ -60,6 +60,19 @@ pub const SLIDE: &str = "slide";
 /// (x_gym_3, spike 247). The game names no such thing.
 pub const GRIND: &str = "grind the rail";
 
+/// What a run of steps up or down a ramp is said with, as one leg by the way it starts, the key
+/// held all along it (`_ramps`): the rail carries the player round the ramp's curve. In the Tower
+/// of Mastery the player held right round the whole second lap, under three cameras
+/// (x_tower_of_mastery), and where each curve was said as legs of its own, "4 south-east, 9 south,
+/// 5 south-west, 11 west", pressed each leg's key in turn (x_tower_2, spike 248). The game names
+/// no such thing.
+pub const RAMP_UP: &str = "up the ramp";
+pub const RAMP_DOWN: &str = "down the ramp";
+/// How far a run of steps on a ramp may rise or fall and be said as steps, not up or down it: a
+/// stair's step, `chunk.CLIMB`. Along the Tower of Mastery's ramp a step climbs 6 to 10, one across
+/// it 2 at most, and a step off its foot alone was said "down the ramp 1 south-west" (spike 248).
+pub const LEVEL: f64 = 18.0;
+
 /// The legs a player is carried along rather than walks, each with the message a run of them is
 /// said by, where it leaves them (`_spoken`).
 pub const CARRIED: [(&str, &str); 2] = [(CURRENT, "p-current"), (GRIND, "p-grind")];
@@ -134,6 +147,116 @@ fn holds(count: i64) -> String {
         },
         &[("holds", &count.abs())],
     )
+}
+
+/// `dict(ground.floors(cell)).get(floor)`: the height of the cell's open floor `floor`, or None
+/// where it is not open or has no height there.
+fn height_on(ground: &Ground, cell: Cell, floor: i64) -> Result<Option<f64>> {
+    Ok(ground
+        .floors(cell)?
+        .into_iter()
+        .find(|&(k, _)| k == floor)
+        .and_then(|(_, height)| height))
+}
+
+/// Each step of a path up or down a ramp, with what it is said with, and each run of them by
+/// where along the path it starts, with the way the ramp goes there (`ramped`).
+type Ramped = (
+    HashMap<(Cell, Cell), &'static str>,
+    HashMap<i64, &'static str>,
+);
+
+/// Each step of `path` up or down a ramp, with what it is said with, and each run of them by
+/// where along `path` it starts, with the way the ramp goes there (`_uphill`): a run of steps
+/// between cells walked on a ramp's floor (`Ground.on_ramp`), up the ramp where it ends higher
+/// than it starts and down it where lower, but for one rising or falling no more than `LEVEL`,
+/// across the ramp. A step along the ramp's curve can rise or fall less than one across it, and
+/// a way zig-zags across the ramp's three or four cells as it likes: from the same cell on the
+/// Tower of Mastery's first lap, its run's longest leg said "up the ramp 11 south" to the roof
+/// and "up the ramp 12 east" to the first landing (spike 248).
+fn ramped(ground: &Ground, path: &[Cell]) -> Result<Ramped> {
+    let mut steps: HashMap<(Cell, Cell), &'static str> = HashMap::new();
+    let mut ways: HashMap<i64, &'static str> = HashMap::new();
+    if !ground.raised {
+        return Ok((steps, ways));
+    }
+    let floors = ground.walked(path)?;
+    let mut on = Vec::new();
+    for (&cell, &floor) in path.iter().zip(&floors) {
+        on.push(ground.on_ramp(cell, floor)?);
+    }
+    let mut heights = Vec::new();
+    for (&cell, &floor) in path.iter().zip(&floors) {
+        heights.push(height_on(ground, cell, floor)?.unwrap_or(0.0));
+    }
+    let mut start = 0;
+    while start + 1 < path.len() {
+        let mut end = start;
+        while end + 1 < path.len() && on[end] && on[end + 1] {
+            end += 1;
+        }
+        let rise = heights[end] - heights[start];
+        if rise.abs() > LEVEL {
+            let how = if rise > 0.0 { RAMP_UP } else { RAMP_DOWN };
+            for pair in path[start..=end].windows(2) {
+                steps.insert((pair[0], pair[1]), how);
+            }
+            ways.insert(
+                start as i64,
+                uphill(ground, path[start], floors[start], rise > 0.0)?,
+            );
+        }
+        start = end.max(start + 1);
+    }
+    Ok((steps, ways))
+}
+
+/// The way a ramp goes up from `cell`, walked on `floor`, or down it where not `up`: towards
+/// the cell round it on the same floor that rises, or falls, most for the distance to it.
+fn uphill(ground: &Ground, cell: Cell, floor: i64, up: bool) -> Result<&'static str> {
+    let here = height_on(ground, cell, floor)?.unwrap_or(0.0);
+    let (mut best, mut way) = (f64::NEG_INFINITY, "");
+    // `_CARRIED_STEPS`: the compass's four, then the diagonals.
+    for &(name, (dx, dz)) in pathfind::STEPS.iter().chain(pathfind::DIAGONALS.iter()) {
+        if let Some(there) = height_on(ground, (cell.0 + dx, cell.1 + dz), floor)? {
+            let rise =
+                (if up { there - here } else { here - there }) / py::hypot(dx as f64, dz as f64);
+            if rise > best {
+                (best, way) = (rise, name);
+            }
+        }
+    }
+    Ok(way)
+}
+
+/// `legs` with each run of them up or down a ramp one leg (`RAMP_UP`), said the way the ramp
+/// goes where the run starts (`_ramped`).
+fn ramps(legs: Vec<Leg>, ways: &HashMap<i64, &'static str>) -> Vec<Leg> {
+    let mut out: Vec<Leg> = Vec::new();
+    for leg in legs {
+        let ramp = leg.how == RAMP_UP || leg.how == RAMP_DOWN;
+        match out.last_mut() {
+            Some(last) if ramp && last.how == leg.how => {
+                last.steps += leg.steps;
+                last.end = leg.end;
+            }
+            _ => {
+                let way = if ramp {
+                    ways.get(&(leg.end - leg.steps)).copied()
+                } else {
+                    None
+                };
+                out.push(match way {
+                    Some(way) if !way.is_empty() => Leg {
+                        direction: way,
+                        ..leg
+                    },
+                    _ => leg,
+                });
+            }
+        }
+    }
+    out
 }
 
 /// `legs` with each climb's handholds climbed in place said with the leg that starts where
@@ -1247,7 +1370,11 @@ impl Guide {
                 climbed.insert((path[i as usize], path[i as usize + 1]));
             }
         }
+        let (ramped, ramp_ways) = self::ramped(&ground, &path)?;
         let how = |cell: Cell, step: Cell| -> Result<String> {
+            if let Some(word) = ramped.get(&(cell, step)) {
+                return Ok(word.to_string());
+            }
             if climbed.contains(&(cell, step)) {
                 return Ok(CLIMB.to_string());
             }
@@ -1299,7 +1426,13 @@ impl Guide {
             Ok(String::new())
         };
         let key = |cell: Cell, step: Cell| ground.key(cell, step);
-        let legs = self::held(pathfind::legs_with(&path, Some(&how), Some(&key))?, &climbs)?;
+        let legs = self::held(
+            ramps(
+                pathfind::legs_with(&path, Some(&how), Some(&key))?,
+                &ramp_ways,
+            ),
+            &climbs,
+        )?;
         let visit = self.field.visit();
         let along: HashMap<Cell, i64> = path
             .iter()

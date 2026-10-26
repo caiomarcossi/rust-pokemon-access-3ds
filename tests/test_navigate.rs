@@ -105,6 +105,8 @@ struct FakeField {
     floors: RefCell<IndexMap<Cell, (Option<f64>, Option<f64>)>>,
     /// A cell and one of its floors, open there with no height: its mesh over none of it.
     bare: RefCell<HashSet<(Cell, usize)>>,
+    /// Whether the upper floor is a ramp's, and the streets floors of their own.
+    ramp: Slot<bool>,
     /// The player's height on a stacked ground.
     level: Slot<Option<f64>>,
     /// A stacked ground's ladders, each step with the heights it leaves and lands at.
@@ -145,6 +147,7 @@ impl FakeField {
             surfaces: RefCell::new(IndexMap::new()),
             floors: RefCell::new(IndexMap::new()),
             bare: RefCell::new(HashSet::new()),
+            ramp: Slot::new(false),
             level: Slot::new(None),
             ladders: RefCell::new(IndexMap::new()),
             ice: RefCell::new(Vec::new()),
@@ -252,6 +255,7 @@ impl FieldSource for FakeField {
                         })
                         .collect(),
                     heights: cells.iter().map(|cell| one(cell, k)).collect(),
+                    ramp: self.ramp.get() && k == 1,
                 })
                 .collect();
             let words: Vec<i64> = cells
@@ -277,6 +281,7 @@ impl FieldSource for FakeField {
             ground.stacked = true;
             ground.level = self.level.get();
             ground.ladders = self.ladders.borrow().clone();
+            ground.raised = self.ramp.get();
             return Ok(ground);
         }
         let mut ground = Ground::of(
@@ -3208,6 +3213,44 @@ fn test_floor_over_floor_each_is_walked_as_itself_and_joined_by_the_stairs() {
     rig.field.level.set(Some(198.0));
     rig.press(PATHFIND);
     assert_eq!(last(&rig.backend), "12 south");
+}
+
+/// x_tower_2 (spike 248): the Tower of Mastery's ramp curves round its statue, and P said each
+/// curve of it as a leg of its own, "4 south-east, 9 south, 5 south-west, 11 west", which Khai
+/// walked a key at a time, where one key held carries the player round. A run up a ramp is one
+/// leg, said the way the ramp goes where it starts, whichever way the way zig-zags across it.
+#[test]
+fn test_a_run_up_a_ramp_is_one_leg_said_the_way_the_ramp_goes() {
+    let stairs = Interactable {
+        zone: Some(0x6),
+        source: place_source(WARP_SOURCE, 0).unwrap(),
+        height: Some(100.0),
+        ..Interactable::new("exits", "stairs up", (113, 172))
+    };
+    let mut rig = navigator(Want {
+        exits: true,
+        ..on(Field {
+            interactables: vec![stairs],
+            ..Field::new(0x6, (94, 172))
+        })
+    });
+    rig.field.ramp.set(true);
+    {
+        let mut floors = rig.field.floors.borrow_mut();
+        for x in 94..100 {
+            floors.insert((x, 172), (Some(0.0), None));
+        }
+        for x in 100..110 {
+            floors.insert((x, 172), (None, Some(10.0 * (x - 99) as f64)));
+            floors.insert((x, 173), (None, Some(10.0 * (x - 99) as f64)));
+        }
+        for x in 110..113 {
+            floors.insert((x, 172), (Some(100.0), None));
+        }
+    }
+    rig.field.level.set(Some(0.0));
+    rig.press(PATHFIND);
+    assert_eq!(said(&rig.backend), ["6 east, up the ramp 9 east, 3 east"]);
 }
 
 /// Spike A: outside Sky Pillar the terraces stand 108 apart on three floors, and the one stair

@@ -2665,6 +2665,7 @@ fn test_a_stair_is_where_the_ground_meets_a_floor_over_it() {
                 .iter()
                 .map(|cell| heights.get(cell).copied())
                 .collect(),
+            ramp: false,
         }
     }
 
@@ -2690,10 +2691,10 @@ fn test_a_step_up_a_ramp_is_said_by_the_way_it_goes_not_its_streets_key() -> Res
             )
         })
         .collect();
-    for (keyed, said) in [(true, "4 east"), (false, "4 north")] {
+    for (raised, said) in [(false, "4 east"), (true, "4 north")] {
         let ground = Ground {
             lanes: Rc::new(lanes.clone()),
-            keyed,
+            raised,
             ..Ground::default()
         };
         let path = ground.find((0, 4), &goals_of(&[((0, 0), None)]), "", None, false, None)?;
@@ -2702,7 +2703,7 @@ fn test_a_step_up_a_ramp_is_said_by_the_way_it_goes_not_its_streets_key() -> Res
         assert_eq!(
             pathfind::spoken(&pathfind::legs_with(&path, None, Some(&key))?),
             said,
-            "keyed {keyed}"
+            "raised {raised}"
         );
     }
     Ok(())
@@ -2734,6 +2735,7 @@ fn ramp_chunks() -> (Floor, Floor) {
         Floor {
             words: words(&ground),
             heights: vec![Some(0.0); (CHUNK * CHUNK) as usize],
+            ramp: false,
         },
         Floor {
             words: words(&landing),
@@ -2741,6 +2743,7 @@ fn ramp_chunks() -> (Floor, Floor) {
                 .iter()
                 .map(|cell| landing.contains(cell).then_some(90.0))
                 .collect(),
+            ramp: false,
         },
     )
 }
@@ -3232,6 +3235,7 @@ fn test_a_deck_over_lower_ground_is_kept_to_and_walked_under() -> Result<()> {
     let ground = Floor {
         words: vec![0x20; (CHUNK * CHUNK) as usize],
         heights: vec![Some(-63.0); (CHUNK * CHUNK) as usize],
+        ramp: false,
     };
     let on_deck = |i: i64| i / CHUNK == 5 && (3..=20).contains(&(i % CHUNK));
     let deck = Floor {
@@ -3241,6 +3245,7 @@ fn test_a_deck_over_lower_ground_is_kept_to_and_walked_under() -> Result<()> {
         heights: (0..CHUNK * CHUNK)
             .map(|i| if on_deck(i) { Some(0.0) } else { None })
             .collect(),
+        ramp: false,
     };
     // The deck runs on past the ground's edge at x 20, over nothing the ground has.
     let ground = Floor {
@@ -3787,6 +3792,7 @@ fn test_grind_rails_are_found_on_every_floor_and_never_past_a_blocked_cell() -> 
         Floor {
             words: words.clone(),
             heights: vec![Some(0.0); cells.len()],
+            ramp: false,
         },
         Floor {
             words: cells
@@ -3794,6 +3800,7 @@ fn test_grind_rails_are_found_on_every_floor_and_never_past_a_blocked_cell() -> 
                 .map(|cell| upper.get(cell).copied().unwrap_or(BLOCKED))
                 .collect(),
             heights: vec![None; cells.len()],
+            ramp: false,
         },
     ];
     town.reader = field_reader(
