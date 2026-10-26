@@ -1,5 +1,63 @@
 # Changelog
 
+## [0.8.0] - 2026-10-26
+
+### Added
+
+- Started by double-clicking or from a shortcut, pa3ds opens a window of its own, Pokémon Access
+  3DS, which is only a menu bar: press Alt for its menus. **Mod** has Settings, Check for updates
+  and Exit, **Azahar** downloads Azahar's portable zip or its installer, and **Help** opens a page
+  of the manual or reports an issue. The window hides while Azahar is open; `hide_window` keeps it
+  in sight, for OBS to record pa3ds's sounds through it.
+- The mod settings: Settings in the **Mod** menu changes every setting, on a tab for each part of
+  `config.toml`, each said by a short name and then what it does, in your language.
+- The `hidden_items` setting lists the hidden items you have not found yet among the items, as
+  "hidden item": `"underwater"` under the sea, where the Dowsing Machine cannot be used, with the
+  Scanner under Sea Mauville until you take it; `"all"` everywhere. `P` takes you beside one,
+  facing it. It is off unless you turn it on.
+- A thing more than two squares' height above or below you says how far: "item ball, 1 north,
+  90 below".
+- A step of `P`'s way that takes you into another town or route names it: "5 north into Route
+  101".
+- In X, `P` climbs Cyllage Gym's rock walls and slides down the two you slide down, "slide 5
+  south". The climbing category lists the walls' blue spots and ledges.
+- In X, `P` grinds Shalour Gym's rails on roller skates, and the spot where Korrina comes out is
+  listed as the gym leader's spot.
+- In X and Y, `P` climbs the Tower of Mastery's ramp, each stretch of it one step of the way:
+  "8 west, up the ramp 22 east".
+- X's Dowsing Machine is said as Omega Ruby's is.
+- X and Y's title screen and the film it plays are described.
+- In X's boutiques the fitting room is listed, and its tabs are said by the game's own words,
+  "hat", "top" and the rest.
+- Choosing a partner for a Multi Battle in the Battle Maison says each partner's name.
+- In the PC Box, a slot says who is in it while you carry a Pokémon. The Battle Box's slots are
+  said, and touch mode leaves out the box drawn behind them.
+- In Shoal Cave, the way in from Route 125 and the ways out are listed, the entrance room is
+  described at high tide, and `P` slides across the ice room's ice.
+- The rocks that evolve Eevee are called the ice rock and the moss rock.
+
+### Changed
+
+- Every known problem is on a page of its own in the manual, Known issues.
+
+### Fixed
+
+- The Contest Spectacular Halls' lobbies no longer list ten people who are not there.
+- In Omega Ruby and Alpha Sapphire, directions follow the camera where it turns, as on the Battle
+  Resort's beach.
+- A name a button shows as a picture is said once, not "Torchic Torchic L14".
+- Past the League, the Bag and the Battle Maison's screens name your party's Pokémon, and the
+  Maison names the Battle Box's.
+- The PC Box's summary reads its stats, then its moves, instead of across both.
+- The fitting room's card is said once, when it is written, and not again as you move between
+  Change and Back; moving onto the AreaNav's Pokémon no longer says the route again.
+- During a contest's appeals, `R` and `Shift+R` say the places, not "no battle".
+- On Mt. Chimney's summit, `P` goes round and down the path to an item ball far below instead of
+  saying it is beside you, and never walks up to a thing from the top of a cliff above it.
+- The Mega Stone's sparkle is listed under items.
+- Sea Mauville's locked doors are listed as doors, at the water, and diving under Sea Mauville
+  lists the way into its sunken control room.
+
 ## [0.7.0] - 2026-10-23
 
 ### Added
