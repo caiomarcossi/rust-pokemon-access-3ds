@@ -1139,12 +1139,20 @@ impl FieldReader {
         let mut home = None;
         if let Some(data) = &data {
             home = self.home(data, &[r#where.zone])?;
+            let warps = read_records(&*self.memory, data, WARP)?;
+            // Furniture standing on a warp is its lock, and the door is listed in its place:
+            // Sea Mauville's five, which say "The door is locked." until their key opens them and
+            // were listed beside their doors after (or_sea_mauville_locked_doors), and in X the
+            // hidden door "Open sesame" opens and the Kalos Power Plant's: none other in either.
+            let locks = warp_cells(&warps)?;
             let mut furniture: Vec<Interactable> = Vec::new();
             for item in read_furniture(&*self.memory, data)? {
+                if item.cells().iter().all(|cell| locks.contains(cell)) {
+                    continue;
+                }
                 furniture.push(self.furniture_listed(home, item));
             }
             items.extend(joined(furniture, &|item| Some(self.furniture_key(item))));
-            let warps = read_records(&*self.memory, data, WARP)?;
             for (i, record) in warps.iter().enumerate() {
                 let files = self.terrain.files.borrow().1.clone();
                 let shape = self.rails.on_grid(record, &files)?;
@@ -2042,18 +2050,7 @@ impl FieldReader {
                 gates.insert(u16(record, NPC_INDEX)?);
             }
         }
-        let mut doors: HashSet<Cell> = HashSet::new();
-        for record in read_records(&*self.memory, &data, WARP)? {
-            if on_rail(&record)? {
-                continue;
-            }
-            let ((x0, z0), (wide, deep)) = warp_box(&record)?;
-            for x in x0..x0 + 1.max(wide) {
-                for z in z0..z0 + 1.max(deep) {
-                    doors.insert((x, z));
-                }
-            }
-        }
+        let mut doors = warp_cells(&read_records(&*self.memory, &data, WARP)?)?;
         for item in read_furniture(&*self.memory, &data)? {
             doors.extend(item.cells());
         }
@@ -2878,6 +2875,23 @@ fn gathered(cells: &HashSet<Cell>, reach: i64) -> Vec<Vec<Cell>> {
         out.push(group);
     }
     out
+}
+
+/// Every cell the warps off the rails cover.
+fn warp_cells(records: &[Vec<u8>]) -> Result<HashSet<Cell>> {
+    let mut out: HashSet<Cell> = HashSet::new();
+    for record in records {
+        if on_rail(record)? {
+            continue;
+        }
+        let ((x0, z0), (wide, deep)) = warp_box(record)?;
+        for x in x0..x0 + 1.max(wide) {
+            for z in z0..z0 + 1.max(deep) {
+                out.insert((x, z));
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// How high a sign stands among the signs of one spot (`_one_a_spot`): a thing drawn there,

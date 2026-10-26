@@ -626,12 +626,6 @@ place-0x188-furniture-5 = 丰缘巡护队
 place-0x1c2-furniture-10 = 丰缘巡护队
 place-0x1c2-furniture-11 = 丰缘巡护队
 place-0x20d-furniture-0 = 丰缘巡护队
-# story 366:5, "The door is locked.", in Sea Mauville
-place-0x91-furniture-1 = 上锁的门
-place-0x92-furniture-1 = 上锁的门
-place-0x92-furniture-2 = 上锁的门
-place-0x92-furniture-3 = 上锁的门
-place-0x92-furniture-4 = 上锁的门
 # story 206:0, the Trick House's scroll doors
 place-0x175-furniture-0 = 上锁的门
 place-0x176-furniture-0 = 上锁的门

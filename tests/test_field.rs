@@ -3003,6 +3003,34 @@ fn test_a_model_drawn_as_nothing_is_what_it_stands_in_for() -> Result<()> {
     Ok(())
 }
 
+/// Sea Mauville (or_sea_mauville_locked_doors): each locked door is furniture on its door's
+/// own cell, saying "The door is locked." until its key opens it, and it was listed as a sign
+/// beside the door, before and after. Only the door is listed; furniture beside it still is.
+#[test]
+fn test_furniture_standing_on_a_warp_is_its_lock_and_the_door_is_listed() -> Result<()> {
+    let town = Town::new();
+    let data = zone_file(&ZoneSpec {
+        furniture: &[(0x7, 106, 171), (0x8, 104, 171)],
+        warps: &[(0xE1, WARP_DOOR, 106, 171, None, None)],
+        info: &town_info(),
+        ..ZoneSpec::default()
+    });
+    town.memory.write(FILE, &data);
+    town.memory
+        .u32(HOLDER, &[FILE, OTHER, 0x11 | (data.len() as i64) << 8]);
+    let r#where = town.r#where()?;
+    let signs: HashSet<(i64, i64)> = r#where.of("signs").iter().map(|item| item.cell).collect();
+    assert!(signs.contains(&(104, 171)) && !signs.contains(&(106, 171)));
+    let doors: Vec<(i64, i64)> = r#where
+        .of("exits")
+        .iter()
+        .filter(|item| item.kind == "door")
+        .map(|item| item.cell)
+        .collect();
+    assert_eq!(doors, vec![(106, 171)]);
+    Ok(())
+}
+
 /// Spike 223: X's Santalune Gym has five models drawn as nothing in its corridor behind Viola,
 /// all running script 0x269, which no drawn record has; they were five nameless people. In a
 /// game with `gates` they are listed as nobody and stand in the way, while a model drawn as

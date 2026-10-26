@@ -543,16 +543,6 @@ place-0x1c2-furniture-10 = ホウエンジャー
 place-0x1c2-furniture-11 = ホウエンジャー
 # Hoenn Rangers
 place-0x20d-furniture-0 = ホウエンジャー
-# locked door: story 366:5, "The door is locked.", in Sea Mauville
-place-0x91-furniture-1 = カギの　かかった　とびら
-# locked door
-place-0x92-furniture-1 = カギの　かかった　とびら
-# locked door
-place-0x92-furniture-2 = カギの　かかった　とびら
-# locked door
-place-0x92-furniture-3 = カギの　かかった　とびら
-# locked door
-place-0x92-furniture-4 = カギの　かかった　とびら
 # locked door: story 206:0, the Trick House's scroll doors
 place-0x175-furniture-0 = カギの　かかった　とびら
 # locked door
