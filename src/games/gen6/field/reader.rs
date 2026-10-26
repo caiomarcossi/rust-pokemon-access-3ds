@@ -52,14 +52,15 @@ use crate::games::common::field::things::{
 use crate::games::gen6::field::features::{
     DoorReader, Feature, HiddenReader, Hiding, IceReader, SecretBaseReader, Tracked,
 };
-use crate::games::gen6::field::hidden_items::{HiddenItems, Only};
+use crate::games::gen6::field::hidden_items::{HIDDEN_ITEM, HiddenItems, Only};
 use crate::games::gen6::field::rail::{self, Rails, keep};
 use crate::games::gen6::field::terrain::{FarCells, FarFloors, FarHeights, FarMatrices, Terrain};
 use crate::games::gen6::field::zonedata::{
     FURNITURE, FURNITURE_SCRIPT, LZ11, NPC, NPC_INDEX, NPC_SCRIPT, NPC_SPRITE, NPC_X, NPC_Z,
-    TRIGGER_HEIGHT, TRIGGER_SCRIPT, TRIGGER_WIDTH, TRIGGER_X, TRIGGER_Y, TRIGGER_Z, WARP,
-    WARP_DOOR, WARP_KIND, WARP_OUT, WARP_STAIRS, WARP_STREET, WARP_TO, WARP_Y, ZoneData, arrival,
-    on_rail, read_furniture, read_records, read_triggers, read_zone, warp_box, zone_files,
+    TRIGGER_HEIGHT, TRIGGER_SCRIPT, TRIGGER_VALUE, TRIGGER_WIDTH, TRIGGER_WORK, TRIGGER_X,
+    TRIGGER_Y, TRIGGER_Z, WARP, WARP_DOOR, WARP_KIND, WARP_OUT, WARP_STAIRS, WARP_STREET, WARP_TO,
+    WARP_Y, ZoneData, arrival, on_rail, read_furniture, read_records, read_triggers, read_zone,
+    warp_box, zone_files,
 };
 use crate::games::gen6::field::zonetable::{
     INFO_KIND, INFO_MATRIX, INFO_NAME, INFO_PARENT, INFO_SIZE, NAME_MASK, UNDERWATER, ZONE_LIMIT,
@@ -340,6 +341,8 @@ pub struct FieldReader {
     /// (zone, a trigger's script) -> the category and kind it is listed as, and for an exit into
     /// another place, the zone it leads to (`Game.triggers`).
     triggers: IndexMap<(i64, i64), (String, String, Option<i64>)>,
+    /// (zone, a trigger's script) of the triggers that give an item (`Game.hidden_triggers`).
+    hidden_triggers: HashSet<(i64, i64)>,
     /// Sprite -> the move that clears the thing drawn as it (`Game.clears`).
     clears: IndexMap<i64, i64>,
     /// The sprites of the spots a wild Pokémon leaps out of (`Game.ambushes`).
@@ -531,6 +534,7 @@ impl FieldReader {
             secret_bases,
             barriers: game.barriers.clone(),
             triggers: game.triggers.clone(),
+            hidden_triggers: game.hidden_triggers.clone(),
             clears: game.clears.clone(),
             ambushes: game.ambushes.clone(),
             lurkers: game.lurkers.clone(),
@@ -1098,9 +1102,10 @@ impl FieldReader {
     /// The zone's triggers `Game.triggers` knows as something to walk to: Mauville Gym's switches,
     /// and the way between its two rooms, which share no floor (spike 146); Lavaridge Gym's
     /// trapdoors and geysers (spike 157); Mossdeep Gym's lifts and teleporter (spike 163); the way
-    /// into Seafloor Cavern under Route 128 (spike 164).
+    /// into Seafloor Cavern under Route 128 (spike 164). And where the Extra lists hidden items,
+    /// those a trigger gives, while it is armed: once taken it is not.
     fn listed_triggers(&self, data: &ZoneData, zone: i64) -> Result<Vec<Interactable>> {
-        let home = if self.triggers.is_empty() {
+        let home = if self.triggers.is_empty() && self.hidden_triggers.is_empty() {
             None
         } else {
             self.home(data, &[zone])?
@@ -1111,6 +1116,26 @@ impl FieldReader {
         let mut out: Vec<Interactable> = Vec::new();
         for (i, record) in read_triggers(&*self.memory, data)?.iter().enumerate() {
             let script = u16(record, TRIGGER_SCRIPT)?;
+            if self.hidden_triggers.contains(&(home, script)) {
+                if let Some(hidden_items) = &self.hidden_items
+                    && hidden_items
+                        .holds(u16(record, TRIGGER_WORK)?, u16(record, TRIGGER_VALUE)?)?
+                {
+                    out.push(Interactable {
+                        size: (u16(record, TRIGGER_WIDTH)?, u16(record, TRIGGER_HEIGHT)?),
+                        code: script,
+                        source: place_source(TRIGGER_SOURCE, i as i64)?,
+                        home: Some(home),
+                        height: Some(s16(record, TRIGGER_Y)? as f64),
+                        ..Interactable::new(
+                            "items",
+                            HIDDEN_ITEM,
+                            (u16(record, TRIGGER_X)?, u16(record, TRIGGER_Z)?),
+                        )
+                    });
+                }
+                continue;
+            }
             if let Some((category, kind, to)) = self.triggers.get(&(home, script)) {
                 out.push(Interactable {
                     size: (u16(record, TRIGGER_WIDTH)?, u16(record, TRIGGER_HEIGHT)?),

@@ -264,6 +264,11 @@ pub struct Game {
     /// Omega Ruby's Dowsing Machine's getter, `0x4e49e4`, and in X's, `0x4ab888`
     /// (`gen6.field.hidden_items`, spike A).
     pub hidden_items: i64,
+    /// (zone, a trigger's script) of each trigger that gives an item, listed as a hidden item
+    /// while it is armed: ORAS's Scanner. Listed wherever the hidden items are, under the sea or
+    /// everywhere, since the player dives to it in a zone the zone table does not put under the
+    /// sea.
+    pub hidden_triggers: HashSet<(i64, i64)>,
     /// The readers of what else it has on its field to list, each in its own words: ORAS's berry
     /// spots and Route 113's ash piles (`games.oras.field.berries`, `games.oras.field.ash`).
     pub features: Vec<FeatureFactory>,
@@ -392,6 +397,7 @@ impl Game {
             furniture: IndexMap::new(),
             secret_bases: None,
             hidden_items: 0x44C,
+            hidden_triggers: HashSet::new(),
             features: Vec::new(),
             doors: None,
             ice: None,

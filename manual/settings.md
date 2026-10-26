@@ -52,9 +52,9 @@ in a way pa3ds cannot otherwise put into words. Each is off until you turn it on
 - **`conditions`**: the game draws a Pokémon's contest conditions as a star. pa3ds cannot read
   the star, so it says the numbers the star is drawn from.
 - **`hidden_items`**: under the sea the Dowsing Machine cannot be used, and a hidden item is
-  something a sighted player may spot among the rocks and weed, so `"underwater"` lists those.
-  `"all"` lists every hidden item, which the game keeps from everyone: on land, the Dowsing
-  Machine finds them.
+  something a sighted player may spot among the rocks and weed, so `"underwater"` lists those,
+  and the Scanner under Sea Mauville until you take it. `"all"` lists every hidden item, which
+  the game keeps from everyone: on land, the Dowsing Machine finds them.
 
 ## Command-line options
 

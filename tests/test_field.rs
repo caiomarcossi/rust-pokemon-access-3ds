@@ -11,6 +11,7 @@ use indexmap::{IndexMap, IndexSet};
 
 use super::fake_memory::{CODE, FakeClasses, FakeMemory};
 use super::test_rail;
+use crate::core::config::{HIDDEN_OFF, HIDDEN_UNDERWATER};
 use crate::core::discovery::{ALLOCATION, Found};
 use crate::core::memory::Memory;
 use crate::core::pathfind;
@@ -28,6 +29,7 @@ use crate::games::gen6::field::features::{Feature, HiddenReader, Tracked, ZoneAt
 use crate::games::gen6::field::fieldmap::{
     MAP_BLOCK_SIZE, MAP_CHUNK_FILES, MAP_CHUNKS_TALL, MAP_CHUNKS_WIDE, MAP_GRID, MAP_KIND, MAP_MARK,
 };
+use crate::games::gen6::field::hidden_items::{EVENT_CLASS, FIRST_WORK, HIDDEN_ITEM, WORKS};
 use crate::games::gen6::field::mmodel::PROP_MODEL;
 use crate::games::gen6::field::reader::PC_TILE as PC_KIND;
 use crate::games::gen6::field::reader::{
@@ -72,6 +74,8 @@ pub(crate) const HIDDEN_HEAP: i64 = 0x08D375F0;
 pub(crate) const CORE_PARAM: i64 = 0x08D376C4;
 /// The one `field::PlayerWork`, where three captures of movie3 had it (spike 135).
 pub(crate) const WORK: i64 = 0x08C6A890;
+/// The save's `field::EventWork`, where the Sea Mauville replays had it.
+pub(crate) const EVENT_WORK: i64 = 0x08C7DAE8;
 pub(crate) const POOCHYENA: i64 = 0x105;
 /// The map blocks holding Littleroot's chunk and Route 101's, where spike 82 found them.
 pub(crate) const TOWN_BLOCK: i64 = 0x08252118;
@@ -194,10 +198,12 @@ pub(crate) struct Given {
     pub matrices: Option<FarMatrices>,
     /// None is `time.monotonic`.
     pub clock: Option<Rc<dyn Fn() -> f64>>,
+    /// `[pa3ds.extras] hidden_items`; None is `HIDDEN_OFF`.
+    pub extras_hidden_items: Option<&'static str>,
 }
 
-/// A field reader of `game`, the ROM's words, chunks and `shared` furniture given, and the
-/// shipped table's `tiles` and `furniture_words`.
+/// A field reader of `game`, the ROM's words, chunks and `shared` furniture given, the shipped
+/// table's `tiles` and `furniture_words`, and `[pa3ds.extras] hidden_items`.
 pub(crate) fn field_reader(memory: Rc<FakeMemory>, given: Given, game: Game) -> Rc<FieldReader> {
     let Given {
         words,
@@ -215,6 +221,7 @@ pub(crate) fn field_reader(memory: Rc<FakeMemory>, given: Given, game: Game) -> 
         far_floors,
         matrices,
         clock,
+        extras_hidden_items,
     } = given;
     let text = GameText {
         pc: words.get(&PC_KIND).cloned(),
@@ -243,7 +250,7 @@ pub(crate) fn field_reader(memory: Rc<FakeMemory>, given: Given, game: Game) -> 
         clock.unwrap_or_else(|| Rc::new(py::time::monotonic)),
         tiles.as_ref(),
         furniture_words.as_ref(),
-        crate::core::config::HIDDEN_OFF,
+        extras_hidden_items.unwrap_or(HIDDEN_OFF),
     )
 }
 
@@ -307,8 +314,8 @@ pub(crate) struct ZoneSpec<'a> {
     pub sections: i64,
     pub script: &'a [u8],
     /// (script, x, z, width) one cell tall, and the height it stands at after them where it is
-    /// not 0.
-    pub triggers: &'a [(i64, i64, i64, i64, Option<i64>)],
+    /// not 0, then the value and the work it is armed by.
+    pub triggers: &'a [(i64, i64, i64, i64, Option<i64>, Option<(i64, i64)>)],
 }
 
 impl Default for ZoneSpec<'_> {
@@ -331,7 +338,8 @@ impl Default for ZoneSpec<'_> {
 /// the flag at +0x0a after them when it is not the usual 0x7d0 (3000 and up is a trainer), and
 /// `warps` as (to zone, kind, x, z) in cells, then the height it stands at in world units and
 /// the warp of the zone it goes to that it comes out at, where not 0; `triggers` as (script,
-/// x, z, width) one cell tall, and the height it stands at after them where it is not 0;
+/// x, z, width) one cell tall, and the height it stands at after them where it is not 0, then
+/// the value and the work it is armed by;
 /// `sections` is ORAS's five or X's four, the third the zone's `script`.
 pub(crate) fn zone_file(spec: &ZoneSpec) -> Vec<u8> {
     let mut records: Vec<u8> = Vec::new();
@@ -387,8 +395,8 @@ pub(crate) fn zone_file(spec: &ZoneSpec) -> Vec<u8> {
     for trigger in spec.triggers {
         records.extend(le16(&[
             trigger.0,
-            0,
-            0,
+            trigger.5.map_or(0, |armed| armed.0),
+            trigger.5.map_or(0, |armed| armed.1),
             0,
             0,
             0,
@@ -1749,7 +1757,7 @@ fn test_a_conveyor_belt_is_ridden_the_way_it_runs_and_walked_round_against_it() 
         FILE,
         &zone_file(&ZoneSpec {
             info: &town_info(),
-            triggers: &[(0x9, 90, 175, 3, None), (0xA, 90, 178, 3, None)],
+            triggers: &[(0x9, 90, 175, 3, None, None), (0xA, 90, 178, 3, None, None)],
             ..ZoneSpec::default()
         }),
     );
@@ -2052,9 +2060,9 @@ fn test_a_gyms_switches_and_passages_are_listed_and_walked_round_unless_the_goal
         &zone_file(&ZoneSpec {
             info: &town_info(),
             triggers: &[
-                (0x4, 91, 175, 1, None),
-                (0x9, 95, 178, 3, None),
-                (0xB, 90, 180, 1, None),
+                (0x4, 91, 175, 1, None, None),
+                (0x9, 95, 178, 3, None, None),
+                (0xB, 90, 180, 1, None, None),
             ],
             ..ZoneSpec::default()
         }),
@@ -2121,7 +2129,7 @@ fn test_a_trigger_into_another_place_is_an_exit_leading_there() -> Result<()> {
         FILE,
         &zone_file(&ZoneSpec {
             info: &town_info(),
-            triggers: &[(0x5, 90, 175, 7, None)],
+            triggers: &[(0x5, 90, 175, 7, None, None)],
             ..ZoneSpec::default()
         }),
     );
@@ -2146,6 +2154,56 @@ fn test_a_trigger_into_another_place_is_an_exit_leading_there() -> Result<()> {
         (entrance.cell, entrance.size, entrance.zone),
         ((90, 175), (7, 1), Some(0x62))
     );
+    Ok(())
+}
+
+/// Sea Mauville's sunken control room: the Scanner is a trigger armed while work 0x400c holds
+/// 1, which taking it sets to 0. Listed as a hidden item where the Extra lists them, under the
+/// sea though the zone table does not say so, until it is taken; with the Extra off, never.
+#[test]
+fn test_an_item_a_trigger_gives_is_a_hidden_item_while_the_trigger_is_armed() -> Result<()> {
+    let mut town = Town::new();
+    town.memory.write(
+        FILE,
+        &zone_file(&ZoneSpec {
+            info: &town_info(),
+            triggers: &[(0x2, 90, 175, 1, Some(-4), Some((1, 0x400C)))],
+            ..ZoneSpec::default()
+        }),
+    );
+    let work = EVENT_WORK + WORKS + (0x400C - FIRST_WORK) * 2;
+    town.memory.write(work, &le16(&[1]));
+
+    let listed = |town: &mut Town, setting: &'static str| -> Result<Vec<(i64, i64)>> {
+        town.reader = field_reader(
+            town.memory.clone(),
+            Given {
+                extras_hidden_items: Some(setting),
+                ..Given::default()
+            },
+            Game {
+                hidden_triggers: HashSet::from([(TOWN, 0x2)]),
+                ..game()
+            },
+        );
+        town.reader.track(&Found {
+            pages: IndexMap::new(),
+            heap: IndexMap::from([(EVENT_WORK, EVENT_CLASS.to_string())]),
+            partial: false,
+        })?;
+        Ok(town
+            .r#where()?
+            .of("items")
+            .into_iter()
+            .filter(|item| item.kind == HIDDEN_ITEM)
+            .map(|item| item.cell)
+            .collect())
+    };
+
+    assert_eq!(listed(&mut town, HIDDEN_OFF)?, Vec::new());
+    assert_eq!(listed(&mut town, HIDDEN_UNDERWATER)?, vec![(90, 175)]);
+    town.memory.write(work, &le16(&[0]));
+    assert_eq!(listed(&mut town, HIDDEN_UNDERWATER)?, Vec::new());
     Ok(())
 }
 
@@ -2207,7 +2265,7 @@ fn test_a_zone_of_rooms_lists_only_the_room_the_player_stands_in() -> Result<()>
         FILE,
         &zone_file(&ZoneSpec {
             info: &town_info(),
-            triggers: &[(0x6, 96, 173, 1, None), (0x5, 96, 175, 1, None)],
+            triggers: &[(0x6, 96, 173, 1, None, None), (0x5, 96, 175, 1, None, None)],
             ..ZoneSpec::default()
         }),
     );
@@ -2397,7 +2455,10 @@ fn test_a_drop_is_not_walked_off_but_by_its_ladder() -> Result<()> {
         game(),
     );
     let data = zone_file(&ZoneSpec {
-        triggers: &[(0xC, 95, 170, 1, Some(108)), (0xB, 95, 171, 1, Some(0))],
+        triggers: &[
+            (0xC, 95, 170, 1, Some(108), None),
+            (0xB, 95, 171, 1, Some(0), None),
+        ],
         info: &town_info(),
         ..ZoneSpec::default()
     });
@@ -5550,7 +5611,7 @@ fn test_a_secret_bases_pc_flag_and_way_out_are_listed_as_what_they_are() -> Resu
         FILE,
         &zone_file(&ZoneSpec {
             info: &town_info(),
-            triggers: &[(oras::WAY_OUT, 94, 173, 1, None)],
+            triggers: &[(oras::WAY_OUT, 94, 173, 1, None, None)],
             furniture: &[(oras::BASE_FLAG, 97, 171), (oras::BASE_PC, 96, 171)],
             ..ZoneSpec::default()
         }),

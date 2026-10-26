@@ -590,6 +590,10 @@ pub const SHOAL_CAVE_LOW: i64 = 0x80;
 pub const SHOAL_CAVE_HIGH: i64 = 0x84;
 pub const UNDER_SEA_MAUVILLE: i64 = 0x94;
 pub const CONTROL_ROOM: i64 = 0x9A;
+/// The script of the trigger at (30, 17) in Sea Mauville's sunken control room that gives the
+/// Scanner, item 727, armed while work `0x400c` holds 1, which its script sets to 0 once taken
+/// (`Game.hidden_triggers`).
+pub const SCANNER: i64 = 0x2;
 
 /// Mauville Gym's triggers, by their scripts (spike 146): its five floor switches, each one cell,
 /// the two by the entrance at (58, 38) and (66, 38), the three by Wattson at (5, 40), (13, 36) and
@@ -640,8 +644,8 @@ pub const CONTROL_ROOM: i64 = 0x9A;
 /// calls into `0x9a`, the sunken control room, at (19, 30), whose trigger 1 at (17, 28) leads back.
 /// Diving there, the list held two dive spots and no way in
 /// (or_sea_mauville_underwater_control_room, 2026-10-25). The room's other two triggers are the
-/// Scanner, which the game calls "something glimmering faintly in the water", and a mysterious ring;
-/// neither is listed yet.
+/// Scanner, which the game calls "something glimmering faintly in the water", listed as a hidden
+/// item (`SCANNER`), and a mysterious ring, not listed yet.
 ///
 /// The moving truck the opening leaves the player in, `0x18f`, has no warp record either: its only
 /// trigger, script 4, three cells deep at (9, 3) and walked onto going east, is the open back door.
@@ -895,6 +899,7 @@ pub fn game() -> &'static Game {
         blockers: HashSet::from(BLOCKERS),
         pickups: HashSet::from([KIRAKIRA]),
         elevators: ELEVATORS.collect(),
+        hidden_triggers: HashSet::from([(CONTROL_ROOM, SCANNER)]),
         player_looks: PLAYER_LOOKS.collect(),
         stairs: HashSet::from([SOOTOPOLIS_GYM]),
         apps: vec![Soaring::of],
