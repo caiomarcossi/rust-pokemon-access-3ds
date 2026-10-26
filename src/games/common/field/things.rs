@@ -89,7 +89,7 @@ pub const RIDE_SOURCE: i64 = 15 << 32;
 pub const CLIMB_SOURCE: i64 = 16 << 32;
 
 /// A hidden item's source: `HIDDEN_SOURCE | number`, its number in the executable's table (spike
-/// A).
+/// 249).
 pub const HIDDEN_SOURCE: i64 = 17 << 32;
 
 /// A place's `source` from its kind's tag and its own number. The number must leave the tag's

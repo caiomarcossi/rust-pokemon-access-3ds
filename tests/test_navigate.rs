@@ -70,7 +70,7 @@ const STONE: i64 = 0x92000021;
 /// Where the hops onto the stones start and end, at the pit's edge.
 const LAUNCH: i64 = 0x93000020;
 /// X's Route 9's spiky ground, blocked, crossed only riding a Rhyhorn (x_route_9_rhyhorn, spike
-/// A).
+/// 238).
 const SPIKY: i64 = 0x32000025;
 /// The flat ground between the spikes and plain ground, where the Rhyhorn is got on and off.
 const FLAT: i64 = 0x31000020;
