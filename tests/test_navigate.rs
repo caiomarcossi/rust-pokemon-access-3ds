@@ -3253,7 +3253,7 @@ fn test_a_run_up_a_ramp_is_one_leg_said_the_way_the_ramp_goes() {
     assert_eq!(said(&rig.backend), ["6 east, up the ramp 9 east, 3 east"]);
 }
 
-/// Spike A: outside Sky Pillar the terraces stand 108 apart on three floors, and the one stair
+/// Spike 193: outside Sky Pillar the terraces stand 108 apart on three floors, and the one stair
 /// up to Zinnia's goes from floor 0 at 108 onto floor 1 at 216. P went only as far as the sand
 /// under her, "then can't continue".
 #[test]
@@ -3371,7 +3371,7 @@ fn test_a_way_does_not_drop_off_a_bridge_through_a_floor_with_no_height() {
     assert_eq!(said(&rig.backend), ["3 east, then can't continue"]);
 }
 
-/// Spike A: outside Sky Pillar the sand runs on under the stair from the terrace at 324 down to
+/// Spike 193: outside Sky Pillar the sand runs on under the stair from the terrace at 324 down to
 /// Zinnia's at 216, and P walked up the sand and onto her terrace by that stair, "6 south".
 #[test]
 fn test_a_ladder_is_not_climbed_from_the_floor_under_it() {
