@@ -444,7 +444,7 @@ fn test_at_a_joint_each_street_is_laid_the_quarter_it_leaves_the_joint_by() -> R
     Ok(())
 }
 
-/// x_tower_of_mastery (spike A): the Tower of Mastery's ramp winds twice round its ring,
+/// x_tower_of_mastery (spike 248): the Tower of Mastery's ramp winds twice round its ring,
 /// each lap over the one before in the grid and 360 above it. Where a street stands off the
 /// ground every street is a floor, the laps two, rising a cell at a time along each; where
 /// every street lies on the ground, as Route 7's does, none is.

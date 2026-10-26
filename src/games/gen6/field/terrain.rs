@@ -695,7 +695,7 @@ impl Terrain {
     /// where no ramp is among them. A street's cell keeps the word of the ground under it where
     /// that is open, plain floor where it is not, and every other cell is blocked. The Tower of
     /// Mastery's ramp, the only way up from its ground to its landings, is in its chunk's
-    /// streets and in none of its floors' meshes (spike A).
+    /// streets and in none of its floors' meshes (spike 248).
     fn found_streets(&self) -> Result<StreetFloors> {
         let files = self.files.borrow().1.clone();
         if self.streets_of.borrow().0.as_ref() != Some(&files) {

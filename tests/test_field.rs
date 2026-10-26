@@ -2727,7 +2727,7 @@ fn ramp_terrain(streets: Option<rail::Streets>) -> Terrain {
     )
 }
 
-/// x_tower_of_mastery (spike A): the Tower of Mastery's ramp winds up round the ring of
+/// x_tower_of_mastery (spike 248): the Tower of Mastery's ramp winds up round the ring of
 /// floor under it, and is in its chunk's streets alone, each point with its height. Its chunk's
 /// floors are the ground and the landings, so P walked the ground under the ramp and said "then
 /// can't continue" to every stair. Its street is a floor of its own now, climbed a cell at a

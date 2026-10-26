@@ -89,7 +89,7 @@ pub const CAMERAS: i64 = 4;
 pub const POINT_PLACE: i64 = 0x10;
 /// A point's f32 x, y, z from its street's middle to its edge, square to the street there: 27
 /// units on the Tower of Mastery's streets, three cells across, and along every street of X that is
-/// as long as the line between its ends, square to that line (spike A).
+/// as long as the line between its ends, square to that line (spike 248).
 pub const POINT_SIDE: i64 = 0x64;
 pub const JOINT_PLACE: i64 = 0x28;
 /// Places a cell along a street's curve that it is laid from, each with its row's cells across.
@@ -201,7 +201,7 @@ pub struct Network {
     /// tape of x_route-6-2.ctm, 2026-10-20).
     pub cameras: i64,
     /// How high the world has each point and joint: the Tower of Mastery's ramp climbs from 2 to
-    /// 720 by its points, and nothing else in the chunk says how high it is (spike A).
+    /// 720 by its points, and nothing else in the chunk says how high it is (spike 248).
     pub heights: IndexMap<i64, f64>,
     /// Each point's side as (x, z) (`POINT_SIDE`), which says the way its streets leave it.
     pub sides: IndexMap<i64, (f64, f64)>,
@@ -742,7 +742,7 @@ pub fn section_streets(section: &[u8]) -> Result<Network> {
 /// Mastery's ramp winds twice round the ring of floor under it, from 2 to 720, each lap over the
 /// one before in the grid and 360 above it, and its chunk's floors are the ground at 0 and the
 /// landings alone, so P found no way off the ground: "then can't continue" to every stair
-/// (x_tower_of_mastery, spike A). Coumarine's and Anistar's streets run over cells their chunks
+/// (x_tower_of_mastery, spike 248). Coumarine's and Anistar's streets run over cells their chunks
 /// wall, as Route 7's do, and up to 770 over them. Every street is a floor there, its cells open
 /// on it alone: a cell a street opens on no floor is any floor, and a way through one stepped
 /// from one lap onto the next. None where every street lies on the ground, as Route 7's, Parfum
@@ -812,7 +812,7 @@ pub fn street_floors(
 /// where the row and column of the line's walls at its middle are. A straight street's sides
 /// are square to the line between its ends, and the Tower of Mastery's streets, arcs round its
 /// statue, bulge two cells out from that line, where the player walked: laid so, all 177 cells
-/// x_tower_of_mastery stood on lie on a floor at their height (spike A). None where the world
+/// x_tower_of_mastery stood on lie on a floor at their height (spike 248). None where the world
 /// does not place both its ends or say how high they are.
 // `t ** 3` and `t ** 2` are `powf`, the C library's `pow` as Python's are, never `powi`.
 fn laid(line: &Line, network: &Network) -> Result<IndexMap<Cell, f64>> {
