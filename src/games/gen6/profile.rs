@@ -443,7 +443,7 @@ impl Gen6Profile {
         // Each game's own readers come with it: ORAS's DexNav, its Secret Bases, whose every spot
         // is listed in the executable (spike 154), Route 113's ash piles, and Fortree and
         // Sootopolis Gyms' doors and ice, kept by the Gyms' own modules (spikes 155, 161, 167).
-        // An Extra: the hidden items, under the sea or everywhere (ADR-0017, spike A).
+        // An Extra: the hidden items, under the sea or everywhere (ADR-0017, spike 249).
         let field = FieldReader::new(
             memory.clone(),
             game,

@@ -1,4 +1,5 @@
-//! Hidden items out of the executable's table (`pa3ds.games.gen6.field.hidden_items`, spike A).
+//! Hidden items out of the executable's table (`pa3ds.games.gen6.field.hidden_items`, spike
+//! 249).
 
 use std::rc::Rc;
 

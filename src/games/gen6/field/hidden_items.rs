@@ -1,5 +1,5 @@
 //! Hidden items, what the Dowsing Machine finds: listed under `[pa3ds.extras] hidden_items`
-//! (spike A).
+//! (spike 249).
 //!
 //! No zone's data has one, nor any script or file of the ROM's: the executable lists every hidden
 //! item in one table, 14 bytes an item, and the Dowsing Machine's search walks it for the zone the
@@ -14,9 +14,10 @@
 //!
 //! Omega Ruby and Alpha Sapphire list the same 171, 43 of them under the sea, and X 151. The Poké
 //! Ball the Dowsing Machine found on Route 110 at (10, 59) is the 27th (or_route_110_dowsing). The
-//! table is found by its shape, as the Secret Bases' spots are: the longest run of rows numbered from
-//! 1 whose zone and cell are in range. An item is gone once the event flag `Game.hidden_items` plus
-//! its number is set: the save's `field::EventWork`, a bit a flag from +0x2f4, the low bit first.
+//! table is found by its shape, as the Secret Bases' spots are: the longest run of rows numbered
+//! from 1 whose zone and cell are in range. An item is gone once the event flag `Game.hidden_items`
+//! plus its number is set: the save's `field::EventWork`, a bit a flag from +0x2f4, the low bit
+//! first.
 //!
 //! A second table of 33 rows lies past it, items found only while something else holds (their flags
 //! carry 0x8000), each with several to choose from: not read.

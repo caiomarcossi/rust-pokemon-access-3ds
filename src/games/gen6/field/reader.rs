@@ -334,7 +334,7 @@ pub struct FieldReader {
     gates: bool,
     /// The game's Secret Bases, or None in a game without them.
     secret_bases: Option<Rc<dyn SecretBaseReader>>,
-    /// The hidden items still to be found, where the Extra lists them (spike A).
+    /// The hidden items still to be found, where the Extra lists them (spike 249).
     hidden_items: Option<HiddenItems>,
     /// (zone, sprite) of the move models that are a barrier's beam (`Game.barriers`).
     barriers: HashSet<(i64, i64)>,

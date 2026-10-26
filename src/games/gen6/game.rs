@@ -262,7 +262,7 @@ pub struct Game {
     pub secret_bases: Option<SecretBaseFactory>,
     /// The event flag before the first hidden item's, each item's its number past it: `0x44c` in
     /// Omega Ruby's Dowsing Machine's getter, `0x4e49e4`, and in X's, `0x4ab888`
-    /// (`gen6.field.hidden_items`, spike A).
+    /// (`gen6.field.hidden_items`, spike 249).
     pub hidden_items: i64,
     /// (zone, a trigger's script) of each trigger that gives an item, listed as a hidden item
     /// while it is armed: ORAS's Scanner. Listed wherever the hidden items are, under the sea or
