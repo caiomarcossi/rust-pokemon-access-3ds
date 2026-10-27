@@ -8,8 +8,8 @@ use super::test_rename::read_template;
 use crate::core::config::{self, Config, Value};
 use crate::ux::dialog::{ATOM_BUTTON, ATOM_EDIT, Class, IDCANCEL, IDOK};
 use crate::ux::settings::{
-    ATOM_COMBOBOX, CHECK, IDC_APPLY, IDC_PAGES, NUMBER, PERCENT, TABS, changed, fields, languages,
-    shown, template, typed, values,
+    ATOM_COMBOBOX, CHECK, IDC_APPLY, IDC_PAGES, NUMBER, PERCENT, TABS, changed, choices, fields,
+    languages, shown, template, typed, values,
 };
 
 #[test]
@@ -51,6 +51,7 @@ fn test_every_setting_is_one_control_on_its_tables_page() {
             ("pa3ds.ui.language", "choice"),
             ("pa3ds.audio.tones", PERCENT),
             ("pa3ds.audio.footsteps", PERCENT),
+            ("pa3ds.extras.hidden_items", "choice"),
         ])
     );
 }
@@ -131,6 +132,21 @@ fn test_only_the_settings_changed_are_written() {
         changed(&before, &after),
         IndexMap::from([("pa3ds.ui.pauses".to_string(), Value::Bool(true))])
     );
+}
+
+/// Orion, 2026-10-26: hidden items off, under the sea alone, or everywhere.
+#[test]
+fn test_a_setting_of_a_few_words_lists_each_by_its_message_the_default_first() {
+    let pair = |code: &str, said: &str| (code.to_string(), said.to_string());
+    assert_eq!(
+        choices("pa3ds.extras.hidden_items").unwrap(),
+        vec![
+            pair("off", "Off"),
+            pair("underwater", "Under the sea"),
+            pair("all", "Everywhere")
+        ]
+    );
+    assert_eq!(choices("pa3ds.ui.language").unwrap(), languages().unwrap());
 }
 
 #[test]

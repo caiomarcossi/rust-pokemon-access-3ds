@@ -543,16 +543,6 @@ place-0x1c2-furniture-10 = 호연레인저
 place-0x1c2-furniture-11 = 호연레인저
 # Hoenn Rangers
 place-0x20d-furniture-0 = 호연레인저
-# locked door: story 366:5, "The door is locked.", in Sea Mauville
-place-0x91-furniture-1 = 잠긴 문
-# locked door
-place-0x92-furniture-1 = 잠긴 문
-# locked door
-place-0x92-furniture-2 = 잠긴 문
-# locked door
-place-0x92-furniture-3 = 잠긴 문
-# locked door
-place-0x92-furniture-4 = 잠긴 문
 # locked door: story 206:0, the Trick House's scroll doors
 place-0x175-furniture-0 = 잠긴 문
 # locked door

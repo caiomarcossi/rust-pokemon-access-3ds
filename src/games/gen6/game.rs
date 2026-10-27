@@ -199,6 +199,16 @@ pub struct Climbing {
     pub slide: i64,
 }
 
+/// The cell kinds of the rails a player on roller skates grinds along, as X's Shalour City
+/// Gym's (`grind.GrindRails`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Grinding {
+    /// A cell of a rail, blocked.
+    pub rail: i64,
+    /// The cell past a rail's end that it is skated onto from, open.
+    pub end: i64,
+}
+
 /// One game as the gen 6 readers read it.
 ///
 /// Not `PartialEq`: the dataclass compares its callables by identity, which a `fn` pointer does
@@ -250,6 +260,15 @@ pub struct Game {
     /// The reader of its Secret Bases, given the executable's image to find every spot in, or None
     /// in a game with none: ORAS's (`games.oras.field.secret_base`).
     pub secret_bases: Option<SecretBaseFactory>,
+    /// The event flag before the first hidden item's, each item's its number past it: `0x44c` in
+    /// Omega Ruby's Dowsing Machine's getter, `0x4e49e4`, and in X's, `0x4ab888`
+    /// (`gen6.field.hidden_items`, spike 249).
+    pub hidden_items: i64,
+    /// (zone, a trigger's script) of each trigger that gives an item, listed as a hidden item
+    /// while it is armed: ORAS's Scanner. Listed wherever the hidden items are, under the sea or
+    /// everywhere, since the player dives to it in a zone the zone table does not put under the
+    /// sea.
+    pub hidden_triggers: HashSet<(i64, i64)>,
     /// The readers of what else it has on its field to list, each in its own words: ORAS's berry
     /// spots and Route 113's ash piles (`games.oras.field.berries`, `games.oras.field.ash`).
     pub features: Vec<FeatureFactory>,
@@ -321,6 +340,9 @@ pub struct Game {
     /// The walls it lets the player climb, or None in a game with none: X's Cyllage Gym
     /// (spike 245).
     pub climbing: Option<Climbing>,
+    /// The rails it lets the player grind along on roller skates, or None in a game with none:
+    /// X's Shalour City Gym (spike 247).
+    pub grinding: Option<Grinding>,
     /// Whether a row of models drawn as nothing, two or more with one script that no drawn record
     /// of their zone has, is an invisible gate: not listed, and in the way. X's Santalune Gym has
     /// five behind Viola, and AZ's room five (spike 223).
@@ -374,6 +396,8 @@ impl Game {
             triggers: IndexMap::new(),
             furniture: IndexMap::new(),
             secret_bases: None,
+            hidden_items: 0x44C,
+            hidden_triggers: HashSet::new(),
             features: Vec::new(),
             doors: None,
             ice: None,
@@ -395,6 +419,7 @@ impl Game {
             strands: 0,
             rides: None,
             climbing: None,
+            grinding: None,
             gates: false,
             form: None,
             steps: ORAS,

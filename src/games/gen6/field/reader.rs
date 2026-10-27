@@ -28,6 +28,7 @@ use std::rc::{Rc, Weak};
 use indexmap::{IndexMap, IndexSet};
 
 use crate::core::binary::{s16, u16, u32};
+use crate::core::config::{HIDDEN_ALL, HIDDEN_UNDERWATER};
 use crate::core::discovery::{Found, HEAP_SPAN, within};
 use crate::core::memory::Memory;
 use crate::core::pathfind::{self, Cell};
@@ -37,6 +38,7 @@ use crate::games::common::field::chunk::{
     BIKE_RAILS, BLOCKED, BUMPY_SLOPES, CHUNK, CURRENTS, Chunk, DIVE, FALLS, SLOPES,
 };
 use crate::games::common::field::climb::Walls;
+use crate::games::common::field::grind::GrindRails;
 use crate::games::common::field::ground::{
     self as common, BLOCK, CRACKED, Far, Grid, Ground, GroundHeight, NO_ZONE, Of, STRENGTH, pushes,
     riding, walkable,
@@ -50,20 +52,22 @@ use crate::games::common::field::things::{
 use crate::games::gen6::field::features::{
     DoorReader, Feature, HiddenReader, Hiding, IceReader, SecretBaseReader, Tracked,
 };
+use crate::games::gen6::field::hidden_items::{HIDDEN_ITEM, HiddenItems, Only};
 use crate::games::gen6::field::rail::{self, Rails, keep};
 use crate::games::gen6::field::terrain::{FarCells, FarFloors, FarHeights, FarMatrices, Terrain};
 use crate::games::gen6::field::zonedata::{
     FURNITURE, FURNITURE_SCRIPT, LZ11, NPC, NPC_INDEX, NPC_SCRIPT, NPC_SPRITE, NPC_X, NPC_Z,
-    TRIGGER_HEIGHT, TRIGGER_SCRIPT, TRIGGER_WIDTH, TRIGGER_X, TRIGGER_Y, TRIGGER_Z, WARP,
-    WARP_DOOR, WARP_KIND, WARP_OUT, WARP_STAIRS, WARP_STREET, WARP_TO, WARP_Y, ZoneData, arrival,
-    on_rail, read_furniture, read_records, read_triggers, read_zone, warp_box, zone_files,
+    TRIGGER_HEIGHT, TRIGGER_SCRIPT, TRIGGER_VALUE, TRIGGER_WIDTH, TRIGGER_WORK, TRIGGER_X,
+    TRIGGER_Y, TRIGGER_Z, WARP, WARP_DOOR, WARP_KIND, WARP_OUT, WARP_STAIRS, WARP_STREET, WARP_TO,
+    WARP_Y, ZoneData, arrival, on_rail, read_furniture, read_records, read_triggers, read_zone,
+    warp_box, zone_files,
 };
 use crate::games::gen6::field::zonetable::{
     INFO_KIND, INFO_MATRIX, INFO_NAME, INFO_PARENT, INFO_SIZE, NAME_MASK, UNDERWATER, ZONE_LIMIT,
     ZoneTable,
 };
 use crate::games::gen6::field::{fieldmap, mapblock, mmodel};
-use crate::games::gen6::game::{Climbing, FurnitureKind, Game, Rides};
+use crate::games::gen6::game::{Climbing, FurnitureKind, Game, Grinding, Rides};
 use crate::games::gen6::rom::archives::GameText;
 use crate::games::gen6::rom::maps::{ChunkSource, StreetSource};
 use crate::py::{self, Error, PySet, Result};
@@ -322,16 +326,23 @@ pub struct FieldReader {
     /// The kinds of the walls the game lets the player climb, or None in a game without them
     /// (`Game.climbing`).
     climbing: Option<Climbing>,
+    /// The kinds of the rails the game lets the player grind along, or None in a game without
+    /// them (`Game.grinding`).
+    grinding: Option<Grinding>,
     /// Whether a row of models drawn as nothing with a script of its own is a gate
     /// (`Game.gates`).
     gates: bool,
     /// The game's Secret Bases, or None in a game without them.
     secret_bases: Option<Rc<dyn SecretBaseReader>>,
+    /// The hidden items still to be found, where the Extra lists them (spike 249).
+    hidden_items: Option<HiddenItems>,
     /// (zone, sprite) of the move models that are a barrier's beam (`Game.barriers`).
     barriers: HashSet<(i64, i64)>,
     /// (zone, a trigger's script) -> the category and kind it is listed as, and for an exit into
     /// another place, the zone it leads to (`Game.triggers`).
     triggers: IndexMap<(i64, i64), (String, String, Option<i64>)>,
+    /// (zone, a trigger's script) of the triggers that give an item (`Game.hidden_triggers`).
+    hidden_triggers: HashSet<(i64, i64)>,
     /// Sprite -> the move that clears the thing drawn as it (`Game.clears`).
     clears: IndexMap<i64, i64>,
     /// The sprites of the spots a wild Pokémon leaps out of (`Game.ambushes`).
@@ -432,8 +443,10 @@ impl common::Corridor for rail::Corridor {
 impl FieldReader {
     /// `game` says what one gen 6 game has of its own, `text` is what was read from the player's
     /// ROM, or `NO_TEXT` without one, and `image` the executable, where ORAS lists its Secret
-    /// Bases' spots. `tiles` and `furniture` are what the shipped table says each kind of use tile
-    /// is, and each piece of furniture by the shared script it runs (`Names.words`).
+    /// Bases' spots and its hidden items. `tiles` and `furniture` are what the shipped table says
+    /// each kind of use tile is, and each piece of furniture by the shared script it runs
+    /// (`Names.words`). `hidden_items` is `[pa3ds.extras] hidden_items`, Python's default
+    /// `HIDDEN_OFF`.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         memory: Rc<dyn Memory>,
@@ -443,8 +456,13 @@ impl FieldReader {
         clock: Rc<dyn Fn() -> f64>,
         tiles: Option<&IndexMap<i64, String>>,
         furniture: Option<&IndexMap<i64, String>>,
+        hidden_items: &str,
     ) -> Rc<FieldReader> {
         let chunks: Option<Rc<dyn ChunkSource>> = text.map_chunks.clone();
+        let streets: Option<rail::Streets> =
+            text.streets.clone().map(|streets: Rc<dyn StreetSource>| {
+                Rc::new(move |chunks: &[i64]| streets.network(chunks)) as rail::Streets
+            });
         let terrain = Terrain::new(
             chunks
                 .clone()
@@ -456,11 +474,8 @@ impl FieldReader {
                 .clone()
                 .map(|chunks| Rc::new(move |file: i64| chunks.heights(file)) as FarHeights),
             chunks.map(|chunks| Rc::new(move |number: i64| chunks.matrix(number)) as FarMatrices),
+            streets.clone(),
         );
-        let streets: Option<rail::Streets> =
-            text.streets.clone().map(|streets: Rc<dyn StreetSource>| {
-                Rc::new(move |chunks: &[i64]| streets.network(chunks)) as rail::Streets
-            });
         let mut words: IndexMap<i64, String> = tiles.cloned().unwrap_or_default();
         if let Some(pc) = text.pc.clone()
             && !pc.is_empty()
@@ -476,8 +491,29 @@ impl FieldReader {
             Some(make) if !image.is_empty() => Some(make(memory.clone(), image)),
             _ => None,
         };
+        let listing = hidden_items == HIDDEN_UNDERWATER || hidden_items == HIDDEN_ALL;
+        let underwater = hidden_items == HIDDEN_UNDERWATER;
+        let hidden_memory = memory.clone();
+        let flags = game.hidden_items;
+        let hidden_items = move |me: &Weak<FieldReader>| {
+            if !listing || image.is_empty() {
+                return None;
+            }
+            // `self.zones.underwater`, through the reader being made.
+            let only: Option<Only> = underwater.then(|| {
+                let me = me.clone();
+                Rc::new(move |zone: i64| {
+                    me.upgrade()
+                        .expect("a reader is made in an Rc, which its holders keep")
+                        .zones
+                        .underwater(zone)
+                }) as Only
+            });
+            Some(HiddenItems::new(hidden_memory, image, flags, only))
+        };
         Rc::new_cyclic(|me| FieldReader {
             me: me.clone(),
+            hidden_items: hidden_items(me),
             zones: ZoneTable::new(memory.clone(), text.zone_table.clone()),
             warp_words: game.warps.clone(),
             features,
@@ -493,10 +529,12 @@ impl FieldReader {
             strands: game.strands,
             rides: game.rides.clone(),
             climbing: game.climbing.clone(),
+            grinding: game.grinding,
             gates: game.gates,
             secret_bases,
             barriers: game.barriers.clone(),
             triggers: game.triggers.clone(),
+            hidden_triggers: game.hidden_triggers.clone(),
             clears: game.clears.clone(),
             ambushes: game.ambushes.clone(),
             lurkers: game.lurkers.clone(),
@@ -562,6 +600,9 @@ impl FieldReader {
         }
         if let Some(hidden) = &self.hidden {
             out.push(&**hidden);
+        }
+        if let Some(hidden_items) = &self.hidden_items {
+            out.push(hidden_items);
         }
         if let Some(doors) = &self.doors {
             out.push(&**doors);
@@ -733,13 +774,15 @@ impl FieldReader {
     /// found them: where the camera looks (`Rails.turn`), and north on a rail, where the keys
     /// walk the corridor or a street's lanes and the camera's own heading reads 0 (spike 230),
     /// and under a camera behind the player, where the ways are said from `Field.heading`
-    /// (spike 239).
+    /// (spike 239). Not on a rail where the streets are floors of their own: the Tower of
+    /// Mastery's fourteen cameras each look their own way over the ramp, up walking the player
+    /// east down its first lap's east side and south along its landings, and north was said
+    /// for all of them, "8 west, 16 east" for a way west and then north (spike 248).
     pub fn turn(&self, current: i64) -> Result<i64> {
-        if self.on_rail.get() || self.behind.get() {
-            Ok(0)
-        } else {
-            self.rails.turn(current)
+        if self.behind.get() || (self.on_rail.get() && !self.terrain.raised()?) {
+            return Ok(0);
         }
+        self.rails.turn(current)
     }
 
     /// The player's model and the zone it was built in, as the last poll read them.
@@ -796,8 +839,11 @@ impl FieldReader {
         }
         let files = self.terrain.files.borrow().1.clone();
         let lanes = self.rails.lanes(&files)?;
+        // Where the streets are floors of their own, a cell they open is open on its own floor.
         let mut covered = self.covered(r#where.zone)?;
-        covered.extend(lanes.keys().copied());
+        if !self.terrain.raised()? {
+            covered.extend(lanes.keys().copied());
+        }
         let mut solid: IndexMap<Cell, Option<f64>> = IndexMap::new();
         if let Some(bases) = bases
             && bases.zones().contains(&r#where.zone)
@@ -881,7 +927,9 @@ impl FieldReader {
             ground_height,
             strands: self.strands,
             lanes,
+            raised: self.terrain.raised()?,
             walls: self.walls()?,
+            grind_rails: self.grind_rails()?,
             ..Ground::of(
                 r#where,
                 Of {
@@ -1054,9 +1102,10 @@ impl FieldReader {
     /// The zone's triggers `Game.triggers` knows as something to walk to: Mauville Gym's switches,
     /// and the way between its two rooms, which share no floor (spike 146); Lavaridge Gym's
     /// trapdoors and geysers (spike 157); Mossdeep Gym's lifts and teleporter (spike 163); the way
-    /// into Seafloor Cavern under Route 128 (spike 164).
+    /// into Seafloor Cavern under Route 128 (spike 164). And where the Extra lists hidden items,
+    /// those a trigger gives, while it is armed: once taken it is not.
     fn listed_triggers(&self, data: &ZoneData, zone: i64) -> Result<Vec<Interactable>> {
-        let home = if self.triggers.is_empty() {
+        let home = if self.triggers.is_empty() && self.hidden_triggers.is_empty() {
             None
         } else {
             self.home(data, &[zone])?
@@ -1067,6 +1116,26 @@ impl FieldReader {
         let mut out: Vec<Interactable> = Vec::new();
         for (i, record) in read_triggers(&*self.memory, data)?.iter().enumerate() {
             let script = u16(record, TRIGGER_SCRIPT)?;
+            if self.hidden_triggers.contains(&(home, script)) {
+                if let Some(hidden_items) = &self.hidden_items
+                    && hidden_items
+                        .holds(u16(record, TRIGGER_WORK)?, u16(record, TRIGGER_VALUE)?)?
+                {
+                    out.push(Interactable {
+                        size: (u16(record, TRIGGER_WIDTH)?, u16(record, TRIGGER_HEIGHT)?),
+                        code: script,
+                        source: place_source(TRIGGER_SOURCE, i as i64)?,
+                        home: Some(home),
+                        height: Some(s16(record, TRIGGER_Y)? as f64),
+                        ..Interactable::new(
+                            "items",
+                            HIDDEN_ITEM,
+                            (u16(record, TRIGGER_X)?, u16(record, TRIGGER_Z)?),
+                        )
+                    });
+                }
+                continue;
+            }
             if let Some((category, kind, to)) = self.triggers.get(&(home, script)) {
                 out.push(Interactable {
                     size: (u16(record, TRIGGER_WIDTH)?, u16(record, TRIGGER_HEIGHT)?),
@@ -1126,12 +1195,20 @@ impl FieldReader {
         let mut home = None;
         if let Some(data) = &data {
             home = self.home(data, &[r#where.zone])?;
+            let warps = read_records(&*self.memory, data, WARP)?;
+            // Furniture standing on a warp is its lock, and the door is listed in its place:
+            // Sea Mauville's five, which say "The door is locked." until their key opens them and
+            // were listed beside their doors after (or_sea_mauville_locked_doors), and in X the
+            // hidden door "Open sesame" opens and the Kalos Power Plant's: none other in either.
+            let locks = warp_cells(&warps)?;
             let mut furniture: Vec<Interactable> = Vec::new();
             for item in read_furniture(&*self.memory, data)? {
+                if item.cells().iter().all(|cell| locks.contains(cell)) {
+                    continue;
+                }
                 furniture.push(self.furniture_listed(home, item));
             }
             items.extend(joined(furniture, &|item| Some(self.furniture_key(item))));
-            let warps = read_records(&*self.memory, data, WARP)?;
             for (i, record) in warps.iter().enumerate() {
                 let files = self.terrain.files.borrow().1.clone();
                 let shape = self.rails.on_grid(record, &files)?;
@@ -1171,6 +1248,9 @@ impl FieldReader {
         }
         if let Some(hidden) = &self.hidden {
             items.extend(hidden.listed(r#where.zone, &zone_at)?);
+        }
+        if let Some(hidden_items) = &self.hidden_items {
+            items.extend(hidden_items.listed(r#where.zone, &zone_at)?);
         }
         // A boulder in a hole is floor now, and neither it nor the hole is anything to find.
         let holes = self.holes(r#where.zone)?;
@@ -2029,18 +2109,7 @@ impl FieldReader {
                 gates.insert(u16(record, NPC_INDEX)?);
             }
         }
-        let mut doors: HashSet<Cell> = HashSet::new();
-        for record in read_records(&*self.memory, &data, WARP)? {
-            if on_rail(&record)? {
-                continue;
-            }
-            let ((x0, z0), (wide, deep)) = warp_box(&record)?;
-            for x in x0..x0 + 1.max(wide) {
-                for z in z0..z0 + 1.max(deep) {
-                    doors.insert((x, z));
-                }
-            }
-        }
+        let mut doors = warp_cells(&read_records(&*self.memory, &data, WARP)?)?;
         for item in read_furniture(&*self.memory, &data)? {
             doors.extend(item.cells());
         }
@@ -2357,6 +2426,15 @@ impl FieldReader {
         }
     }
 
+    /// The matrix's grind rails, off the ROM (`Terrain.grind_rails`); none in a game without
+    /// them.
+    fn grind_rails(&self) -> Result<Rc<GrindRails>> {
+        match &self.grinding {
+            None => Ok(Rc::new(GrindRails::default())),
+            Some(grinding) => self.terrain.grind_rails(grinding),
+        }
+    }
+
     /// The zone's climbing walls' blue spots, each run of them side by side on one face at
     /// one height a thing, a blue spot where the wall is got onto from the floor and a wall
     /// ledge where it is got off onto a ledge at its side (`Walls.spots`, spike 245).
@@ -2655,6 +2733,7 @@ fn laid(
     stacked: bool,
     level: Option<f64>,
 ) -> Result<Rc<Chunk>> {
+    let chunk = &terrain.with_streets(chunk)?;
     if stacked && !chunk.floors.is_empty() {
         let flat = terrain.flattened(chunk, None, false)?;
         return Ok(Rc::new(Chunk {
@@ -2855,6 +2934,23 @@ fn gathered(cells: &HashSet<Cell>, reach: i64) -> Vec<Vec<Cell>> {
         out.push(group);
     }
     out
+}
+
+/// Every cell the warps off the rails cover.
+fn warp_cells(records: &[Vec<u8>]) -> Result<HashSet<Cell>> {
+    let mut out: HashSet<Cell> = HashSet::new();
+    for record in records {
+        if on_rail(record)? {
+            continue;
+        }
+        let ((x0, z0), (wide, deep)) = warp_box(record)?;
+        for x in x0..x0 + 1.max(wide) {
+            for z in z0..z0 + 1.max(deep) {
+                out.insert((x, z));
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// How high a sign stands among the signs of one spot (`_one_a_spot`): a thing drawn there,

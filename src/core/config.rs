@@ -241,22 +241,49 @@ impl Table for Navigation {
 
 /// `[pa3ds.extras]`: what the game shows in a way pa3ds cannot read, said from the game's own
 /// numbers, each off unless asked for (ADR-0017).
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Extras {
     pub conditions: bool,
+    pub hidden_items: String,
+}
+
+impl Default for Extras {
+    fn default() -> Self {
+        Extras {
+            conditions: false,
+            hidden_items: HIDDEN_OFF.to_string(),
+        }
+    }
 }
 
 impl Table for Extras {
     fn fields(&self) -> Vec<(&'static str, Value)> {
-        vec![("conditions", Value::Bool(self.conditions))]
+        vec![
+            ("conditions", Value::Bool(self.conditions)),
+            ("hidden_items", Value::Str(self.hidden_items.clone())),
+        ]
     }
 
     fn set(&mut self, setting: &str, value: Value) {
-        if let ("conditions", Value::Bool(value)) = (setting, value) {
-            self.conditions = value;
+        match (setting, value) {
+            ("conditions", Value::Bool(value)) => self.conditions = value,
+            ("hidden_items", Value::Str(value)) => self.hidden_items = value,
+            _ => {}
         }
     }
 }
+
+pub const HIDDEN_OFF: &str = "off";
+pub const HIDDEN_UNDERWATER: &str = "underwater";
+pub const HIDDEN_ALL: &str = "all";
+/// Each setting that is one of a few words, by its name in the file: its words, the default
+/// first. `[pa3ds.extras] hidden_items` lists none, those under the sea, where the Dowsing Machine
+/// cannot be used and a sighted player is taken to see them, or all (Orion, 2026-10-26); a word it
+/// does not have lists none.
+pub const CHOICES: [(&str, &[&str]); 1] = [(
+    "pa3ds.extras.hidden_items",
+    &[HIDDEN_OFF, HIDDEN_UNDERWATER, HIDDEN_ALL],
+)];
 
 /// The tables of the file, in the order it writes them: each is a settings dataclass, and
 /// `defaults` is what `kind()` holds.

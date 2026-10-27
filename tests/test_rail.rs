@@ -443,3 +443,69 @@ fn test_at_a_joint_each_street_is_laid_the_quarter_it_leaves_the_joint_by() -> R
     assert!(!unplaced.holds(left) && !unplaced.holds(right));
     Ok(())
 }
+
+/// x_tower_of_mastery (spike 248): the Tower of Mastery's ramp winds twice round its ring,
+/// each lap over the one before in the grid and 360 above it. Where a street stands off the
+/// ground every street is a floor, the laps two, rising a cell at a time along each; where
+/// every street lies on the ground, as Route 7's does, none is.
+#[test]
+fn test_streets_are_floors_of_their_own_where_one_stands_off_the_ground() -> Result<()> {
+    let (first, second, foot, top, high_foot, high_top) = (0x01, 0x02, 0x11, 0x12, 0x21, 0x22);
+    let places: IndexMap<i64, (f64, f64)> = IndexMap::from([
+        (foot, (9.0, 9.0)),
+        (top, (9.0 + 18.0 * 8.0, 9.0)),
+        (high_foot, (9.0, 9.0)),
+        (high_top, (9.0 + 18.0 * 8.0, 9.0)),
+    ]);
+    let sides: IndexMap<i64, (f64, f64)> =
+        places.keys().map(|&point| (point, (0.0, 18.0))).collect();
+    let lines: IndexMap<i64, Line> = IndexMap::from([
+        (
+            first,
+            Line {
+                way: rail::WAY_EAST,
+                ..Line::new(first, foot, top, 8, 1, vec![0x20; 9])
+            },
+        ),
+        (
+            second,
+            Line {
+                way: rail::WAY_EAST,
+                ..Line::new(second, high_foot, high_top, 8, 1, vec![0x20; 9])
+            },
+        ),
+    ]);
+    let heights: IndexMap<i64, f64> = IndexMap::from([
+        (foot, 0.0),
+        (top, 80.0),
+        (high_foot, 360.0),
+        (high_top, 440.0),
+    ]);
+
+    let ground = |_cell: (i64, i64)| -> Result<Vec<f64>> { Ok(vec![0.0]) };
+
+    let network = |heights: &IndexMap<i64, f64>| Network {
+        lines: lines.clone(),
+        places: places.clone(),
+        cameras: 2,
+        heights: heights.clone(),
+        sides: sides.clone(),
+    };
+    let floors = rail::street_floors(&network(&heights), &ground)?;
+    let [(lap, ramp), (over, _)] = &floors[..] else {
+        panic!("two floors, not {}", floors.len());
+    };
+    assert!(ramp);
+    assert_eq!(
+        (0..9).map(|x| lap[&(x, 0)]).collect::<Vec<f64>>(),
+        (0..9).map(|x| 10.0 * x as f64).collect::<Vec<f64>>()
+    );
+    let raised: IndexMap<(i64, i64), f64> = lap
+        .iter()
+        .map(|(&cell, &height)| (cell, height + 360.0))
+        .collect();
+    assert_eq!(over, &raised);
+    let flat: IndexMap<i64, f64> = heights.keys().map(|&point| (point, 0.0)).collect();
+    assert!(rail::street_floors(&network(&flat), &ground)?.is_empty());
+    Ok(())
+}

@@ -683,7 +683,7 @@ fn test_a_sprite_trainers_stand_as_is_named_for_their_class() {
     assert_eq!(text.character(0xE9), None);
 }
 
-/// Spike A: the character 0x1000 + n is drawn with the field's model 0x1BE + n, whose file
+/// Spike 193: the character 0x1000 + n is drawn with the field's model 0x1BE + n, whose file
 /// names the Pokémon it draws, packed or not: Machoke with the movers, Whismur beside Zinnia. A
 /// model naming two Pokémon is left out.
 #[test]
@@ -1223,7 +1223,8 @@ fn test_the_streets_of_a_maps_chunks_are_read_out_of_the_rom() {
         rail::Network {
             lines: IndexMap::from([(C, line)]),
             places: IndexMap::new(),
-            cameras: 0
+            cameras: 0,
+            ..Default::default()
         }
     );
     assert_eq!(
@@ -1233,7 +1234,8 @@ fn test_the_streets_of_a_maps_chunks_are_read_out_of_the_rom() {
         rail::Network {
             lines: IndexMap::new(),
             places: IndexMap::new(),
-            cameras: 0
+            cameras: 0,
+            ..Default::default()
         }
     );
 }

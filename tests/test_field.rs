@@ -11,11 +11,13 @@ use indexmap::{IndexMap, IndexSet};
 
 use super::fake_memory::{CODE, FakeClasses, FakeMemory};
 use super::test_rail;
+use crate::core::config::{HIDDEN_OFF, HIDDEN_UNDERWATER};
 use crate::core::discovery::{ALLOCATION, Found};
 use crate::core::memory::Memory;
 use crate::core::pathfind;
 use crate::core::rtti::ClassNames;
 use crate::games::common::field::chunk::{BLOCKED, CHUNK, COUNTER, Chunk, Floor, KIND_SHIFT};
+use crate::games::common::field::grind::GrindRail;
 use crate::games::common::field::ground::{BLOCK, Ground, NO_ZONE, Of, RotatingDoor, pushes};
 use crate::games::common::field::things::{
     ASH_SOURCE, BERRY_SOURCE, DECORATION_SOURCE, EDGE_SOURCE, FURNITURE_SOURCE, Field,
@@ -27,13 +29,14 @@ use crate::games::gen6::field::features::{Feature, HiddenReader, Tracked, ZoneAt
 use crate::games::gen6::field::fieldmap::{
     MAP_BLOCK_SIZE, MAP_CHUNK_FILES, MAP_CHUNKS_TALL, MAP_CHUNKS_WIDE, MAP_GRID, MAP_KIND, MAP_MARK,
 };
+use crate::games::gen6::field::hidden_items::{EVENT_CLASS, FIRST_WORK, HIDDEN_ITEM, WORKS};
 use crate::games::gen6::field::mmodel::PROP_MODEL;
 use crate::games::gen6::field::reader::PC_TILE as PC_KIND;
 use crate::games::gen6::field::reader::{
     ASKS, FieldReader, MOVE_MODEL_CLASS, TABLE_ASKS, TABLE_EVERY,
 };
 use crate::games::gen6::field::terrain::NO_CHUNK_FILE;
-use crate::games::gen6::field::terrain::{FarCells, FarFloors, FarHeights, FarMatrices};
+use crate::games::gen6::field::terrain::{FarCells, FarFloors, FarHeights, FarMatrices, Terrain};
 use crate::games::gen6::field::zonedata::{
     ENTITY_HEADER, FURNITURE, NPC, WARP, WARP_DOOR, npc_trainers, zone_header,
 };
@@ -71,6 +74,8 @@ pub(crate) const HIDDEN_HEAP: i64 = 0x08D375F0;
 pub(crate) const CORE_PARAM: i64 = 0x08D376C4;
 /// The one `field::PlayerWork`, where three captures of movie3 had it (spike 135).
 pub(crate) const WORK: i64 = 0x08C6A890;
+/// The save's `field::EventWork`, where the Sea Mauville replays had it.
+pub(crate) const EVENT_WORK: i64 = 0x08C7DAE8;
 pub(crate) const POOCHYENA: i64 = 0x105;
 /// The map blocks holding Littleroot's chunk and Route 101's, where spike 82 found them.
 pub(crate) const TOWN_BLOCK: i64 = 0x08252118;
@@ -193,10 +198,12 @@ pub(crate) struct Given {
     pub matrices: Option<FarMatrices>,
     /// None is `time.monotonic`.
     pub clock: Option<Rc<dyn Fn() -> f64>>,
+    /// `[pa3ds.extras] hidden_items`; None is `HIDDEN_OFF`.
+    pub extras_hidden_items: Option<&'static str>,
 }
 
-/// A field reader of `game`, the ROM's words, chunks and `shared` furniture given, and the
-/// shipped table's `tiles` and `furniture_words`.
+/// A field reader of `game`, the ROM's words, chunks and `shared` furniture given, the shipped
+/// table's `tiles` and `furniture_words`, and `[pa3ds.extras] hidden_items`.
 pub(crate) fn field_reader(memory: Rc<FakeMemory>, given: Given, game: Game) -> Rc<FieldReader> {
     let Given {
         words,
@@ -214,6 +221,7 @@ pub(crate) fn field_reader(memory: Rc<FakeMemory>, given: Given, game: Game) -> 
         far_floors,
         matrices,
         clock,
+        extras_hidden_items,
     } = given;
     let text = GameText {
         pc: words.get(&PC_KIND).cloned(),
@@ -242,6 +250,7 @@ pub(crate) fn field_reader(memory: Rc<FakeMemory>, given: Given, game: Game) -> 
         clock.unwrap_or_else(|| Rc::new(py::time::monotonic)),
         tiles.as_ref(),
         furniture_words.as_ref(),
+        extras_hidden_items.unwrap_or(HIDDEN_OFF),
     )
 }
 
@@ -305,8 +314,8 @@ pub(crate) struct ZoneSpec<'a> {
     pub sections: i64,
     pub script: &'a [u8],
     /// (script, x, z, width) one cell tall, and the height it stands at after them where it is
-    /// not 0.
-    pub triggers: &'a [(i64, i64, i64, i64, Option<i64>)],
+    /// not 0, then the value and the work it is armed by.
+    pub triggers: &'a [(i64, i64, i64, i64, Option<i64>, Option<(i64, i64)>)],
 }
 
 impl Default for ZoneSpec<'_> {
@@ -329,7 +338,8 @@ impl Default for ZoneSpec<'_> {
 /// the flag at +0x0a after them when it is not the usual 0x7d0 (3000 and up is a trainer), and
 /// `warps` as (to zone, kind, x, z) in cells, then the height it stands at in world units and
 /// the warp of the zone it goes to that it comes out at, where not 0; `triggers` as (script,
-/// x, z, width) one cell tall, and the height it stands at after them where it is not 0;
+/// x, z, width) one cell tall, and the height it stands at after them where it is not 0, then
+/// the value and the work it is armed by;
 /// `sections` is ORAS's five or X's four, the third the zone's `script`.
 pub(crate) fn zone_file(spec: &ZoneSpec) -> Vec<u8> {
     let mut records: Vec<u8> = Vec::new();
@@ -385,8 +395,8 @@ pub(crate) fn zone_file(spec: &ZoneSpec) -> Vec<u8> {
     for trigger in spec.triggers {
         records.extend(le16(&[
             trigger.0,
-            0,
-            0,
+            trigger.5.map_or(0, |armed| armed.0),
+            trigger.5.map_or(0, |armed| armed.1),
             0,
             0,
             0,
@@ -1692,6 +1702,24 @@ fn test_a_solid_thing_is_walked_up_to_facing_it_and_an_open_one_onto() -> Result
             ((108, 176), Some("east")),
         ])
     );
+    // A hidden item lies on open ground and is found facing it, as a person is talked to.
+    let hidden = Interactable {
+        category: "items".to_string(),
+        kind: "hidden item".to_string(),
+        cell: (105, 165),
+        size: (1, 1),
+        faced: true,
+        ..edge.clone()
+    };
+    assert_eq!(
+        ground.goals(&hidden)?,
+        goals_of(&[
+            ((105, 164), Some("south")),
+            ((106, 165), Some("west")),
+            ((105, 166), Some("north")),
+            ((104, 165), Some("east")),
+        ])
+    );
     Ok(())
 }
 
@@ -1729,7 +1757,7 @@ fn test_a_conveyor_belt_is_ridden_the_way_it_runs_and_walked_round_against_it() 
         FILE,
         &zone_file(&ZoneSpec {
             info: &town_info(),
-            triggers: &[(0x9, 90, 175, 3, None), (0xA, 90, 178, 3, None)],
+            triggers: &[(0x9, 90, 175, 3, None, None), (0xA, 90, 178, 3, None, None)],
             ..ZoneSpec::default()
         }),
     );
@@ -2032,9 +2060,9 @@ fn test_a_gyms_switches_and_passages_are_listed_and_walked_round_unless_the_goal
         &zone_file(&ZoneSpec {
             info: &town_info(),
             triggers: &[
-                (0x4, 91, 175, 1, None),
-                (0x9, 95, 178, 3, None),
-                (0xB, 90, 180, 1, None),
+                (0x4, 91, 175, 1, None, None),
+                (0x9, 95, 178, 3, None, None),
+                (0xB, 90, 180, 1, None, None),
             ],
             ..ZoneSpec::default()
         }),
@@ -2101,7 +2129,7 @@ fn test_a_trigger_into_another_place_is_an_exit_leading_there() -> Result<()> {
         FILE,
         &zone_file(&ZoneSpec {
             info: &town_info(),
-            triggers: &[(0x5, 90, 175, 7, None)],
+            triggers: &[(0x5, 90, 175, 7, None, None)],
             ..ZoneSpec::default()
         }),
     );
@@ -2126,6 +2154,56 @@ fn test_a_trigger_into_another_place_is_an_exit_leading_there() -> Result<()> {
         (entrance.cell, entrance.size, entrance.zone),
         ((90, 175), (7, 1), Some(0x62))
     );
+    Ok(())
+}
+
+/// Sea Mauville's sunken control room: the Scanner is a trigger armed while work 0x400c holds
+/// 1, which taking it sets to 0. Listed as a hidden item where the Extra lists them, under the
+/// sea though the zone table does not say so, until it is taken; with the Extra off, never.
+#[test]
+fn test_an_item_a_trigger_gives_is_a_hidden_item_while_the_trigger_is_armed() -> Result<()> {
+    let mut town = Town::new();
+    town.memory.write(
+        FILE,
+        &zone_file(&ZoneSpec {
+            info: &town_info(),
+            triggers: &[(0x2, 90, 175, 1, Some(-4), Some((1, 0x400C)))],
+            ..ZoneSpec::default()
+        }),
+    );
+    let work = EVENT_WORK + WORKS + (0x400C - FIRST_WORK) * 2;
+    town.memory.write(work, &le16(&[1]));
+
+    let listed = |town: &mut Town, setting: &'static str| -> Result<Vec<(i64, i64)>> {
+        town.reader = field_reader(
+            town.memory.clone(),
+            Given {
+                extras_hidden_items: Some(setting),
+                ..Given::default()
+            },
+            Game {
+                hidden_triggers: HashSet::from([(TOWN, 0x2)]),
+                ..game()
+            },
+        );
+        town.reader.track(&Found {
+            pages: IndexMap::new(),
+            heap: IndexMap::from([(EVENT_WORK, EVENT_CLASS.to_string())]),
+            partial: false,
+        })?;
+        Ok(town
+            .r#where()?
+            .of("items")
+            .into_iter()
+            .filter(|item| item.kind == HIDDEN_ITEM)
+            .map(|item| item.cell)
+            .collect())
+    };
+
+    assert_eq!(listed(&mut town, HIDDEN_OFF)?, Vec::new());
+    assert_eq!(listed(&mut town, HIDDEN_UNDERWATER)?, vec![(90, 175)]);
+    town.memory.write(work, &le16(&[0]));
+    assert_eq!(listed(&mut town, HIDDEN_UNDERWATER)?, Vec::new());
     Ok(())
 }
 
@@ -2187,7 +2265,7 @@ fn test_a_zone_of_rooms_lists_only_the_room_the_player_stands_in() -> Result<()>
         FILE,
         &zone_file(&ZoneSpec {
             info: &town_info(),
-            triggers: &[(0x6, 96, 173, 1, None), (0x5, 96, 175, 1, None)],
+            triggers: &[(0x6, 96, 173, 1, None, None), (0x5, 96, 175, 1, None, None)],
             ..ZoneSpec::default()
         }),
     );
@@ -2377,7 +2455,10 @@ fn test_a_drop_is_not_walked_off_but_by_its_ladder() -> Result<()> {
         game(),
     );
     let data = zone_file(&ZoneSpec {
-        triggers: &[(0xC, 95, 170, 1, Some(108)), (0xB, 95, 171, 1, Some(0))],
+        triggers: &[
+            (0xC, 95, 170, 1, Some(108), None),
+            (0xB, 95, 171, 1, Some(0), None),
+        ],
         info: &town_info(),
         ..ZoneSpec::default()
     });
@@ -2664,6 +2745,7 @@ fn test_a_stair_is_where_the_ground_meets_a_floor_over_it() {
                 .iter()
                 .map(|cell| heights.get(cell).copied())
                 .collect(),
+            ramp: false,
         }
     }
 
@@ -2673,6 +2755,155 @@ fn test_a_stair_is_where_the_ground_meets_a_floor_over_it() {
         ..Chunk::new((40, 0), lower.words)
     };
     assert_eq!(mapblock::joins(&chunk), IndexMap::from([((43, 6), 189.0)]));
+}
+
+/// Khai, playing x_tower_of_mastery's save (spike 248): every street of the Tower of Mastery
+/// is measured east, and its lane's key said "east" for a step north up the ramp, "8 west, 16
+/// east" for a way west and then north. Where the streets are floors of their own a step is
+/// said by the way it goes, as everywhere off a street.
+#[test]
+fn test_a_step_up_a_ramp_is_said_by_the_way_it_goes_not_its_streets_key() -> Result<()> {
+    let lanes: IndexMap<(i64, i64), IndexMap<(i64, i64), &'static str>> = (0..5)
+        .map(|z| {
+            (
+                (0, z),
+                IndexMap::from([((0, -1), "east"), ((0, 1), "east")]),
+            )
+        })
+        .collect();
+    for (raised, said) in [(false, "4 east"), (true, "4 north")] {
+        let ground = Ground {
+            lanes: Rc::new(lanes.clone()),
+            raised,
+            ..Ground::default()
+        };
+        let path = ground.find((0, 4), &goals_of(&[((0, 0), None)]), "", None, false, None)?;
+        let path = path.expect("a way");
+        let key = |cell, step| ground.key(cell, step);
+        assert_eq!(
+            pathfind::spoken(&pathfind::legs_with(&path, None, Some(&key))?),
+            said,
+            "raised {raised}"
+        );
+    }
+    Ok(())
+}
+
+/// The ROM's map chunks for one chunk, file 0: the ground open along z 8 at 0, from x 0 to
+/// 4 and again from 10 to 13, walled between as the Tower of Mastery's is under its ramp past
+/// the ramp's foot, and a landing at 90 at its end, x 14 to 16, a floor of its own.
+///
+/// Python's `RampChunks` class; here its ground and landing, which `ramp_terrain` hands the
+/// terrain as its methods would be.
+fn ramp_chunks() -> (Floor, Floor) {
+    let cells: Vec<(i64, i64)> = (0..CHUNK * CHUNK).map(|i| (i % CHUNK, i / CHUNK)).collect();
+    let ground: HashSet<(i64, i64)> = (0..5).chain(10..14).map(|x| (x, 8)).collect();
+    let landing: HashSet<(i64, i64)> = (14..17).map(|x| (x, 8)).collect();
+    let words = |open: &HashSet<(i64, i64)>| -> Vec<i64> {
+        cells
+            .iter()
+            .map(|cell| {
+                if open.contains(cell) {
+                    0x20
+                } else {
+                    0x01000021
+                }
+            })
+            .collect()
+    };
+    (
+        Floor {
+            words: words(&ground),
+            heights: vec![Some(0.0); (CHUNK * CHUNK) as usize],
+            ramp: false,
+        },
+        Floor {
+            words: words(&landing),
+            heights: cells
+                .iter()
+                .map(|cell| landing.contains(cell).then_some(90.0))
+                .collect(),
+            ramp: false,
+        },
+    )
+}
+
+/// A terrain reading `ramp_chunks` as the ROM's, with `streets` its streets.
+fn ramp_terrain(streets: Option<rail::Streets>) -> Terrain {
+    let (ground, landing) = ramp_chunks();
+    let (cells, heights) = (ground.words.clone(), ground.heights.clone());
+    let floors = vec![ground, landing];
+    Terrain::new(
+        Some(Rc::new(move |_file| Ok(Some(cells.clone()))) as FarCells),
+        Some(Rc::new(move |_file| Ok(floors.clone())) as FarFloors),
+        Some(Rc::new(move |_file| Ok(Some(heights.clone()))) as FarHeights),
+        Some(Rc::new(|_number| Ok(None)) as FarMatrices),
+        streets,
+    )
+}
+
+/// x_tower_of_mastery (spike 248): the Tower of Mastery's ramp winds up round the ring of
+/// floor under it, and is in its chunk's streets alone, each point with its height. Its chunk's
+/// floors are the ground and the landings, so P walked the ground under the ramp and said "then
+/// can't continue" to every stair. Its street is a floor of its own now, climbed a cell at a
+/// time from the ground to the landing at its top, and the ground under its top is not.
+#[test]
+fn test_a_ramp_in_the_streets_is_climbed_from_the_ground_to_the_landing_it_reaches() -> Result<()> {
+    let (foot, top) = (0x11, 0x12);
+    let street = rail::Network {
+        lines: IndexMap::from([(
+            0x8011,
+            rail::Line {
+                way: rail::WAY_EAST,
+                ..rail::Line::new(0x8011, foot, top, 9, 1, vec![0x20; 10])
+            },
+        )]),
+        places: IndexMap::from([
+            (foot, (4.5 * 18.0, 8.5 * 18.0)),
+            (top, (13.5 * 18.0, 8.5 * 18.0)),
+        ]),
+        cameras: 0,
+        heights: IndexMap::from([(foot, 0.0), (top, 90.0)]),
+        sides: IndexMap::from([(foot, (0.0, 9.0)), (top, (0.0, 9.0))]),
+    };
+    let streets: rail::Streets = Rc::new(move |_files: &[i64]| Ok(street.clone()));
+
+    let goal = goals_of(&[((16, 8), None)]);
+    for (read, found) in [(Some(streets), true), (None, false)] {
+        let terrain = ramp_terrain(read);
+        *terrain.files.borrow_mut() = (1, Rc::new(vec![0]));
+        let far = terrain.far(0, 0)?.expect("the chunk");
+        let chunk = terrain.with_streets(&far)?;
+        let laid = Chunk {
+            floors: chunk.floors.clone(),
+            ..(*terrain.flattened(&chunk, None, false)?).clone()
+        };
+        let ground = Ground {
+            chunks: vec![Rc::new(laid)],
+            stacked: terrain.stacked(&|| Ok(Vec::new()))?,
+            level: Some(0.0),
+            ..Ground::default()
+        };
+        let path = ground.find((1, 8), &goal, "", None, false, None)?;
+        assert_eq!(path.is_some(), found, "found {found}");
+        if let Some(path) = path {
+            let mut heights = Vec::new();
+            for (&cell, floor) in path.iter().zip(ground.walked(&path)?) {
+                let floors = ground.floors(cell)?;
+                let (_, height) = floors
+                    .iter()
+                    .find(|(k, _)| *k == floor)
+                    .expect("the floor walked");
+                heights.push(height.unwrap_or(0.0));
+            }
+            assert_eq!(heights[..4], [0.0, 0.0, 0.0, 0.0]);
+            assert_eq!(heights.last(), Some(&90.0));
+            let mut sorted = heights.clone();
+            py::sort_by_lt(&mut sorted, |a, b| a < b);
+            assert_eq!(heights, sorted);
+        }
+    }
+    Ok(())
 }
 
 /// Spike 167: Sootopolis Gym's invisible blockers, sprite 0x8a, rows of three across the
@@ -2849,6 +3080,34 @@ fn test_a_model_drawn_as_nothing_is_what_it_stands_in_for() -> Result<()> {
     town.model(5, TOWN, 0, groudon, (100, 165));
     let r#where = town.r#where()?;
     assert_eq!(people(&r#where), IndexMap::from([((100, 165), groudon)]));
+    Ok(())
+}
+
+/// Sea Mauville (or_sea_mauville_locked_doors): each locked door is furniture on its door's
+/// own cell, saying "The door is locked." until its key opens it, and it was listed as a sign
+/// beside the door, before and after. Only the door is listed; furniture beside it still is.
+#[test]
+fn test_furniture_standing_on_a_warp_is_its_lock_and_the_door_is_listed() -> Result<()> {
+    let town = Town::new();
+    let data = zone_file(&ZoneSpec {
+        furniture: &[(0x7, 106, 171), (0x8, 104, 171)],
+        warps: &[(0xE1, WARP_DOOR, 106, 171, None, None)],
+        info: &town_info(),
+        ..ZoneSpec::default()
+    });
+    town.memory.write(FILE, &data);
+    town.memory
+        .u32(HOLDER, &[FILE, OTHER, 0x11 | (data.len() as i64) << 8]);
+    let r#where = town.r#where()?;
+    let signs: HashSet<(i64, i64)> = r#where.of("signs").iter().map(|item| item.cell).collect();
+    assert!(signs.contains(&(104, 171)) && !signs.contains(&(106, 171)));
+    let doors: Vec<(i64, i64)> = r#where
+        .of("exits")
+        .iter()
+        .filter(|item| item.kind == "door")
+        .map(|item| item.cell)
+        .collect();
+    assert_eq!(doors, vec![(106, 171)]);
     Ok(())
 }
 
@@ -3084,6 +3343,7 @@ fn test_a_deck_over_lower_ground_is_kept_to_and_walked_under() -> Result<()> {
     let ground = Floor {
         words: vec![0x20; (CHUNK * CHUNK) as usize],
         heights: vec![Some(-63.0); (CHUNK * CHUNK) as usize],
+        ramp: false,
     };
     let on_deck = |i: i64| i / CHUNK == 5 && (3..=20).contains(&(i % CHUNK));
     let deck = Floor {
@@ -3093,6 +3353,7 @@ fn test_a_deck_over_lower_ground_is_kept_to_and_walked_under() -> Result<()> {
         heights: (0..CHUNK * CHUNK)
             .map(|i| if on_deck(i) { Some(0.0) } else { None })
             .collect(),
+        ramp: false,
     };
     // The deck runs on past the ground's edge at x 20, over nothing the ground has.
     let ground = Floor {
@@ -3608,6 +3869,84 @@ fn test_a_slide_is_found_where_the_cells_past_its_top_fall_to_a_lower_landing() 
     let slides = town.reader.ground(&town.r#where()?)?.walls.slides.clone();
     let want: IndexMap<(i64, i64), &str> = (170..175).map(|z| ((95, z), pathfind::SOUTH)).collect();
     assert_eq!(slides, want);
+    Ok(())
+}
+
+/// Spike 247: Shalour Gym's way out is a rail on its floor 1, skated onto from an end cell on
+/// floor 0 by the centre, landing on the floor by the entrance, which is no end cell: ridden that
+/// one way. On Route 5 a rail over the water is broken in the middle by `0x90`, blocked, and
+/// neither half of it lands anywhere.
+#[test]
+fn test_grind_rails_are_found_on_every_floor_and_never_past_a_blocked_cell() -> Result<()> {
+    let mut town = Town::with(false, 5, 7);
+    let mut files = vec![NO_CHUNK_FILE; 64];
+    files[4 * 8 + 2] = 7;
+    town.memory.write(MAP + MAP_CHUNK_FILES, &le16(&files));
+    let mut ground: IndexMap<(i64, i64), i64> = IndexMap::from([((85, 170), 0x8B000020)]);
+    ground.extend([86, 87, 88].map(|x| ((x, 170), 0x8C000021)));
+    ground.insert((89, 170), 0x90000021);
+    ground.extend([90, 91, 92].map(|x| ((x, 170), 0x8C000021)));
+    ground.insert((93, 170), 0x8B000020);
+    ground.insert((100, 170), 0x8B000020);
+    let upper: IndexMap<(i64, i64), i64> = (171..176).map(|z| ((100, z), 0x8C000021)).collect();
+    let cells: Vec<(i64, i64)> = (0..CHUNK * CHUNK)
+        .map(|i| (80 + i % CHUNK, 160 + i / CHUNK))
+        .collect();
+    let words: Vec<i64> = cells
+        .iter()
+        .map(|cell| ground.get(cell).copied().unwrap_or(0))
+        .collect();
+    let floors = vec![
+        Floor {
+            words: words.clone(),
+            heights: vec![Some(0.0); cells.len()],
+            ramp: false,
+        },
+        Floor {
+            words: cells
+                .iter()
+                .map(|cell| upper.get(cell).copied().unwrap_or(BLOCKED))
+                .collect(),
+            heights: vec![None; cells.len()],
+            ramp: false,
+        },
+    ];
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given {
+            far: Some(Rc::new(move |file| {
+                Ok(if file == 7 { Some(words.clone()) } else { None })
+            })),
+            far_floors: Some(Rc::new(move |file| {
+                Ok(if file == 7 {
+                    floors.clone()
+                } else {
+                    Vec::new()
+                })
+            })),
+            ..Given::default()
+        },
+        Game {
+            grinding: Some(xy::GRINDING),
+            ..game()
+        },
+    );
+    let rails = town
+        .reader
+        .ground(&town.r#where()?)?
+        .grind_rails
+        .rails
+        .clone();
+    let mut want = vec![(100, 170)];
+    want.extend(upper.keys().copied());
+    want.push((100, 176));
+    assert_eq!(
+        rails,
+        [GrindRail {
+            cells: want,
+            both: false
+        }]
+    );
     Ok(())
 }
 
@@ -4421,6 +4760,7 @@ fn on_one_line(
         lines: IndexMap::from([(line.id, line.clone())]),
         places: IndexMap::from([(1, start), (2, end)]),
         cameras,
+        ..Default::default()
     };
     town.reader = field_reader(
         town.memory.clone(),
@@ -4550,6 +4890,7 @@ fn test_a_map_changed_since_the_sweep_has_one_maps_streets_read_until_the_next()
         lines: IndexMap::from([(line.id, line.clone())]),
         places: IndexMap::from([(1, (0.0, 0.0)), (2, (0.0, (4 * 18) as f64))]),
         cameras: 0,
+        ..Default::default()
     };
     let asked: Rc<RefCell<Vec<Vec<i64>>>> = Rc::new(RefCell::new(Vec::new()));
     let mut town = Town::new();
@@ -4950,6 +5291,7 @@ fn test_a_door_on_a_line_the_game_has_not_loaded_is_listed_from_the_rom() -> Res
             },
             places: IndexMap::new(),
             cameras: 0,
+            ..Default::default()
         })
     };
     town.reader = field_reader(
@@ -5269,7 +5611,7 @@ fn test_a_secret_bases_pc_flag_and_way_out_are_listed_as_what_they_are() -> Resu
         FILE,
         &zone_file(&ZoneSpec {
             info: &town_info(),
-            triggers: &[(oras::WAY_OUT, 94, 173, 1, None)],
+            triggers: &[(oras::WAY_OUT, 94, 173, 1, None, None)],
             furniture: &[(oras::BASE_FLAG, 97, 171), (oras::BASE_PC, 96, 171)],
             ..ZoneSpec::default()
         }),

@@ -95,6 +95,10 @@ pub const TRIGGER_WIDTH: i64 = 0x10;
 
 pub const TRIGGER_HEIGHT: i64 = 0x12;
 
+// The work a trigger is armed by and the value it is armed at.
+pub const TRIGGER_VALUE: i64 = 0x02;
+pub const TRIGGER_WORK: i64 = 0x04;
+
 /// How high in the world a trigger stands, in world units, where `TRIGGER_HEIGHT` is how many
 /// cells deep it is: 108 for the top of each of Fortree City's ladders and 0 for its foot (spike
 /// 160), -9 to 108 for Lavaridge Gym's (spike 157).

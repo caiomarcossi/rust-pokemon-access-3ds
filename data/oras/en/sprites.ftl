@@ -626,12 +626,6 @@ place-0x188-furniture-5 = Hoenn Rangers
 place-0x1c2-furniture-10 = Hoenn Rangers
 place-0x1c2-furniture-11 = Hoenn Rangers
 place-0x20d-furniture-0 = Hoenn Rangers
-# story 366:5, "The door is locked.", in Sea Mauville
-place-0x91-furniture-1 = locked door
-place-0x92-furniture-1 = locked door
-place-0x92-furniture-2 = locked door
-place-0x92-furniture-3 = locked door
-place-0x92-furniture-4 = locked door
 # story 206:0, the Trick House's scroll doors
 place-0x175-furniture-0 = locked door
 place-0x176-furniture-0 = locked door

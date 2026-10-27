@@ -45,7 +45,7 @@
 //! the corridor gives as a bearing of its own (`bearing`).
 
 use std::cell::{Cell as Slot, RefCell};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 
 use indexmap::{IndexMap, IndexSet};
@@ -54,6 +54,7 @@ use crate::core::binary::{f32, s16, u16, u32};
 use crate::core::discovery::{ALLOCATION, Found, HEAP_SPAN, LINEAR_SPAN, within};
 use crate::core::memory::Memory;
 use crate::core::pathfind::{Box, Cell};
+use crate::games::common::field::chunk::CLIMB;
 use crate::games::common::field::ground::Lanes;
 use crate::games::common::field::pad::quarter;
 use crate::games::gen6::field::{camera, mmodel, zonedata};
@@ -86,7 +87,16 @@ pub const TRACKS: i64 = 2;
 pub const JOINTS: i64 = 3;
 pub const CAMERAS: i64 = 4;
 pub const POINT_PLACE: i64 = 0x10;
+/// A point's f32 x, y, z from its street's middle to its edge, square to the street there: 27
+/// units on the Tower of Mastery's streets, three cells across, and along every street of X that is
+/// as long as the line between its ends, square to that line (spike 248).
+pub const POINT_SIDE: i64 = 0x64;
 pub const JOINT_PLACE: i64 = 0x28;
+/// How far apart a street's ends stand for it to be a ramp's: the Tower of Mastery's landings'
+/// points stand level to the unit, at 180, 361, 540 and 720 (spike 248).
+pub const SLOPE: f64 = 1.0;
+/// Places a cell along a street's curve that it is laid from, each with its row's cells across.
+pub const SAMPLES: i64 = 4;
 /// World units a map chunk is across: 40 cells of 18.
 pub const CHUNK_UNITS: i64 = 720;
 pub const BLOCKED: i64 = 0x1;
@@ -193,6 +203,11 @@ pub struct Network {
     /// looking north while the keys walk the player the street's way nearest the one pressed (the
     /// tape of x_route-6-2.ctm, 2026-10-20).
     pub cameras: i64,
+    /// How high the world has each point and joint: the Tower of Mastery's ramp climbs from 2 to
+    /// 720 by its points, and nothing else in the chunk says how high it is (spike 248).
+    pub heights: IndexMap<i64, f64>,
+    /// Each point's side as (x, z) (`POINT_SIDE`), which says the way its streets leave it.
+    pub sides: IndexMap<i64, (f64, f64)>,
 }
 
 /// One cell's step in the corridor, a way of the compass: north is (0, -1).
@@ -662,6 +677,8 @@ pub fn section_streets(section: &[u8]) -> Result<Network> {
     );
     let mut lines: IndexMap<i64, Line> = IndexMap::new();
     let mut places: IndexMap<i64, (f64, f64)> = IndexMap::new();
+    let mut heights: IndexMap<i64, f64> = IndexMap::new();
+    let mut sides: IndexMap<i64, (f64, f64)> = IndexMap::new();
     for kind in 0..=JOINTS {
         let (count, table) = (counts[kind as usize], tables[kind as usize]);
         if table + 4 * count > section.len() as i64 {
@@ -702,6 +719,14 @@ pub fn section_streets(section: &[u8]) -> Result<Network> {
                         middle.1 + f32(section, at + 8)?,
                     ),
                 );
+                heights.insert(u32(section, record)?, f32(section, at + 4)?);
+            }
+            let side = record + POINT_SIDE;
+            if kind == POINTS && side + 12 <= section.len() as i64 {
+                sides.insert(
+                    u32(section, record)?,
+                    (f32(section, side)?, f32(section, side + 8)?),
+                );
             }
         }
     }
@@ -709,7 +734,179 @@ pub fn section_streets(section: &[u8]) -> Result<Network> {
         lines,
         places,
         cameras: counts[CAMERAS as usize],
+        heights,
+        sides,
     })
+}
+
+/// The streets as floors of their own, where a **ramp** is among them, a street standing off
+/// the ground: a point of it more than `CLIMB` from every height `ground` has at its cell. Each
+/// floor is each cell of its streets' lanes with its height there (`_laid`). The Tower of
+/// Mastery's ramp winds twice round the ring of floor under it, from 2 to 720, each lap over the
+/// one before in the grid and 360 above it, and its chunk's floors are the ground at 0 and the
+/// landings alone, so P found no way off the ground: "then can't continue" to every stair
+/// (x_tower_of_mastery, spike 248). Coumarine's and Anistar's streets run over cells their chunks
+/// wall, as Route 7's do, and up to 770 over them. Every street is a floor there, its cells open
+/// on it alone: a cell a street opens on no floor is any floor, and a way through one stepped
+/// from one lap onto the next. None where every street lies on the ground, as Route 7's, Parfum
+/// Palace's and Lumiose's do, walked as the grid's ground (`Rails.lanes`). Streets are packed
+/// into as few floors as keep apart every two cells, the same or side by side, more than `CLIMB`
+/// from each other's height: a lap and the lap over it are two. A ramp's streets, whose ends
+/// stand more than `SLOPE` apart, are packed apart from level ones, and each floor says which it
+/// is: a run up a ramp is said as one leg (`guide.RAMP_UP`).
+pub fn street_floors(
+    network: &Network,
+    ground: &dyn Fn(Cell) -> Result<Vec<f64>>,
+) -> Result<Vec<(IndexMap<Cell, f64>, bool)>> {
+    // The points alone: laying Lumiose's 294 streets, some 67 cells across, takes seconds.
+    let off = |point: i64, height: f64| -> Result<bool> {
+        let under = match network.places.get(&point) {
+            None => Vec::new(),
+            Some(&(x, z)) => {
+                let cell = zonedata::CELL as f64;
+                ground((py::floor(x / cell)?, py::floor(z / cell)?))?
+            }
+        };
+        Ok(!under.is_empty() && under.iter().all(|&one| (height - one).abs() > CLIMB))
+    };
+
+    let mut any = false;
+    for (&point, &height) in &network.heights {
+        if off(point, height)? {
+            any = true;
+            break;
+        }
+    }
+    if !any {
+        return Ok(Vec::new());
+    }
+    let mut floors: Vec<(IndexMap<Cell, f64>, bool)> = Vec::new();
+    for line in network.lines.values() {
+        let lane = laid(line, network)?;
+        if lane.is_empty() {
+            continue;
+        }
+        // Both ends have heights, or `laid` laid nothing.
+        let sloped = (network.heights[&line.end] - network.heights[&line.start]).abs() > SLOPE;
+
+        let fits = |floor: &IndexMap<Cell, f64>| {
+            lane.iter().all(|(&(x, z), &height)| {
+                [(x, z), (x + 1, z), (x - 1, z), (x, z + 1), (x, z - 1)]
+                    .iter()
+                    .filter_map(|near| floor.get(near))
+                    .all(|&there| (there - height).abs() <= CLIMB)
+            })
+        };
+        let floor = match floors
+            .iter()
+            .position(|(cells, ramp)| *ramp == sloped && fits(cells))
+        {
+            Some(at) => &mut floors[at].0,
+            None => {
+                floors.push((IndexMap::new(), sloped));
+                &mut floors.last_mut().expect("the floor just pushed").0
+            }
+        };
+        for (&cell, &height) in &lane {
+            floor.entry(cell).or_insert(height);
+        }
+    }
+    Ok(floors)
+}
+
+/// Each grid cell of `line` the player can stand in, with its height: the line laid as the
+/// cubic from its start point to its end point that leaves each square to its side there, as
+/// fast as the line between them is long, its height rising evenly along it, and a cell open
+/// where the row and column of the line's walls at its middle are. A straight street's sides
+/// are square to the line between its ends, and the Tower of Mastery's streets, arcs round its
+/// statue, bulge two cells out from that line, where the player walked: laid so, all 177 cells
+/// x_tower_of_mastery stood on lie on a floor at their height (spike 248). None where the world
+/// does not place both its ends or say how high they are.
+// `t ** 3` and `t ** 2` are `powf`, the C library's `pow` as Python's are, never `powi`.
+fn laid(line: &Line, network: &Network) -> Result<IndexMap<Cell, f64>> {
+    let (start, end) = (
+        network.places.get(&line.start),
+        network.places.get(&line.end),
+    );
+    let (low, high) = (
+        network.heights.get(&line.start),
+        network.heights.get(&line.end),
+    );
+    let (Some(&start), Some(&end), Some(&low), Some(&high)) = (start, end, low, high) else {
+        return Ok(IndexMap::new());
+    };
+    if start == end {
+        return Ok(IndexMap::new());
+    }
+    let ((x0, z0), (x1, z1)) = (start, end);
+    // `math.dist`, which is `hypot` of the differences.
+    let chord = py::hypot(x0 - x1, z0 - z1);
+    let ahead = ((x1 - x0) / chord, (z1 - z0) / chord);
+
+    let leaving = |point: i64| -> (f64, f64) {
+        let (sx, sz) = network.sides.get(&point).copied().unwrap_or((0.0, 0.0));
+        if py::hypot(sx, sz) == 0.0 {
+            return ahead;
+        }
+        let way = if sz * ahead.0 - sx * ahead.1 >= 0.0 {
+            (sz, -sx)
+        } else {
+            (-sz, sx)
+        };
+        (way.0 / py::hypot(sx, sz), way.1 / py::hypot(sx, sz))
+    };
+
+    let ((a0, b0), (a1, b1)) = (leaving(line.start), leaving(line.end));
+    let cell_units = zonedata::CELL as f64;
+    let mut out: IndexMap<Cell, f64> = IndexMap::new();
+    let mut nearest: HashMap<Cell, f64> = HashMap::new();
+    let steps = SAMPLES * line.along;
+    for k in 0..=steps {
+        let t = k as f64 / steps as f64;
+        let (h00, h10, h01, h11) = (
+            2.0 * t.powf(3.0) - 3.0 * t.powf(2.0) + 1.0,
+            t.powf(3.0) - 2.0 * t.powf(2.0) + t,
+            -2.0 * t.powf(3.0) + 3.0 * t.powf(2.0),
+            t.powf(3.0) - t.powf(2.0),
+        );
+        let (d00, d10, d01, d11) = (
+            6.0 * t.powf(2.0) - 6.0 * t,
+            3.0 * t.powf(2.0) - 4.0 * t + 1.0,
+            -6.0 * t.powf(2.0) + 6.0 * t,
+            3.0 * t.powf(2.0) - 2.0 * t,
+        );
+        let x = h00 * x0 + h10 * chord * a0 + h01 * x1 + h11 * chord * a1;
+        let z = h00 * z0 + h10 * chord * b0 + h01 * z1 + h11 * chord * b1;
+        let dx = d00 * x0 + d10 * chord * a0 + d01 * x1 + d11 * chord * a1;
+        let dz = d00 * z0 + d10 * chord * b0 + d01 * z1 + d11 * chord * b1;
+        let speed = py::hypot(dx, dz);
+        let speed = if speed == 0.0 { 1.0 } else { speed };
+        let row = py::round(t * line.along as f64)?;
+        // Out to a quarter of a cell inside the street's edge, half its width from its middle.
+        for fourth in -2 * line.across + 1..2 * line.across {
+            let offset = fourth as f64 / 4.0;
+            let column = 0.max((line.across - 1).min(py::round(offset)? + line.across / 2));
+            if !line.open(row, column) {
+                continue;
+            }
+            // Offsets rise to the line's left, as `_World.cell` lays them.
+            let (px, pz) = (
+                x + offset * dz / speed * cell_units,
+                z - offset * dx / speed * cell_units,
+            );
+            let cell = (py::floor(px / cell_units)?, py::floor(pz / cell_units)?);
+            // A cell is as high as the street where it passes nearest the cell's middle.
+            let off = py::hypot(
+                px - (cell.0 as f64 + 0.5) * cell_units,
+                pz - (cell.1 as f64 + 0.5) * cell_units,
+            );
+            if off < nearest.get(&cell).copied().unwrap_or(f64::INFINITY) {
+                nearest.insert(cell, off);
+                out.insert(cell, low + (high - low) * t);
+            }
+        }
+    }
+    Ok(out)
 }
 
 fn sized(head: &[u8]) -> Result<bool> {

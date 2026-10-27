@@ -13,8 +13,9 @@ use indexmap::{IndexMap, IndexSet};
 use crate::core::pathfind::{self, Cell};
 use crate::games::common::field::chunk::{BLOCKED, CHUNK, Chunk, DIVE, Floor, KIND_SHIFT, SHORE};
 use crate::games::common::field::climb::Walls;
-use crate::games::gen6::field::mapblock;
-use crate::games::gen6::game::Climbing;
+use crate::games::common::field::grind::GrindRails;
+use crate::games::gen6::field::{mapblock, rail};
+use crate::games::gen6::game::{Climbing, Grinding};
 use crate::py::{self, Error, Result};
 
 /// What the list has where the matrix has no chunk: most of Route 109's 12 by 10 (spike 136).
@@ -97,8 +98,16 @@ type Rises = (Rc<Vec<i64>>, IndexMap<Cell, &'static str>);
 /// Each ROM chunk of the matrix with its ground heights, by its key (`Terrain::tables`).
 type Tables = IndexMap<(i64, i64), (Vec<i64>, Vec<Option<f64>>)>;
 
+/// Each chunk's floors of the matrix's streets, by its key, and every cell of one
+/// (`Terrain::found_streets`).
+type StreetFloors = (Rc<IndexMap<(i64, i64), Vec<Floor>>>, Rc<HashSet<Cell>>);
+
 /// The ROM's chunks of the matrix the field map lists, read a file at a time and kept.
 pub struct Terrain {
+    streets: Option<rail::Streets>,
+    /// The chunk files the streets' floors were found for, each chunk's floors of them by its
+    /// key, and every cell of one (`with_streets`).
+    streets_of: RefCell<(Option<Rc<Vec<i64>>>, StreetFloors)>,
     cells: Option<FarCells>,
     floors: Option<FarFloors>,
     heights: Option<FarHeights>,
@@ -121,20 +130,26 @@ pub struct Terrain {
     rises_of: RefCell<IndexMap<BTreeSet<i64>, Rises>>,
     /// The chunk files the climbing walls were found for, and the walls (`walls`).
     walls_of: RefCell<(Option<Rc<Vec<i64>>>, Rc<Walls>)>,
+    /// The chunk files the grind rails were found for, and the rails (`grind_rails`).
+    grinds_of: RefCell<(Option<Rc<Vec<i64>>>, Rc<GrindRails>)>,
     /// The chunk files the floors were read for, and whether one has a deck (`stacked`).
     stacked: RefCell<(Option<Rc<Vec<i64>>>, bool)>,
 }
 
 impl Terrain {
     /// Python takes the ROM's `MapChunks`, or None without a ROM, and keeps four of its methods;
-    /// here they are handed over as they are kept.
+    /// here they are handed over as they are kept. `streets` the streets in chunk files
+    /// (`maps.Streets.network`), or None in a game without them.
     pub fn new(
         cells: Option<FarCells>,
         floors: Option<FarFloors>,
         heights: Option<FarHeights>,
         matrices: Option<FarMatrices>,
+        streets: Option<rail::Streets>,
     ) -> Self {
         Terrain {
+            streets,
+            streets_of: RefCell::new((None, (Rc::new(IndexMap::new()), Rc::new(HashSet::new())))),
             cells,
             floors,
             heights,
@@ -145,6 +160,7 @@ impl Terrain {
             drops: RefCell::new(HashMap::new()),
             rises_of: RefCell::new(IndexMap::new()),
             walls_of: RefCell::new((None, Rc::new(Walls::default()))),
+            grinds_of: RefCell::new((None, Rc::new(GrindRails::default()))),
             stacked: RefCell::new((None, false)),
         }
     }
@@ -360,6 +376,10 @@ impl Terrain {
                 .ok_or_else(|| Error::index("tuple index out of range"))?)
         };
 
+        // A street's floor is not among the floors flattened here, and a ramp's height changes
+        // from one cell to the next: a drop beside one is the ground's under it, which
+        // `Ground.climb` keeps it from as it does any floor a stair's step away.
+        let streets = self.found_streets()?.1;
         let mut out: IndexSet<(Cell, Cell)> = IndexSet::new();
         for &(column, row) in tables.keys() {
             for z in row * CHUNK..(row + 1) * CHUNK {
@@ -371,6 +391,8 @@ impl Terrain {
                         let there = height(near)?;
                         if let Some(there) = there
                             && (here - there).abs() > mapblock::DROP
+                            && !streets.contains(&(x, z))
+                            && !streets.contains(&near)
                         {
                             out.insert(((x, z), near));
                             out.insert((near, (x, z)));
@@ -488,6 +510,78 @@ impl Terrain {
         Ok(self.walls_of.borrow().1.clone())
     }
 
+    /// Every grind rail on the matrix (`GrindRails.found`), off the ROM's chunks, every floor
+    /// of each, found once a matrix; none without the ROM. Only chunks with a `grinding.rail`
+    /// cell on a floor are read, and the chunks round them for the cells past a rail's ends:
+    /// Shalour Gym's way out is on its floor 1, and on Route 5 a rail runs on into file 57,
+    /// which holds 21 of its cells and no end (spike 247).
+    pub fn grind_rails(&self, grinding: &Grinding) -> Result<Rc<GrindRails>> {
+        let (wide, files) = {
+            let held = self.files.borrow();
+            (held.0, held.1.clone())
+        };
+        if self.grinds_of.borrow().0.as_ref() != Some(&files) {
+            let mut chunks: IndexMap<(i64, i64), Rc<Chunk>> = IndexMap::new();
+            for at in 0..files.len() as i64 {
+                if let Some(chunk) = self.far(py::modulo(at, wide), py::floordiv(at, wide))? {
+                    chunks.insert(chunk.key(), chunk);
+                }
+            }
+
+            // A chunk with a deck keeps its ground as its first floor.
+            fn tables(chunk: &Chunk) -> Vec<&Vec<i64>> {
+                if chunk.floors.is_empty() {
+                    vec![&chunk.words]
+                } else {
+                    chunk.floors.iter().map(|floor| &floor.words).collect()
+                }
+            }
+
+            let held: HashSet<(i64, i64)> = chunks
+                .iter()
+                .filter(|(_, chunk)| {
+                    tables(chunk).iter().any(|table| {
+                        table
+                            .iter()
+                            .any(|&word| word >> KIND_SHIFT == grinding.rail)
+                    })
+                })
+                .map(|(&key, _)| key)
+                .collect();
+            let near: HashSet<(i64, i64)> = held
+                .iter()
+                .flat_map(|&(column, row)| {
+                    [-1, 0, 1].into_iter().flat_map(move |dx| {
+                        [-1, 0, 1]
+                            .into_iter()
+                            .map(move |dz| (column + dx, row + dz))
+                    })
+                })
+                .collect();
+            let mut keys: Vec<(i64, i64)> = near
+                .into_iter()
+                .filter(|key| chunks.contains_key(key))
+                .collect();
+            keys.sort();
+            let mut floors: Vec<IndexMap<Cell, i64>> = Vec::new();
+            for key in keys {
+                for (k, table) in tables(&chunks[&key]).into_iter().enumerate() {
+                    if k == floors.len() {
+                        floors.push(IndexMap::new());
+                    }
+                    for (i, &word) in table.iter().enumerate() {
+                        let i = i as i64;
+                        floors[k]
+                            .insert((key.0 * CHUNK + i % CHUNK, key.1 * CHUNK + i / CHUNK), word);
+                    }
+                }
+            }
+            let rails = Rc::new(GrindRails::found(&floors, grinding.rail, grinding.end));
+            *self.grinds_of.borrow_mut() = (Some(files), rails);
+        }
+        Ok(self.grinds_of.borrow().1.clone())
+    }
+
     /// Each ROM chunk of the matrix with its ground heights, by its key: its cell table and
     /// a height a cell (`rises`, `walls`).
     fn tables(&self) -> Result<Tables> {
@@ -531,10 +625,14 @@ impl Terrain {
                     floors.extend(far_floors(file)?);
                 }
             }
-            // `any(...)` over `zip(..., strict=True)`: it stops at the first open cell, and a
-            // floor whose two lists differ in length raises only once the shorter runs out.
-            let mut any = false;
+            // `raised or any(...)` over `zip(..., strict=True)`: it stops at the first open
+            // cell, and a floor whose two lists differ in length raises only once the shorter
+            // runs out.
+            let mut any = self.raised()?;
             'floors: for floor in &floors {
+                if any {
+                    break;
+                }
                 for (&word, &height) in floor.words.iter().zip(&floor.heights) {
                     if height.is_some() && word & BLOCKED == 0 {
                         any = true;
@@ -555,6 +653,130 @@ impl Terrain {
             *self.stacked.borrow_mut() = (Some(files), any);
         }
         Ok(self.stacked.borrow().1)
+    }
+
+    /// Whether the matrix's streets are floors of their own, a ramp among them
+    /// (`rail.street_floors`): walked a floor at a time, and opened by no lane.
+    pub fn raised(&self) -> Result<bool> {
+        Ok(!self.found_streets()?.1.is_empty())
+    }
+
+    /// The chunk with a floor for each of the streets' floors over it after its own, its
+    /// ground first where it has no other (`rail.street_floors`): walked a floor at a time, a
+    /// step up a ramp is taken as one up a stair is (`Ground.climb`).
+    pub fn with_streets(&self, chunk: &Rc<Chunk>) -> Result<Rc<Chunk>> {
+        let found = self.found_streets()?.0;
+        let streets = match found.get(&chunk.key()) {
+            Some(streets) if !streets.is_empty() => streets,
+            _ => return Ok(chunk.clone()),
+        };
+        let mut floors = if chunk.floors.is_empty() {
+            let mut heights = Vec::new();
+            for i in 0..CHUNK * CHUNK {
+                heights
+                    .push(self.height((chunk.origin.0 + i % CHUNK, chunk.origin.1 + i / CHUNK))?);
+            }
+            vec![Floor {
+                words: chunk.words.clone(),
+                heights,
+                ramp: false,
+            }]
+        } else {
+            chunk.floors.clone()
+        };
+        floors.extend(streets.iter().cloned());
+        Ok(Rc::new(Chunk {
+            floors,
+            ..(**chunk).clone()
+        }))
+    }
+
+    /// Each chunk's floors of the matrix's streets, by its key, and every cell of one, out of
+    /// the streets in the ROM's chunks, once a matrix; none without the ROM or the streets, or
+    /// where no ramp is among them. A street's cell keeps the word of the ground under it where
+    /// that is open, plain floor where it is not, and every other cell is blocked. The Tower of
+    /// Mastery's ramp, the only way up from its ground to its landings, is in its chunk's
+    /// streets and in none of its floors' meshes (spike 248).
+    fn found_streets(&self) -> Result<StreetFloors> {
+        let files = self.files.borrow().1.clone();
+        if self.streets_of.borrow().0.as_ref() != Some(&files) {
+            let mut found: IndexMap<(i64, i64), Vec<Floor>> = IndexMap::new();
+            let mut floors: Vec<(IndexMap<Cell, f64>, bool)> = Vec::new();
+            if let Some(streets) = &self.streets
+                && self.known()
+            {
+                let listed: Vec<i64> = files
+                    .iter()
+                    .copied()
+                    .filter(|&f| f != NO_CHUNK_FILE)
+                    .collect();
+                floors = rail::street_floors(&streets(&listed)?, &|cell| self.ground(cell))?;
+            }
+            for (floor, ramp) in &floors {
+                let keys: BTreeSet<(i64, i64)> = floor
+                    .keys()
+                    .map(|&(x, z)| (py::floordiv(x, CHUNK), py::floordiv(z, CHUNK)))
+                    .collect();
+                for key in keys {
+                    let Some(chunk) = self.far(key.0, key.1)? else {
+                        continue;
+                    };
+                    let under = if chunk.floors.is_empty() {
+                        &chunk.words
+                    } else {
+                        &chunk.floors[0].words
+                    };
+                    let mut words = Vec::new();
+                    let mut heights = Vec::new();
+                    for i in 0..CHUNK * CHUNK {
+                        let cell = (chunk.origin.0 + i % CHUNK, chunk.origin.1 + i / CHUNK);
+                        words.push(if !floor.contains_key(&cell) {
+                            BLOCKED
+                        } else {
+                            let word = *under
+                                .get(i as usize)
+                                .ok_or_else(|| Error::index("tuple index out of range"))?;
+                            if word & BLOCKED != 0 { 0 } else { word }
+                        });
+                        heights.push(floor.get(&cell).copied());
+                    }
+                    found.entry(key).or_default().push(Floor {
+                        words,
+                        heights,
+                        ramp: *ramp,
+                    });
+                }
+            }
+            let cells: HashSet<Cell> = floors
+                .iter()
+                .flat_map(|(floor, _)| floor.keys().copied())
+                .collect();
+            *self.streets_of.borrow_mut() = (Some(files), (Rc::new(found), Rc::new(cells)));
+        }
+        Ok(self.streets_of.borrow().1.clone())
+    }
+
+    /// The heights of the floors at a cell of the ROM's chunks, walls among them, none where
+    /// the chunk is not read or no floor has a height there (`rail.street_floors`): Route 7's
+    /// street runs over cells its chunk walls, at the ground's height.
+    fn ground(&self, cell: Cell) -> Result<Vec<f64>> {
+        let Some(chunk) = self.far(py::floordiv(cell.0, CHUNK), py::floordiv(cell.1, CHUNK))?
+        else {
+            return Ok(Vec::new());
+        };
+        if !chunk.floors.is_empty() {
+            let i = py::modulo(cell.1, CHUNK) * CHUNK + py::modulo(cell.0, CHUNK);
+            let mut out = Vec::new();
+            for floor in &chunk.floors {
+                let height = *floor
+                    .heights
+                    .get(i as usize)
+                    .ok_or_else(|| Error::index("tuple index out of range"))?;
+                out.extend(height);
+            }
+            return Ok(out);
+        }
+        Ok(self.height(cell)?.into_iter().collect())
     }
 
     /// The ROM's ground height at a cell of the current matrix, or None where the chunk is not

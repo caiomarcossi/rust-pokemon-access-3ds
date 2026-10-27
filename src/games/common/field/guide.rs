@@ -54,6 +54,47 @@ pub const CLIMB: &str = "climb";
 /// slides along once on it (`Ground.slide`, spike 246). The game names no such thing.
 pub const SLIDE: &str = "slide";
 
+/// What a leg along a grind rail is said with, a run of them as one by where it lands the player,
+/// from the end cell they skate onto it at: "3 east, grind the rail 17 east". In Shalour City Gym
+/// the player skated north onto (67, 62) and was carried along the rail onto (67, 52) in about 1.7 s
+/// (x_gym_3, spike 247). The game names no such thing.
+pub const GRIND: &str = "grind the rail";
+
+/// What a run of steps up or down a ramp is said with, as one leg by the way it starts, the key
+/// held all along it (`_ramps`): the rail carries the player round the ramp's curve. In the Tower
+/// of Mastery the player held right round the whole second lap, under three cameras
+/// (x_tower_of_mastery), and where each curve was said as legs of its own, "4 south-east, 9 south,
+/// 5 south-west, 11 west", pressed each leg's key in turn (x_tower_2, spike 248). The game names
+/// no such thing.
+pub const RAMP_UP: &str = "up the ramp";
+pub const RAMP_DOWN: &str = "down the ramp";
+/// How far a run of steps on a ramp may rise or fall and be said as steps, not up or down it: a
+/// stair's step, `chunk.CLIMB`. Along the Tower of Mastery's ramp a step climbs 6 to 10, one across
+/// it 2 at most, and a step off its foot alone was said "down the ramp 1 south-west" (spike 248).
+pub const LEVEL: f64 = 18.0;
+
+/// The legs a player is carried along rather than walks, each with the message a run of them is
+/// said by, where it leaves them (`_spoken`).
+pub const CARRIED: [(&str, &str); 2] = [(CURRENT, "p-current"), (GRIND, "p-grind")];
+
+/// A carried leg's way -> its step: a rail's bends are diagonal (Python's `_CARRIED_STEPS`, the
+/// two tables one after the other).
+fn carried_step(direction: &str) -> Option<Cell> {
+    pathfind::STEPS
+        .iter()
+        .chain(pathfind::DIAGONALS.iter())
+        .find(|(known, _)| *known == direction)
+        .map(|&(_, step)| step)
+}
+
+/// `CARRIED.get(how)`: the message a run of legs carried so is said by, or None for a leg walked.
+fn carried(how: &str) -> Option<&'static str> {
+    CARRIED
+        .iter()
+        .find(|(known, _)| *known == how)
+        .map(|&(_, message)| message)
+}
+
 /// A leg with handholds climbed in place before it, at its first cell, and after it, at the
 /// way's end: "climb 3 up, 6 east", "climb 3 down, 1 west" (spike 245). Up positive.
 ///
@@ -106,6 +147,116 @@ fn holds(count: i64) -> String {
         },
         &[("holds", &count.abs())],
     )
+}
+
+/// `dict(ground.floors(cell)).get(floor)`: the height of the cell's open floor `floor`, or None
+/// where it is not open or has no height there.
+fn height_on(ground: &Ground, cell: Cell, floor: i64) -> Result<Option<f64>> {
+    Ok(ground
+        .floors(cell)?
+        .into_iter()
+        .find(|&(k, _)| k == floor)
+        .and_then(|(_, height)| height))
+}
+
+/// Each step of a path up or down a ramp, with what it is said with, and each run of them by
+/// where along the path it starts, with the way the ramp goes there (`ramped`).
+type Ramped = (
+    HashMap<(Cell, Cell), &'static str>,
+    HashMap<i64, &'static str>,
+);
+
+/// Each step of `path` up or down a ramp, with what it is said with, and each run of them by
+/// where along `path` it starts, with the way the ramp goes there (`_uphill`): a run of steps
+/// between cells walked on a ramp's floor (`Ground.on_ramp`), up the ramp where it ends higher
+/// than it starts and down it where lower, but for one rising or falling no more than `LEVEL`,
+/// across the ramp. A step along the ramp's curve can rise or fall less than one across it, and
+/// a way zig-zags across the ramp's three or four cells as it likes: from the same cell on the
+/// Tower of Mastery's first lap, its run's longest leg said "up the ramp 11 south" to the roof
+/// and "up the ramp 12 east" to the first landing (spike 248).
+fn ramped(ground: &Ground, path: &[Cell]) -> Result<Ramped> {
+    let mut steps: HashMap<(Cell, Cell), &'static str> = HashMap::new();
+    let mut ways: HashMap<i64, &'static str> = HashMap::new();
+    if !ground.raised {
+        return Ok((steps, ways));
+    }
+    let floors = ground.walked(path)?;
+    let mut on = Vec::new();
+    for (&cell, &floor) in path.iter().zip(&floors) {
+        on.push(ground.on_ramp(cell, floor)?);
+    }
+    let mut heights = Vec::new();
+    for (&cell, &floor) in path.iter().zip(&floors) {
+        heights.push(height_on(ground, cell, floor)?.unwrap_or(0.0));
+    }
+    let mut start = 0;
+    while start + 1 < path.len() {
+        let mut end = start;
+        while end + 1 < path.len() && on[end] && on[end + 1] {
+            end += 1;
+        }
+        let rise = heights[end] - heights[start];
+        if rise.abs() > LEVEL {
+            let how = if rise > 0.0 { RAMP_UP } else { RAMP_DOWN };
+            for pair in path[start..=end].windows(2) {
+                steps.insert((pair[0], pair[1]), how);
+            }
+            ways.insert(
+                start as i64,
+                uphill(ground, path[start], floors[start], rise > 0.0)?,
+            );
+        }
+        start = end.max(start + 1);
+    }
+    Ok((steps, ways))
+}
+
+/// The way a ramp goes up from `cell`, walked on `floor`, or down it where not `up`: towards
+/// the cell round it on the same floor that rises, or falls, most for the distance to it.
+fn uphill(ground: &Ground, cell: Cell, floor: i64, up: bool) -> Result<&'static str> {
+    let here = height_on(ground, cell, floor)?.unwrap_or(0.0);
+    let (mut best, mut way) = (f64::NEG_INFINITY, "");
+    // `_CARRIED_STEPS`: the compass's four, then the diagonals.
+    for &(name, (dx, dz)) in pathfind::STEPS.iter().chain(pathfind::DIAGONALS.iter()) {
+        if let Some(there) = height_on(ground, (cell.0 + dx, cell.1 + dz), floor)? {
+            let rise =
+                (if up { there - here } else { here - there }) / py::hypot(dx as f64, dz as f64);
+            if rise > best {
+                (best, way) = (rise, name);
+            }
+        }
+    }
+    Ok(way)
+}
+
+/// `legs` with each run of them up or down a ramp one leg (`RAMP_UP`), said the way the ramp
+/// goes where the run starts (`_ramped`).
+fn ramps(legs: Vec<Leg>, ways: &HashMap<i64, &'static str>) -> Vec<Leg> {
+    let mut out: Vec<Leg> = Vec::new();
+    for leg in legs {
+        let ramp = leg.how == RAMP_UP || leg.how == RAMP_DOWN;
+        match out.last_mut() {
+            Some(last) if ramp && last.how == leg.how => {
+                last.steps += leg.steps;
+                last.end = leg.end;
+            }
+            _ => {
+                let way = if ramp {
+                    ways.get(&(leg.end - leg.steps)).copied()
+                } else {
+                    None
+                };
+                out.push(match way {
+                    Some(way) if !way.is_empty() => Leg {
+                        direction: way,
+                        ..leg
+                    },
+                    _ => leg,
+                });
+            }
+        }
+    }
+    out
 }
 
 /// `legs` with each climb's handholds climbed in place said with the leg that starts where
@@ -786,8 +937,8 @@ fn crossings(
 
 /// Legs as the player's keys walk them: by the compass on the grid, and on a rail or under a
 /// camera behind the player, where the keys work from it, from the way it looks (spikes 105 and
-/// A). A run of legs a current carries the player along is said as one, by where it leaves them
-/// (`CURRENT`). A leg into another place says it (`_crossings`).
+/// A). A run of legs a current or a grind rail carries the player along is said as one, by
+/// where it leaves them (`CARRIED`). A leg into another place says it (`_crossings`).
 fn spoken(legs: &[Leg], r#where: &Field, crossings: &IndexMap<i64, String>) -> Result<String> {
     if let Some(heading) = r#where.heading {
         let angled = match r#where.bearing {
@@ -797,25 +948,21 @@ fn spoken(legs: &[Leg], r#where: &Field, crossings: &IndexMap<i64, String>) -> R
         return pathfind::turned(legs, heading, angled, r#where.turning);
     }
     let mut parts: Vec<String> = Vec::new();
-    let mut drift = (0, 0);
+    let (mut drift, mut how) = ((0, 0), "");
     for leg in legs.iter().map(Some).chain([None]) {
-        if let Some(leg) = leg
-            && leg.how == CURRENT
-        {
-            let (dx, dz) = pathfind::STEPS
-                .iter()
-                .find(|(known, _)| *known == leg.direction)
-                .map(|&(_, step)| step)
-                .ok_or_else(|| Error::key(py::repr(leg.direction)))?;
-            drift = (drift.0 + dx * leg.steps, drift.1 + dz * leg.steps);
-            continue;
-        }
-        if drift != (0, 0) {
-            parts.push(own(
-                "p-current",
-                &[("bearing", &field::bearing((0, 0), drift))],
-            ));
+        if drift != (0, 0) && leg.is_none_or(|leg| leg.how != how) {
+            let message = carried(how).ok_or_else(|| Error::key(py::repr(how)))?;
+            parts.push(own(message, &[("bearing", &field::bearing((0, 0), drift))]));
             drift = (0, 0);
+        }
+        if let Some(leg) = leg
+            && carried(&leg.how).is_some()
+        {
+            let (dx, dz) =
+                carried_step(leg.direction).ok_or_else(|| Error::key(py::repr(leg.direction)))?;
+            drift = (drift.0 + dx * leg.steps, drift.1 + dz * leg.steps);
+            how = &leg.how;
+            continue;
         }
         if let Some(leg) = leg {
             parts.push(match crossings.get(&leg.end) {
@@ -1223,7 +1370,11 @@ impl Guide {
                 climbed.insert((path[i as usize], path[i as usize + 1]));
             }
         }
+        let (ramped, ramp_ways) = self::ramped(&ground, &path)?;
         let how = |cell: Cell, step: Cell| -> Result<String> {
+            if let Some(word) = ramped.get(&(cell, step)) {
+                return Ok(word.to_string());
+            }
             if climbed.contains(&(cell, step)) {
                 return Ok(CLIMB.to_string());
             }
@@ -1232,6 +1383,9 @@ impl Guide {
             }
             if pushed.contains(&(cell, step)) {
                 return Ok(PUSH.to_string());
+            }
+            if ground.grind_rails.steps.contains(&(cell, step)) {
+                return Ok(GRIND.to_string());
             }
             if ground.walls.slides.get(&cell) == Some(&pathfind::towards(cell, step))
                 || ground.slide(cell)?
@@ -1272,7 +1426,13 @@ impl Guide {
             Ok(String::new())
         };
         let key = |cell: Cell, step: Cell| ground.key(cell, step);
-        let legs = self::held(pathfind::legs_with(&path, Some(&how), Some(&key))?, &climbs)?;
+        let legs = self::held(
+            ramps(
+                pathfind::legs_with(&path, Some(&how), Some(&key))?,
+                &ramp_ways,
+            ),
+            &climbs,
+        )?;
         let visit = self.field.visit();
         let along: HashMap<Cell, i64> = path
             .iter()
@@ -1440,19 +1600,20 @@ impl Guide {
             .position(|leg| leg.end > at)
             .expect("a leg ends past the cell") as i64;
         if leg != guidance.borrow().leg {
-            // A current's run of legs was said whole as it began, where it leaves the player.
+            // A current's or a rail's run of legs was said whole as it began, where it leaves the
+            // player.
             let riding = {
                 let guidance = guidance.borrow();
                 py::slice(&guidance.legs, guidance.leg, leg + 1)
                     .iter()
-                    .all(|one| one.how == CURRENT)
+                    .all(|one| carried(&one.how).is_some())
             };
             let (now, rest) = {
                 let mut guidance = guidance.borrow_mut();
                 guidance.leg = leg;
                 guidance.camera = r#where.bearing;
                 let now = guidance.legs[leg as usize].clone();
-                let rest: Vec<Leg> = if now.how == CURRENT {
+                let rest: Vec<Leg> = if carried(&now.how).is_some() {
                     py::slice_from(&guidance.legs, leg + 1).to_vec()
                 } else {
                     Vec::new()
@@ -1460,7 +1621,7 @@ impl Guide {
                 (now, rest)
             };
             let mut run = vec![self::rest(&now, at)];
-            run.extend(rest.into_iter().take_while(|one| one.how == CURRENT));
+            run.extend(rest.into_iter().take_while(|one| one.how == now.how));
             if !riding {
                 let text = spoken(&run, r#where, &guidance.borrow().crossings)?;
                 (self.tell)(&text);
@@ -1707,6 +1868,10 @@ impl Guide {
         if ground.drift(r#where.cell)?.len() > 1 {
             // A current is carrying the player where they cannot turn, and the way is found
             // where it leaves them: on Route 133 a new way was said at every cell of 63 (movie43).
+            return Ok(());
+        }
+        if ground.grind_rails.cells.contains(&r#where.cell) {
+            // So is a grind rail, from end to end, and no search starts on one (`GrindRails.hold`).
             return Ok(());
         }
         let ahead = pathfind::STEPS

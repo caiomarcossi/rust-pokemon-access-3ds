@@ -515,6 +515,7 @@ fn floors_in(offsets: &[i64], section: &dyn Fn(i64) -> Result<Vec<u8>>) -> Resul
         out.push(Floor {
             words,
             heights: levels,
+            ramp: false,
         });
     }
     Ok(out)

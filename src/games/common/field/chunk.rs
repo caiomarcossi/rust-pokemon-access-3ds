@@ -173,6 +173,8 @@ fn way_of(table: &[(i64, &'static str)], kind: i64) -> Option<&'static str> {
 pub struct Floor {
     pub words: Vec<i64>,
     pub heights: Vec<Option<f64>>,
+    /// Whether it is a ramp's, rising along it (`rail.street_floors`, spike 248).
+    pub ramp: bool,
 }
 
 /// One chunk's cell table, at the cells it covers.
