@@ -1,0 +1,137 @@
+### What pa3ds calls the pictures the games draw in place of words, and what it says of them.
+###
+### `texture-fight_button` is the picture drawn with `fight_button.bclim`, by its name less
+### `.bclim` (spike 50, `games.common.pictures`). A texture with no entry in the player's
+### language or in English is said in words made from its name, `fight_button` "fight", and the
+### log says so ("no word in data for texture ..."), which is how this list grows. A game's own
+### `pictures.ftl` is read before this one, so its entry for a texture wins.
+###
+### Each is the word for what the picture does, as a sighted player reads it, and in the
+### player's language: the game names none of them.
+
+## Pictures whose name says what they do, in English or close to it: each is its name's words,
+## less the designer's "button", "btn" and "icon", a move's "waza", a contest's "con", and the
+## size "mini" (the user, 2026-09-16 to 2026-10-09).
+
+texture-bag_button = bolsa
+texture-button = botão
+texture-camera_btn_mini = câmera
+texture-change_box = trocar Box
+texture-clear = limpar
+texture-cleared = concluído
+texture-fight_button = lutar
+texture-icon = ícone
+texture-icon_return = voltar
+texture-mega_button = mega
+texture-ok_button = ok
+texture-pokemon = Pokémon
+texture-pokemon_button = Pokémon
+texture-return_btn = voltar
+texture-return_button = voltar
+texture-return_icon = voltar
+texture-run_button = correr
+texture-start = iniciar
+texture-waza_con_change = trocar
+# Super Training's `gameover_c.bclim` runs two words together.
+texture-gameover = fim do jogo
+
+## Pictures whose name says what they look like, or says it in Japanese, by what they do
+## (Orion, 2026-10-01).
+
+# The AreaNav's map draws `map_big` on the button that makes the map bigger, and `map_small` on
+# the one that takes it back (movie17).
+texture-map_big = ampliar
+texture-map_small = reduzir
+# The Bag's `rireki_icon` ("rireki", history) lists the last items used (Orion, 2026-10-02,
+# movie21).
+texture-rireki_icon = itens recentes
+# The PC Box's three modes, its red tab (a Poké Ball), its blue (two balls and an arrow both ways)
+# and its green (a grid and an arrow): pick a Pokémon up as usual, move one with a press, and
+# select a group (Orion, 2026-10-02, movie22).
+texture-mode01 = modo normal
+texture-mode02 = modo de troca
+texture-mode03 = modo de seleção múltipla
+# The DexNav's crown for an area's Pokémon all caught, by its colour, decoded from the ROM:
+# brown, grey, yellow and a paler grey (Orion, movie28).
+texture-complete0 = coroa de bronze
+texture-complete1 = coroa de prata
+texture-complete2 = coroa de ouro
+texture-complete3 = coroa de platina
+# The round ▶ under each app's logo on the PlayNav, which starts that app, its tutorial the first
+# time (spike 198).
+texture-menu_bg_button = iniciar
+# A message window's backing, which the PlayNav draws behind the menu its Pokémon opens as a touch
+# area, and a tap on it closes the menu (omega_ruby_bottom-screen2).
+texture-msg_win_c = fechar
+# Super Training's button in the lower right of its PlayNav page, which opens the list of training
+# bags; the game names it only in a sentence (Khai, 2026-10-09, omega_ruby_bottom-screen5).
+texture-list_button = sacos de treinamento
+# The button that starts a regimen of Super Training once it is cleared, `stage_icon00_rock` and
+# every `stage_icon` after it: before then the game titles each (Khai's session of 2026-10-09).
+texture-stage_icon = iniciar
+# The battle's move info screen, opened from its move list, draws each move's button as a
+# `waza_pos` picture with no words: no name of its own, said by its place (`picture-move`)
+# (or_move-learning, 2026-10-18).
+texture-waza_pos = {""}
+
+# Pokémon-Amie's decorate screen (`kawaigari_arrange`): `bgbutton_L` and `bgbutton_R` turn its
+# wallpaper in the top bar and its items' page beside the grid, `button_back` closes the items,
+# and `button_exit` leaves the screen (x_pokemon-me and or_pokemon-me, 2026-10-18).
+texture-bgbutton_L = anterior
+texture-bgbutton_R = próximo
+texture-button_back = voltar
+texture-button_exit = sair
+
+## The ◀ and ▶ in the top bar's corners, which turn the PlayNav's pages and the sub-screen
+## tutorial's: both draw `button.bclim`, and only their side of the screen tells them apart
+## (spike 198).
+
+top-bar-previous = anterior
+top-bar-next = próximo
+
+## What pa3ds says of a picture rather than what it is called.
+
+# A button that is only the plate other buttons' words are written on, and a slot of the PC Box
+# holding no Pokémon.
+picture-empty = vazio
+# A battle's button drawn with no words, by its place among those like it in reading order: the
+# move info's four bars, in the move list's order (Khai, 2026-10-18).
+picture-move = movimento { $number }
+# A Box mark set or not, which the game says only by drawing it solid: "●, on". The mark is its
+# sign, which the screen reader names.
+mark-on = { $mark }, ativado
+mark-off = { $mark }, desativado
+# A slot the PC Box's pointer rests on where no words are (spikes 129 and 143): a party's by its
+# number, a box's by its row and column under the box's name, "BOX 1, row 2, column 3", the
+# Battle Box's by its number after its name, "BATTLE BOX 2". While a Pokémon is carried, a slot
+# holding another is said with its name: "BOX 1, row 1, column 2, erza".
+slot-party = equipe { $number }
+slot-grid = linha { $row }, coluna { $column }
+slot-titled-grid = { $title }, linha { $row }, coluna { $column }
+slot-titled-list = { $title } { $number }
+slot-empty = { $slot }, vazio
+slot-held = { $slot }, { $name }
+# A contest's places, drawn as pictures beside each entrant, said after the entrant: "Raiden &
+# Metagross third place" (Orion, 2026-10-09).
+contest-place-one = primeiro lugar
+contest-place-two = segundo lugar
+contest-place-three = terceiro lugar
+contest-place-four = quarto lugar
+# What the DexNav's red mark says beside a level above the area's, a first move that is an egg
+# move, and the hidden ability, as the guides read it (docs/plans/dexnav.md).
+dexnav-higher-level = nível superior
+dexnav-egg-move = movimento do ovo
+dexnav-hidden-ability = habilidade oculta
+# Said after a Pokémon the DexNav shows in colour, caught, where the rest are its silhouettes:
+# only the caught are said so (Orion, 2026-10-06).
+dexnav-caught = capturado
+# Potential's stars as words, three in a row filled or not.
+dexnav-stars = { $count ->
+    [one] { $count } estrela
+   *[other] { $count } estrelas
+}
+# A contest move's hearts as words, those hidden counted as none: "Appeal 4 hearts".
+contest-hearts = { $count ->
+    [one] { $count } coração
+   *[other] { $count } corações
+}

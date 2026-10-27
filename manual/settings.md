@@ -21,7 +21,7 @@ they take effect the next time pa3ds starts.
 | `pauses` | `false` | Pause between pieces of screen text said together, such as a label and what follows it. |
 | `interrupt` | `false` | Cut off speech when a menu's cursor moves, instead of queueing. pa3ds's own keys always cut off speech. |
 | `unfocused` | `false` | Keep saying what the game shows while another window is in front. |
-| `language` | `""` | The language of pa3ds's own words: `en`, `fr`, `de`, `es`, `it`, `ja`, `ko`, `zh-CN` or `zh-TW`. Empty follows your save. See [Languages](languages.md). |
+| `language` | `""` | The language of pa3ds's own words: `en`, `fr`, `de`, `es`, `it`, `ja`, `ko`, `pt-BR`, `zh-CN` or `zh-TW`. Empty follows your save. See [Languages](languages.md). |
 | `descriptions` | `false` | Describe the scenes the game shows without words, said as "Narration:". |
 | **`[pa3ds.audio]`** | | How loud pa3ds's own sounds are, beside the game's. Each follows Azahar's volume: 1 as loud as the game, 0.5 half as loud, 1.5 louder, 0 none. |
 | `tones` | `1.0` | The short tone as the map's cursor or touch mode moves: higher the further up, panned the further right. |

@@ -157,4 +157,5 @@ fn test_the_languages_are_the_games_own_first_then_each_by_its_own_name() {
     assert!(found.contains(&pair("en", "English")));
     assert!(found.contains(&pair("fr", "Français")));
     assert!(found.contains(&pair("zh-TW", "繁體中文")));
+    assert!(found.contains(&pair("pt-BR", "Português do Brasil")));
 }

@@ -11,6 +11,10 @@ A game translated by fans may keep the language it replaced in its save: the Chi
 says Japanese. pa3ds still reads the game's words right, but would say its own in Japanese. Set
 `language = "zh-CN"` and pa3ds says its own words in Chinese.
 
+For a Brazilian Portuguese fan translation that replaces English, set `language = "pt-BR"`.
+The game text still comes from the translated ROM, while pa3ds's own navigation, interface and
+scene-description words come from its Brazilian Portuguese data folders.
+
 ## pa3ds's own words
 
 They are in the `data` folder beside pa3ds: every game's in `data\common`, and each game's own in

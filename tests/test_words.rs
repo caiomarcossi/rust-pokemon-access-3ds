@@ -1,7 +1,7 @@
 //! pa3ds's own words: a message in the player's language, then English's, a game's before every
 //! game's (ADR-0040).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -199,6 +199,69 @@ fn test_no_language_has_a_message_english_lacks() {
     }
 }
 
+/// Brazilian Portuguese is a complete translation, not a folder that silently falls back to
+/// English. Every English file and message is present, and every Fluent value, function and
+/// selector remains attached to the same message.
+#[test]
+fn test_brazilian_portuguese_matches_every_english_message_and_placeable() {
+    const PORTUGUESE: &str = "pt-BR";
+    let data = data_path().unwrap();
+    let token =
+        Regex::new(r"\{[^{}\n]*\}|\{\s*\$[A-Za-z][A-Za-z0-9_-]*\s*->|\*?\[[A-Za-z0-9_-]+\]")
+            .unwrap();
+    for folder in folders(&data) {
+        let english = folder.join(ENGLISH);
+        let portuguese = folder.join(PORTUGUESE);
+        let english_files = file_names(&english);
+        assert_eq!(
+            file_names(&portuguese),
+            english_files,
+            "{} does not mirror English's files",
+            portuguese.display()
+        );
+        for file in english_files {
+            let english_path = english.join(&file);
+            let portuguese_path = portuguese.join(&file);
+            let english_text = fs::read_to_string(&english_path).unwrap();
+            let portuguese_text = fs::read_to_string(&portuguese_path).unwrap();
+            assert!(
+                !portuguese_text.contains("__PA3DS") && !portuguese_text.contains("__ZXQ"),
+                "{} contains a translation-work marker",
+                portuguese_path.display()
+            );
+            let english_messages = message_blocks(&english_text);
+            let portuguese_messages = message_blocks(&portuguese_text);
+            assert_eq!(
+                portuguese_messages.keys().collect::<Vec<_>>(),
+                english_messages.keys().collect::<Vec<_>>(),
+                "{} does not contain every English message",
+                portuguese_path.display()
+            );
+            for (id, english_block) in english_messages {
+                let portuguese_block = &portuguese_messages[&id];
+                let tokens = |block: &str| {
+                    token
+                        .find_iter(block)
+                        .map(|found| found.as_str().to_string())
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(
+                    tokens(portuguese_block),
+                    tokens(&english_block),
+                    "{} changes Fluent syntax in {id}",
+                    portuguese_path.display()
+                );
+            }
+        }
+        assert_eq!(
+            words(PORTUGUESE, Some(&folder)).language,
+            PORTUGUESE,
+            "{}",
+            folder.display()
+        );
+    }
+}
+
 /// A string in the code shaped as an id, beginning as some English message does, is one:
 /// `picture-empty`. Said as its id, a message the data lacks would go unnoticed.
 #[test]
@@ -268,6 +331,36 @@ fn folders(at: &Path) -> Vec<PathBuf> {
         .filter(|path| path.is_dir())
         .collect();
     out.sort();
+    out
+}
+
+fn file_names(at: &Path) -> Vec<String> {
+    let mut out: Vec<String> = fs::read_dir(at)
+        .into_iter()
+        .flatten()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "ftl"))
+        .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+    out.sort();
+    out
+}
+
+fn message_blocks(text: &str) -> BTreeMap<String, String> {
+    let start = Regex::new(r"(?m)^([A-Za-z0-9][A-Za-z0-9_-]*)\s*=").unwrap();
+    let found: Vec<_> = start.captures_iter(text).collect();
+    let mut out = BTreeMap::new();
+    for (index, captures) in found.iter().enumerate() {
+        let whole = captures.get(0).unwrap();
+        let end = found
+            .get(index + 1)
+            .map(|next| next.get(0).unwrap().start())
+            .unwrap_or(text.len());
+        out.insert(
+            captures[1].to_string(),
+            text[whole.start()..end].to_string(),
+        );
+    }
     out
 }
 
