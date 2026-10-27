@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Thanks
+
+- [@cat123go](https://github.com/cat123go) translated pa3ds's words into Simplified Chinese: the
+  mod window and its settings, and the scene descriptions of Omega Ruby, Alpha Sapphire, X and Y
+  (#28). The lines of theirs that read better than ours are in the Chinese this version ships.
+
 ## [0.8.0] - 2026-10-26
 
 ### Added
