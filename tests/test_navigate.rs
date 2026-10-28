@@ -106,6 +106,8 @@ struct FakeField {
     floors: RefCell<IndexMap<Cell, (Option<f64>, Option<f64>)>>,
     /// A cell and one of its floors, open there with no height: its mesh over none of it.
     bare: RefCell<HashSet<(Cell, usize)>>,
+    /// A cell and one of its floors that is water there, as the pond under a bridge is.
+    wet: RefCell<HashSet<(Cell, usize)>>,
     /// Whether the upper floor is a ramp's, and the streets floors of their own.
     ramp: Slot<bool>,
     /// The player's height on a stacked ground.
@@ -149,6 +151,7 @@ impl FakeField {
             surfaces: RefCell::new(IndexMap::new()),
             floors: RefCell::new(IndexMap::new()),
             bare: RefCell::new(HashSet::new()),
+            wet: RefCell::new(HashSet::new()),
             ramp: Slot::new(false),
             level: Slot::new(None),
             ladders: RefCell::new(IndexMap::new()),
@@ -250,7 +253,11 @@ impl FieldSource for FakeField {
                     words: cells
                         .iter()
                         .map(|cell| {
-                            if one(cell, k).is_some() || self.bare.borrow().contains(&(*cell, k)) {
+                            if self.wet.borrow().contains(&(*cell, k)) {
+                                SEA
+                            } else if one(cell, k).is_some()
+                                || self.bare.borrow().contains(&(*cell, k))
+                            {
                                 0
                             } else {
                                 BLOCKED
@@ -261,14 +268,14 @@ impl FieldSource for FakeField {
                     ramp: self.ramp.get() && k == 1,
                 })
                 .collect();
-            let words: Vec<i64> = cells
-                .iter()
-                .map(|cell| {
-                    if floors.contains_key(cell) {
-                        0
-                    } else {
-                        BLOCKED
-                    }
+            // The reader's: each cell on the first floor open there (`mapblock.flat`).
+            let words: Vec<i64> = (0..(CHUNK * CHUNK) as usize)
+                .map(|i| {
+                    stack
+                        .iter()
+                        .map(|floor| floor.words[i])
+                        .find(|word| word & BLOCKED == 0)
+                        .unwrap_or(BLOCKED)
                 })
                 .collect();
             let mut ground = Ground::of(
@@ -3565,6 +3572,69 @@ fn test_a_way_does_not_drop_off_a_bridge_through_a_floor_with_no_height() {
     rig.backend.spoken.borrow_mut().clear();
     rig.press(PATHFIND);
     assert_eq!(said(&rig.backend), ["3 east, then can't continue"]);
+}
+
+/// Route 120's pond: water at -63 on the ground's floor from x 97 to 103 and z 174 to 176, a
+/// bridge's deck at 0 over its middle row, and land at 0 at both ends of the bridge.
+fn pond_under_a_bridge(rig: &Rig) {
+    let mut floors = rig.field.floors.borrow_mut();
+    for x in 97..104 {
+        for z in [174, 175, 176] {
+            floors.insert((x, z), (Some(-63.0), (z == 175).then_some(0.0)));
+            rig.field.wet.borrow_mut().insert(((x, z), 0));
+        }
+    }
+    for x in (94..97).chain(104..108) {
+        floors.insert((x, 175), (Some(0.0), None));
+    }
+}
+
+/// or_route-120 (Khai, 2026-10-28): Route 120's bridges are decks at 0 over a pond at -63, and a
+/// stacked ground read each cell's water off its ground, the pond: P on foot towards Fortree City
+/// stopped at a bridge, "then can't continue", and Shift and P crossed with Surf.
+#[test]
+fn test_a_bridge_over_water_is_walked_on_foot_and_never_surfed() {
+    let ranger = Interactable {
+        source: 0x08D269E8,
+        move_model: true,
+        height: Some(0.0),
+        ..Interactable::new("people", "person", (107, 175))
+    };
+    let mut rig = navigator(on(Field {
+        interactables: vec![ranger],
+        ..Field::new(0x31, (94, 175))
+    }));
+    pond_under_a_bridge(&rig);
+    rig.field.level.set(Some(0.0));
+    rig.press(CATEGORY_NEXT);
+    rig.backend.spoken.borrow_mut().clear();
+    rig.press(PATHFIND);
+    rig.press(PATHFIND_HM);
+    walk_to(&rig, (100, 175));
+    rig.press(PATHFIND);
+    assert_eq!(said(&rig.backend), ["12 east", "12 east", "6 east"]);
+}
+
+/// Under Route 120's bridges the pond runs on at -63, and a player surfing there keeps to it,
+/// under the deck at 0 (or_route-120).
+#[test]
+fn test_a_player_surfing_under_a_bridge_stays_on_the_water() {
+    let ball = Interactable {
+        source: 0x08D269E8,
+        move_model: true,
+        height: Some(-63.0),
+        ..Interactable::new("items", "item ball", (100, 177))
+    };
+    let mut rig = navigator(on(Field {
+        interactables: vec![ball],
+        ..Field::new(0x31, (97, 174))
+    }));
+    pond_under_a_bridge(&rig);
+    rig.field.level.set(Some(-63.0));
+    rig.press(CATEGORY_NEXT);
+    rig.backend.spoken.borrow_mut().clear();
+    rig.press(PATHFIND);
+    assert_eq!(said(&rig.backend), ["3 east, 2 south"]);
 }
 
 /// Spike 193: outside Sky Pillar the sand runs on under the stair from the terrace at 324 down to
