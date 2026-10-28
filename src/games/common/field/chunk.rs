@@ -225,11 +225,16 @@ impl Chunk {
     /// raised it in each of the readers below.
     #[track_caller]
     pub fn word(&self, cell: (i64, i64)) -> Result<i64> {
+        self.word_in(&self.words, cell)
+    }
+
+    #[track_caller]
+    fn word_in(&self, words: &[i64], cell: (i64, i64)) -> Result<i64> {
         let (x, z) = (cell.0 - self.origin.0, cell.1 - self.origin.1);
-        let len = self.words.len() as i64;
+        let len = words.len() as i64;
         let at = z * CHUNK + x;
         let at = if at < 0 { at + len } else { at };
-        match usize::try_from(at).ok().and_then(|at| self.words.get(at)) {
+        match usize::try_from(at).ok().and_then(|at| words.get(at)) {
             Some(&word) => Ok(word),
             None => Err(Error::index("tuple index out of range")),
         }
@@ -239,8 +244,17 @@ impl Chunk {
         Ok(self.word(cell)? & BLOCKED == 0)
     }
 
-    pub fn water(&self, cell: (i64, i64)) -> Result<bool> {
-        Ok(self.word(cell)? & WATER != 0)
+    /// Whether the cell is water on `floor`, or in `words` for `ANY_FLOOR`.
+    pub fn water(&self, cell: (i64, i64), floor: i64) -> Result<bool> {
+        let words = if floor == ANY_FLOOR {
+            &self.words
+        } else {
+            match usize::try_from(floor).ok().and_then(|k| self.floors.get(k)) {
+                Some(floor) => &floor.words,
+                None => return Err(Error::index("tuple index out of range")),
+            }
+        };
+        Ok(self.word_in(words, cell)? & WATER != 0)
     }
 
     /// Which way the cell goes down, a ledge jumped or a slope walked, or None where it is

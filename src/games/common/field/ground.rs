@@ -760,8 +760,9 @@ impl Ground {
         self.open_at(cell, None)
     }
 
-    /// Whether the player can stand in the cell: on a stacked ground, on any floor of it, or on
-    /// its floor at `height` where one is given (`floor_at`); off one, within `2 * CLIMB` of
+    /// Whether the player can stand in the cell: on a stacked ground, on any floor of it
+    /// nobody stands on, and that is no water unless the ground is one to `surf`, or on its
+    /// floor at `height` where one is given (`floor_at`); off one, within `2 * CLIMB` of
     /// `height` where one is given and the cell's is known (`ground_height`), so a thing at the
     /// foot of a cliff is not walked up to from its top. Never in a vine's cell at its height,
     /// and in any where no height is given, which the search grabs it in (`vines`).
@@ -782,17 +783,17 @@ impl Ground {
             let Some(aim) = self.floor_at(cell, height)? else {
                 return Ok(false);
             };
-            let mut all = true;
             for &(k, _) in &floors {
-                if (aim == ANY_FLOOR || aim == k) && !self.stands(cell, k)? {
-                    all = false;
-                    break;
+                if (aim == ANY_FLOOR || aim == k)
+                    && !self.stands(cell, k)?
+                    && (self.surf || !self.water(cell, Some(k))?)
+                {
+                    return Ok(true);
                 }
             }
-            if all {
-                return Ok(false);
-            }
-        } else if self.stands(cell, ANY_FLOOR)? {
+            return Ok(false);
+        }
+        if self.stands(cell, ANY_FLOOR)? {
             return Ok(false);
         } else if let (Some(height), Some(ground_height)) = (height, &self.ground_height)
             && let Some(here) = ground_height(cell)?
@@ -810,7 +811,7 @@ impl Ground {
             || self.walls.slides.contains_key(&cell)
             || self.grind_rails.cells.contains(&cell)
             || (height.is_none() && self.vines.cells.contains(&cell)))
-            && (self.surf || !chunk.water(cell)?))
+            && (self.surf || !chunk.water(cell, ANY_FLOOR)?))
     }
 
     /// On a stacked ground, each floor open in the cell, by its place among its chunk's floors,
@@ -963,6 +964,9 @@ impl Ground {
         let mut best: Option<i64> = None;
         let mut off = (f64::INFINITY, true);
         for (k, height) in there {
+            if !self.surf && self.water(step, Some(k))? {
+                continue;
+            }
             let away;
             if let (Some(end), Some(height)) = (end, height) {
                 away = (height - end).abs();
@@ -1045,15 +1049,24 @@ impl Ground {
         }
     }
 
-    /// Whether the cell is water, as far as a loaded chunk or the ROM's says.
-    pub fn water(&self, cell: Cell) -> Result<bool> {
+    /// Whether the cell is water, as far as a loaded chunk or the ROM's says: on a stacked
+    /// ground, on `floor`, or where none is given on its floor nearest the player's height
+    /// (`level`). Route 120's bridges are decks at 0 over a pond at -63, and read off the
+    /// ground every deck was the pond's: P on foot stopped at each, and Shift and P crossed
+    /// them with Surf (or_route-120).
+    pub fn water(&self, cell: Cell, floor: Option<i64>) -> Result<bool> {
         if self.corridor.is_some() {
             return Ok(false);
         }
-        match self.chunk(cell)? {
-            Some(chunk) => chunk.water(cell),
-            None => Ok(false),
-        }
+        let Some(chunk) = self.chunk(cell)? else {
+            return Ok(false);
+        };
+        let floor = match floor {
+            Some(floor) => floor,
+            None if !chunk.floors.is_empty() => self.floor(cell, self.level)?,
+            None => ANY_FLOOR,
+        };
+        chunk.water(cell, floor)
     }
 
     /// Whether the cell is shore the ground jumps over, getting on the water or off it: only
@@ -1142,7 +1155,7 @@ impl Ground {
             return Ok(2 * pathfind::TURN);
         }
         if self.cleared.contains_key(&step)
-            || (self.water(step)? && !self.water(cell)?)
+            || (self.water(step, None)? && !self.water(cell, None)?)
             || (self.mounts.contains(&step) && !self.mounts.contains(&cell))
             || self.smashed.contains(&step)
         {

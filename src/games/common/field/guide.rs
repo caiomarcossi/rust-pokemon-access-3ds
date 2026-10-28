@@ -1388,7 +1388,13 @@ impl Guide {
             return Ok(());
         }
         // A player already surfing needs no telling that the water is crossed with Surf.
-        let surfing = ground.water(r#where.cell)?;
+        let surfing = ground.water(r#where.cell, None)?;
+        let mut wet: HashSet<Cell> = HashSet::new();
+        for (&cell, floor) in path.iter().zip(ground.walked(&path)?) {
+            if ground.water(cell, Some(floor))? {
+                wet.insert(cell);
+            }
+        }
         let mut pushed: HashSet<(Cell, Cell)> = HashSet::new();
         for i in ground.pushes(&path)? {
             pushed.insert((path[i as usize - 1], path[i as usize]));
@@ -1469,7 +1475,7 @@ impl Guide {
                     .cloned()
                     .ok_or_else(|| Error::key(clear.to_string()));
             }
-            if !surfing && ground.water(lands(cell, step)?)? {
+            if !surfing && wet.contains(&lands(cell, step)?) {
                 return self
                     .moves
                     .get(&SURF)
@@ -1978,7 +1984,7 @@ impl Guide {
     /// Pokémon they ride, which sets the bike's bits too (`Ground.riding`, spike 238).
     pub fn ground(&self, r#where: &Field, hm: bool) -> Result<Ground> {
         let mut ground = self.field.ground(r#where)?;
-        ground.surf = hm || ground.water(r#where.cell)?;
+        ground.surf = hm || ground.water(r#where.cell, None)?;
         ground.hm = hm;
         ground.bike = r#where.on_bike && !ground.riding;
         Ok(ground)
