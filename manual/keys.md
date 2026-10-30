@@ -11,10 +11,16 @@ berries, ash, bike, riding, climbing, currents and pokémon, and while soaring, 
 spots. A category with nothing in it is skipped. Each thing is said with where it is from you:
 "door, 1 of 3, 3 east 2 north". A thing more than two squares' height above or below you says how
 far, in the game's units, 18 to a square: "item ball, 1 north, 90 below". North is the way up
-walks you: where the camera is turned, as in Parfum Palace's garden in X or on the Battle Resort's
-beach, the directions turn with it. Where the camera stays behind you and left, right and down
-turn you, as in X's Glittering Cave, things are said from the way you face, "9 ahead 8 left", and
-`P` says the turns, "turn left, 5 forward".
+walks you: where the camera is turned, as in Parfum Palace's garden in X, round Prism Tower in
+Lumiose City or on the Battle Resort's beach, the directions turn with it. Where the camera stays
+behind you and left, right and down turn you, as in X's Glittering Cave, things are said from the
+way you face, "9 ahead 8 left", and `P` says the turns, "turn left, 5 forward". Each time the way
+up walks you turns a quarter, pa3ds plays a short tone: high for north, low for south, in your
+right ear for east and your left for west.
+
+Exits side by side into the same place are one exit. On Lumiose City's streets, where a street
+ends on a plaza you walk freely, the exits list that end as "open ground": walk onto the plaza and
+its own exits are listed.
 
 The list has three **modes**, and the apostrophe steps through them. During a battle or a scene
 the map's keys say "no map", and the thing you had chosen is kept for when the map comes back.
@@ -110,6 +116,23 @@ only goes down, so `P` takes the way round to go back up.
 the way to a rail's end, then the ride as one step of the way, "3 east, grind the rail 17 east":
 skate onto the rail with the circle pad and it carries you to the far end. The interactables list
 the Gym leader's spot, where Korrina comes out to meet you.
+
+**Vines.** In Coumarine Gym, in X and Y, you climb the tree by its vines: face a vine and press A,
+and it carries you up or down a level, or swings you across to the next platform. The climbing
+category lists each end of a vine as "vine up", "vine down" or "swinging vine". `P` says the way to
+a vine and the ride as one step of the way, "2 east, face north, climb the vine up": walk the
+steps, press the way it says to face the vine, then press A. Where the way rides more vines, `P`
+says it up to the first and how many more, "then 16 more vines"; press `P` again once you land.
+From the top, the exits list the way down, which drops you to the ground.
+
+**Prism Tower's Gym.** In Lumiose City, in X and Y, the exits list the lift in the lobby's
+middle as "elevator": stand on it and walk north into its door. In each quiz room you arrive on
+the elevator back down, and the interactables list the quiz panel three steps north of it: step
+onto it to hear Bonnie's question, and again to hear it again. The three trainers at the back
+stand in booths numbered 1, 2 and 3 from west to east. Talk to the trainer whose number is your
+answer and battle them; a wrong answer means battling another one, and after the right one the
+game takes you up to the next room. With the `descriptions` setting on, pa3ds describes the
+picture each question shows.
 
 **Ramps.** In the Tower of Mastery, in X and Y, a ramp winds up round the tower twice, past the
 stairs on each landing to the top. `P` says each stretch of it as one step of the way, "8 west,

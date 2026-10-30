@@ -176,9 +176,9 @@ pub(crate) fn game() -> Game {
     )
 }
 
-/// `field_reader`'s keyword arguments that are the ROM's words, chunks and `shared` furniture,
-/// and the shipped table's `tiles` and `furniture_words`, each as the Python defaults it: set what
-/// differs with `..Given::default()`. The rest are the game's fields, given as a
+/// `field_reader`'s keyword arguments that are the ROM's words, chunks and `shared` and `natives`
+/// furniture, and the shipped table's `tiles` and `furniture_words`, each as the Python defaults
+/// it: set what differs with `..Given::default()`. The rest are the game's fields, given as a
 /// `Game { .., ..game() }`.
 #[derive(Default)]
 pub(crate) struct Given {
@@ -186,6 +186,7 @@ pub(crate) struct Given {
     pub tiles: Option<IndexMap<i64, String>>,
     pub furniture_words: Option<IndexMap<i64, String>>,
     pub shared: IndexMap<(i64, i64), i64>,
+    pub natives: IndexMap<(i64, i64), (i64, i64)>,
     pub streets: Option<rail::Streets>,
     pub outdoors: HashSet<i64>,
     pub street_records: rail::Records,
@@ -202,14 +203,15 @@ pub(crate) struct Given {
     pub extras_hidden_items: Option<&'static str>,
 }
 
-/// A field reader of `game`, the ROM's words, chunks and `shared` furniture given, the shipped
-/// table's `tiles` and `furniture_words`, and `[pa3ds.extras] hidden_items`.
+/// A field reader of `game`, the ROM's words, chunks and `shared` and `natives` furniture given,
+/// the shipped table's `tiles` and `furniture_words`, and `[pa3ds.extras] hidden_items`.
 pub(crate) fn field_reader(memory: Rc<FakeMemory>, given: Given, game: Game) -> Rc<FieldReader> {
     let Given {
         words,
         tiles,
         furniture_words,
         shared,
+        natives,
         streets,
         outdoors,
         street_records,
@@ -240,6 +242,7 @@ pub(crate) fn field_reader(memory: Rc<FakeMemory>, given: Given, game: Game) -> 
             }) as Rc<dyn ChunkSource>
         }),
         shared,
+        natives,
         ..GameText::default()
     };
     FieldReader::new(
@@ -1057,6 +1060,64 @@ fn test_a_ladder_a_teleporter_and_an_entrance_are_what_the_games_table_of_kinds_
     Ok(())
 }
 
+/// Spike 251: the Tower of Mastery's stairs up are three warps side by side into zone 0xb7, and
+/// three more on the same cells into 0xb9, both the Tower, and were listed six times. Lumiose's
+/// mats out of its Pokémon Centers are three too. One kind into one zone is one exit over the
+/// cells it covers, and one on the same cells into the same place is said and walked to alike.
+/// Lilycove's way into the hideout is Team Aqua's and Team Magma's on the same cells, and Omega
+/// Ruby takes the second: into another place, both stay.
+#[test]
+fn test_warps_side_by_side_into_one_zone_are_one_exit_and_one_place_on_a_cell_once() -> Result<()> {
+    let town = Town::new();
+    let data = zone_file(&ZoneSpec {
+        warps: &[
+            (BEDROOM, 0x0500, 94, 171, None, None),
+            (BEDROOM, 0x0500, 95, 171, None, None),
+            (BEDROOM, 0x0500, 96, 171, None, None),
+            (HOUSE, 0x0500, 94, 171, None, None),
+            (HOUSE, 0x0500, 95, 171, None, None),
+            (HOUSE, 0x0500, 96, 171, None, None),
+            (BEDROOM, 0x0500, 98, 171, None, None),
+        ],
+        info: &town_info(),
+        ..ZoneSpec::default()
+    });
+    town.memory.write(FILE, &data);
+    town.memory
+        .u32(HOLDER + 8, &[0x11 | (data.len() as i64) << 8]);
+    for zone in [BEDROOM, HOUSE] {
+        town.memory.u16(TABLE + zone * INFO_SIZE + INFO_NAME, 170);
+    }
+    let exits = |town: &Town| -> Result<Vec<(Option<i64>, (i64, i64), (i64, i64))>> {
+        let mut out: Vec<(Option<i64>, (i64, i64), (i64, i64))> = town
+            .r#where()?
+            .of("exits")
+            .into_iter()
+            .filter(|item| item.zone == Some(BEDROOM) || item.zone == Some(HOUSE))
+            .map(|item| (item.zone, item.cell, item.size))
+            .collect();
+        out.sort();
+        Ok(out)
+    };
+    assert_eq!(
+        exits(&town)?,
+        [
+            (Some(BEDROOM), (94, 171), (3, 1)),
+            (Some(BEDROOM), (98, 171), (1, 1)),
+        ]
+    );
+    town.memory.u16(TABLE + HOUSE * INFO_SIZE + INFO_NAME, 171);
+    assert_eq!(
+        exits(&town)?,
+        [
+            (Some(HOUSE), (94, 171), (3, 1)),
+            (Some(BEDROOM), (94, 171), (3, 1)),
+            (Some(BEDROOM), (98, 171), (1, 1)),
+        ]
+    );
+    Ok(())
+}
+
 /// A warp's high byte is what it is and its low byte the way it is walked into, as a stair's
 /// is: Aquacorde's houses' mats out face east and west (0x0202, 0x0203) and Lumiose's doors
 /// north, east, south and west (0x0301, 0x0302, 0x0300, 0x0303), and every one but the first
@@ -1801,6 +1862,61 @@ fn test_a_conveyor_belt_is_ridden_the_way_it_runs_and_walked_round_against_it() 
     Ok(())
 }
 
+/// Dewford Gym's switches and belts were in no list (a user, 2026-10-26). Listed, P's way down
+/// its corridor still walks over both, as before, where another listed trigger is stepped
+/// round: its switches only light the side passages (spike 132).
+#[test]
+fn test_dewford_gyms_switches_and_belts_are_listed_and_walked_over() -> Result<()> {
+    let mut town = Town::new();
+    town.memory.write(
+        FILE,
+        &zone_file(&ZoneSpec {
+            info: &town_info(),
+            triggers: &[(0x9, 90, 175, 3, None, None), (0x5, 91, 177, 1, None, None)],
+            ..ZoneSpec::default()
+        }),
+    );
+    let owned = |(category, kind): (&str, &str)| (category.to_string(), kind.to_string(), None);
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given::default(),
+        Game {
+            belts: IndexMap::from([((TOWN, 0x9), pathfind::SOUTH)]),
+            triggers: IndexMap::from([
+                ((TOWN, 0x9), owned(oras::BELT)),
+                ((TOWN, 0x5), owned(oras::SWITCH)),
+            ]),
+            crossed: HashSet::from([(TOWN, 0x5)]),
+            ..game()
+        },
+    );
+    let r#where = town.r#where()?;
+    let mut kinds: Vec<String> = r#where
+        .of("signs")
+        .iter()
+        .filter(|item| item.code == 0x5 || item.code == 0x9)
+        .map(|item| item.kind.clone())
+        .collect();
+    kinds.sort();
+    assert_eq!(kinds, ["conveyor belt", "switch"]);
+    let ground = town.reader.ground(&r#where)?;
+    let r#box = ground.r#box((91, 174), [(91, 179)])?;
+    let ledge = |cell| ground.ledge(cell);
+    let down = pathfind::find(
+        (91, 174),
+        &goals_of(&[((91, 179), None)]),
+        &|cell| ground.passable(cell),
+        r#box,
+        &pathfind::Options {
+            ledge: Some(&ledge),
+            ..pathfind::Options::default()
+        },
+    )?;
+    let down = down.expect("a way down");
+    assert_eq!(pathfind::spoken(&pathfind::legs(&down, None)?), "5 south");
+    Ok(())
+}
+
 /// Mauville Gym (spike 146): a beam between two posts is a move model at its middle, which the
 /// list called a person. Facing south the beam runs east and west; a switch turns it to face east
 /// and run north and south, and it stands in all three of its cells either way.
@@ -2117,6 +2233,33 @@ fn test_a_gyms_switches_and_passages_are_listed_and_walked_round_unless_the_goal
         &pathfind::Options::default(),
     )?;
     assert!(path.is_some_and(|path| path[path.len() - 1] == (91, 175)));
+    Ok(())
+}
+
+/// Spike 252: each of Prism Tower's quiz rooms keeps a record of three by three in the walls of
+/// the map's corner at (0, 0), listed as a sign 24 north; a sign in a wall beside the floor
+/// stays.
+#[test]
+fn test_furniture_with_nothing_beside_it_to_stand_on_is_not_listed() -> Result<()> {
+    let mut town = Town::new();
+    let walls: Vec<(i64, i64)> = (0..5).flat_map(|x| (0..5).map(move |z| (x, z))).collect();
+    town.block(ROUTE_BLOCK, ROUTE_CHUNK, (0, 0), &walls);
+    let data = zone_file(&ZoneSpec {
+        sized: &[(0x1, 0, 0, 3, 3), (0x2, 4, 4, 1, 1)],
+        info: &town_info(),
+        ..ZoneSpec::default()
+    });
+    town.memory.write(FILE, &data);
+    town.memory
+        .u32(HOLDER + 8, &[0x11 | (data.len() as i64) << 8]);
+    let codes: Vec<i64> = town
+        .r#where()?
+        .of("signs")
+        .iter()
+        .map(|item| item.code)
+        .filter(|&code| code == 0x1 || code == 0x2)
+        .collect();
+    assert_eq!(codes, [0x2]);
     Ok(())
 }
 
@@ -2759,33 +2902,80 @@ fn test_a_stair_is_where_the_ground_meets_a_floor_over_it() {
 
 /// Khai, playing x_tower_of_mastery's save (spike 248): every street of the Tower of Mastery
 /// is measured east, and its lane's key said "east" for a step north up the ramp, "8 west, 16
-/// east" for a way west and then north. Where the streets are floors of their own a step is
-/// said by the way it goes, as everywhere off a street.
+/// east" for a way west and then north. Where the streets are floors of their own a street's
+/// keys are the ways nearest its own.
 #[test]
-fn test_a_step_up_a_ramp_is_said_by_the_way_it_goes_not_its_streets_key() -> Result<()> {
-    let lanes: IndexMap<(i64, i64), IndexMap<(i64, i64), &'static str>> = (0..5)
-        .map(|z| {
-            (
-                (0, z),
-                IndexMap::from([((0, -1), "east"), ((0, 1), "east")]),
-            )
-        })
+fn test_a_step_up_a_street_is_said_by_the_way_it_runs_not_the_way_it_is_measured() -> Result<()> {
+    let ground = raised_lanes(&[(1, (9.0, 81.0)), (2, (9.0, 9.0))], &[(1, 2, 4)])?;
+    let path = ground.find((0, 4), &goals_of(&[((0, 0), None)]), "", None, false, None)?;
+    let path = path.expect("a way");
+    let key = |cell, step| ground.key(cell, step);
+    assert_eq!(
+        pathfind::spoken(&pathfind::legs_with(&path, None, Some(&key), None)?),
+        "4 north"
+    );
+    Ok(())
+}
+
+/// A ground whose streets are floors of their own, each line (start, end, cells along) one
+/// cell wide and measured east, as all the Tower of Mastery's are, laid by `Rails.lanes`.
+fn raised_lanes(points: &[(i64, (f64, f64))], lines: &[(i64, i64, i64)]) -> Result<Ground> {
+    let network = rail::Network {
+        lines: lines
+            .iter()
+            .enumerate()
+            .map(|(i, &(start, end, along))| {
+                let id = 0x8000 | i as i64;
+                (
+                    id,
+                    rail::Line {
+                        way: rail::WAY_EAST,
+                        ..rail::Line::new(id, start, end, along, 1, vec![0x20; along as usize + 1])
+                    },
+                )
+            })
+            .collect(),
+        places: points.iter().copied().collect(),
+        cameras: 2,
+        ..Default::default()
+    };
+    let rails = rail::Rails::new(
+        FakeMemory::new(),
+        Some(Rc::new(move |_files: &[i64]| Ok(network.clone()))),
+        rail::Records::default(),
+        camera::ORAS,
+    );
+    Ok(Ground {
+        lanes: rails.lanes(&[1], true, 0)?,
+        raised: true,
+        ..Ground::default()
+    })
+}
+
+/// x_gym_4 (spike 250): Coumarine Gym's lowest platform curves round the tree, and holding right
+/// alone walked the player south-east, east and north-east along it from (56.2, 74.2) to (64.3,
+/// 73.7), where P said each bend as a leg of its own, "2 south-east, 2 north-east".
+#[test]
+fn test_a_curving_street_one_key_walks_is_one_leg() -> Result<()> {
+    let ground = raised_lanes(
+        &[
+            (1, (9.0, 45.0)),
+            (2, (81.0, 81.0)),
+            (3, (189.0, 81.0)),
+            (4, (261.0, 45.0)),
+        ],
+        &[(1, 2, 4), (2, 3, 6), (3, 4, 4)],
+    )?;
+    let path: Vec<(i64, i64)> = [(0, 2), (1, 3), (2, 3), (3, 4)]
+        .into_iter()
+        .chain((4..11).map(|x| (x, 4)))
+        .chain([(11, 3), (12, 3), (13, 2), (14, 2)])
         .collect();
-    for (raised, said) in [(false, "4 east"), (true, "4 north")] {
-        let ground = Ground {
-            lanes: Rc::new(lanes.clone()),
-            raised,
-            ..Ground::default()
-        };
-        let path = ground.find((0, 4), &goals_of(&[((0, 0), None)]), "", None, false, None)?;
-        let path = path.expect("a way");
-        let key = |cell, step| ground.key(cell, step);
-        assert_eq!(
-            pathfind::spoken(&pathfind::legs_with(&path, None, Some(&key))?),
-            said,
-            "raised {raised}"
-        );
-    }
+    let key = |cell, step| ground.key(cell, step);
+    assert_eq!(
+        pathfind::spoken(&pathfind::legs_with(&path, None, Some(&key), None)?),
+        "14 east"
+    );
     Ok(())
 }
 
@@ -3950,6 +4140,76 @@ fn test_grind_rails_are_found_on_every_floor_and_never_past_a_blocked_cell() -> 
     Ok(())
 }
 
+/// Spike 250: Coumarine Gym's vines are furniture records on its streets whose zone script case
+/// hands a native one constant, 57 for a vine climbed, each as high as its line's start: the vine
+/// at (59, 72), at 0, is climbed up, and its other end, (59, 73) at 145, down. A record whose case
+/// runs a vending machine's shared script is no vine.
+#[test]
+fn test_vines_are_listed_under_climbing_each_end_by_what_its_ride_does() -> Result<()> {
+    let low = rail::Line::new(0x8001, 1, 2, 4, 3, vec![0; 15]);
+    let high = rail::Line::new(0x8002, 3, 4, 4, 3, vec![0; 15]);
+    let start = ((100 * 18 + 9) as f64, (160 * 18 + 9) as f64);
+    let end = (start.0, start.1 + (4 * 18) as f64);
+    let network = rail::Network {
+        lines: IndexMap::from([(low.id, low.clone()), (high.id, high.clone())]),
+        places: IndexMap::from([(1, start), (2, end), (3, start), (4, end)]),
+        cameras: 0,
+        heights: IndexMap::from([(1, 0.0), (2, 0.0), (3, 145.0), (4, 145.0)]),
+        ..Default::default()
+    };
+    let mut town = Town::new();
+    town.reader = field_reader(
+        town.memory.clone(),
+        Given {
+            streets: Some(Rc::new(move |_chunks: &[i64]| Ok(network.clone()))),
+            far: Some(Rc::new(|_file| Ok(None))),
+            natives: IndexMap::from([
+                ((TOWN, 0x1B), (57, 0)),
+                ((TOWN, 0x1C), (57, 1)),
+                ((TOWN, 9), (90, 0x28F4)),
+            ]),
+            ..Given::default()
+        },
+        Game {
+            vining: Some(xy::VINING),
+            ..game()
+        },
+    );
+    town.memory
+        .write(MAP + MAP_CHUNK_FILES, &le16(&[0, 700, 701]));
+    let mut data = zone_file(&ZoneSpec {
+        furniture: &[(0x1C, 0, 0), (0x1B, 0, 0), (9, 0, 0)],
+        info: &town_info(),
+        ..ZoneSpec::default()
+    });
+    let first = zone_header(5) + INFO_SIZE + ENTITY_HEADER;
+    for (i, (line, along)) in [(&low, 2), (&high, 3), (&low, 1)].into_iter().enumerate() {
+        put(
+            &mut data,
+            first + i as i64 * FURNITURE + 6,
+            &[le16(&[1]), le32(&[line.id]), le16(&[along, 0, 1, 1])].concat(),
+        );
+    }
+    town.memory.write(FILE, &data);
+    town.memory
+        .u32(HOLDER + 8, &[0x11 | (data.len() as i64) << 8]);
+    let mut listed: Vec<(String, (i64, i64), Option<f64>)> = town
+        .r#where()?
+        .of("climbing")
+        .iter()
+        .map(|item| (item.kind.clone(), item.cell, item.height))
+        .collect();
+    listed.sort_by(|a, b| a.partial_cmp(b).expect("no NaN"));
+    assert_eq!(
+        listed,
+        [
+            ("vine down".to_string(), (100, 163), Some(145.0)),
+            ("vine up".to_string(), (100, 162), Some(0.0)),
+        ]
+    );
+    Ok(())
+}
+
 /// Spike 238: on Route 9 the Rhyhorn smashes rocks with A, and while the player rode it the list
 /// said "Rhyhorn, here", its model left where it was got on.
 #[test]
@@ -4756,6 +5016,18 @@ fn on_one_line(
     end: (f64, f64),
     cameras: i64,
 ) {
+    on_one_line_under(town, line, start, end, cameras, game().camera);
+}
+
+/// `on_one_line`, the game's camera `shape`'s, as Python's tests give `camera=camera.X`.
+fn on_one_line_under(
+    town: &mut Town,
+    line: &rail::Line,
+    start: (f64, f64),
+    end: (f64, f64),
+    cameras: i64,
+    shape: camera::Shape,
+) {
     let network = rail::Network {
         lines: IndexMap::from([(line.id, line.clone())]),
         places: IndexMap::from([(1, start), (2, end)]),
@@ -4769,7 +5041,10 @@ fn on_one_line(
             far: Some(Rc::new(|_file| Ok(None))),
             ..Given::default()
         },
-        game(),
+        Game {
+            camera: shape,
+            ..game()
+        },
     );
     town.memory
         .write(MAP + MAP_CHUNK_FILES, &le16(&[0, 700, 701]));
@@ -4857,12 +5132,13 @@ fn test_under_a_streets_own_camera_the_player_is_on_the_grid() -> Result<()> {
     let line = rail::Line::new(0x8001, 1, 2, 4, 3, vec![0; 15]);
     let start = ((100 * 18 + 9) as f64, (160 * 18 + 9) as f64);
     let mut town = Town::new();
-    on_one_line(
+    on_one_line_under(
         &mut town,
         &line,
         start,
         (start.0, start.1 + (4 * 18) as f64),
         1,
+        camera::X,
     );
     town.memory.u32(POOL + mmodel::CELL_X, &[line.id]);
     town.memory.write(POOL + mmodel::PLACE_X, &f32s(&[0.0]));
@@ -4874,8 +5150,67 @@ fn test_under_a_streets_own_camera_the_player_is_on_the_grid() -> Result<()> {
         .map(|item| item.kind)
         .collect();
     assert_eq!(kinds, ["door", "door", "edge"]);
-    // Its lanes say each step by its key, and the camera's own heading reads 0 on a rail.
-    assert_eq!(town.reader.turn(3)?, 0);
+    // Route 7's camera looks north, and the compass is the world's.
+    let block = camera_of(&town, &camera::X)?;
+    town.memory
+        .write(block + camera::X.looks, &f32s(&[std::f64::consts::PI]));
+    assert_eq!(town.reader.turn(0)?, 0);
+    Ok(())
+}
+
+/// Spike 251: round Prism Tower the camera looks east, and right walked the player south, left
+/// north, down west and up east, on a street running north measured east; P said "18 north" for
+/// the way west and the list "19 west" for the exit there. The compass turns with the camera,
+/// and a street's pairs of keys are the screen's: left and right along a street running up the
+/// world's north, which is across the screen.
+#[test]
+fn test_under_a_streets_own_camera_turned_east_the_keys_are_the_screens() -> Result<()> {
+    let line = rail::Line {
+        way: rail::WAY_EAST,
+        ..rail::Line::new(0x8001, 1, 2, 4, 3, vec![0; 15])
+    };
+    let start = ((100 * 18 + 9) as f64, (176 * 18 + 9) as f64);
+    let mut town = Town::new();
+    on_one_line_under(
+        &mut town,
+        &line,
+        start,
+        (start.0, start.1 - (4 * 18) as f64),
+        1,
+        camera::X,
+    );
+    town.memory.u32(POOL + mmodel::CELL_X, &[line.id]);
+    town.memory.write(POOL + mmodel::PLACE_X, &f32s(&[0.0]));
+    let r#where = town.r#where()?;
+    let block = camera_of(&town, &camera::X)?;
+    town.memory.write(
+        block + camera::X.looks,
+        &f32s(&[std::f64::consts::PI / 2.0]),
+    );
+    let turn = town.reader.turn(0)?;
+    assert_eq!(turn, 1);
+    let ground = town.reader.ground(&r#where)?;
+    pathfind::walked(turn);
+    let said: IndexMap<String, (i64, i64)> = [(100, 173), (100, 175), (99, 174), (101, 174)]
+        .into_iter()
+        .map(|step| {
+            (
+                pathfind::way(ground.key((100, 174), step).unwrap_or("")),
+                step,
+            )
+        })
+        .collect();
+    pathfind::walked(0);
+    assert_eq!(
+        said,
+        IndexMap::from([
+            ("west".to_string(), (100, 173)),
+            ("east".to_string(), (100, 175)),
+            ("south".to_string(), (99, 174)),
+            ("north".to_string(), (101, 174)),
+        ])
+    );
+    assert_eq!(town.reader.facing(None)?, Some(1));
     Ok(())
 }
 
@@ -4953,10 +5288,55 @@ fn test_a_diagonal_street_is_one_leg_said_by_the_key_that_walks_it() -> Result<(
     );
     let key = |cell, step| ground.key(cell, step);
     assert_eq!(
-        pathfind::spoken(&pathfind::legs_with(&path, None, Some(&key))?),
+        pathfind::spoken(&pathfind::legs_with(&path, None, Some(&key), None)?),
         "4 north"
     );
     assert_eq!(ground.key((100, 170), (101, 169)), Some("east"));
+    Ok(())
+}
+
+/// Round Prism Tower `L` went back and forth between two exits (Khai, 2026-10-27): a warp
+/// across a diagonal street covers cells touching only at their corners, and joining warps by
+/// their cells listed it once a cell, each under its one key, which the list walks by.
+#[test]
+fn test_a_warp_across_a_diagonal_street_is_listed_once() -> Result<()> {
+    let line = rail::Line::new(0x8001, 1, 2, 6, 3, vec![0; 21]);
+    let start = ((100 * 18 + 9) as f64, (170 * 18 + 9) as f64);
+    let end = (
+        start.0 - (6 * 18) as f64 / 2f64.sqrt(),
+        start.1 - (6 * 18) as f64 / 2f64.sqrt(),
+    );
+    let mut town = Town::new();
+    on_one_line(&mut town, &line, start, end, 1);
+    town.model(0, TOWN, mmodel::PLAYER_INDEX, 0xAC, (100, 170));
+    let mut data = zone_file(&ZoneSpec {
+        warps: &[(0x56, 0x0703, 0, 0, None, None)],
+        info: &town_info(),
+        ..ZoneSpec::default()
+    });
+    let first = zone_header(5) + INFO_SIZE + ENTITY_HEADER;
+    put(
+        &mut data,
+        first + 6,
+        &[le16(&[1]), le32(&[line.id]), le16(&[3, -1, 1, 3])].concat(),
+    );
+    town.memory.write(FILE, &data);
+    town.memory
+        .u32(HOLDER + 8, &[0x11 | (data.len() as i64) << 8]);
+    let warps: Vec<Interactable> = town
+        .r#where()?
+        .of("exits")
+        .into_iter()
+        .filter(|item| item.zone == Some(0x56))
+        .collect();
+    let cells = if warps.len() == 1 {
+        warps[0].cells()
+    } else {
+        Vec::new()
+    };
+    let xs: HashSet<i64> = cells.iter().map(|cell| cell.0).collect();
+    let zs: HashSet<i64> = cells.iter().map(|cell| cell.1).collect();
+    assert!(cells.len() > 1 && xs.len() == zs.len() && zs.len() == cells.len());
     Ok(())
 }
 

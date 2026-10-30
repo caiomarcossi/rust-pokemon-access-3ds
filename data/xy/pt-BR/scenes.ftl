@@ -55,3 +55,14 @@ y-movie-fire = { x-movie-fire }
 y-movie-water = { x-movie-water }
 y-movie-flashes = { x-movie-flashes }
 y-movie-charizard = No escuro, um { POKEMON(6) } laranja com chifres e asas largas está em um palco rochoso sob um holofote. Um { POKEMON(150) } esguio e pálido com uma cauda longa reúne uma esfera azul brilhante e { POKEMON(6) } atinge-a através da luz amarela. Tudo fica escuro.
+
+# Prism Tower's quiz rooms, from the rig's own run through the Gym (spike 252): the picture each
+# question shows for a few seconds before it is asked, never named, and the booths at the back.
+prism-quiz-1 = Antes da pergunta, uma forma preta em uma moldura branca: uma criatura pequena em duas pernas, com duas orelhas longas e pontudas e uma cauda dobrada em zigue-zague como um raio.
+prism-quiz-2 = Antes da pergunta, uma forma preta em uma moldura branca: um pequeno pássaro redondo sobre duas pernas finas, com bico curto e pontudo e uma cauda de penas longas aberta em leque atrás dele.
+prism-quiz-3 = Antes da pergunta, uma forma preta em uma moldura branca: um pequeno macaco em duas pernas, com grandes orelhas redondas e uma cauda fina curvada na ponta. Um tufo liso sobe da cabeça e se curva para trás em uma longa onda arredondada.
+prism-quiz-4 = Antes da pergunta, três borboletas pretas, uma após a outra. A primeira: corpo roliço, cabeça redonda com duas antenas longas curvadas nas pontas e asas arredondadas. A segunda, vista de frente: asas largas com bordas onduladas e recortadas, com as pontas do par superior afiadas. A terceira: uma mariposa com as asas abertas, largas e planas, entalhadas nas pontas, dois chifres curtos e uma franja sob o corpo.
+prism-booths-1 = Ao fundo há três cabines, cada uma com um treinador, e números grandes acima delas: 1 à esquerda, 2 no centro e 3 à direita.
+prism-booths-2 = { prism-booths-1 }
+prism-booths-3 = { prism-booths-1 }
+prism-booths-4 = { prism-booths-1 }

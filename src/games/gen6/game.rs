@@ -209,6 +209,16 @@ pub struct Grinding {
     pub end: i64,
 }
 
+/// The natives the zone script's case of a vine's end hands one constant to, as X's Coumarine
+/// City Gym's (`vines.Vines`, `Script.native`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Vining {
+    /// A vine swung on across a gap.
+    pub swing: i64,
+    /// A vine climbed, up from its lower end and down from its upper.
+    pub climb: i64,
+}
+
 /// One game as the gen 6 readers read it.
 ///
 /// Not `PartialEq`: the dataclass compares its callables by identity, which a `fn` pointer does
@@ -269,6 +279,10 @@ pub struct Game {
     /// everywhere, since the player dives to it in a zone the zone table does not put under the
     /// sea.
     pub hidden_triggers: HashSet<(i64, i64)>,
+    /// (zone, a trigger's script) of the listed triggers P walks over on its way, where any other
+    /// is stepped round: Dewford Gym's switches, in the corridor its belts carry the player down,
+    /// which light its side passages and turn nothing (spike 132). A belt is walked over too.
+    pub crossed: HashSet<(i64, i64)>,
     /// The readers of what else it has on its field to list, each in its own words: ORAS's berry
     /// spots and Route 113's ash piles (`games.oras.field.berries`, `games.oras.field.ash`).
     pub features: Vec<FeatureFactory>,
@@ -343,6 +357,9 @@ pub struct Game {
     /// The rails it lets the player grind along on roller skates, or None in a game with none:
     /// X's Shalour City Gym (spike 247).
     pub grinding: Option<Grinding>,
+    /// The vines it lets the player grab, or None in a game with none: X's Coumarine City Gym
+    /// (spike 250).
+    pub vining: Option<Vining>,
     /// Whether a row of models drawn as nothing, two or more with one script that no drawn record
     /// of their zone has, is an invisible gate: not listed, and in the way. X's Santalune Gym has
     /// five behind Viola, and AZ's room five (spike 223).
@@ -398,6 +415,7 @@ impl Game {
             secret_bases: None,
             hidden_items: 0x44C,
             hidden_triggers: HashSet::new(),
+            crossed: HashSet::new(),
             features: Vec::new(),
             doors: None,
             ice: None,
@@ -420,6 +438,7 @@ impl Game {
             rides: None,
             climbing: None,
             grinding: None,
+            vining: None,
             gates: false,
             form: None,
             steps: ORAS,

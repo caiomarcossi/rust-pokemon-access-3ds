@@ -46,9 +46,10 @@ use crate::games::common::field::ground::{
 use crate::games::common::field::things::{
     BIKE, BIKE_SOURCE, CLIMB_SOURCE, CLIMBING, CURRENT_SOURCE, CURRENTS_CATEGORY,
     DECORATION_SOURCE, DIVE_SOURCE, EDGE_SOURCE, FURNITURE_SOURCE, Field, Interactable, OBSTACLES,
-    POKEMON, RIDE_SOURCE, RIDING, STAIRS_SOURCE, TILE_SOURCE, TRIGGER_SOURCE, WARP_SOURCE,
-    kind_said, place_source,
+    OPENING_SOURCE, POKEMON, RIDE_SOURCE, RIDING, STAIRS_SOURCE, TILE_SOURCE, TRIGGER_SOURCE,
+    VINE_SOURCE, WARP_SOURCE, kind_said, place_source,
 };
+use crate::games::common::field::vines::{End, Vines, paired};
 use crate::games::gen6::field::features::{
     DoorReader, Feature, HiddenReader, Hiding, IceReader, SecretBaseReader, Tracked,
 };
@@ -60,17 +61,21 @@ use crate::games::gen6::field::zonedata::{
     TRIGGER_HEIGHT, TRIGGER_SCRIPT, TRIGGER_VALUE, TRIGGER_WIDTH, TRIGGER_WORK, TRIGGER_X,
     TRIGGER_Y, TRIGGER_Z, WARP, WARP_DOOR, WARP_KIND, WARP_OUT, WARP_STAIRS, WARP_STREET, WARP_TO,
     WARP_Y, ZoneData, arrival, on_rail, read_furniture, read_records, read_triggers, read_zone,
-    warp_box, zone_files,
+    trigger_placed, warp_box, zone_files,
 };
 use crate::games::gen6::field::zonetable::{
     INFO_KIND, INFO_MATRIX, INFO_NAME, INFO_PARENT, INFO_SIZE, NAME_MASK, UNDERWATER, ZONE_LIMIT,
     ZoneTable,
 };
 use crate::games::gen6::field::{fieldmap, mapblock, mmodel};
-use crate::games::gen6::game::{Climbing, FurnitureKind, Game, Grinding, Rides};
+use crate::games::gen6::game::{Climbing, FurnitureKind, Game, Grinding, Rides, Vining};
 use crate::games::gen6::rom::archives::GameText;
 use crate::games::gen6::rom::maps::{ChunkSource, StreetSource};
 use crate::py::{self, Error, PySet, Result};
+
+/// What the vines' ends and the vines were read for (`_ends_of`, `_vines_of`): the zone's home
+/// and the map's chunk files, None before any were.
+type VinesKey = Option<(Option<i64>, Vec<i64>)>;
 
 /// What a sweep looks for. The slot's own shape is `mmodel`'s, as every structure's is.
 pub const MOVE_MODEL_CLASS: &str = mmodel::CLASS;
@@ -163,6 +168,14 @@ pub const LANDING_REACH: i64 = 5;
 /// What a stair between two floors of one chunk is called, a warp between floors being stairs
 /// too: the game names neither (spike 167).
 pub const STAIRS: &str = "stairs";
+
+/// What a street's end on ground walked on the grid is called, as Magenta Plaza is at the end of
+/// its alleys: the game's street marks name few of them (spike 251).
+pub const OPEN_GROUND: &str = "open ground";
+/// Cells round a street's end looked in for open ground: of zone 0x43's 53 ends, the 29 by a
+/// plaza or a square have between 5 and all 25 of the cells this far round open, and the rest none
+/// (spike 251).
+pub const OPENING_REACH: i64 = 2;
 
 /// What a Secret Base's flag beside its PC is called: the game never names it where it stands.
 pub const FLAG: &str = "flag";
@@ -329,6 +342,16 @@ pub struct FieldReader {
     /// The kinds of the rails the game lets the player grind along, or None in a game without
     /// them (`Game.grinding`).
     grinding: Option<Grinding>,
+    /// The natives of the vines the game lets the player grab, or None in a game without
+    /// them (`Game.vining`).
+    vining: Option<Vining>,
+    /// (zone, a furniture record's script) -> the native its case hands one constant to, and
+    /// the constant (`plates.native_furniture`).
+    natives: IndexMap<(i64, i64), (i64, i64)>,
+    /// The zone and map the vines' ends were read for, and the ends (`_vine_ends`).
+    ends_of: RefCell<(VinesKey, Rc<Vec<End>>)>,
+    /// The zone and map the vines were found for, and the vines (`_vines`).
+    vines_of: RefCell<(VinesKey, Rc<Vines>)>,
     /// Whether a row of models drawn as nothing with a script of its own is a gate
     /// (`Game.gates`).
     gates: bool,
@@ -371,6 +394,8 @@ pub struct FieldReader {
     pub rails: Rails,
     /// (zone, a trigger's script) -> the way the conveyor belt it is runs (`Game.belts`).
     belts: IndexMap<(i64, i64), &'static str>,
+    /// (zone, a trigger's script) of the listed triggers P walks over (`Game.crossed`).
+    crossed: HashSet<(i64, i64)>,
     /// Zones walked about in as outdoors that are not their own parent, out of the ROM
     /// (`plates.outdoors`): a warp off a street into one of them is not a door.
     outdoors: HashSet<i64>,
@@ -392,6 +417,10 @@ pub struct FieldReader {
     player: Slot<Option<i64>>,
     /// Whether the player's model was on a rail at the last poll.
     on_rail: Slot<bool>,
+    /// Whether that rail was a street under a camera of the map's own (`Rails.fixed`).
+    fixed: Slot<bool>,
+    /// The quarters clockwise from north up walks the player, as `turn` last found them.
+    turn: Slot<i64>,
     /// Whether the last poll found the camera behind a player off the rails (`Rails.behind`).
     behind: Slot<bool>,
     holder: RefCell<Option<Holder>>,
@@ -530,6 +559,10 @@ impl FieldReader {
             rides: game.rides.clone(),
             climbing: game.climbing.clone(),
             grinding: game.grinding,
+            vining: game.vining,
+            natives: text.natives.clone(),
+            ends_of: RefCell::new((None, Rc::new(Vec::new()))),
+            vines_of: RefCell::new((None, Rc::new(Vines::default()))),
             gates: game.gates,
             secret_bases,
             barriers: game.barriers.clone(),
@@ -552,6 +585,7 @@ impl FieldReader {
                 game.camera,
             ),
             belts: game.belts.clone(),
+            crossed: game.crossed.clone(),
             outdoors: text.outdoors.clone(),
             drawn: game.drawn,
             model_starts: game.models,
@@ -562,6 +596,8 @@ impl FieldReader {
             models: RefCell::new(Vec::new()),
             player: Slot::new(None),
             on_rail: Slot::new(false),
+            fixed: Slot::new(false),
+            turn: Slot::new(0),
             behind: Slot::new(false),
             holder: RefCell::new(None),
             map: Slot::new(None),
@@ -729,7 +765,9 @@ impl FieldReader {
         };
         // Under a street's own camera the keys walk the world's ways, so its streets are the
         // grid's ground (`Rails.fixed`).
-        if !self.on_rail.get() || self.rails.fixed(&files, mmodel::rail(&head)?.0)? {
+        self.fixed
+            .set(self.on_rail.get() && self.rails.fixed(&files, mmodel::rail(&head)?.0)?);
+        if !self.on_rail.get() || self.fixed.get() {
             *self.rails.corridor.borrow_mut() = None;
             let behind = self.rails.behind()?;
             self.behind.set(behind.is_some());
@@ -777,12 +815,33 @@ impl FieldReader {
     /// (spike 239). Not on a rail where the streets are floors of their own: the Tower of
     /// Mastery's fourteen cameras each look their own way over the ramp, up walking the player
     /// east down its first lap's east side and south along its landings, and north was said
-    /// for all of them, "8 west, 16 east" for a way west and then north (spike 248).
+    /// for all of them, "8 west, 16 east" for a way west and then north (spike 248). Nor on a
+    /// street under a camera of the map's own, where the keys walk the street's way nearest the
+    /// one pressed on the screen: round Prism Tower the camera looks east, and right walked the
+    /// player south, left north, down west and up east, where "18 north" was said for the way
+    /// west and "19 west" for the exit there (spike 251).
     pub fn turn(&self, current: i64) -> Result<i64> {
-        if self.behind.get() || (self.on_rail.get() && !self.terrain.raised()?) {
-            return Ok(0);
+        if self.behind.get()
+            || (self.on_rail.get() && !self.fixed.get() && !self.terrain.raised()?)
+        {
+            self.turn.set(0);
+        } else {
+            self.turn.set(self.rails.turn(current)?);
         }
-        self.rails.turn(current)
+        Ok(self.turn.get())
+    }
+
+    /// The quarter of the world, clockwise from north, up walks the player, as the last poll
+    /// and `turn` found it: on Lumiose's rails and under a camera behind the player, where the
+    /// compass is not turned, the camera's own heading (`Rails.facing`); elsewhere the compass's
+    /// turn. `current` is the quarter last taken, kept until the camera is past its edge.
+    pub fn facing(&self, current: Option<i64>) -> Result<Option<i64>> {
+        if self.behind.get()
+            || (self.on_rail.get() && !self.fixed.get() && !self.terrain.raised()?)
+        {
+            return self.rails.facing(current);
+        }
+        Ok(Some(self.turn.get()))
     }
 
     /// The player's model and the zone it was built in, as the last poll read them.
@@ -838,7 +897,9 @@ impl FieldReader {
             }
         }
         let files = self.terrain.files.borrow().1.clone();
-        let lanes = self.rails.lanes(&files)?;
+        let lanes = self
+            .rails
+            .lanes(&files, self.terrain.raised()?, self.turn.get())?;
         // Where the streets are floors of their own, a cell they open is open on its own floor.
         let mut covered = self.covered(r#where.zone)?;
         if !self.terrain.raised()? {
@@ -904,6 +965,12 @@ impl FieldReader {
             None
         };
         let belts = self.belts_here(r#where.zone)?;
+        let crossed: HashSet<Cell> = self
+            .trigger_cells(r#where.zone, self.crossed.is_empty(), &|key| {
+                self.crossed.contains(&key)
+            })?
+            .into_keys()
+            .collect();
         let ground_height: Option<GroundHeight> = if stacked {
             None
         } else {
@@ -913,7 +980,7 @@ impl FieldReader {
                 .expect("a reader is made in an Rc, which its holders keep");
             Some(Rc::new(move |cell| me.terrain.height(cell)))
         };
-        let ground = Ground {
+        let mut ground = Ground {
             cliffs,
             ladders,
             doors,
@@ -936,6 +1003,7 @@ impl FieldReader {
                     chunks,
                     grid,
                     belts,
+                    crossed,
                     far: if trusted && self.terrain.known() {
                         Some(far)
                     } else {
@@ -948,6 +1016,9 @@ impl FieldReader {
                 },
             )
         };
+        if let Some(vines) = self.vines(r#where.zone)? {
+            ground.vines = vines;
+        }
         // Where no flat ground lies, nothing is got on or off, and no search carries a ride.
         let flats = !self.found_ways(r#where.zone)?.3.is_empty();
         match &self.rides {
@@ -1077,22 +1148,40 @@ impl FieldReader {
     /// The cells of the zone's conveyor belts, each with the way it runs: its triggers whose
     /// scripts `Game.belts` knows as belts.
     fn belts_here(&self, zone: i64) -> Result<IndexMap<Cell, &'static str>> {
+        Ok(self
+            .trigger_cells(zone, self.belts.is_empty(), &|key| {
+                self.belts.contains_key(&key)
+            })?
+            .into_iter()
+            .map(|(cell, key)| (cell, self.belts[&key]))
+            .collect())
+    }
+
+    /// The cells of the zone's triggers whose (zone, script) `known` holds, each with it.
+    /// `none` is whether `known` is empty.
+    fn trigger_cells(
+        &self,
+        zone: i64,
+        none: bool,
+        known: &dyn Fn((i64, i64)) -> bool,
+    ) -> Result<IndexMap<Cell, (i64, i64)>> {
         let data = self.current()?;
-        let Some(data) = data.filter(|_| !self.belts.is_empty()) else {
+        let Some(data) = data.filter(|_| !none) else {
             return Ok(IndexMap::new());
         };
         let Some(home) = self.home(&data, &[zone])? else {
             return Ok(IndexMap::new());
         };
-        let mut out: IndexMap<Cell, &'static str> = IndexMap::new();
+        let mut out: IndexMap<Cell, (i64, i64)> = IndexMap::new();
         for record in read_triggers(&*self.memory, &data)? {
-            let Some(&way) = self.belts.get(&(home, u16(&record, TRIGGER_SCRIPT)?)) else {
+            let key = (home, u16(&record, TRIGGER_SCRIPT)?);
+            if !known(key) {
                 continue;
-            };
+            }
             let (x, z) = (u16(&record, TRIGGER_X)?, u16(&record, TRIGGER_Z)?);
             for dx in 0..u16(&record, TRIGGER_WIDTH)? {
                 for dz in 0..u16(&record, TRIGGER_HEIGHT)? {
-                    out.insert((x + dx, z + dz), way);
+                    out.insert((x + dx, z + dz), key);
                 }
             }
         }
@@ -1103,7 +1192,9 @@ impl FieldReader {
     /// and the way between its two rooms, which share no floor (spike 146); Lavaridge Gym's
     /// trapdoors and geysers (spike 157); Mossdeep Gym's lifts and teleporter (spike 163); the way
     /// into Seafloor Cavern under Route 128 (spike 164). And where the Extra lists hidden items,
-    /// those a trigger gives, while it is armed: once taken it is not.
+    /// those a trigger gives, while it is armed: once taken it is not. One placed on a street is
+    /// where the street has it on the grid, as high as its line's start: Coumarine Gym's way
+    /// down, on its top level (spike 250).
     fn listed_triggers(&self, data: &ZoneData, zone: i64) -> Result<Vec<Interactable>> {
         let home = if self.triggers.is_empty() && self.hidden_triggers.is_empty() {
             None
@@ -1114,6 +1205,7 @@ impl FieldReader {
             return Ok(Vec::new());
         };
         let mut out: Vec<Interactable> = Vec::new();
+        let files = self.terrain.files.borrow().1.clone();
         for (i, record) in read_triggers(&*self.memory, data)?.iter().enumerate() {
             let script = u16(record, TRIGGER_SCRIPT)?;
             if self.hidden_triggers.contains(&(home, script)) {
@@ -1136,21 +1228,38 @@ impl FieldReader {
                 }
                 continue;
             }
-            if let Some((category, kind, to)) = self.triggers.get(&(home, script)) {
-                out.push(Interactable {
-                    size: (u16(record, TRIGGER_WIDTH)?, u16(record, TRIGGER_HEIGHT)?),
-                    zone: *to,
-                    code: script,
-                    source: place_source(TRIGGER_SOURCE, i as i64)?,
-                    home: Some(home),
-                    height: Some(s16(record, TRIGGER_Y)? as f64),
-                    ..Interactable::new(
-                        category,
-                        kind,
+            let Some((category, kind, to)) = self.triggers.get(&(home, script)) else {
+                continue;
+            };
+            let place = trigger_placed(record)?;
+            let (r#box, height) = match place {
+                None => (
+                    (
                         (u16(record, TRIGGER_X)?, u16(record, TRIGGER_Z)?),
+                        (u16(record, TRIGGER_WIDTH)?, u16(record, TRIGGER_HEIGHT)?),
+                    ),
+                    Some(s16(record, TRIGGER_Y)? as f64),
+                ),
+                Some(place) => {
+                    let shape = self.rails.laid(place, &files)?;
+                    let Some(shape) = shape.filter(|shape| !shape.is_empty()) else {
+                        continue;
+                    };
+                    (
+                        rail::spread(shape)?,
+                        self.rails.line_height(place.0, &files)?,
                     )
-                });
-            }
+                }
+            };
+            out.push(Interactable {
+                size: r#box.1,
+                zone: *to,
+                code: script,
+                source: place_source(TRIGGER_SOURCE, i as i64)?,
+                home: Some(home),
+                height,
+                ..Interactable::new(category, kind, r#box.0)
+            });
         }
         Ok(out)
     }
@@ -1167,19 +1276,18 @@ impl FieldReader {
         let mut items: Vec<Interactable> = Vec::new();
         let data = self.current()?;
         let mut people = self.people(r#where.zone)?;
-        let kind = |cell: Cell| -> Result<Option<i64>> {
+        let loaded = self.chunks_loaded()?;
+        let chunk_at = |cell: Cell| -> Result<Option<Rc<Chunk>>> {
             // The ROM's chunk where none is loaded, as the ground has it: a battle unloads them all.
-            let loaded = self
-                .chunks_loaded()?
-                .into_iter()
-                .find(|chunk| chunk.holds(cell));
-            let chunk = match loaded {
-                Some(chunk) => Some(chunk),
+            match loaded.iter().find(|chunk| chunk.holds(cell)) {
+                Some(chunk) => Ok(Some(chunk.clone())),
                 None => self
                     .terrain
-                    .far(py::floordiv(cell.0, CHUNK), py::floordiv(cell.1, CHUNK))?,
-            };
-            match chunk {
+                    .far(py::floordiv(cell.0, CHUNK), py::floordiv(cell.1, CHUNK)),
+            }
+        };
+        let kind = |cell: Cell| -> Result<Option<i64>> {
+            match chunk_at(cell)? {
                 Some(chunk) => Ok(Some(chunk.kind(cell)?)),
                 None => Ok(None),
             }
@@ -1202,13 +1310,18 @@ impl FieldReader {
             // hidden door "Open sesame" opens and the Kalos Power Plant's: none other in either.
             let locks = warp_cells(&warps)?;
             let mut furniture: Vec<Interactable> = Vec::new();
+            // Each of Prism Tower's quiz rooms keeps a record in the walls of its far corner, with
+            // nothing beside it to stand on, and listed it as a sign (spike 252).
             for item in read_furniture(&*self.memory, data)? {
-                if item.cells().iter().all(|cell| locks.contains(cell)) {
+                if item.cells().iter().all(|cell| locks.contains(cell))
+                    || buried(&chunk_at, &item.cells())?
+                {
                     continue;
                 }
                 furniture.push(self.furniture_listed(home, item));
             }
             items.extend(joined(furniture, &|item| Some(self.furniture_key(item))));
+            let mut found: Vec<Interactable> = Vec::new();
             for (i, record) in warps.iter().enumerate() {
                 let files = self.terrain.files.borrow().1.clone();
                 let shape = self.rails.on_grid(record, &files)?;
@@ -1220,19 +1333,28 @@ impl FieldReader {
                     Some(shape) => Some(rail::spread(shape.iter().copied())?),
                 };
                 let warp = self.warp(i as i64, record, at, home)?;
-                items.push(Interactable {
+                found.push(Interactable {
                     home,
                     arrival: arrival(record, home, &warps)?,
                     shape: shape.unwrap_or_default(),
                     ..warp
                 });
             }
+            items.extend(exits(found, &|zone| self.zones.place_index(zone))?);
         }
         items.extend(self.boulders(people, r#where.zone, data.as_ref(), home)?);
         items.extend(self.edges(r#where.zone, !r#where.on_rail)?);
         items.extend(self.use_tiles(r#where.zone)?);
         items.extend(self.ways(r#where.zone, r#where.cell)?);
         items.extend(self.climbing_spots(r#where.zone)?);
+        for (end, _, ride) in paired(&self.vine_ends(r#where.zone)?.1) {
+            items.push(Interactable {
+                height: Some(end.height),
+                home: Some(r#where.zone),
+                source: place_source(VINE_SOURCE, end.number)?,
+                ..Interactable::new(CLIMBING, ride, end.cell)
+            });
+        }
         items.extend(self.stairs_in(r#where.zone)?);
         items.extend(self.base_tiles(r#where.zone)?);
         items.extend(self.placed(r#where.zone)?);
@@ -1768,6 +1890,7 @@ impl FieldReader {
                 tables.push((Some(other), furniture.clone(), warps.clone()));
             }
         }
+        let mut found: Vec<Interactable> = Vec::new();
         for (owner, furniture, warps) in tables {
             for (i, record) in furniture.iter().enumerate() {
                 if let Some(at) = rail::spot(corridor, record)? {
@@ -1783,11 +1906,23 @@ impl FieldReader {
             for (i, record) in warps.iter().enumerate() {
                 if let Some(at) = rail::spot(corridor, record)? {
                     let warp = self.warp(i as i64, record, Some(at), owner)?;
-                    out.push(Interactable {
+                    found.push(Interactable {
                         home: owner,
                         ..warp
                     });
                 }
+            }
+        }
+        out.extend(exits(found, &|zone| self.zones.place_index(zone))?);
+        // Off North Boulevard into Magenta Plaza's alley only the way back was listed: the alley
+        // ends on the plaza, which is walked on the grid and is on no line (spike 251).
+        for (point, cell, ground) in self.rails.ends(corridor)? {
+            if self.by_open_ground(ground)? {
+                out.push(Interactable {
+                    home,
+                    source: place_source(OPENING_SOURCE, point)?,
+                    ..Interactable::new("exits", OPEN_GROUND, cell)
+                });
             }
         }
         for other in self.others() {
@@ -1801,6 +1936,30 @@ impl FieldReader {
             }
         }
         Ok(out)
+    }
+
+    /// Whether a cell the grid can be walked in lies within `OPENING_REACH` of `cell`, in the
+    /// chunks loaded or, past them, the ROM's: the chunks under a street mark every cell of it a
+    /// wall (spike 102), so open ground beside a street's end is ground off it.
+    fn by_open_ground(&self, cell: Cell) -> Result<bool> {
+        let loaded = self.chunks_loaded()?;
+        for x in cell.0 - OPENING_REACH..cell.0 + OPENING_REACH + 1 {
+            for z in cell.1 - OPENING_REACH..cell.1 + OPENING_REACH + 1 {
+                let chunk = match loaded.iter().find(|chunk| chunk.holds((x, z))) {
+                    Some(chunk) => Some(chunk.clone()),
+                    None => self
+                        .terrain
+                        .far(py::floordiv(x, CHUNK), py::floordiv(z, CHUNK))?,
+                };
+                if let Some(chunk) = chunk
+                    && chunk.holds((x, z))
+                    && chunk.walkable((x, z))?
+                {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
     }
 
     /// A warp as what the player walks through: a door, the mat out, stairs or an opening
@@ -1991,7 +2150,9 @@ impl FieldReader {
     /// no script either, so it passes for a person until model codes have names. A big boulder
     /// in a hole is no parked model, however walled in: Seafloor Cavern's room 0x69 has walls
     /// north and west of its north-west hole, and the boulder pushed into it was left out, its
-    /// hole still listed and a wall (movie37).
+    /// hole still listed and a wall (movie37). A model on a street that is a floor of its own is
+    /// on floor, though its chunk walls the cell: in Coumarine Gym the entrance listed one of the
+    /// four Pokémon Rangers, the one over the corridor its chunk leaves open (x_gym_4_climbed).
     ///
     /// A model drawn as nothing is called what it stands in for (`stand_ins`), those side by
     /// side as one (`_joined`): the three in front of Groudon are one "Groudon", the first by its
@@ -2002,8 +2163,11 @@ impl FieldReader {
         let mut out: Vec<Interactable> = Vec::new();
         // The stand-ins called what another record draws.
         let mut standing_in: Vec<Interactable> = Vec::new();
+        // With the streets that are floors of their own: Coumarine Gym's chunks wall every cell
+        // but its entrance's, and three of its four trainers stand on platforms over them.
         let mut chunks: Vec<Rc<Chunk>> = Vec::new();
         for chunk in self.chunks_loaded()? {
+            let chunk = self.terrain.with_streets(&chunk)?;
             chunks.push(self.terrain.flattened(&chunk, None, false)?);
         }
         let holes = self.holes(zone)?;
@@ -2435,6 +2599,70 @@ impl FieldReader {
         }
     }
 
+    /// What the zone's vines' ends were read for, and the ends: its furniture records on
+    /// streets whose zone script case runs a vine (`Game.vining`), each on its one cell of the
+    /// grid, as high as its line's start, with the spot it is grabbed from (`Rails.on_grid`,
+    /// `Rails.height`, `Rails.spot`); read once a zone, and none in a game without them (spike
+    /// 250).
+    fn vine_ends(&self, zone: i64) -> Result<(VinesKey, Rc<Vec<End>>)> {
+        let data = self.current()?;
+        let (Some(data), Some(vining)) = (data, self.vining) else {
+            return Ok((None, Rc::new(Vec::new())));
+        };
+        let (home, files) = (
+            self.home(&data, &[zone])?,
+            self.terrain.files.borrow().1.clone(),
+        );
+        let key = Some((home, files.to_vec()));
+        if self.ends_of.borrow().0 != key {
+            let (swing, climb) = (vining.swing, vining.climb);
+            let mut ends: Vec<End> = Vec::new();
+            for record in read_records(&*self.memory, &data, FURNITURE)? {
+                let number = u16(&record, FURNITURE_SCRIPT)?;
+                let native = home.and_then(|home| self.natives.get(&(home, number)).copied());
+                let cells = self.rails.on_grid(&record, &files)?;
+                let height = self.rails.height(&record, &files)?;
+                let spot = self.rails.spot(&record, &files)?;
+                if let (Some(native), Some(cells), Some(height), Some((stand, faces))) =
+                    (native, cells, height, spot)
+                    && (native.0 == swing || native.0 == climb)
+                    && cells.len() == 1
+                {
+                    let mut cell = cells[0];
+                    if cell == stand {
+                        // Within a cell of each other, as the north-west climb's top at (53.8,
+                        // 49.9) and its spot at (53.2, 49.0) are: the vine is the cell faced.
+                        let ahead = pathfind::step_of(faces)?;
+                        cell = (stand.0 + ahead.0, stand.1 + ahead.1);
+                    }
+                    ends.push(End {
+                        number,
+                        cell,
+                        height,
+                        swing: native.0 == swing,
+                        stand,
+                        faces,
+                    });
+                }
+            }
+            *self.ends_of.borrow_mut() = (key, Rc::new(ends));
+        }
+        Ok(self.ends_of.borrow().clone())
+    }
+
+    /// The zone's vines, off its vines' ends (`Vines.found`), found once a zone: None for
+    /// Python's `NO_VINES`, where the zone has no ends.
+    fn vines(&self, zone: i64) -> Result<Option<Rc<Vines>>> {
+        let (key, ends) = self.vine_ends(zone)?;
+        if ends.is_empty() {
+            return Ok(None);
+        }
+        if self.vines_of.borrow().0 != key {
+            *self.vines_of.borrow_mut() = (key, Rc::new(Vines::found(&ends)));
+        }
+        Ok(Some(self.vines_of.borrow().1.clone()))
+    }
+
     /// The zone's climbing walls' blue spots, each run of them side by side on one face at
     /// one height a thing, a blue spot where the wall is got onto from the floor and a wall
     /// ledge where it is got off onto a ledge at its side (`Walls.spots`, spike 245).
@@ -2768,6 +2996,32 @@ fn walled_in(chunks: &[Rc<Chunk>], cell: Cell, rides: &HashSet<i64>) -> Result<b
     Ok(true)
 }
 
+/// Whether every cell round `cells`, and they, are walls in their chunks (`chunk_at`) or off
+/// the map's north or west edge, where no chunk is: nothing stands beside them to face them
+/// from. Prism Tower's quiz rooms keep a record in the corner at (0, 0) (spike 252). A chunk with
+/// a deck is no wall: its cell table is the ground's alone.
+fn buried(chunk_at: &dyn Fn(Cell) -> Result<Option<Rc<Chunk>>>, cells: &[Cell]) -> Result<bool> {
+    let wall = |near: Cell| -> Result<bool> {
+        if near.0 < 0 || near.1 < 0 {
+            return Ok(true);
+        }
+        Ok(match chunk_at(near)? {
+            None => false,
+            Some(chunk) => chunk.floors.is_empty() && !chunk.walkable(near)?,
+        })
+    };
+    for &(x, z) in cells {
+        for dx in -1..=1 {
+            for dz in -1..=1 {
+                if !wall((x + dx, z + dz))? {
+                    return Ok(false);
+                }
+            }
+        }
+    }
+    Ok(true)
+}
+
 /// The cells along the side of block (`column`, `row`) that faces the block (`dc`, `dr`) away, each
 /// paired with the neighbouring block's cell against it.
 fn border(column: i64, row: i64, dc: i64, dr: i64) -> Vec<(Cell, Cell)> {
@@ -2989,10 +3243,12 @@ fn one_a_spot(items: Vec<Interactable>) -> Vec<Interactable> {
 }
 
 /// `items` with those of one `key` that touch side to side as one thing over the box round
-/// them, as the first of them listed (`_touching`, `_spread`); a key of None is kept apart. One
-/// thing the game builds of several records: Seafloor Cavern's submarine is four furniture
-/// records with one script, an elevator's door two side by side, and three stand-ins in a row
-/// in front of Groudon (spike 209).
+/// them, as the first of them listed (`_spread`); a key of None is kept apart. One thing the
+/// game builds of several records: Seafloor Cavern's submarine is four furniture records with
+/// one script, an elevator's door two side by side, and three stand-ins in a row in front of
+/// Groudon (spike 209). An item is never split: a warp across a diagonal street covers cells
+/// touching only at their corners, and grouped by its cells it was listed once a cell, under one
+/// key, and round Prism Tower `L` went back and forth between two exits (Khai, 2026-10-27).
 fn joined(
     items: Vec<Interactable>,
     key: &dyn Fn(&Interactable) -> Option<String>,
@@ -3006,22 +3262,91 @@ fn joined(
         }
     }
     for alike in keyed.values() {
-        let cells: HashSet<Cell> = alike.iter().flat_map(|item| item.cells()).collect();
-        for group in touching(&cells) {
-            let group_cells: HashSet<Cell> = group.iter().copied().collect();
-            let first = alike
+        // Each group's cells and its members, by their places in `alike`.
+        let mut groups: Vec<(HashSet<Cell>, Vec<usize>)> = Vec::new();
+        for (index, item) in alike.iter().enumerate() {
+            let cells: HashSet<Cell> = item.cells().into_iter().collect();
+            let mut near = cells.clone();
+            for &cell in &cells {
+                near.extend(beside(cell));
+            }
+            let (touched, rest): (Vec<_>, Vec<_>) = groups
+                .into_iter()
+                .partition(|group| !near.is_disjoint(&group.0));
+            groups = rest;
+            let (mut all, mut members) = (cells, Vec::new());
+            for (cells, those) in touched {
+                all.extend(cells);
+                members.extend(those);
+            }
+            members.push(index);
+            groups.push((all, members));
+        }
+        for (cells, members) in groups {
+            // `min(members, key=alike.index)`: the first item equal to each member.
+            let first = members
                 .iter()
-                .find(|item| item.cells().iter().any(|cell| group_cells.contains(cell)))
-                .expect("a group's cells are an item's");
+                .map(|&i| alike.iter().position(|item| *item == alike[i]).unwrap_or(i))
+                .min()
+                .expect("a group has a member");
+            let first = &alike[first];
+            let group: Vec<Cell> = cells.iter().copied().collect();
             let (cell, size) = spread(&group);
+            // Warps across a diagonal street cover a row of cells, not their box.
+            let shape = if members.iter().any(|&i| !alike[i].shape.is_empty()) {
+                let mut sorted = group.clone();
+                sorted.sort();
+                sorted
+            } else {
+                Vec::new()
+            };
             out.push(Interactable {
                 cell,
                 size,
+                shape,
                 ..first.clone()
             });
         }
     }
     out
+}
+
+/// `warps` as the player walks into them: those of one kind into one zone that touch side to
+/// side as one exit (`_joined`), and none whose cells a warp before it of its kind into the same
+/// `place` covers already, which is said alike and walked to alike. Lumiose's streets go on into
+/// the next through three warps a cell apart, "warp to Centrico Plaza here", "1 east" and "1
+/// west", and the Tower of Mastery's stairs up are three side by side twice over, to zones 0xb7
+/// and 0xb9, both the Tower. A game takes one of two warps on one cell by a rule of its own:
+/// Lilycove's way into the hideout is Team Aqua's and Team Magma's on the same cells, and Omega
+/// Ruby's is Magma's, the second; so warps into two places both stay (spike 251).
+fn exits(
+    warps: Vec<Interactable>,
+    place: &dyn Fn(i64) -> Result<Option<i64>>,
+) -> Result<Vec<Interactable>> {
+    let mut kept: Vec<Interactable> = Vec::new();
+    for item in warps {
+        let cells: HashSet<Cell> = item.cells().into_iter().collect();
+        let mut covered = false;
+        for other in &kept {
+            if other.kind == item.kind
+                && cells.is_subset(&other.cells().into_iter().collect())
+                && place(other.zone.unwrap_or(0))? == place(item.zone.unwrap_or(0))?
+            {
+                covered = true;
+                break;
+            }
+        }
+        if !covered {
+            kept.push(item);
+        }
+    }
+    // Python's key is the tuple (kind, zone, height, home); its parts written out here.
+    Ok(joined(kept, &|item| {
+        Some(format!(
+            "{}|{:?}|{:?}|{:?}",
+            item.kind, item.zone, item.height, item.home
+        ))
+    }))
 }
 
 /// `cells` in groups of those that touch side to side, the group with the first cell first.

@@ -18,7 +18,7 @@ use crate::core::pathfind;
 use crate::games::common::field::ground::{CUT, ROCK_SMASH, STRENGTH};
 use crate::games::gen6::field::camera;
 use crate::games::gen6::field::footsteps::{RUN, Steps, WALK};
-use crate::games::gen6::game::{Climbing, Data, FurnitureKind, Game, Grinding, Rides};
+use crate::games::gen6::game::{Climbing, Data, FurnitureKind, Game, Grinding, Rides, Vining};
 use crate::games::gen6::rom::layout::{RomLayout, TownFacilities, owned};
 use crate::games::xy::intro::IntroReader;
 use crate::py::PySet;
@@ -446,6 +446,49 @@ pub const SHALOUR_GYM: i64 = 0xAF;
 /// then (spike 247).
 pub const KORRINA: i64 = 0x7;
 
+pub const COUMARINE_GYM: i64 = 0xBF;
+/// The script of Coumarine Gym's one trigger, on its top level's east street at 720 by (65,
+/// 73.7): walked onto east, it drops the player to the ground at (63.6, 73.8), as it did twice in
+/// x_gym_4_climbed. Its case calls native 58 with 3 and then native 59, with no place of its own,
+/// so the landing is the game's and P walks to it as a way out of the top (spike 250).
+pub const WAY_DOWN: i64 = 0x2B;
+
+pub const PRISM_LOBBY: i64 = 0x4D;
+pub const CLEMONT_ROOM: i64 = 0x4E;
+/// Prism Tower's Gym: its lobby, Clemont's room at the top, and Bonnie's four quiz rooms under it,
+/// joined by no warp at all, each lift a trigger whose script moves the player (spike 252).
+pub const QUIZ_ROOMS: std::ops::Range<i64> = 0x4F..0x53;
+/// The script of the lobby's one trigger, at (19, 22) before the door of the lift in the pillar
+/// at its middle: stepped onto and then walked north from, it carried the player up to the first
+/// quiz room at (19, 26) (spike 252). Nothing was listed that led up to the Gym.
+pub const LOBBY_LIFT: i64 = 0x3;
+/// The script of each quiz room's "small square" at (19, 23), which asks Bonnie's question and
+/// asks it again ("If you want to hear the question again, step on the small panel!"), script 6 on
+/// the same cell once asked (spike 252).
+pub const QUIZ_PANEL: i64 = 0x5;
+pub const QUIZ_LIFT: i64 = 0x7;
+/// The scripts of each quiz room's lift at (19, 26), which the player arrives on and which asks
+/// "Which floor would you like to go to?", and of Clemont's room's, at (19, 26) too (spike 252).
+pub const CLEMONT_LIFT: i64 = 0x5;
+
+/// Coumarine City Gym's vines (zone 0xbf), a tree climbed from 0 to Ramos at 720, its levels 0,
+/// 145, 290, 432, 576 and 720 platforms round the trunk on the Gym's streets, laid as floors (spike
+/// 248). 42 of its furniture records are placed on streets, each on one cell of the grid
+/// (`Rails.on_grid`), as high as its line's start point; each one's zone script case calls a
+/// function that pushes one constant and calls a native, 56 for scripts 1 to 0x1a and 57 for 0x1b
+/// to 0x2a, the constant the end's number among them. Scripts n, odd, and n + 1 are a vine's two
+/// ends: 56's at the two sides of a gap between neighbouring platforms of one level, swung across,
+/// and 57's at one place a level apart, climbed, all 21 pairs. An end's cell is solid at its level:
+/// in the tape of x_gym_4 the player walked north up to (59, 72.9) and was stopped by the vine at
+/// (59, 72), at 0, never pressing A there; its other end, script 0x1b, is at (59, 73) at 145, the
+/// floor at 145 on (59, 74). No movie rides a vine: a ride is taken to land beside the other end,
+/// on its open cell side by side with it at its level nearest the end grabbed, but for that end's
+/// own cell (spike 250).
+pub const VINING: Vining = Vining {
+    swing: 56,
+    climb: 57,
+};
+
 pub const SANTALUNE_LOBBY: i64 = 0x37;
 pub const SANTALUNE_WEB: i64 = 0x38;
 /// Santalune Gym's two poles, a furniture record each way: the lobby's at (20, 24) and the web
@@ -571,7 +614,37 @@ pub fn game() -> &'static Game {
                 (SHALOUR_GYM, KORRINA),
                 ("signs".to_string(), "gym leader spot".to_string(), None),
             ),
-        ]),
+            (
+                (COUMARINE_GYM, WAY_DOWN),
+                ("exits".to_string(), "way down".to_string(), None),
+            ),
+            (
+                (PRISM_LOBBY, LOBBY_LIFT),
+                (
+                    "exits".to_string(),
+                    "elevator".to_string(),
+                    Some(QUIZ_ROOMS.start),
+                ),
+            ),
+            (
+                (CLEMONT_ROOM, CLEMONT_LIFT),
+                ("exits".to_string(), "elevator".to_string(), None),
+            ),
+        ])
+        .into_iter()
+        .chain(QUIZ_ROOMS.map(|room| {
+            (
+                (room, QUIZ_PANEL),
+                ("signs".to_string(), "quiz panel".to_string(), None),
+            )
+        }))
+        .chain(QUIZ_ROOMS.map(|room| {
+            (
+                (room, QUIZ_LIFT),
+                ("exits".to_string(), "elevator".to_string(), None),
+            )
+        }))
+        .collect(),
         furniture: IndexMap::from([
             (
                 (SANTALUNE_LOBBY, POLE),
@@ -588,6 +661,7 @@ pub fn game() -> &'static Game {
         rides: Some(rides()),
         climbing: Some(climbing()),
         grinding: Some(GRINDING),
+        vining: Some(VINING),
         gates: true,
         steps: STEPS,
         training: TRAINING,

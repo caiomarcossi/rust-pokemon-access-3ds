@@ -166,6 +166,18 @@ how-slide = deslizar
 # where it lands the player: "3 east, grind the rail 17 east" (spike 247).
 how-grind-the-rail = deslize pelo trilho
 p-grind = deslize pelo trilho { $bearing }
+# The step that grabs a vine and its ride, as one leg, said with the way faced to grab it and
+# what the ride does: "3 north, face north, climb the vine up, 2 east" (spike 250).
+how-climb-the-vine-up = suba pela trepadeira
+how-climb-the-vine-down = desça pela trepadeira
+how-swing-on-the-vine = balance-se na trepadeira
+p-vine = vire para { $way }, { $how }
+# How many more vines a way rides past its first, said after it in place of the rest: "face
+# north, climb the vine up, then 16 more vines" (spike 250).
+p-more-vines = { $count ->
+    [one] depois, mais 1 trepadeira
+   *[other] depois, mais { $count } trepadeiras
+}
 # A run of steps up or down a ramp, said as one leg by the way it starts, the key held all along
 # it: "up the ramp 25 south-east" (spike 248).
 how-up-the-ramp = suba a rampa
@@ -371,6 +383,9 @@ azahar-folder-not-portable = { $folder } não contém uma pasta user ao lado de 
 # game's `sprites.ftl`.
 kind-door = porta
 kind-way-out = saída
+# The way off Coumarine Gym's top level, walked onto east, which drops the player to the
+# ground (spike 250).
+kind-way-down = descida
 kind-warp = teletransporte
 kind-path = caminho
 kind-edge = borda
@@ -394,10 +409,19 @@ kind-hole = buraco
 kind-dive-spot = ponto de mergulho
 kind-current = corrente
 kind-flat-ground = terreno plano
+# Where one of Lumiose's streets ends on ground walked on the grid, as its plazas are (spike 251).
+kind-open-ground = terreno aberto
+# The small square in each of Prism Tower's quiz rooms that asks Bonnie's question, and asks it again (spike 252).
+kind-quiz-panel = painel de perguntas
 # A run of the blue spots a climbing wall is climbed from, and one on a ledge at its side, where
 # the climber steps off it: the Gym's guide says "those blue spots" (spike 245).
 kind-blue-spot = ponto azul
 kind-wall-ledge = beirada da parede
+# An end of one of Coumarine Gym's vines, by what its ride does from there: up a level, down
+# one, or across a gap on one (spike 250).
+kind-vine-up = trepadeira para subir
+kind-vine-down = trepadeira para descer
+kind-swinging-vine = trepadeira para se balançar
 # Where Shalour Gym's leader comes out to meet the player, at the centre's edges (spike 247).
 kind-gym-leader-spot = local da líder do ginásio
 kind-slope = declive

@@ -27,8 +27,9 @@ kind-hidden-Pokemon = Pokémon oculto
 kind-secret-base-spot = base secreta
 kind-ladder-up = escada para cima
 kind-ladder-down = escada para baixo
-# Mossdeep Gym's (spike 163) and Mauville Gym's (spike 146).
+# Mossdeep Gym's (spike 163), Mauville Gym's (spike 146) and Dewford Gym's (spike 132).
 kind-switch = interruptor
+kind-conveyor-belt = esteira transportadora
 kind-lift = plataforma elevatória
 # Lavaridge Gym's (spike 157).
 kind-trapdoor = alçapão
